@@ -551,6 +551,14 @@ enum rte_flow_item_type {
 	 */
 	RTE_FLOW_ITEM_TYPE_GENEVE_OPT,
 
+	/**
+	 * [META]
+	 *
+	 * Matches SFT context.
+	 *
+	 * See struct rte_flow_item_sft.
+	 */
+	RTE_FLOW_ITEM_TYPE_SFT,
 };
 
 /**
@@ -1678,6 +1686,46 @@ rte_flow_item_geneve_opt_mask = {
 };
 #endif
 /**
+ * @warning
+ * @b EXPERIMENTAL: this structure may change without prior notice
+ *
+ * RTE_FLOW_ITEM_TYPE_SFT
+ *
+ * Matches context of flow that wasw created by SFT.
+ *
+ * The structure describes SFT flow context.
+ * All the fields of the structure, except @p fid, should be considered as
+ * user defined.
+ * The @p fid assigned by RTE SFT & used as unique flow identifier.
+ * SFT context attached to packet by action ``SFT`` (see RTE_FLOW_ACTION_SFT),
+ * which sends the packet to the SFT module.
+ *
+ * SFT default context defined as context attached to packet when there is no
+ * entry for the flow in SFT. The @p state has application reserved value
+ * meaning that SFT context for the packet undefined since entry wasn't found
+ * in SFT. If state 'undefined' then @p zone should be valid othervice @p fid
+ * should be valid.
+ *
+ * Context considered virtual since the method of storing this info on packet
+ * is PMD/implementation specific & may involve mapping methods if there is
+ * 'not enough bits' to store entire contents of struct rte_flow_item_sft.
+ *
+ * Maximal value/size of each field depends on HW capabilities and considered
+ * as implementation specific.
+ */
+RTE_STD_C11
+struct rte_flow_item_sft {
+	uint32_t fid; /**< SFT flow identifier. */
+	uint32_t zone; /**< Zone assigned to flow. */
+	uint32_t fid_valid:1; /**< The fid member is valid. */
+	uint32_t zone_valid:1; /**< The zone member is valid. */
+	uint32_t reserved:30; /**< Reserved. */
+	uint8_t state; /**< User defined flow state. */
+	uint8_t user_data_size; /**< user_data buffer size. */
+	uint8_t *user_data; /**< Arbitrary user data. */
+};
+
+/**
  * Matching pattern item definition.
  *
  * A pattern is formed by stacking items starting from the lowest protocol
@@ -2258,7 +2306,7 @@ enum rte_flow_action_type {
 	 */
 	RTE_FLOW_ACTION_TYPE_COPY_TEID,
 
-	/*
+	/**
 	 * Decrease IPv4 TTL value directly
 	 *
 	 * No associated configuration structure.
@@ -2313,6 +2361,15 @@ enum rte_flow_action_type {
 	 * See struct rte_flow_action_set_tp
 	 */
 	RTE_FLOW_ACTION_TYPE_SET_TCP_TP_DST,
+
+	/**
+	 * RTE_FLOW_ACTION_TYPE_SFT
+	 *
+	 * Direct the packet to SFT module.
+	 *
+	 * See struct rte_flow_action_sft.
+	 */
+	RTE_FLOW_ACTION_TYPE_SFT,
 };
 
 /**
@@ -2950,6 +3007,22 @@ rte_flow_dynf_metadata_set(struct rte_mbuf *m, uint32_t v)
 {
 	*RTE_FLOW_DYNF_METADATA(m) = v;
 }
+
+/**
+ * @warning
+ * @b EXPERIMENTAL: this structure may change without prior notice
+ *
+ * RTE_FLOW_ACTION_TYPE_SFT
+ *
+ * Performs lookup by *zone* and 5-tuple in SFT.
+ * If entry is found the related SFT context will be attached otherwise,
+ * default SFT context will be attached.
+ *
+ * This action may result in termination of actions that following this action.
+ */
+struct rte_flow_action_sft {
+	uint32_t zone; /**< Zone for lookup in SFT */
+};
 
 /*
  * Definition of a single action.
