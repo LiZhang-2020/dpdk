@@ -3734,15 +3734,18 @@ flow_dv_validate_action_modify_hdr(const uint64_t action_flags,
  *   0 on success, a negative errno value otherwise and rte_errno is set.
  */
 static int
-flow_dv_validate_action_modify_mac(const uint64_t action_flags,
+flow_dv_validate_action_modify_mac(struct rte_eth_dev *dev,
+				   const uint64_t action_flags,
 				   const struct rte_flow_action *action,
 				   const uint64_t item_flags,
+				   const struct rte_flow_attr *attr,
 				   struct rte_flow_error *error)
 {
 	int ret = 0;
+	struct mlx5_priv *priv = dev->data->dev_private;
 
 	ret = flow_dv_validate_action_modify_hdr(action_flags, action, error);
-	if (!ret) {
+	if (!ret && (priv->config.dv_validate_mod || !attr->group)) {
 		if (!(item_flags & MLX5_FLOW_LAYER_L2))
 			return rte_flow_error_set(error, EINVAL,
 						  RTE_FLOW_ERROR_TYPE_ACTION,
@@ -3768,16 +3771,19 @@ flow_dv_validate_action_modify_mac(const uint64_t action_flags,
  *   0 on success, a negative errno value otherwise and rte_errno is set.
  */
 static int
-flow_dv_validate_action_modify_ipv4(const uint64_t action_flags,
+flow_dv_validate_action_modify_ipv4(struct rte_eth_dev *dev,
+				    const uint64_t action_flags,
 				    const struct rte_flow_action *action,
 				    const uint64_t item_flags,
+				    const struct rte_flow_attr *attr,
 				    struct rte_flow_error *error)
 {
 	int ret = 0;
+	struct mlx5_priv *priv = dev->data->dev_private;
 	uint64_t layer;
 
 	ret = flow_dv_validate_action_modify_hdr(action_flags, action, error);
-	if (!ret) {
+	if (!ret && (priv->config.dv_validate_mod || !attr->group)) {
 		layer = (action_flags & MLX5_FLOW_ACTION_DECAP) ?
 				 MLX5_FLOW_LAYER_INNER_L3_IPV4 :
 				 MLX5_FLOW_LAYER_OUTER_L3_IPV4;
@@ -3806,16 +3812,19 @@ flow_dv_validate_action_modify_ipv4(const uint64_t action_flags,
  *   0 on success, a negative errno value otherwise and rte_errno is set.
  */
 static int
-flow_dv_validate_action_modify_ipv6(const uint64_t action_flags,
+flow_dv_validate_action_modify_ipv6(struct rte_eth_dev *dev,
+				    const uint64_t action_flags,
 				    const struct rte_flow_action *action,
 				    const uint64_t item_flags,
+				    const struct rte_flow_attr *attr,
 				    struct rte_flow_error *error)
 {
 	int ret = 0;
+	struct mlx5_priv *priv = dev->data->dev_private;
 	uint64_t layer;
 
 	ret = flow_dv_validate_action_modify_hdr(action_flags, action, error);
-	if (!ret) {
+	if (!ret && (priv->config.dv_validate_mod || !attr->group)) {
 		layer = (action_flags & MLX5_FLOW_ACTION_DECAP) ?
 				 MLX5_FLOW_LAYER_INNER_L3_IPV6 :
 				 MLX5_FLOW_LAYER_OUTER_L3_IPV6;
@@ -3883,24 +3892,29 @@ flow_dv_validate_action_modify_tp(const uint64_t action_flags,
  *   0 on success, a negative errno value otherwise and rte_errno is set.
  */
 static int
-flow_dv_validate_action_modify_tcp_seq(const uint64_t action_flags,
+flow_dv_validate_action_modify_tcp_seq(struct rte_eth_dev *dev,
+				       const uint64_t action_flags,
 				       const struct rte_flow_action *action,
 				       const uint64_t item_flags,
+				       const struct rte_flow_attr *attr,
 				       struct rte_flow_error *error)
 {
 	int ret = 0;
+	struct mlx5_priv *priv = dev->data->dev_private;
 	uint64_t layer;
 
 	ret = flow_dv_validate_action_modify_hdr(action_flags, action, error);
 	if (!ret) {
-		layer = (action_flags & MLX5_FLOW_ACTION_DECAP) ?
-				 MLX5_FLOW_LAYER_INNER_L4_TCP :
-				 MLX5_FLOW_LAYER_OUTER_L4_TCP;
-		if (!(item_flags & layer))
-			return rte_flow_error_set(error, EINVAL,
-						  RTE_FLOW_ERROR_TYPE_ACTION,
-						  NULL, "no TCP item in"
-						  " pattern");
+		if (priv->config.dv_validate_mod || !attr->group) {
+			layer = (action_flags & MLX5_FLOW_ACTION_DECAP) ?
+				MLX5_FLOW_LAYER_INNER_L4_TCP :
+				MLX5_FLOW_LAYER_OUTER_L4_TCP;
+			if (!(item_flags & layer))
+				return rte_flow_error_set(error, EINVAL,
+						RTE_FLOW_ERROR_TYPE_ACTION,
+						NULL, "no TCP item in"
+						" pattern");
+		}
 		if ((action->type == RTE_FLOW_ACTION_TYPE_INC_TCP_SEQ &&
 			(action_flags & MLX5_FLOW_ACTION_DEC_TCP_SEQ)) ||
 		    (action->type == RTE_FLOW_ACTION_TYPE_DEC_TCP_SEQ &&
@@ -3932,24 +3946,29 @@ flow_dv_validate_action_modify_tcp_seq(const uint64_t action_flags,
  *   0 on success, a negative errno value otherwise and rte_errno is set.
  */
 static int
-flow_dv_validate_action_modify_tcp_ack(const uint64_t action_flags,
+flow_dv_validate_action_modify_tcp_ack(struct rte_eth_dev *dev,
+				       const uint64_t action_flags,
 				       const struct rte_flow_action *action,
 				       const uint64_t item_flags,
+				       const struct rte_flow_attr *attr,
 				       struct rte_flow_error *error)
 {
 	int ret = 0;
+	struct mlx5_priv *priv = dev->data->dev_private;
 	uint64_t layer;
 
 	ret = flow_dv_validate_action_modify_hdr(action_flags, action, error);
 	if (!ret) {
-		layer = (action_flags & MLX5_FLOW_ACTION_DECAP) ?
-				 MLX5_FLOW_LAYER_INNER_L4_TCP :
-				 MLX5_FLOW_LAYER_OUTER_L4_TCP;
-		if (!(item_flags & layer))
-			return rte_flow_error_set(error, EINVAL,
-						  RTE_FLOW_ERROR_TYPE_ACTION,
-						  NULL, "no TCP item in"
-						  " pattern");
+		if (priv->config.dv_validate_mod || !attr->group) {
+			layer = (action_flags & MLX5_FLOW_ACTION_DECAP) ?
+				MLX5_FLOW_LAYER_INNER_L4_TCP :
+				MLX5_FLOW_LAYER_OUTER_L4_TCP;
+			if (!(item_flags & layer))
+				return rte_flow_error_set(error, EINVAL,
+						RTE_FLOW_ERROR_TYPE_ACTION,
+						NULL, "no TCP item in"
+						" pattern");
+		}
 		if ((action->type == RTE_FLOW_ACTION_TYPE_INC_TCP_ACK &&
 			(action_flags & MLX5_FLOW_ACTION_DEC_TCP_ACK)) ||
 		    (action->type == RTE_FLOW_ACTION_TYPE_DEC_TCP_ACK &&
@@ -4283,15 +4302,18 @@ flow_dv_validate_action_age(uint64_t action_flags,
  *   0 on success, a negative errno value otherwise and rte_errno is set.
  */
 static int
-flow_dv_validate_action_modify_ipv4_dscp(const uint64_t action_flags,
+flow_dv_validate_action_modify_ipv4_dscp(struct rte_eth_dev *dev,
+					 const uint64_t action_flags,
 					 const struct rte_flow_action *action,
 					 const uint64_t item_flags,
+					 const struct rte_flow_attr *attr,
 					 struct rte_flow_error *error)
 {
 	int ret = 0;
+	struct mlx5_priv *priv = dev->data->dev_private;
 
 	ret = flow_dv_validate_action_modify_hdr(action_flags, action, error);
-	if (!ret) {
+	if (!ret && (priv->config.dv_validate_mod || !attr->group)) {
 		if (!(item_flags & MLX5_FLOW_LAYER_L3_IPV4))
 			return rte_flow_error_set(error, EINVAL,
 						  RTE_FLOW_ERROR_TYPE_ACTION,
@@ -4317,15 +4339,18 @@ flow_dv_validate_action_modify_ipv4_dscp(const uint64_t action_flags,
  *   0 on success, a negative errno value otherwise and rte_errno is set.
  */
 static int
-flow_dv_validate_action_modify_ipv6_dscp(const uint64_t action_flags,
+flow_dv_validate_action_modify_ipv6_dscp(struct rte_eth_dev *dev,
+					 const uint64_t action_flags,
 					 const struct rte_flow_action *action,
 					 const uint64_t item_flags,
+					 const struct rte_flow_attr *attr,
 					 struct rte_flow_error *error)
 {
 	int ret = 0;
+	struct mlx5_priv *priv = dev->data->dev_private;
 
 	ret = flow_dv_validate_action_modify_hdr(action_flags, action, error);
-	if (!ret) {
+	if (!ret && (priv->config.dv_validate_mod || !attr->group)) {
 		if (!(item_flags & MLX5_FLOW_LAYER_L3_IPV6))
 			return rte_flow_error_set(error, EINVAL,
 						  RTE_FLOW_ERROR_TYPE_ACTION,
@@ -5949,9 +5974,11 @@ flow_dv_validate(struct rte_eth_dev *dev, const struct rte_flow_attr *attr,
 			break;
 		case RTE_FLOW_ACTION_TYPE_SET_MAC_SRC:
 		case RTE_FLOW_ACTION_TYPE_SET_MAC_DST:
-			ret = flow_dv_validate_action_modify_mac(action_flags,
+			ret = flow_dv_validate_action_modify_mac(dev,
+								 action_flags,
 								 actions,
 								 item_flags,
+								 attr,
 								 error);
 			if (ret < 0)
 				return ret;
@@ -5973,9 +6000,11 @@ flow_dv_validate(struct rte_eth_dev *dev, const struct rte_flow_attr *attr,
 			break;
 		case RTE_FLOW_ACTION_TYPE_SET_IPV4_SRC:
 		case RTE_FLOW_ACTION_TYPE_SET_IPV4_DST:
-			ret = flow_dv_validate_action_modify_ipv4(action_flags,
+			ret = flow_dv_validate_action_modify_ipv4(dev,
+								  action_flags,
 								  actions,
 								  item_flags,
+								  attr,
 								  error);
 			if (ret < 0)
 				return ret;
@@ -5990,9 +6019,11 @@ flow_dv_validate(struct rte_eth_dev *dev, const struct rte_flow_attr *attr,
 			break;
 		case RTE_FLOW_ACTION_TYPE_SET_IPV6_SRC:
 		case RTE_FLOW_ACTION_TYPE_SET_IPV6_DST:
-			ret = flow_dv_validate_action_modify_ipv6(action_flags,
+			ret = flow_dv_validate_action_modify_ipv6(dev,
+								  action_flags,
 								  actions,
 								  item_flags,
+								  attr,
 								  error);
 			if (ret < 0)
 				return ret;
@@ -6058,9 +6089,11 @@ flow_dv_validate(struct rte_eth_dev *dev, const struct rte_flow_attr *attr,
 		case RTE_FLOW_ACTION_TYPE_INC_TCP_SEQ:
 		case RTE_FLOW_ACTION_TYPE_DEC_TCP_SEQ:
 			ret = flow_dv_validate_action_modify_tcp_seq
-								(action_flags,
+								(dev,
+								 action_flags,
 								 actions,
 								 item_flags,
+								 attr,
 								 error);
 			if (ret < 0)
 				return ret;
@@ -6076,9 +6109,11 @@ flow_dv_validate(struct rte_eth_dev *dev, const struct rte_flow_attr *attr,
 		case RTE_FLOW_ACTION_TYPE_INC_TCP_ACK:
 		case RTE_FLOW_ACTION_TYPE_DEC_TCP_ACK:
 			ret = flow_dv_validate_action_modify_tcp_ack
-								(action_flags,
+								(dev,
+								 action_flags,
 								 actions,
 								 item_flags,
+								 attr,
 								 error);
 			if (ret < 0)
 				return ret;
@@ -6129,9 +6164,11 @@ flow_dv_validate(struct rte_eth_dev *dev, const struct rte_flow_attr *attr,
 			break;
 		case RTE_FLOW_ACTION_TYPE_SET_IPV4_DSCP:
 			ret = flow_dv_validate_action_modify_ipv4_dscp
-							 (action_flags,
+							 (dev,
+							  action_flags,
 							  actions,
 							  item_flags,
+							  attr,
 							  error);
 			if (ret < 0)
 				return ret;
@@ -6143,9 +6180,11 @@ flow_dv_validate(struct rte_eth_dev *dev, const struct rte_flow_attr *attr,
 			break;
 		case RTE_FLOW_ACTION_TYPE_SET_IPV6_DSCP:
 			ret = flow_dv_validate_action_modify_ipv6_dscp
-								(action_flags,
+								(dev,
+								 action_flags,
 								 actions,
 								 item_flags,
+								 attr,
 								 error);
 			if (ret < 0)
 				return ret;
