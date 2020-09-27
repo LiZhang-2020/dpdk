@@ -25,6 +25,10 @@ extern "C" {
 #include <rte_compat.h>
 #include <rte_bus.h>
 
+#define RTE_DEVARGS_KEY_BUS "bus"
+#define RTE_DEVARGS_KEY_CLASS "class"
+#define RTE_DEVARGS_KEY_DRIVER "driver"
+
 /**
  * Type of generic device
  */

@@ -116,7 +116,7 @@ next_layer:
 		if (layers[i].kvlist == NULL)
 			continue;
 		kv = &layers[i].kvlist->pairs[0];
-		if (strcmp(kv->key, "bus") == 0) {
+		if (strcmp(kv->key, RTE_DEVARGS_KEY_BUS) == 0) {
 			bus = rte_bus_find_by_name(kv->value);
 			if (bus == NULL) {
 				RTE_LOG(ERR, EAL, "Could not find bus \"%s\"\n",
@@ -124,7 +124,7 @@ next_layer:
 				ret = -EFAULT;
 				goto get_out;
 			}
-		} else if (strcmp(kv->key, "class") == 0) {
+		} else if (strcmp(kv->key, RTE_DEVARGS_KEY_CLASS) == 0) {
 			cls = rte_class_find_by_name(kv->value);
 			if (cls == NULL) {
 				RTE_LOG(ERR, EAL, "Could not find class \"%s\"\n",
@@ -132,7 +132,7 @@ next_layer:
 				ret = -EFAULT;
 				goto get_out;
 			}
-		} else if (strcmp(kv->key, "driver") == 0) {
+		} else if (strcmp(kv->key, RTE_DEVARGS_KEY_DRIVER) == 0) {
 			/* Ignore */
 			continue;
 		}
