@@ -14,5 +14,6 @@ EXPERIMENTAL {
 
 	rte_kvargs_parse_delim;
 	rte_kvargs_strcmp;
+	rte_kvargs_get;
 
 };
