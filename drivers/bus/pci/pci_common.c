@@ -23,6 +23,7 @@
 #include <rte_string_fns.h>
 #include <rte_common.h>
 #include <rte_devargs.h>
+#include <rte_kvargs.h>
 #include <rte_vfio.h>
 
 #include "private.h"
@@ -48,9 +49,20 @@ pci_devargs_lookup(const struct rte_pci_addr *pci_addr)
 {
 	struct rte_devargs *devargs;
 	struct rte_pci_addr addr;
+	struct rte_kvargs *kvlist = NULL;
+	const char *name;
 
 	RTE_EAL_DEVARGS_FOREACH("pci", devargs) {
-		devargs->bus->parse(devargs->name, &addr);
+		name = NULL;
+		if (devargs->bus_str) {
+			kvlist = rte_kvargs_parse(devargs->bus_str, NULL);
+			name = rte_kvargs_get(kvlist, "id");
+		}
+		if (!name)
+			name = devargs->name;
+		devargs->bus->parse(name, &addr);
+		if (kvlist)
+			rte_kvargs_free(kvlist);
 		if (!rte_pci_addr_cmp(pci_addr, &addr))
 			return devargs;
 	}
@@ -71,11 +83,11 @@ pci_name_set(struct rte_pci_device *dev)
 	/* When using a blocklist, only blocked devices will have
 	 * an rte_devargs. Allowed devices won't have one.
 	 */
-	if (devargs != NULL)
+	if (devargs != NULL && strlen(devargs->name))
 		/* If an rte_devargs exists, the generic rte_device uses the
 		 * given name as its name.
 		 */
-		dev->device.name = dev->device.devargs->name;
+		dev->device.name = devargs->name;
 	else
 		/* Otherwise, it uses the internal, canonical form. */
 		dev->device.name = dev->name;
