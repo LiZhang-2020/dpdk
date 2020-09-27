@@ -3056,8 +3056,8 @@ detach_devargs(char *identifier)
 	memset(&da, 0, sizeof(da));
 	if (rte_devargs_parsef(&da, "%s", identifier)) {
 		printf("cannot parse identifier\n");
-		if (da.args)
-			free(da.args);
+		if (da.data)
+			free(da.data);
 		return;
 	}
 

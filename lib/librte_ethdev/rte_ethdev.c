@@ -244,7 +244,8 @@ rte_eth_iterator_init(struct rte_dev_iterator *iter, const char *devargs_str)
 		goto error;
 	}
 	iter->cls_str = cls_str;
-	free(devargs.args); /* allocated by rte_devargs_parse() */
+	free(devargs.data); /* allocated by rte_devargs_parse() */
+	devargs.data = NULL;
 	devargs.args = NULL;
 
 	iter->bus = devargs.bus;
@@ -284,7 +285,7 @@ error:
 	if (ret == -ENOTSUP)
 		RTE_ETHDEV_LOG(ERR, "Bus %s does not support iterating.\n",
 				iter->bus->name);
-	free(devargs.args);
+	free(devargs.data);
 	free(bus_str);
 	free(cls_str);
 	return ret;

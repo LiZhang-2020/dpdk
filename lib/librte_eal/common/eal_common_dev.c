@@ -186,7 +186,7 @@ local_dev_probe(const char *devargs, struct rte_device **new_dev)
 
 err_devarg:
 	if (rte_devargs_remove(da) != 0) {
-		free(da->args);
+		free(da->data);
 		free(da);
 	}
 	return ret;
@@ -572,8 +572,7 @@ rte_dev_event_callback_process(const char *device_name,
 }
 
 int
-rte_dev_iterator_init(struct rte_dev_iterator *it,
-		      const char *dev_str)
+rte_dev_iterator_init(struct rte_dev_iterator *it, const char *dev_str)
 {
 	struct rte_devargs devargs;
 	struct rte_class *cls = NULL;
@@ -586,7 +585,7 @@ rte_dev_iterator_init(struct rte_dev_iterator *it,
 	it->bus_str = NULL;
 	it->cls_str = NULL;
 
-	devargs.data = dev_str;
+	devargs.data = NULL;
 	if (rte_devargs_layers_parse(&devargs, dev_str))
 		goto get_out;
 

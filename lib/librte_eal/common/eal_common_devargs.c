@@ -57,6 +57,7 @@ rte_devargs_layers_parse(struct rte_devargs *devargs,
 	struct rte_class *cls = NULL;
 	struct rte_bus *bus = NULL;
 	const char *s = devstr;
+	const char *id;
 	size_t nblayer;
 	size_t i = 0;
 	int ret = 0;
@@ -116,6 +117,8 @@ next_layer:
 		if (layers[i].kvlist == NULL)
 			continue;
 		kv = &layers[i].kvlist->pairs[0];
+		if (!kv->key)
+			continue;
 		if (strcmp(kv->key, "bus") == 0) {
 			bus = rte_bus_find_by_name(kv->value);
 			if (bus == NULL) {
@@ -124,6 +127,14 @@ next_layer:
 				ret = -EFAULT;
 				goto get_out;
 			}
+			id = rte_kvargs_get(layers[i].kvlist, "id");
+			if (!id) {
+				RTE_LOG(ERR, EAL, "Could not find bus id \"%s\"\n",
+					devstr);
+				ret = -EFAULT;
+				goto get_out;
+			}
+			strncpy(devargs->name, id, sizeof(devargs->name) - 1);
 		} else if (strcmp(kv->key, "class") == 0) {
 			cls = rte_class_find_by_name(kv->value);
 			if (cls == NULL) {
@@ -189,6 +200,12 @@ rte_devargs_parse(struct rte_devargs *da, const char *dev)
 
 	if (da == NULL)
 		return -EINVAL;
+
+	/* First parse according new global syntax */
+	if (rte_devargs_layers_parse(da, dev) == 0 && da->bus && da->cls)
+		return 0;
+
+	/* Legacy syntax check: */
 
 	/* Retrieve eventual bus info */
 	do {
@@ -284,7 +301,8 @@ rte_devargs_insert(struct rte_devargs **da)
 			/* device already in devargs list, must be updated */
 			listed_da->type = (*da)->type;
 			listed_da->policy = (*da)->policy;
-			free(listed_da->args);
+			if (listed_da->data)
+				free(listed_da->data);
 			listed_da->args = (*da)->args;
 			listed_da->bus = (*da)->bus;
 			listed_da->cls = (*da)->cls;
@@ -332,7 +350,7 @@ rte_devargs_add(enum rte_devtype devtype, const char *devargs_str)
 
 fail:
 	if (devargs) {
-		free(devargs->args);
+		free(devargs->data);
 		free(devargs);
 	}
 
@@ -352,7 +370,7 @@ rte_devargs_remove(struct rte_devargs *devargs)
 		if (strcmp(d->bus->name, devargs->bus->name) == 0 &&
 		    strcmp(d->name, devargs->name) == 0) {
 			TAILQ_REMOVE(&devargs_list, d, next);
-			free(d->args);
+			free(d->data);
 			free(d);
 			return 0;
 		}

@@ -451,7 +451,8 @@ failsafe_args_free(struct rte_eth_dev *dev)
 		sdev->cmdline = NULL;
 		free(sdev->fd_str);
 		sdev->fd_str = NULL;
-		free(sdev->devargs.args);
+		free(sdev->devargs.data);
+		sdev->devargs.data = NULL;
 		sdev->devargs.args = NULL;
 	}
 }
