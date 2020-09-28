@@ -217,6 +217,7 @@ struct mlx5_dev_config {
 	unsigned int dv_esw_en:1; /* Enable E-Switch DV flow. */
 	unsigned int dv_flow_en:1; /* Enable DV flow. */
 	unsigned int dv_xmeta_en:2; /* Enable extensive flow metadata. */
+	unsigned int dv_validate_mod:1; /* Validate on modify actions */
 	unsigned int lacp_by_user:1;
 	/* Enable user to manage LACP traffic. */
 	unsigned int swp:1; /* Tx generic tunnel checksum and TSO offload. */

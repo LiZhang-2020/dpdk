@@ -145,6 +145,9 @@
 /* Enable extensive flow metadata support. */
 #define MLX5_DV_XMETA_EN "dv_xmeta_en"
 
+/* Validate items on modify action */
+#define MLX5_DV_VALIDATE_MOD "dv_validate_mod"
+
 /* Device parameter to let the user manage the lacp traffic of bonded device */
 #define MLX5_LACP_BY_USER "lacp_by_user"
 
@@ -1560,6 +1563,8 @@ mlx5_args_check(const char *key, const char *val, void *opaque)
 			config->dv_xmeta_en = tmp;
 		else
 			config->dv_miss_info = 1;
+	} else if (strcmp(MLX5_DV_VALIDATE_MOD, key) == 0) {
+		config->dv_validate_mod = !!tmp;
 	} else if (strcmp(MLX5_LACP_BY_USER, key) == 0) {
 		config->lacp_by_user = !!tmp;
 	} else if (strcmp(MLX5_MR_EXT_MEMSEG_EN, key) == 0) {
@@ -1636,6 +1641,7 @@ mlx5_args(struct mlx5_dev_config *config, struct rte_devargs *devargs)
 		MLX5_DV_ESW_EN,
 		MLX5_DV_FLOW_EN,
 		MLX5_DV_XMETA_EN,
+		MLX5_DV_VALIDATE_MOD,
 		MLX5_LACP_BY_USER,
 		MLX5_MR_EXT_MEMSEG_EN,
 		MLX5_REPRESENTOR,

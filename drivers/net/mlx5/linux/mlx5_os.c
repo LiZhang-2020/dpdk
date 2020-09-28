@@ -2221,6 +2221,7 @@ mlx5_os_pci_probe(struct rte_pci_driver *pci_drv __rte_unused,
 		dev_config.mprq.min_rxqs_num = MLX5_MPRQ_MIN_RXQS;
 		dev_config.dv_esw_en = 1;
 		dev_config.dv_flow_en = 1;
+		dev_config.dv_validate_mod = 0;
 		dev_config.decap_en = 1;
 		dev_config.log_hp_size = MLX5_ARG_UNSET;
 		list[i].eth_dev = mlx5_dev_spawn(&pci_dev->device,
