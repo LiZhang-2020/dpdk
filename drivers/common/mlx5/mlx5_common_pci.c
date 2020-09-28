@@ -4,6 +4,7 @@
 
 #include <stdlib.h>
 #include <rte_malloc.h>
+#include <rte_class.h>
 #include "mlx5_common_utils.h"
 #include "mlx5_common_pci.h"
 
@@ -26,7 +27,7 @@ static const struct {
 	unsigned int driver_class;
 } mlx5_classes[] = {
 	{ .name = "vdpa", .driver_class = MLX5_CLASS_VDPA },
-	{ .name = "net", .driver_class = MLX5_CLASS_NET },
+	{ .name = "eth", .driver_class = MLX5_CLASS_NET },
 	{ .name = "regex", .driver_class = MLX5_CLASS_REGEX },
 };
 
@@ -115,6 +116,9 @@ parse_class_options(const struct rte_devargs *devargs)
 
 	if (devargs == NULL)
 		return 0;
+	if (devargs->cls)
+		/* support new global syntax */
+		return class_name_to_value(devargs->cls->name);
 	kvlist = rte_kvargs_parse(devargs->args, NULL);
 	if (kvlist == NULL)
 		return 0;
