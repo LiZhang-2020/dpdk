@@ -2257,6 +2257,34 @@ enum rte_flow_action_type {
 	 * See struct rte_flow_action_copy_teid.
 	 */
 	RTE_FLOW_ACTION_TYPE_COPY_TEID,
+
+	/*
+	 * Decrease IPv4 TTL value directly
+	 *
+	 * No associated configuration structure.
+	 */
+	RTE_FLOW_ACTION_TYPE_DEC_IPV4_TTL,
+
+	/**
+	 * Set IPv4 TTL value
+	 *
+	 * See struct rte_flow_action_set_ttl
+	 */
+	RTE_FLOW_ACTION_TYPE_SET_IPV4_TTL,
+
+	/**
+	 * Decrease IPv6 hop value directly
+	 *
+	 * No associated configuration structure.
+	 */
+	RTE_FLOW_ACTION_TYPE_DEC_IPV6_HOP,
+
+	/**
+	 * Set hop value
+	 *
+	 * See struct rte_flow_action_set_ttl
+	 */
+	RTE_FLOW_ACTION_TYPE_SET_IPV6_HOP,
 };
 
 /**
@@ -2770,6 +2798,8 @@ struct rte_flow_action_set_tp {
 
 /**
  * RTE_FLOW_ACTION_TYPE_SET_TTL
+ * RTE_FLOW_ACTION_TYPE_SET_IPV4_TTL
+ * RTE_FLOW_ACTION_TYPE_SET_IPV6_HOP
  *
  * Set the TTL value directly for IPv4 or IPv6
  */
