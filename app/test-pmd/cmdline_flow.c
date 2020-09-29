@@ -415,6 +415,12 @@ enum index {
 	SHARED_ACTION_ID2PTR,
 	ACTION_COPY_TEID,
 	ACTION_COPY_TEID_INDEX,
+	ACTION_DEC_IPV4_TTL,
+	ACTION_SET_IPV4_TTL,
+	ACTION_SET_IPV4_TTL_VALUE,
+	ACTION_DEC_IPV6_HOP,
+	ACTION_SET_IPV6_HOP,
+	ACTION_SET_IPV6_HOP_VALUE,
 };
 
 /** Maximum size for pattern in struct rte_flow_item_raw. */
@@ -1338,6 +1344,10 @@ static const enum index next_action[] = {
 	ACTION_SAMPLE,
 	ACTION_SHARED,
 	ACTION_COPY_TEID,
+	ACTION_DEC_IPV4_TTL,
+	ACTION_SET_IPV4_TTL,
+	ACTION_DEC_IPV6_HOP,
+	ACTION_SET_IPV6_HOP,
 	ZERO,
 };
 
@@ -1585,6 +1595,18 @@ static const enum index next_action_sample[] = {
 	ACTION_COUNT,
 	ACTION_PORT_ID,
 	ACTION_RAW_ENCAP,
+	ACTION_NEXT,
+	ZERO,
+};
+
+static const enum index action_set_ipv4_ttl[] = {
+	ACTION_SET_IPV4_TTL_VALUE,
+	ACTION_NEXT,
+	ZERO,
+};
+
+static const enum index action_set_ipv6_hop[] = {
+	ACTION_SET_IPV6_HOP_VALUE,
 	ACTION_NEXT,
 	ZERO,
 };
@@ -4379,6 +4401,52 @@ static const struct token token_list[] = {
 		.next = NEXT(action_copy_teid, NEXT_ENTRY(UNSIGNED)),
 		.args = ARGS(ARGS_ENTRY
 				(struct rte_flow_action_copy_teid, index)),
+		.call = parse_vc_conf,
+	},
+	[ACTION_DEC_IPV4_TTL] = {
+		.name = "dec_ipv4_ttl",
+		.help = "decrease ipv4 ttl if available",
+		.priv = PRIV_ACTION(DEC_IPV4_TTL, 0),
+		.next = NEXT(NEXT_ENTRY(ACTION_NEXT)),
+		.call = parse_vc,
+	},
+	[ACTION_SET_IPV4_TTL] = {
+		.name = "set_ipv4_ttl",
+		.help = "set ipv4 ttl value",
+		.priv = PRIV_ACTION(SET_IPV4_TTL,
+			sizeof(struct rte_flow_action_set_ttl)),
+		.next = NEXT(action_set_ipv4_ttl),
+		.call = parse_vc,
+	},
+	[ACTION_SET_IPV4_TTL_VALUE] = {
+		.name = "ttl_value",
+		.help = "new ttl value to set",
+		.next = NEXT(action_set_ipv4_ttl, NEXT_ENTRY(UNSIGNED)),
+		.args = ARGS(ARGS_ENTRY_HTON
+			     (struct rte_flow_action_set_ttl, ttl_value)),
+		.call = parse_vc_conf,
+	},
+	[ACTION_DEC_IPV6_HOP] = {
+		.name = "dec_ipv6_hop",
+		.help = "decrease ipv6 hop if available",
+		.priv = PRIV_ACTION(DEC_IPV6_HOP, 0),
+		.next = NEXT(NEXT_ENTRY(ACTION_NEXT)),
+		.call = parse_vc,
+	},
+	[ACTION_SET_IPV6_HOP] = {
+		.name = "set_ipv6_hop",
+		.help = "set ipv6 hop value",
+		.priv = PRIV_ACTION(SET_IPV6_HOP,
+			sizeof(struct rte_flow_action_set_ttl)),
+		.next = NEXT(action_set_ipv6_hop),
+		.call = parse_vc,
+	},
+	[ACTION_SET_IPV6_HOP_VALUE] = {
+		.name = "hop_value",
+		.help = "new hop value to set",
+		.next = NEXT(action_set_ipv6_hop, NEXT_ENTRY(UNSIGNED)),
+		.args = ARGS(ARGS_ENTRY_HTON
+			     (struct rte_flow_action_set_ttl, ttl_value)),
 		.call = parse_vc_conf,
 	},
 };
