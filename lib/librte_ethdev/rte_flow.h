@@ -2285,6 +2285,34 @@ enum rte_flow_action_type {
 	 * See struct rte_flow_action_set_ttl
 	 */
 	RTE_FLOW_ACTION_TYPE_SET_IPV6_HOP,
+
+	/**
+	 * Set UDP source port value
+	 *
+	 * See struct rte_flow_action_set_tp
+	 */
+	RTE_FLOW_ACTION_TYPE_SET_UDP_TP_SRC,
+
+	/**
+	 * Set UDP destination port value
+	 *
+	 * See struct rte_flow_action_set_tp
+	 */
+	RTE_FLOW_ACTION_TYPE_SET_UDP_TP_DST,
+
+	/**
+	 * Set TCP source port value
+	 *
+	 * See struct rte_flow_action_set_tp
+	 */
+	RTE_FLOW_ACTION_TYPE_SET_TCP_TP_SRC,
+
+	/**
+	 * Set TCP destination port value
+	 *
+	 * See struct rte_flow_action_set_tp
+	 */
+	RTE_FLOW_ACTION_TYPE_SET_TCP_TP_DST,
 };
 
 /**
@@ -2787,10 +2815,16 @@ struct rte_flow_action_set_ipv6 {
  *
  * RTE_FLOW_ACTION_TYPE_SET_TP_SRC
  * RTE_FLOW_ACTION_TYPE_SET_TP_DST
+ * RTE_FLOW_ACTION_TYPE_SET_UDP_TP_SRC
+ * RTE_FLOW_ACTION_TYPE_SET_UDP_TP_DST
+ * RTE_FLOW_ACTION_TYPE_SET_TCP_TP_SRC
+ * RTE_FLOW_ACTION_TYPE_SET_TCP_TP_DST
  *
- * Allows modification of source (RTE_FLOW_ACTION_TYPE_SET_TP_SRC)
- * and destination (RTE_FLOW_ACTION_TYPE_SET_TP_DST) port numbers
- * in the specified outermost TCP/UDP header.
+ * Allows modification of source (RTE_FLOW_ACTION_TYPE_SET_TP_SRC,
+ * RTE_FLOW_ACTION_TYPE_SET_UDP_TP_SRC, RTE_FLOW_ACTION_TYPE_SET_TCP_TP_SRC)
+ * and destination (RTE_FLOW_ACTION_TYPE_SET_TP_DST,
+ * RTE_FLOW_ACTION_TYPE_SET_UDP_TP_DST, RTE_FLOW_ACTION_TYPE_SET_TCP_TP_DST)
+ * port numbers in the specified outermost TCP/UDP header.
  */
 struct rte_flow_action_set_tp {
 	rte_be16_t port;
