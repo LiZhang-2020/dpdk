@@ -421,6 +421,14 @@ enum index {
 	ACTION_DEC_IPV6_HOP,
 	ACTION_SET_IPV6_HOP,
 	ACTION_SET_IPV6_HOP_VALUE,
+	ACTION_SET_UDP_TP_SRC,
+	ACTION_SET_UDP_TP_SRC_TP_SRC,
+	ACTION_SET_UDP_TP_DST,
+	ACTION_SET_UDP_TP_DST_TP_DST,
+	ACTION_SET_TCP_TP_SRC,
+	ACTION_SET_TCP_TP_SRC_TP_SRC,
+	ACTION_SET_TCP_TP_DST,
+	ACTION_SET_TCP_TP_DST_TP_DST,
 };
 
 /** Maximum size for pattern in struct rte_flow_item_raw. */
@@ -1348,6 +1356,10 @@ static const enum index next_action[] = {
 	ACTION_SET_IPV4_TTL,
 	ACTION_DEC_IPV6_HOP,
 	ACTION_SET_IPV6_HOP,
+	ACTION_SET_UDP_TP_SRC,
+	ACTION_SET_UDP_TP_DST,
+	ACTION_SET_TCP_TP_SRC,
+	ACTION_SET_TCP_TP_DST,
 	ZERO,
 };
 
@@ -1613,6 +1625,30 @@ static const enum index action_set_ipv6_hop[] = {
 
 static const enum index action_copy_teid[] = {
 	ACTION_COPY_TEID_INDEX,
+	ACTION_NEXT,
+	ZERO,
+};
+
+static const enum index action_set_udp_tp_src[] = {
+	ACTION_SET_UDP_TP_SRC_TP_SRC,
+	ACTION_NEXT,
+	ZERO,
+};
+
+static const enum index action_set_udp_tp_dst[] = {
+	ACTION_SET_UDP_TP_DST_TP_DST,
+	ACTION_NEXT,
+	ZERO,
+};
+
+static const enum index action_set_tcp_tp_src[] = {
+	ACTION_SET_TCP_TP_SRC_TP_SRC,
+	ACTION_NEXT,
+	ZERO,
+};
+
+static const enum index action_set_tcp_tp_dst[] = {
+	ACTION_SET_TCP_TP_DST_TP_DST,
 	ACTION_NEXT,
 	ZERO,
 };
@@ -4447,6 +4483,74 @@ static const struct token token_list[] = {
 		.next = NEXT(action_set_ipv6_hop, NEXT_ENTRY(UNSIGNED)),
 		.args = ARGS(ARGS_ENTRY_HTON
 			     (struct rte_flow_action_set_ttl, ttl_value)),
+		.call = parse_vc_conf,
+	},
+	[ACTION_SET_UDP_TP_SRC] = {
+		.name = "set_udp_tp_src",
+		.help = "set a new source port number in the outermost"
+			" UDP header",
+		.priv = PRIV_ACTION(SET_UDP_TP_SRC,
+			sizeof(struct rte_flow_action_set_tp)),
+		.next = NEXT(action_set_udp_tp_src),
+		.call = parse_vc,
+	},
+	[ACTION_SET_UDP_TP_SRC_TP_SRC] = {
+		.name = "port",
+		.help = "new source port number to set",
+		.next = NEXT(action_set_udp_tp_src, NEXT_ENTRY(UNSIGNED)),
+		.args = ARGS(ARGS_ENTRY_HTON
+			     (struct rte_flow_action_set_tp, port)),
+		.call = parse_vc_conf,
+	},
+	[ACTION_SET_UDP_TP_DST] = {
+		.name = "set_udp_tp_dst",
+		.help = "set a new destination port number in the outermost"
+			" UDP header",
+		.priv = PRIV_ACTION(SET_UDP_TP_DST,
+			sizeof(struct rte_flow_action_set_tp)),
+		.next = NEXT(action_set_udp_tp_dst),
+		.call = parse_vc,
+	},
+	[ACTION_SET_UDP_TP_DST_TP_DST] = {
+		.name = "port",
+		.help = "new destination port number to set",
+		.next = NEXT(action_set_udp_tp_dst, NEXT_ENTRY(UNSIGNED)),
+		.args = ARGS(ARGS_ENTRY_HTON
+			     (struct rte_flow_action_set_tp, port)),
+		.call = parse_vc_conf,
+	},
+	[ACTION_SET_TCP_TP_SRC] = {
+		.name = "set_tcp_tp_src",
+		.help = "set a new source port number in the outermost"
+			" TCP header",
+		.priv = PRIV_ACTION(SET_TCP_TP_SRC,
+			sizeof(struct rte_flow_action_set_tp)),
+		.next = NEXT(action_set_tcp_tp_src),
+		.call = parse_vc,
+	},
+	[ACTION_SET_TCP_TP_SRC_TP_SRC] = {
+		.name = "port",
+		.help = "new source port number to set",
+		.next = NEXT(action_set_tcp_tp_src, NEXT_ENTRY(UNSIGNED)),
+		.args = ARGS(ARGS_ENTRY_HTON
+			     (struct rte_flow_action_set_tp, port)),
+		.call = parse_vc_conf,
+	},
+	[ACTION_SET_TCP_TP_DST] = {
+		.name = "set_tcp_tp_dst",
+		.help = "set a new destination port number in the outermost"
+			" TCP header",
+		.priv = PRIV_ACTION(SET_TCP_TP_DST,
+			sizeof(struct rte_flow_action_set_tp)),
+		.next = NEXT(action_set_tcp_tp_dst),
+		.call = parse_vc,
+	},
+	[ACTION_SET_TCP_TP_DST_TP_DST] = {
+		.name = "port",
+		.help = "new destination port number to set",
+		.next = NEXT(action_set_tcp_tp_dst, NEXT_ENTRY(UNSIGNED)),
+		.args = ARGS(ARGS_ENTRY_HTON
+			     (struct rte_flow_action_set_tp, port)),
 		.call = parse_vc_conf,
 	},
 };
