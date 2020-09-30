@@ -104,6 +104,11 @@ The command line options are:
 	Set the traffic metering algorithm.
 	Example: meter-profile-alg=srtcmp, default algorithm is srtcm_rfc2697
 
+*       ``--unique-data``
+        Flag to set using unique data for all actions that support data,
+        Such as header modify and encap actions. Default is using fixed
+        data for any action that support data for all flows.
+
 Attributes:
 
 *	``--ingress``
