@@ -543,6 +543,14 @@ enum rte_flow_item_type {
 	 * See struct rte_flow_item_ipv6_frag_ext.
 	 */
 	RTE_FLOW_ITEM_TYPE_IPV6_FRAG_EXT,
+
+	/**
+	 * Matches Geneve Variable Length Option
+	 *
+	 * See struct rte_flow_item_geneve_opt
+	 */
+	RTE_FLOW_ITEM_TYPE_GENEVE_OPT,
+
 };
 
 /**
@@ -1626,7 +1634,49 @@ static const struct rte_flow_item_ecpri rte_flow_item_ecpri_mask = {
 	},
 };
 #endif
+#ifdef PEDANTIC
+#pragma GCC diagnostic ignored "-Wpedantic"
+#endif
+/**
+ * RTE_FLOW_ITEM_TYPE_GENEVE_OPT
+ *
+ * Matches a GENEVE Variable Length Option
+ */
+RTE_STD_C11
+struct rte_flow_item_geneve_opt {
+	rte_be16_t option_class;
+	uint8_t option_type;
+#if RTE_BYTE_ORDER == RTE_LITTLE_ENDIAN
+	union {
+		uint8_t len_rsvd;
+		struct {
+			uint8_t length:5;
+			uint8_t rsvd0:3;
+		};
+	};
+#else
 
+	union {
+		uint8_t len_rsvd;
+		struct {
+			uint8_t rsvd0:3;
+			uint8_t length:5;
+		};
+	};
+#endif
+	uint32_t *data;
+};
+#ifdef PEDANTIC
+#pragma GCC diagnostic ignored "-Wpedantic"
+#endif
+
+/** Default mask for RTE_FLOW_ITEM_TYPE_GENEVE_OPT. */
+#ifndef __cplusplus
+static const struct rte_flow_item_geneve_opt
+rte_flow_item_geneve_opt_mask = {
+	.option_type = 0xff,
+};
+#endif
 /**
  * Matching pattern item definition.
  *
