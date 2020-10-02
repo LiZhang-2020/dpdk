@@ -661,13 +661,43 @@ flow_dv_convert_action_modify_tp
 	struct rte_flow_item_tcp tcp;
 	struct rte_flow_item_tcp tcp_mask;
 	struct field_modify_info *field;
+	int action_type = action->type;
+	uint8_t l4_udp = 0xFF;
+	uint8_t src_port = 0xFF;
 
-	if (!attr->valid)
-		flow_dv_attr_init(items, attr, dev_flow, tunnel_decap);
-	if (attr->udp) {
+	switch (action_type) {
+	case RTE_FLOW_ACTION_TYPE_SET_UDP_TP_SRC:
+	case RTE_FLOW_ACTION_TYPE_SET_UDP_TP_DST:
+		l4_udp = 1;
+		break;
+	case RTE_FLOW_ACTION_TYPE_SET_TCP_TP_SRC:
+	case RTE_FLOW_ACTION_TYPE_SET_TCP_TP_DST:
+		l4_udp = 0;
+		break;
+	case RTE_FLOW_ACTION_TYPE_SET_TP_SRC:
+	case RTE_FLOW_ACTION_TYPE_SET_TP_DST:
+		if (!attr->valid)
+			flow_dv_attr_init(items, attr, dev_flow, tunnel_decap);
+		l4_udp = attr->udp;
+		MLX5_ASSERT(attr->udp ^ attr->tcp);
+	}
+	switch (action_type) {
+	case RTE_FLOW_ACTION_TYPE_SET_UDP_TP_SRC:
+	case RTE_FLOW_ACTION_TYPE_SET_TCP_TP_SRC:
+	case RTE_FLOW_ACTION_TYPE_SET_TP_SRC:
+		src_port = 1;
+		break;
+	case RTE_FLOW_ACTION_TYPE_SET_UDP_TP_DST:
+	case RTE_FLOW_ACTION_TYPE_SET_TCP_TP_DST:
+	case RTE_FLOW_ACTION_TYPE_SET_TP_DST:
+		src_port = 0;
+		break;
+	}
+	MLX5_ASSERT(l4_udp != 0xFF && src_port != 0xFF);
+	if (l4_udp) {
 		memset(&udp, 0, sizeof(udp));
 		memset(&udp_mask, 0, sizeof(udp_mask));
-		if (action->type == RTE_FLOW_ACTION_TYPE_SET_TP_SRC) {
+		if (src_port) {
 			udp.hdr.src_port = conf->port;
 			udp_mask.hdr.src_port =
 					rte_flow_item_udp_mask.hdr.src_port;
@@ -684,7 +714,7 @@ flow_dv_convert_action_modify_tp
 		MLX5_ASSERT(attr->tcp);
 		memset(&tcp, 0, sizeof(tcp));
 		memset(&tcp_mask, 0, sizeof(tcp_mask));
-		if (action->type == RTE_FLOW_ACTION_TYPE_SET_TP_SRC) {
+		if (src_port) {
 			tcp.hdr.src_port = conf->port;
 			tcp_mask.hdr.src_port =
 					rte_flow_item_tcp_mask.hdr.src_port;
@@ -3884,26 +3914,63 @@ flow_dv_validate_action_modify_ipv6(struct rte_eth_dev *dev,
  *   0 on success, a negative errno value otherwise and rte_errno is set.
  */
 static int
-flow_dv_validate_action_modify_tp(const uint64_t action_flags,
+flow_dv_validate_action_modify_tp(struct rte_eth_dev *dev,
+				  const uint64_t action_flags,
 				  const struct rte_flow_action *action,
 				  const uint64_t item_flags,
+				  const struct rte_flow_attr *attr,
 				  struct rte_flow_error *error)
 {
 	int ret = 0;
-	uint64_t layer;
+	struct mlx5_priv *priv = dev->data->dev_private;
+	uint64_t layer, udp_layer, tcp_layer;
+	int action_type = action->type;
 
 	ret = flow_dv_validate_action_modify_hdr(action_flags, action, error);
-	if (!ret) {
-		layer = (action_flags & MLX5_FLOW_ACTION_DECAP) ?
-				 MLX5_FLOW_LAYER_INNER_L4 :
-				 MLX5_FLOW_LAYER_OUTER_L4;
+	if (ret)
+		return ret;
+	layer = (action_flags & MLX5_FLOW_ACTION_DECAP) ?
+		MLX5_FLOW_LAYER_INNER_L4 :
+		MLX5_FLOW_LAYER_OUTER_L4;
+	if (action_type == RTE_FLOW_ACTION_TYPE_SET_TP_SRC ||
+	    action_type == RTE_FLOW_ACTION_TYPE_SET_TP_DST) {
 		if (!(item_flags & layer))
 			return rte_flow_error_set(error, EINVAL,
 						  RTE_FLOW_ERROR_TYPE_ACTION,
 						  NULL, "no transport layer "
 						  "in pattern");
+		else
+			return 0;
 	}
-	return ret;
+
+	if (priv->config.dv_validate_mod || !attr->group ||
+		(item_flags & layer)) {
+		if (action_type == RTE_FLOW_ACTION_TYPE_SET_UDP_TP_SRC ||
+		    action_type == RTE_FLOW_ACTION_TYPE_SET_UDP_TP_DST) {
+			udp_layer = (action_flags & MLX5_FLOW_ACTION_DECAP) ?
+				MLX5_FLOW_LAYER_INNER_L4_UDP :
+				MLX5_FLOW_LAYER_OUTER_L4_UDP;
+			if (!(item_flags & udp_layer)) {
+				return rte_flow_error_set(error, EINVAL,
+						  RTE_FLOW_ERROR_TYPE_ACTION,
+						  NULL,
+						  "no UDP in pattern");
+			}
+		}
+		if (action_type == RTE_FLOW_ACTION_TYPE_SET_TCP_TP_SRC ||
+		    action_type == RTE_FLOW_ACTION_TYPE_SET_TCP_TP_DST) {
+			tcp_layer = (action_flags & MLX5_FLOW_ACTION_DECAP) ?
+				MLX5_FLOW_LAYER_INNER_L4_TCP :
+				MLX5_FLOW_LAYER_OUTER_L4_TCP;
+			if (!(item_flags & tcp_layer)) {
+				return rte_flow_error_set(error, EINVAL,
+						  RTE_FLOW_ERROR_TYPE_ACTION,
+						  NULL,
+						  "no TCP in pattern");
+			}
+		}
+	}
+	return 0;
 }
 
 /**
@@ -6110,10 +6177,16 @@ flow_dv_validate(struct rte_eth_dev *dev, const struct rte_flow_attr *attr,
 			rw_act_num += MLX5_ACT_NUM_MDF_IPV6;
 			break;
 		case RTE_FLOW_ACTION_TYPE_SET_TP_SRC:
+		case RTE_FLOW_ACTION_TYPE_SET_UDP_TP_SRC:
+		case RTE_FLOW_ACTION_TYPE_SET_TCP_TP_SRC:
 		case RTE_FLOW_ACTION_TYPE_SET_TP_DST:
-			ret = flow_dv_validate_action_modify_tp(action_flags,
+		case RTE_FLOW_ACTION_TYPE_SET_UDP_TP_DST:
+		case RTE_FLOW_ACTION_TYPE_SET_TCP_TP_DST:
+			ret = flow_dv_validate_action_modify_tp(dev,
+								action_flags,
 								actions,
 								item_flags,
+								attr,
 								error);
 			if (ret < 0)
 				return ret;
@@ -10601,16 +10674,20 @@ flow_dv_translate(struct rte_eth_dev *dev,
 					MLX5_FLOW_ACTION_SET_IPV6_DST;
 			break;
 		case RTE_FLOW_ACTION_TYPE_SET_TP_SRC:
+		case RTE_FLOW_ACTION_TYPE_SET_UDP_TP_SRC:
+		case RTE_FLOW_ACTION_TYPE_SET_TCP_TP_SRC:
 		case RTE_FLOW_ACTION_TYPE_SET_TP_DST:
+		case RTE_FLOW_ACTION_TYPE_SET_UDP_TP_DST:
+		case RTE_FLOW_ACTION_TYPE_SET_TCP_TP_DST:
 			if (flow_dv_convert_action_modify_tp
 					(mhdr_res, actions, items,
 					 &flow_attr, dev_flow, !!(action_flags &
 					 MLX5_FLOW_ACTION_DECAP), error))
 				return -rte_errno;
 			action_flags |= actions->type ==
-					RTE_FLOW_ACTION_TYPE_SET_TP_SRC ?
-					MLX5_FLOW_ACTION_SET_TP_SRC :
-					MLX5_FLOW_ACTION_SET_TP_DST;
+				RTE_FLOW_ACTION_TYPE_SET_TP_SRC ?
+				MLX5_FLOW_ACTION_SET_TP_SRC :
+				MLX5_FLOW_ACTION_SET_TP_DST;
 			break;
 		case RTE_FLOW_ACTION_TYPE_DEC_IPV4_TTL:
 		case RTE_FLOW_ACTION_TYPE_DEC_IPV6_HOP:
