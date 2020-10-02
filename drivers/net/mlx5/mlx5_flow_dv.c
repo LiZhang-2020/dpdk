@@ -739,10 +739,25 @@ flow_dv_convert_action_modify_ttl
 	struct rte_flow_item_ipv6 ipv6;
 	struct rte_flow_item_ipv6 ipv6_mask;
 	struct field_modify_info *field;
+	int action_type = action->type;
+	uint8_t l3_ipv4 = 0xFF;
 
-	if (!attr->valid)
-		flow_dv_attr_init(items, attr, dev_flow, tunnel_decap);
-	if (attr->ipv4) {
+	switch (action_type) {
+	case RTE_FLOW_ACTION_TYPE_DEC_IPV4_TTL:
+		l3_ipv4 = 1;
+		break;
+	case RTE_FLOW_ACTION_TYPE_DEC_IPV6_HOP:
+		l3_ipv4 = 0;
+		break;
+	case RTE_FLOW_ACTION_TYPE_DEC_TTL:
+		if (!attr->valid)
+			flow_dv_attr_init(items, attr, dev_flow, tunnel_decap);
+		l3_ipv4 = attr->ipv4;
+		MLX5_ASSERT(attr->ipv4 ^ attr->ipv6);
+		break;
+	}
+	MLX5_ASSERT(l3_ipv4 != 0xFF);
+	if (l3_ipv4) {
 		memset(&ipv4, 0, sizeof(ipv4));
 		memset(&ipv4_mask, 0, sizeof(ipv4_mask));
 		ipv4.hdr.time_to_live = conf->ttl_value;
@@ -752,7 +767,6 @@ flow_dv_convert_action_modify_ttl
 		item.mask = &ipv4_mask;
 		field = modify_ipv4;
 	} else {
-		MLX5_ASSERT(attr->ipv6);
 		memset(&ipv6, 0, sizeof(ipv6));
 		memset(&ipv6_mask, 0, sizeof(ipv6_mask));
 		ipv6.hdr.hop_limits = conf->ttl_value;
@@ -792,7 +806,8 @@ flow_dv_convert_action_modify_dec_ttl
 			(struct mlx5_flow_dv_modify_hdr_resource *resource,
 			 const struct rte_flow_item *items,
 			 union flow_dv_attr *attr, struct mlx5_flow *dev_flow,
-			 bool tunnel_decap, struct rte_flow_error *error)
+			 bool tunnel_decap,
+			 int action_type, struct rte_flow_error *error)
 {
 	struct rte_flow_item item;
 	struct rte_flow_item_ipv4 ipv4;
@@ -800,10 +815,24 @@ flow_dv_convert_action_modify_dec_ttl
 	struct rte_flow_item_ipv6 ipv6;
 	struct rte_flow_item_ipv6 ipv6_mask;
 	struct field_modify_info *field;
+	uint8_t l3_ipv4 = 0xFF;
 
-	if (!attr->valid)
-		flow_dv_attr_init(items, attr, dev_flow, tunnel_decap);
-	if (attr->ipv4) {
+	switch (action_type) {
+	case RTE_FLOW_ACTION_TYPE_DEC_IPV4_TTL:
+		l3_ipv4 = 1;
+		break;
+	case RTE_FLOW_ACTION_TYPE_DEC_IPV6_HOP:
+		l3_ipv4 = 0;
+		break;
+	case RTE_FLOW_ACTION_TYPE_DEC_TTL:
+		if (!attr->valid)
+			flow_dv_attr_init(items, attr, dev_flow, tunnel_decap);
+		l3_ipv4 = attr->ipv4;
+		MLX5_ASSERT(attr->ipv4 ^ attr->ipv6);
+		break;
+	}
+	MLX5_ASSERT(l3_ipv4 != 0xFF);
+	if (l3_ipv4) {
 		memset(&ipv4, 0, sizeof(ipv4));
 		memset(&ipv4_mask, 0, sizeof(ipv4_mask));
 		ipv4.hdr.time_to_live = 0xFF;
@@ -813,7 +842,6 @@ flow_dv_convert_action_modify_dec_ttl
 		item.mask = &ipv4_mask;
 		field = modify_ipv4;
 	} else {
-		MLX5_ASSERT(attr->ipv6);
 		memset(&ipv6, 0, sizeof(ipv6));
 		memset(&ipv6_mask, 0, sizeof(ipv6_mask));
 		ipv6.hdr.hop_limits = 0xFF;
@@ -3706,7 +3734,10 @@ flow_dv_validate_action_modify_hdr(const uint64_t action_flags,
 				   const struct rte_flow_action *action,
 				   struct rte_flow_error *error)
 {
-	if (action->type != RTE_FLOW_ACTION_TYPE_DEC_TTL && !action->conf)
+	if (action->type != RTE_FLOW_ACTION_TYPE_DEC_TTL &&
+	    action->type != RTE_FLOW_ACTION_TYPE_DEC_IPV4_TTL &&
+	    action->type != RTE_FLOW_ACTION_TYPE_DEC_IPV6_HOP &&
+	    !action->conf)
 		return rte_flow_error_set(error, EINVAL,
 					  RTE_FLOW_ERROR_TYPE_ACTION_CONF,
 					  NULL, "action configuration not set");
@@ -3999,26 +4030,62 @@ flow_dv_validate_action_modify_tcp_ack(struct rte_eth_dev *dev,
  *   0 on success, a negative errno value otherwise and rte_errno is set.
  */
 static int
-flow_dv_validate_action_modify_ttl(const uint64_t action_flags,
+flow_dv_validate_action_modify_ttl(struct rte_eth_dev *dev,
+				   const uint64_t action_flags,
 				   const struct rte_flow_action *action,
 				   const uint64_t item_flags,
+				   const struct rte_flow_attr *attr,
 				   struct rte_flow_error *error)
 {
 	int ret = 0;
-	uint64_t layer;
+	struct mlx5_priv *priv = dev->data->dev_private;
+	uint64_t layer, ipv4_layer, ipv6_layer;
+	int action_type = action->type;
 
 	ret = flow_dv_validate_action_modify_hdr(action_flags, action, error);
-	if (!ret) {
-		layer = (action_flags & MLX5_FLOW_ACTION_DECAP) ?
-				 MLX5_FLOW_LAYER_INNER_L3 :
-				 MLX5_FLOW_LAYER_OUTER_L3;
+	if (ret)
+		return ret;
+	layer = (action_flags & MLX5_FLOW_ACTION_DECAP) ?
+		MLX5_FLOW_LAYER_INNER_L3 :
+		MLX5_FLOW_LAYER_OUTER_L3;
+	if (action_type == RTE_FLOW_ACTION_TYPE_DEC_TTL ||
+	    action_type == RTE_FLOW_ACTION_TYPE_SET_TTL) {
 		if (!(item_flags & layer))
 			return rte_flow_error_set(error, EINVAL,
+					RTE_FLOW_ERROR_TYPE_ACTION,
+					NULL,
+					"no IP protocol in pattern");
+		else
+			return 0;
+	}
+	if (priv->config.dv_validate_mod || !attr->group ||
+		(item_flags & layer)) {
+		if (action_type == RTE_FLOW_ACTION_TYPE_DEC_IPV4_TTL ||
+		    action_type == RTE_FLOW_ACTION_TYPE_SET_IPV4_TTL) {
+			ipv4_layer = (action_flags & MLX5_FLOW_ACTION_DECAP) ?
+				MLX5_FLOW_LAYER_INNER_L3_IPV4 :
+				MLX5_FLOW_LAYER_OUTER_L3_IPV4;
+			if (!(item_flags & ipv4_layer)) {
+				return rte_flow_error_set(error, EINVAL,
 						  RTE_FLOW_ERROR_TYPE_ACTION,
 						  NULL,
-						  "no IP protocol in pattern");
+						  "no IPv4 protocol in pattern");
+			}
+		}
+		if (action_type == RTE_FLOW_ACTION_TYPE_DEC_IPV6_HOP ||
+		    action_type == RTE_FLOW_ACTION_TYPE_SET_IPV6_HOP) {
+			ipv6_layer = (action_flags & MLX5_FLOW_ACTION_DECAP) ?
+				MLX5_FLOW_LAYER_INNER_L3_IPV6 :
+				MLX5_FLOW_LAYER_OUTER_L3_IPV6;
+			if (!(item_flags & ipv6_layer)) {
+				return rte_flow_error_set(error, EINVAL,
+						  RTE_FLOW_ERROR_TYPE_ACTION,
+						  NULL,
+						  "no IPv6 protocol in pattern");
+			}
+		}
 	}
-	return ret;
+	return 0;
 }
 
 /**
@@ -6060,10 +6127,16 @@ flow_dv_validate(struct rte_eth_dev *dev, const struct rte_flow_attr *attr,
 			rw_act_num += MLX5_ACT_NUM_MDF_PORT;
 			break;
 		case RTE_FLOW_ACTION_TYPE_DEC_TTL:
+		case RTE_FLOW_ACTION_TYPE_DEC_IPV4_TTL:
+		case RTE_FLOW_ACTION_TYPE_DEC_IPV6_HOP:
 		case RTE_FLOW_ACTION_TYPE_SET_TTL:
-			ret = flow_dv_validate_action_modify_ttl(action_flags,
+		case RTE_FLOW_ACTION_TYPE_SET_IPV4_TTL:
+		case RTE_FLOW_ACTION_TYPE_SET_IPV6_HOP:
+			ret = flow_dv_validate_action_modify_ttl(dev,
+								 action_flags,
 								 actions,
 								 item_flags,
+								 attr,
 								 error);
 			if (ret < 0)
 				return ret;
@@ -10539,21 +10612,26 @@ flow_dv_translate(struct rte_eth_dev *dev,
 					MLX5_FLOW_ACTION_SET_TP_SRC :
 					MLX5_FLOW_ACTION_SET_TP_DST;
 			break;
+		case RTE_FLOW_ACTION_TYPE_DEC_IPV4_TTL:
+		case RTE_FLOW_ACTION_TYPE_DEC_IPV6_HOP:
 		case RTE_FLOW_ACTION_TYPE_DEC_TTL:
 			if (flow_dv_convert_action_modify_dec_ttl
 					(mhdr_res, items, &flow_attr, dev_flow,
 					 !!(action_flags &
-					 MLX5_FLOW_ACTION_DECAP), error))
+						 MLX5_FLOW_ACTION_DECAP),
+					 action_type, error))
 				return -rte_errno;
 			action_flags |= MLX5_FLOW_ACTION_DEC_TTL;
 			break;
+		case RTE_FLOW_ACTION_TYPE_SET_IPV4_TTL:
+		case RTE_FLOW_ACTION_TYPE_SET_IPV6_HOP:
 		case RTE_FLOW_ACTION_TYPE_SET_TTL:
 			if (flow_dv_convert_action_modify_ttl
 					(mhdr_res, actions, items, &flow_attr,
 					 dev_flow, !!(action_flags &
 					 MLX5_FLOW_ACTION_DECAP), error))
 				return -rte_errno;
-			action_flags |= MLX5_FLOW_ACTION_SET_TTL;
+			action_flags |= action_type;
 			break;
 		case RTE_FLOW_ACTION_TYPE_INC_TCP_SEQ:
 		case RTE_FLOW_ACTION_TYPE_DEC_TCP_SEQ:
