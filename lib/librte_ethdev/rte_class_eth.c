@@ -66,7 +66,7 @@ eth_representor_cmp(const char *key __rte_unused,
 	int ret;
 	char *values;
 	const struct rte_eth_dev_data *data = opaque;
-	struct rte_eth_devargs representors;
+	struct rte_eth_devargs representors = { .nb_ports = 0 };
 	uint16_t index;
 
 	if ((data->dev_flags & RTE_ETH_DEV_REPRESENTOR) == 0)
@@ -76,10 +76,7 @@ eth_representor_cmp(const char *key __rte_unused,
 	values = strdup(value);
 	if (values == NULL)
 		return -1;
-	memset(&representors, 0, sizeof(representors));
-	ret = rte_eth_devargs_parse_list(values,
-			rte_eth_devargs_parse_representor_ports,
-			&representors);
+	ret = rte_eth_devargs_parse_representor_ports(values, &representors);
 	free(values);
 	if (ret != 0)
 		return -1; /* invalid devargs value */

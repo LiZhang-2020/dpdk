@@ -38,60 +38,13 @@ eth_find_device(const struct rte_eth_dev *start, rte_eth_cmp_t cmp,
 	return NULL;
 }
 
-int
-rte_eth_devargs_parse_list(char *str, rte_eth_devargs_callback_t callback,
-	void *data)
-{
-	char *str_start;
-	int state;
-	int result;
-
-	if (*str != '[')
-		/* Single element, not a list */
-		return callback(str, data);
-
-	/* Sanity check, then strip the brackets */
-	str_start = &str[strlen(str) - 1];
-	if (*str_start != ']') {
-		RTE_LOG(ERR, EAL, "(%s): List does not end with ']'\n", str);
-		return -EINVAL;
-	}
-	str++;
-	*str_start = '\0';
-
-	/* Process list elements */
-	state = 0;
-	while (1) {
-		if (state == 0) {
-			if (*str == '\0')
-				break;
-			if (*str != ',') {
-				str_start = str;
-				state = 1;
-			}
-		} else if (state == 1) {
-			if (*str == ',' || *str == '\0') {
-				if (str > str_start) {
-					/* Non-empty string fragment */
-					*str = '\0';
-					result = callback(str_start, data);
-					if (result < 0)
-						return result;
-				}
-				state = 0;
-			}
-		}
-		str++;
-	}
-	return 0;
-}
-
 static int
 rte_eth_devargs_process_range(char *str, uint16_t *list, uint16_t *len_list,
 	const uint16_t max_list)
 {
 	uint16_t lo, hi, val;
 	int result;
+	char *pos = str;
 
 	result = sscanf(str, "%hu-%hu", &lo, &hi);
 	if (result == 1) {
@@ -99,7 +52,7 @@ rte_eth_devargs_process_range(char *str, uint16_t *list, uint16_t *len_list,
 			return -ENOMEM;
 		list[(*len_list)++] = lo;
 	} else if (result == 2) {
-		if (lo >= hi || lo > RTE_MAX_ETHPORTS || hi > RTE_MAX_ETHPORTS)
+		if (lo >= hi)
 			return -EINVAL;
 		for (val = lo; val <= hi; val++) {
 			if (*len_list >= max_list)
@@ -108,14 +61,85 @@ rte_eth_devargs_process_range(char *str, uint16_t *list, uint16_t *len_list,
 		}
 	} else
 		return -EINVAL;
-	return 0;
+	while (*pos != 0 && ((*pos >= '0' && *pos <= '9') || *pos == '-'))
+		pos++;
+	return pos - str;
 }
 
+static int
+rte_eth_devargs_process_list(char *str, uint16_t *list, uint16_t *len_list,
+	const uint16_t max_list)
+{
+	char *pos = str;
+	int ret;
+
+	if (*pos == '[')
+		pos++;
+	while (1) {
+		ret = rte_eth_devargs_process_range(pos, list, len_list,
+						    max_list);
+		if (ret < 0)
+			return ret;
+		pos += ret;
+		if (*pos != ',') /* end of list */
+			break;
+		pos++;
+	}
+	if (*str == '[' && *pos != ']')
+		return -EINVAL;
+	if (*pos == ']')
+		pos++;
+	return pos - str;
+}
+
+/*
+ * representor format:
+ *   #: range or single number of VF representor - legacy
+ *   c#: controller id or range
+ *   [c#]pf#: PF port representor/s
+ *   [[c#]pf#]vf#: VF port representor/s
+ *   [[c#]pf#]sf#: SF port representor/s
+ */
 int
 rte_eth_devargs_parse_representor_ports(char *str, void *data)
 {
 	struct rte_eth_devargs *eth_da = data;
+	int ret;
 
-	return rte_eth_devargs_process_range(str, eth_da->representor_ports,
+	eth_da->type = RTE_ETH_REPRESENTOR_NONE;
+	/* parse c# */
+	if (str[0] == 'c') {
+		str += 1;
+		ret = rte_eth_devargs_process_list(str, eth_da->controllers,
+				&eth_da->nb_controllers, RTE_MAX_ETHCTRLS);
+		if (ret < 0)
+			goto err;
+		str += ret;
+	}
+	/* parse pf# */
+	if (str[0] == 'p' && str[1] == 'f') {
+		str += 2;
+		eth_da->type = RTE_ETH_REPRESENTOR_PF;
+		ret = rte_eth_devargs_process_list(str, eth_da->ports,
+				&eth_da->nb_ports, RTE_MAX_ETHPORTS);
+		if (ret < 0)
+			goto err;
+		str += ret;
+	}
+	/* parse vf# and sf#, default to VF */
+	if (str[0] == 'v'  && str[1] == 'f') {
+		eth_da->type = RTE_ETH_REPRESENTOR_VF;
+		str += 2;
+	} else if (str[0] == 's'  && str[1] == 'f') {
+		eth_da->type = RTE_ETH_REPRESENTOR_SF;
+		str += 2;
+	} else {
+		eth_da->type = RTE_ETH_REPRESENTOR_VF;
+	}
+	ret = rte_eth_devargs_process_list(str, eth_da->representor_ports,
 		&eth_da->nb_representor_ports, RTE_MAX_ETHPORTS);
+err:
+	if (ret < 0)
+		RTE_LOG(ERR, EAL, "wrong representor format: %s", str);
+	return ret < 0 ? ret : 0;
 }
