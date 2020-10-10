@@ -767,6 +767,30 @@ typedef int (*eth_hairpin_queue_peer_unbind_t)
 /**< @internal Unbind peer queue from the current queue. */
 
 /**
+ * @internal
+ * Get representor info to be able to calculate the unique representor ID.
+ *
+ * Caller should pass NULL as pointer of info to get number of entries,
+ * allocate info buffer according to returned entry number, then call
+ * again with buffer to get real info.
+ *
+ * To calculate the representor ID, caller should iterate each entry,
+ * match controller index, pf index, vf or sf start index and range,
+ * then calculate representor ID from offset to vf/sf start index.
+ * @see rte_eth_representor_id_get.
+ *
+ * @param dev
+ *   Ethdev handle of port.
+ * @param [out] info
+ *   Pointer to memory to save device representor info.
+ * @return
+ *   Negative errno value on error, number of info entries otherwise.
+ */
+
+typedef int (*eth_representor_info_get_t)(struct rte_eth_dev *dev,
+	struct rte_eth_representor_info *info);
+
+/**
  * @internal A structure containing the functions exported by an Ethernet driver.
  */
 struct eth_dev_ops {
@@ -923,6 +947,9 @@ struct eth_dev_ops {
 	/**< Set up the connection between the pair of hairpin queues. */
 	eth_hairpin_queue_peer_unbind_t hairpin_queue_peer_unbind;
 	/**< Disconnect the hairpin queues of a pair from each other. */
+
+	eth_representor_info_get_t representor_info_get;
+	/**< Get representor info. */
 };
 
 /**
