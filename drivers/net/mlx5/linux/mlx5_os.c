@@ -740,6 +740,8 @@ mlx5_queue_counter_id_prepare(struct rte_eth_dev *dev)
  *   Verbs device parameters (name, port, switch_info) to spawn.
  * @param config
  *   Device configuration parameters.
+ * @param config
+ *   Device arguments.
  *
  * @return
  *   A valid Ethernet device object on success, NULL otherwise and rte_errno
@@ -751,7 +753,8 @@ mlx5_queue_counter_id_prepare(struct rte_eth_dev *dev)
 static struct rte_eth_dev *
 mlx5_dev_spawn(struct rte_device *dpdk_dev,
 	       struct mlx5_dev_spawn_data *spawn,
-	       struct mlx5_dev_config *config)
+	       struct mlx5_dev_config *config,
+	       struct rte_eth_devargs *eth_da)
 {
 	const struct mlx5_switch_info *switch_info = &spawn->info;
 	struct mlx5_dev_ctx_shared *sh = NULL;
@@ -783,32 +786,80 @@ mlx5_dev_spawn(struct rte_device *dpdk_dev,
 
 	/* Determine if this port representor is supposed to be spawned. */
 	if (switch_info->representor && dpdk_dev->devargs) {
-		struct rte_eth_devargs eth_da;
-
-		err = rte_eth_devargs_parse(dpdk_dev->devargs->args, &eth_da);
-		if (err) {
-			rte_errno = -err;
-			DRV_LOG(ERR, "failed to process device arguments: %s",
-				strerror(rte_errno));
-			return NULL;
-		}
-		if (eth_da.type == RTE_ETH_REPRESENTOR_NONE) {
-			/* Representor not specified. */
+		switch (eth_da->type) {
+		case RTE_ETH_REPRESENTOR_SF:
+			if (switch_info->name_type !=
+					MLX5_PHYS_PORT_NAME_TYPE_PFSF) {
+				rte_errno = EBUSY;
+				return NULL;
+			}
+			break;
+		case RTE_ETH_REPRESENTOR_VF:
+			/* Allows HPF representor index -1 as exception. */
+			if (!(spawn->info.port_name == -1 &&
+			      switch_info->name_type ==
+					MLX5_PHYS_PORT_NAME_TYPE_PFHPF) &&
+			    switch_info->name_type !=
+					MLX5_PHYS_PORT_NAME_TYPE_PFVF) {
+				rte_errno = EBUSY;
+				return NULL;
+			}
+			break;
+		case RTE_ETH_REPRESENTOR_NONE:
 			rte_errno = EBUSY;
 			return NULL;
-		}
-		if (eth_da.type != RTE_ETH_REPRESENTOR_VF) {
+			break;
+		default:
 			rte_errno = ENOTSUP;
 			DRV_LOG(ERR, "unsupported representor type: %s",
 				dpdk_dev->devargs->args);
 			return NULL;
 		}
-		for (i = 0; i < eth_da.nb_representor_ports; ++i)
-			if (eth_da.representor_ports[i] ==
+		/* Check controller ID: */
+		for (i = 0; i < eth_da->nb_mh_controllers; ++i)
+			if (eth_da->mh_controllers[i] ==
+			    (uint16_t)switch_info->ctrl_num)
+				break;
+		if (eth_da->nb_mh_controllers &&
+		    i == eth_da->nb_mh_controllers) {
+			rte_errno = EBUSY;
+			return NULL;
+		}
+		/* Check SF/VF ID: */
+		for (i = 0; i < eth_da->nb_representor_ports; ++i)
+			if (eth_da->representor_ports[i] ==
 			    (uint16_t)switch_info->port_name)
 				break;
-		if (i == eth_da.nb_representor_ports) {
+		if (eth_da->type != RTE_ETH_REPRESENTOR_PF &&
+		    i == eth_da->nb_representor_ports) {
 			rte_errno = EBUSY;
+			return NULL;
+		}
+		/* Check PF ID. Check after repr port to avoid warning flood. */
+		if (spawn->pf_bond >= 0) {
+			for (i = 0; i < eth_da->nb_ports; ++i)
+				if (eth_da->ports[i] ==
+				    (uint16_t)switch_info->pf_num)
+					break;
+			if (eth_da->nb_ports && i == eth_da->nb_ports) {
+				/* For backward compatibility, bonding
+				 * representor syntax supported with limitation,
+				 * device iterator won't find it:
+				 *    <PF1_BDF>,representor=#
+				 */
+				if (switch_info->pf_num > 0 &&
+				    eth_da->ports[0] == 0) {
+					DRV_LOG(WARNING, "Representor on Bonding PF should use pf#vf# format: %s",
+						dpdk_dev->devargs->args);
+				} else {
+					rte_errno = EBUSY;
+					return NULL;
+				}
+			}
+		} else if (eth_da->nb_ports > 1 || eth_da->ports[0]) {
+			rte_errno = EINVAL;
+			DRV_LOG(ERR, "PF id not supported by non-bond device: %s",
+				dpdk_dev->devargs->args);
 			return NULL;
 		}
 	}
@@ -818,8 +869,11 @@ mlx5_dev_spawn(struct rte_device *dpdk_dev,
 		if (!switch_info->representor)
 			strlcpy(name, dpdk_dev->name, sizeof(name));
 		else
-			snprintf(name, sizeof(name), "%s_representor_%u",
-				 dpdk_dev->name, switch_info->port_name);
+			snprintf(name, sizeof(name), "%s_representor_%s%u",
+				 dpdk_dev->name,
+				 switch_info->name_type ==
+				 MLX5_PHYS_PORT_NAME_TYPE_PFSF ? "sf" : "vf",
+				 switch_info->port_name);
 	} else {
 		/* Bonding device. */
 		if (!switch_info->representor)
@@ -827,9 +881,11 @@ mlx5_dev_spawn(struct rte_device *dpdk_dev,
 				 dpdk_dev->name,
 				 mlx5_os_get_dev_device_name(spawn->phys_dev));
 		else
-			snprintf(name, sizeof(name), "%s_%s_representor_%u",
+			snprintf(name, sizeof(name), "%s_%s_representor_%s%u",
 				 dpdk_dev->name,
 				 mlx5_os_get_dev_device_name(spawn->phys_dev),
+				 switch_info->name_type ==
+				 MLX5_PHYS_PORT_NAME_TYPE_PFSF ? "sf" : "vf",
 				 switch_info->port_name);
 	}
 	/* check if the device is already spawned */
@@ -1107,9 +1163,7 @@ err_secondary:
 	priv->vport_id = switch_info->representor ?
 			 switch_info->port_name + 1 : -1;
 #endif
-	/* representor_id field keeps the unmodified VF index. */
-	priv->representor_id = switch_info->representor ?
-			       switch_info->port_name : -1;
+	priv->representor_id = mlx5_representor_id_encode(switch_info);
 	/*
 	 * Look for sibling devices in order to reuse their switch domain
 	 * if any, otherwise allocate one.
@@ -1953,6 +2007,7 @@ mlx5_os_pci_probe(struct rte_pci_driver *pci_drv __rte_unused,
 	struct mlx5_dev_spawn_data *list = NULL;
 	struct mlx5_dev_config dev_config;
 	unsigned int dev_config_vf;
+	struct rte_eth_devargs eth_da = { .type = RTE_ETH_REPRESENTOR_NONE };
 	int ret;
 
 	if (rte_eal_process_type() == RTE_PROC_PRIMARY)
@@ -1962,6 +2017,27 @@ mlx5_os_pci_probe(struct rte_pci_driver *pci_drv __rte_unused,
 		DRV_LOG(ERR, "unable to init PMD global data: %s",
 			strerror(rte_errno));
 		return -rte_errno;
+	}
+	if (pci_dev->device.devargs) {
+		/* Parse representor information from device argument. */
+		if (pci_dev->device.devargs->cls_str)
+			ret = rte_eth_devargs_parse
+				(pci_dev->device.devargs->cls_str, &eth_da);
+		if (ret) {
+			DRV_LOG(ERR, "failed to parse device arguments: %s",
+				pci_dev->device.devargs->cls_str);
+			return -rte_errno;
+		}
+		if (eth_da.type == RTE_ETH_REPRESENTOR_NONE) {
+			/* Support legacy device argument */
+			ret = rte_eth_devargs_parse
+				(pci_dev->device.devargs->args, &eth_da);
+			if (ret) {
+				DRV_LOG(ERR, "failed to parse device arguments: %s",
+					pci_dev->device.devargs->args);
+				return -rte_errno;
+			}
+		}
 	}
 	errno = 0;
 	ibv_list = mlx5_glue->get_device_list(&ret);
@@ -2135,6 +2211,8 @@ mlx5_os_pci_probe(struct rte_pci_driver *pci_drv __rte_unused,
 				case MLX5_PHYS_PORT_NAME_TYPE_PFHPF:
 					/* Fallthrough */
 				case MLX5_PHYS_PORT_NAME_TYPE_PFVF:
+					/* Fallthrough */
+				case MLX5_PHYS_PORT_NAME_TYPE_PFSF:
 					if (list[ns].info.pf_num == bd)
 						ns++;
 					break;
@@ -2316,7 +2394,8 @@ mlx5_os_pci_probe(struct rte_pci_driver *pci_drv __rte_unused,
 		dev_config.log_max_flow_per_mtr = 0xFF;
 		list[i].eth_dev = mlx5_dev_spawn(&pci_dev->device,
 						 &list[i],
-						 &dev_config);
+						 &dev_config,
+						 &eth_da);
 		if (!list[i].eth_dev) {
 			if (rte_errno != EBUSY && rte_errno != EEXIST)
 				break;
@@ -2793,6 +2872,7 @@ const struct eth_dev_ops mlx5_os_dev_ops = {
 	.xstats_get_names = mlx5_xstats_get_names,
 	.fw_version_get = mlx5_fw_version_get,
 	.dev_infos_get = mlx5_dev_infos_get,
+	.representor_info_get = mlx5_representor_info_get,
 	.read_clock = mlx5_txpp_read_clock,
 	.dev_supported_ptypes_get = mlx5_dev_supported_ptypes_get,
 	.vlan_filter_set = mlx5_vlan_filter_set,
@@ -2850,6 +2930,7 @@ const struct eth_dev_ops mlx5_os_dev_sec_ops = {
 	.xstats_get_names = mlx5_xstats_get_names,
 	.fw_version_get = mlx5_fw_version_get,
 	.dev_infos_get = mlx5_dev_infos_get,
+	.representor_info_get = mlx5_representor_info_get,
 	.read_clock = mlx5_txpp_read_clock,
 	.rx_queue_start = mlx5_rx_queue_start,
 	.rx_queue_stop = mlx5_rx_queue_stop,
@@ -2883,6 +2964,7 @@ const struct eth_dev_ops mlx5_os_dev_ops_isolate = {
 	.xstats_get_names = mlx5_xstats_get_names,
 	.fw_version_get = mlx5_fw_version_get,
 	.dev_infos_get = mlx5_dev_infos_get,
+	.representor_info_get = mlx5_representor_info_get,
 	.read_clock = mlx5_txpp_read_clock,
 	.dev_supported_ptypes_get = mlx5_dev_supported_ptypes_get,
 	.vlan_filter_set = mlx5_vlan_filter_set,
