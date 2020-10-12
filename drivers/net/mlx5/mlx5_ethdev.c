@@ -374,6 +374,8 @@ mlx5_dev_infos_get(struct rte_eth_dev *dev, struct rte_eth_dev_info *info)
 			break;
 		}
 	}
+	if (priv->master)
+		info->dev_capa = RTE_ETH_DEV_CAPA_REPRESENTOR_SF;
 	return 0;
 }
 

@@ -703,20 +703,66 @@ mlx5_dev_spawn(struct rte_device *dpdk_dev,
 
 	/* Determine if this port representor is supposed to be spawned. */
 	if (switch_info->representor && dpdk_dev->devargs) {
-		struct rte_eth_devargs eth_da;
+		struct rte_eth_devargs eth_da = { .nb_ports = 0 };
 
 		err = rte_eth_devargs_parse(dpdk_dev->devargs->args, &eth_da);
 		if (err) {
 			rte_errno = -err;
 			DRV_LOG(ERR, "failed to process device arguments: %s",
-				strerror(rte_errno));
+				dpdk_dev->devargs->args);
 			return NULL;
 		}
+		switch (eth_da.type) {
+		case RTE_ETH_REPRESENTOR_PF:
+			if (switch_info->name_type !=
+					MLX5_PHYS_PORT_NAME_TYPE_PFHPF) {
+				rte_errno = EBUSY;
+				return NULL;
+			}
+			break;
+		case RTE_ETH_REPRESENTOR_SF:
+			if (switch_info->name_type !=
+					MLX5_PHYS_PORT_NAME_TYPE_PFSF) {
+				rte_errno = EBUSY;
+				return NULL;
+			}
+			break;
+		case RTE_ETH_REPRESENTOR_VF:
+			if (switch_info->name_type !=
+					MLX5_PHYS_PORT_NAME_TYPE_PFVF) {
+				rte_errno = EBUSY;
+				return NULL;
+			}
+			break;
+		default:
+			rte_errno = EBUSY;
+			return NULL;
+		}
+		/* Check controller ID: */
+		for (i = 0; i < eth_da.nb_controllers; ++i)
+			if (eth_da.controllers[i] ==
+			    (uint16_t)switch_info->ctrl_num)
+				break;
+		if (eth_da.nb_controllers && i == eth_da.nb_controllers) {
+			rte_errno = EBUSY;
+			return NULL;
+		}
+		/* Check HPF ID: */
+		for (i = 0; i < eth_da.nb_ports; ++i)
+			if (eth_da.representor_ports[i] ==
+			    (uint16_t)switch_info->pf_num)
+				break;
+		if (eth_da.nb_ports && i == eth_da.nb_ports) {
+			rte_errno = EBUSY;
+			return NULL;
+		}
+		/* Check SF/VF ID: */
 		for (i = 0; i < eth_da.nb_representor_ports; ++i)
 			if (eth_da.representor_ports[i] ==
 			    (uint16_t)switch_info->port_name)
 				break;
-		if (i == eth_da.nb_representor_ports) {
+		if (eth_da.type != RTE_ETH_REPRESENTOR_PF &&
+		    i == eth_da.nb_representor_ports) {
 			rte_errno = EBUSY;
 			return NULL;
 		}
@@ -727,8 +773,11 @@ mlx5_dev_spawn(struct rte_device *dpdk_dev,
 		if (!switch_info->representor)
 			strlcpy(name, dpdk_dev->name, sizeof(name));
 		else
-			snprintf(name, sizeof(name), "%s_representor_%u",
-				 dpdk_dev->name, switch_info->port_name);
+			snprintf(name, sizeof(name), "%s_representor_%s%u",
+				 dpdk_dev->name,
+				 switch_info->name_type ==
+				 MLX5_PHYS_PORT_NAME_TYPE_PFSF ? "sf" : "vf",
+				 switch_info->port_name);
 	} else {
 		/* Bonding device. */
 		if (!switch_info->representor)
@@ -736,9 +785,11 @@ mlx5_dev_spawn(struct rte_device *dpdk_dev,
 				 dpdk_dev->name,
 				 mlx5_os_get_dev_device_name(spawn->phys_dev));
 		else
-			snprintf(name, sizeof(name), "%s_%s_representor_%u",
+			snprintf(name, sizeof(name), "%s_%s_representor_%s%u",
 				 dpdk_dev->name,
 				 mlx5_os_get_dev_device_name(spawn->phys_dev),
+				 switch_info->name_type ==
+				 MLX5_PHYS_PORT_NAME_TYPE_PFSF ? "sf" : "vf",
 				 switch_info->port_name);
 	}
 	/* check if the device is already spawned */
@@ -1977,6 +2028,8 @@ mlx5_os_pci_probe(struct rte_pci_driver *pci_drv __rte_unused,
 				case MLX5_PHYS_PORT_NAME_TYPE_PFHPF:
 					/* Fallthrough */
 				case MLX5_PHYS_PORT_NAME_TYPE_PFVF:
+					/* Fallthrough */
+				case MLX5_PHYS_PORT_NAME_TYPE_PFSF:
 					if (list[ns].info.pf_num == bd)
 						ns++;
 					break;
