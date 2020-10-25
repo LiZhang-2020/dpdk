@@ -500,6 +500,9 @@ typedef int (*eth_tm_ops_get_t)(struct rte_eth_dev *dev, void *ops);
 typedef int (*eth_mtr_ops_get_t)(struct rte_eth_dev *dev, void *ops);
 /**< @internal Get Traffic Metering and Policing (MTR) operations */
 
+typedef int (*eth_sft_ops_get_t)(struct rte_eth_dev *dev, void *ops);
+/**< @internal Get Stateful Flow Table (SFT) operations. */
+
 typedef int (*eth_get_dcb_info)(struct rte_eth_dev *dev,
 				 struct rte_eth_dcb_info *dcb_info);
 /**< @internal Get dcb information on an Ethernet device */
@@ -888,6 +891,9 @@ struct eth_dev_ops {
 
 	eth_mtr_ops_get_t mtr_ops_get;
 	/**< Get Traffic Metering and Policing (MTR) operations. */
+
+	eth_sft_ops_get_t sft_ops_get;
+	/**< @internal Get Stateful Flow Table (SFT) operations. */
 
 	eth_pool_ops_supported_t pool_ops_supported;
 	/**< Test if a port supports specific mempool ops */

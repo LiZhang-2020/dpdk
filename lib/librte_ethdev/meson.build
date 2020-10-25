@@ -8,6 +8,7 @@ sources = files('ethdev_private.c',
 	'rte_ethdev.c',
 	'rte_flow.c',
 	'rte_mtr.c',
+	'rte_sft.c',
 	'rte_tm.c')
 
 headers = files('rte_ethdev.h',
@@ -23,6 +24,8 @@ headers = files('rte_ethdev.h',
 	'rte_flow_driver.h',
 	'rte_mtr.h',
 	'rte_mtr_driver.h',
+	'rte_sft.h',
+	'rte_sft_driver.h',
 	'rte_tm.h',
 	'rte_tm_driver.h')
 
