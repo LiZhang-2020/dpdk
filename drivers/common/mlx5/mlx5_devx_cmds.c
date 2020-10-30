@@ -727,6 +727,8 @@ mlx5_devx_cmd_query_hca_attr(void *ctx,
 	attr->geneve_tlv_opt = !!(MLX5_GET64(cmd_hca_cap, hcattr,
 					   general_obj_types) &
 				MLX5_GENERAL_OBJ_TYPES_CAP_GENEVE_TLV_OPT);
+	attr->reg_c_preserve =
+		MLX5_GET(cmd_hca_cap, hcattr, reg_c_preserve);
 	if (attr->qos.sup) {
 		MLX5_SET(query_hca_cap_in, in, op_mod,
 			 MLX5_GET_HCA_CAP_OP_MOD_QOS_CAP |
