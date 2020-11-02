@@ -36,6 +36,9 @@ rte_sft_error_set(struct rte_sft_error *error, int code,
 #define RTE_SFT_STATE_FLAG_FID_VALID (1 << 0)
 #define RTE_SFT_STATE_FLAG_ZONE_VALID (1 << 1)
 #define RTE_SFT_STATE_FLAG_FLOW_MISS (1 << 2)
+#define RTE_SFT_STATE_ALL		\
+	(RTE_SFT_STATE_FLAG_FID_VALID | RTE_SFT_STATE_FLAG_ZONE_VALID | \
+	RTE_SFT_STATE_FLAG_FLOW_MISS)
 
 #define RTE_SFT_MISS_TCP_FLAGS (1 << 0)
 

@@ -257,8 +257,8 @@ EXPERIMENTAL {
 	rte_sft_init;
 	rte_sft_process_mbuf;
 	rte_sft_process_mbuf_with_zone;
-
-
+	rte_sft_mbuf_stpl;
+	sft_parse_mbuf;
 };
 
 INTERNAL {
@@ -283,4 +283,5 @@ INTERNAL {
 	rte_eth_hairpin_queue_peer_update;
 	rte_eth_switch_domain_alloc;
 	rte_eth_switch_domain_free;
+	rte_sft_error_set;
 };

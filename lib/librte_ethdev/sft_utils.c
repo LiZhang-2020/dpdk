@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: BSD-3-Clause
  * Copyright 2020 Mellanox Technologies, Ltd
  */
+#include <string.h>
 
 #include <rte_errno.h>
 #include <rte_malloc.h>

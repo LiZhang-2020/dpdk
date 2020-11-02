@@ -14,10 +14,10 @@ libraries = [
 	'eal', # everything depends on eal
 	'ring',
 	'rcu', # rcu depends on ring
+	'hash',    # efd depends on this
 	'mempool', 'mbuf', 'net', 'meter', 'ethdev', 'pci', # core
 	'cmdline',
 	'metrics', # bitrate/latency stats depends on this
-	'hash',    # efd depends on this
 	'timer',   # eventdev depends on this
 	'acl', 'bbdev', 'bitratestats', 'cfgfile',
 	'compressdev', 'cryptodev',
@@ -42,9 +42,9 @@ if is_windows
 		'eal',
 		'ring',
 		'rcu',
+		'hash',
 		'mempool', 'mbuf', 'net', 'meter', 'ethdev', 'pci',
 		'cmdline',
-		'hash',
 	] # only supported libraries for windows
 endif
 

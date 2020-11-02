@@ -233,7 +233,7 @@ extern "C" {
  *
  * Used for flow/connection identification.
  */
-RTE_STD_C11
+__extension__
 struct rte_sft_5tuple {
 	union {
 		struct {
@@ -531,6 +531,7 @@ rte_sft_fini(struct rte_sft_error *error);
  *   last processed not fragmented and in order mbuf.
  * @param[out] status
  *   Connection status based on the last in mbuf.
+ *   SFT updates relevant status fields only.
  * @param[out] error
  *   Perform verbose error reporting if not NULL. Initialize in case of
  *   error only.
@@ -671,9 +672,6 @@ rte_sft_drain_mbuf(uint16_t queue, uint32_t fid, struct rte_mbuf **mbuf_out,
  *   Event dev ID to enqueue end of flow event.
  * @param port_id
  *   Event port ID to enqueue end of flow event.
- * @param actions
- *   Flags that indicate which actions should be done on the packet before
- *   returning it to the rte_flow.
  * @param action_specs
  *   Hold the actions configuration.
  * @param[out] mbuf_out
@@ -692,8 +690,8 @@ int
 rte_sft_flow_activate(uint16_t queue, uint32_t zone, struct rte_mbuf *mbuf_in,
 		      const struct rte_sft_7tuple *reverse_tuple,
 		      uint8_t state, uint32_t *data, uint8_t proto_enable,
-		      uint8_t dev_id, uint8_t port_id, uint64_t actions,
 		      const struct rte_sft_actions_specs *action_specs,
+		      uint8_t dev_id, uint8_t port_id,
 		      struct rte_mbuf **mbuf_out,
 		      struct rte_sft_flow_status *status,
 		      struct rte_sft_error *error);
@@ -880,6 +878,41 @@ void *
 rte_sft_flow_get_client_obj(uint16_t queue, const uint32_t fid,
 			    uint8_t client_id, struct rte_sft_error *error);
 
+int
+rte_sft_error_set(struct rte_sft_error *error,
+		  int code,
+		  enum rte_sft_error_type type,
+		  const void *cause,
+		  const char *message);
+
+/**
+ * for application usage
+ */
+__extension__
+struct sft_mbuf_info {
+	const struct rte_mbuf *m;
+	const struct rte_ether_hdr *eth_hdr;
+	union {
+		const struct rte_ipv4_hdr *ip4;
+		const struct rte_ipv6_hdr *ip6;
+		const void *l3_hdr;
+	};
+	union {
+		const struct rte_tcp_hdr *tcp;
+		const struct rte_udp_hdr *udp;
+		const void *l4_hdr;
+	};
+	uint16_t eth_type;
+};
+
+__rte_experimental
+int
+sft_parse_mbuf(struct sft_mbuf_info *mif, struct rte_sft_error *error);
+
+__rte_experimental
+void
+rte_sft_mbuf_stpl(struct sft_mbuf_info *mif, uint32_t zone,
+		  struct rte_sft_7tuple *stpl, struct rte_sft_error *error);
 
 #ifdef __cplusplus
 }

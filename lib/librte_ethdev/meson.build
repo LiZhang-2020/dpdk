@@ -9,7 +9,8 @@ sources = files('ethdev_private.c',
 	'rte_flow.c',
 	'rte_mtr.c',
 	'rte_sft.c',
-	'rte_tm.c')
+	'rte_tm.c',
+	'sft_utils.c')
 
 headers = files('rte_ethdev.h',
 	'rte_ethdev_driver.h',
@@ -27,6 +28,7 @@ headers = files('rte_ethdev.h',
 	'rte_sft.h',
 	'rte_sft_driver.h',
 	'rte_tm.h',
-	'rte_tm_driver.h')
+	'rte_tm_driver.h',
+	'sft_utils.h')
 
-deps += ['net', 'kvargs', 'meter', 'telemetry']
+deps += ['hash', 'net', 'kvargs', 'meter', 'telemetry']
