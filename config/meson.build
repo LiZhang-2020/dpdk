@@ -41,10 +41,12 @@ if pver.get(2).contains('-rc')
 	dpdk_conf.set('RTE_VER_RELEASE', rc_ver.get(1).to_int())
 else
 	dpdk_conf.set('RTE_VER_MINOR', pver.get(2).to_int())
-	dpdk_conf.set_quoted('RTE_VER_SUFFIX', '')
+	dpdk_conf.set_quoted('RTE_VER_SUFFIX', pver.get(3).join(['.','.']))
+	dpdk_conf.set('RTE_VER_RELEASE', pver.get(4).to_int())
+#	dpdk_conf.set_quoted('RTE_VER_SUFFIX', '')
 # for actual, non-rc releases, set the release value to 99 to ensure releases
 # have higher version numbers than their respective release candidates
-	dpdk_conf.set('RTE_VER_RELEASE', 99)
+#	dpdk_conf.set('RTE_VER_RELEASE', 99)
 endif
 
 pmd_subdir_opt = get_option('drivers_install_subdir')

@@ -24,7 +24,7 @@
 #endif
 
 /* String that appears before the version number */
-#define RTE_VER_PREFIX "DPDK"
+#define RTE_VER_PREFIX "MLNX_DPDK"
 
 /****** library defines ********/
 
