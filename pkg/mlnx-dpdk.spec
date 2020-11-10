@@ -68,13 +68,6 @@ BuildRequires: kernel-devel, kernel-headers
 %endif
 %endif
 
-%if 0%{?centos_version}
-%global ninja ninja-build
-%else
-%global ninja ninja
-%endif
-
-
 %description
 DPDK core includes kernel modules, core libraries and tools.
 testpmd application allows to test fast packet processing environments
@@ -94,11 +87,11 @@ for fast packet processing on x86 platforms.
 CFLAGS="$CFLAGS -fcommon -Werror" meson %{target} -Dprefix=/opt/mellanox/dpdk --includedir=include/dpdk -Ddrivers_install_subdir=dpdk/pmds --default-library=shared
 
 %build
-%{ninja} -v -C %{target}
+%{__ninja} -v -C %{target}
 
 %install
 rm -rf %{buildroot}
-DESTDIR=%{buildroot} %{ninja} -v -C %{target} install
+DESTDIR=%{buildroot} %{__ninja} -v -C %{target} install
 
 %files
 %dir /opt/mellanox/dpdk/lib64/dpdk
