@@ -98,6 +98,7 @@ static const struct rte_flow_desc_data rte_flow_desc_item[] = {
 	MK_FLOW_ITEM(PFCP, sizeof(struct rte_flow_item_pfcp)),
 	MK_FLOW_ITEM(ECPRI, sizeof(struct rte_flow_item_ecpri)),
 	MK_FLOW_ITEM(GENEVE_OPT, sizeof(struct rte_flow_item_geneve_opt)),
+	MK_FLOW_ITEM(SFT, sizeof(struct rte_flow_item_sft)),
 };
 
 /** Generate flow_action[] entry. */
@@ -197,6 +198,7 @@ static const struct rte_flow_desc_data rte_flow_desc_action[] = {
 		       sizeof(struct rte_flow_action_set_tp)),
 	MK_FLOW_ACTION(SET_TCP_TP_DST,
 		       sizeof(struct rte_flow_action_set_tp)),
+	MK_FLOW_ACTION(SFT, sizeof(struct rte_flow_action_sft)),
 };
 
 int

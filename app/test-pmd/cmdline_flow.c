@@ -288,6 +288,13 @@ enum index {
 	ITEM_GENEVE_OPT_TYPE,
 	ITEM_GENEVE_OPT_LENGTH,
 	ITEM_GENEVE_OPT_DATA,
+	ITEM_SFT,
+	ITEM_SFT_FID,
+	ITEM_SFT_FID_VALID,
+	ITEM_SFT_ZONE,
+	ITEM_SFT_ZONE_VALID,
+	ITEM_SFT_STATE,
+	ITEM_SFT_USER_DATA,
 
 	/* Validate/create actions. */
 	ACTIONS,
@@ -429,6 +436,8 @@ enum index {
 	ACTION_SET_TCP_TP_SRC_TP_SRC,
 	ACTION_SET_TCP_TP_DST,
 	ACTION_SET_TCP_TP_DST_TP_DST,
+	ACTION_SFT,
+	ACTION_SFT_ZONE,
 };
 
 /** Maximum size for pattern in struct rte_flow_item_raw. */
@@ -440,6 +449,13 @@ enum index {
 /** Storage size for struct rte_flow_item_raw including pattern. */
 #define ITEM_RAW_SIZE \
 	(sizeof(struct rte_flow_item_raw) + ITEM_RAW_PATTERN_SIZE)
+
+/** Maximum size for user_data in struct rte_flow_item_sft. */
+#define ITEM_SFT_USER_DATA_SIZE 40
+
+/** Storage size for struct rte_flow_item_sft including user_data. */
+#define ITEM_SFT_SIZE \
+	(sizeof(struct rte_flow_item_sft) + ITEM_SFT_USER_DATA_SIZE)
 
 /** Maximum number of queue indices in struct rte_flow_action_rss. */
 #define ACTION_RSS_QUEUE_NUM 128
@@ -939,6 +955,7 @@ static const enum index next_item[] = {
 	ITEM_PFCP,
 	ITEM_ECPRI,
 	ITEM_GENEVE_OPT,
+	ITEM_SFT,
 	END_SET,
 	ZERO,
 };
@@ -1289,6 +1306,17 @@ static const enum index item_geneve_opt[] = {
 	ZERO,
 };
 
+static const enum index item_sft[] = {
+	ITEM_SFT_FID,
+	ITEM_SFT_FID_VALID,
+	ITEM_SFT_ZONE,
+	ITEM_SFT_ZONE_VALID,
+	ITEM_SFT_STATE,
+	ITEM_SFT_USER_DATA,
+	ITEM_NEXT,
+	ZERO,
+};
+
 static const enum index next_action[] = {
 	ACTION_END,
 	ACTION_VOID,
@@ -1360,6 +1388,7 @@ static const enum index next_action[] = {
 	ACTION_SET_UDP_TP_DST,
 	ACTION_SET_TCP_TP_SRC,
 	ACTION_SET_TCP_TP_DST,
+	ACTION_SFT,
 	ZERO,
 };
 
@@ -1649,6 +1678,12 @@ static const enum index action_set_tcp_tp_src[] = {
 
 static const enum index action_set_tcp_tp_dst[] = {
 	ACTION_SET_TCP_TP_DST_TP_DST,
+	ACTION_NEXT,
+	ZERO,
+};
+
+static const enum index action_sft[] = {
+	ACTION_SFT_ZONE,
 	ACTION_NEXT,
 	ZERO,
 };
@@ -3368,6 +3403,62 @@ static const struct token token_list[] = {
 				(sizeof(struct rte_flow_item_geneve_opt),
 				ITEM_GENEVE_OPT_DATA_SIZE)),
 	},
+	[ITEM_SFT] = {
+		.name = "sft",
+		.help = "match on sft parameters",
+		.priv = PRIV_ITEM(SFT, ITEM_SFT_SIZE),
+		.next = NEXT(item_sft),
+		.call = parse_vc,
+	},
+	[ITEM_SFT_FID] = {
+		.name = "fid",
+		.help = "flow id",
+		.next = NEXT(item_sft, NEXT_ENTRY(UNSIGNED),
+			     NEXT_ENTRY(ITEM_PARAM_IS)),
+		.args = ARGS(ARGS_ENTRY(struct rte_flow_item_sft, fid)),
+	},
+	[ITEM_SFT_FID_VALID] = {
+		.name = "fid_valid",
+		.help = "fid validity",
+		.next = NEXT(item_sft, NEXT_ENTRY(UNSIGNED),
+			     NEXT_ENTRY(ITEM_PARAM_IS)),
+		.args = ARGS(ARGS_ENTRY_BF(struct rte_flow_item_sft,
+					   fid_valid, 1)),
+	},
+	[ITEM_SFT_ZONE] = {
+		.name = "zone",
+		.help = "zone",
+		.next = NEXT(item_sft, NEXT_ENTRY(UNSIGNED),
+			     NEXT_ENTRY(ITEM_PARAM_IS)),
+		.args = ARGS(ARGS_ENTRY(struct rte_flow_item_sft, fid)),
+	},
+	[ITEM_SFT_ZONE_VALID] = {
+		.name = "zone_valid",
+		.help = "zone validity",
+		.next = NEXT(item_sft, NEXT_ENTRY(UNSIGNED),
+			     NEXT_ENTRY(ITEM_PARAM_IS)),
+		.args = ARGS(ARGS_ENTRY_BF(struct rte_flow_item_sft,
+					   zone_valid, 1)),
+	},
+	[ITEM_SFT_STATE] = {
+		.name = "state",
+		.help = "connection state",
+		.next = NEXT(item_sft, NEXT_ENTRY(UNSIGNED),
+			     NEXT_ENTRY(ITEM_PARAM_IS)),
+		.args = ARGS(ARGS_ENTRY(struct rte_flow_item_sft, state)),
+	},
+	[ITEM_SFT_USER_DATA] = {
+		.name = "data",
+		.help = "user data to search",
+		.next = NEXT(item_sft,
+			     NEXT_ENTRY(HEX),
+			     NEXT_ENTRY(ITEM_PARAM_IS)),
+		.args = ARGS(ARGS_ENTRY(struct rte_flow_item_sft, user_data),
+			     ARGS_ENTRY(struct rte_flow_item_sft,
+					user_data_size),
+			     ARGS_ENTRY_ARB(sizeof(struct rte_flow_item_sft),
+					    ITEM_SFT_USER_DATA_SIZE)),
+	},
 	/* Validate/create actions. */
 	[ACTIONS] = {
 		.name = "actions",
@@ -4551,6 +4642,22 @@ static const struct token token_list[] = {
 		.next = NEXT(action_set_tcp_tp_dst, NEXT_ENTRY(UNSIGNED)),
 		.args = ARGS(ARGS_ENTRY_HTON
 			     (struct rte_flow_action_set_tp, port)),
+		.call = parse_vc_conf,
+	},
+	/* SFT action create arguments. */
+	[ACTION_SFT] = {
+		.name = "sft",
+		.help = "set sft value",
+		.priv = PRIV_ACTION(SFT,
+			sizeof(struct rte_flow_action_sft)),
+		.next = NEXT(action_sft),
+		.call = parse_vc,
+	},
+	[ACTION_SFT_ZONE] = {
+		.name = "zone_value",
+		.help = "new zone number to set",
+		.next = NEXT(action_sft, NEXT_ENTRY(UNSIGNED)),
+		.args = ARGS(ARGS_ENTRY(struct rte_flow_action_sft, zone)),
 		.call = parse_vc_conf,
 	},
 };
@@ -7979,6 +8086,9 @@ cmd_set_raw_parsed(const struct buffer *in)
 			break;
 		case RTE_FLOW_ITEM_TYPE_PFCP:
 			size = sizeof(struct rte_flow_item_pfcp);
+			break;
+		case RTE_FLOW_ITEM_TYPE_SFT:
+			size = sizeof(struct rte_flow_item_sft);
 			break;
 		default:
 			printf("Error - Not supported item\n");
