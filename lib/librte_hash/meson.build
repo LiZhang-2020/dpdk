@@ -6,8 +6,9 @@ headers = files('rte_crc_arm64.h',
 	'rte_hash_crc.h',
 	'rte_hash.h',
 	'rte_jhash.h',
-	'rte_thash.h')
+	'rte_thash.h',
+	'rte_lhash.h')
 
-sources = files('rte_cuckoo_hash.c', 'rte_fbk_hash.c')
+sources = files('rte_cuckoo_hash.c', 'rte_fbk_hash.c', 'rte_lhash.c')
 deps += ['ring']
 deps += ['rcu']

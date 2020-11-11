@@ -25,6 +25,12 @@ DPDK_21 {
 	rte_hash_lookup_with_hash_data;
 	rte_hash_reset;
 	rte_hash_set_cmp_func;
+	rte_lhash_create;
+	rte_lhash_add_key_data;
+	rte_lhash_lookup;
+	rte_lhash_del_key;
+	rte_lhash_flush;
+	rte_lhash_free;
 
 	local: *;
 };
