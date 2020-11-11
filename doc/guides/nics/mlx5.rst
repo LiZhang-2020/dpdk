@@ -970,11 +970,13 @@ Driver options
 - ``mtr_log_max_num`` parameter [int]
 
   Log 2 of maximal number of flow meters can be created.
-  The maximal value for this parameter is 12.
+  The maximal value for this parameter is 24 when ASO is supported, and 12
+  when ASO is not supported.
   There will be better performance if the sum of ``mtr_log_max_num`` and
   ``log_max_flow_per_mtr`` is less or equal to 20.
 
-  By default, the PMD will set this value to 12.
+  By default, the PMD will set this value to 24 when ASO is supported, and 12
+  when ASO is not supported.
 
 - ``log_max_flow_per_mtr`` parameter [int]
 
@@ -984,7 +986,8 @@ Driver options
   There will be better performance if the sum of ``mtr_log_max_num`` and
   ``log_max_flow_per_mtr`` is less or equal to 20.
 
-  By default, the PMD will set this value to 8.
+  By default, the PMD will set this value to 0 when ASO is supported, and 8
+  when ASO is not supported.
 
 .. _mlx5_firmware_config:
 

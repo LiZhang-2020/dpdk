@@ -186,14 +186,17 @@ struct mlx5_stats_ctrl {
 /* The bit size of one register. */
 #define MLX5_REG_BITS 32
 
-/* Maximal log of meter number. */
-#define MLX5_MTR_LOG_MAX_MTR 12
+/* Idle bits for non-color usage in color register. */
+#define MLX5_MTR_IDLE_BITS_IN_COLOR_REG (MLX5_REG_BITS - MLX5_MTR_COLOR_BITS)
+
+/* Maximal log of legacy meter number. */
+#define MLX5_MTR_LOG_MAX_LEGACY_MTR 12
+
+/* Maximal log of aso meter number. */
+#define MLX5_MTR_LOG_MAX_ASO_MTR MLX5_MTR_IDLE_BITS_IN_COLOR_REG
 
 /* Maximal flow number per meter. */
 #define MLX5_MTR_LOG_MAX_FLOW_PER_MTR 23
-
-/* Idle bits for non-color usage in color register. */
-#define MLX5_MTR_IDLE_BITS_IN_COLOR_REG (MLX5_REG_BITS - MLX5_MTR_COLOR_BITS)
 
 /* Reserverd bits for rss flow id. */
 #define MLX5_MTR_RSVD_RSS_FLOW_ID_BITS 4
@@ -672,8 +675,6 @@ struct mlx5_meter_domains_infos {
 	/**< Counters for green rule. */
 	void *drop_count;
 	/**< Counters for green rule. */
-	void *meter_action;
-	/**< Flow meter action. */
 };
 
 /* Meter parameter structure. */
@@ -736,6 +737,8 @@ struct mlx5_flow_meter_info {
 	/**< Use count. */
 	struct mlx5_indexed_pool *flow_ipool;
 	/**< Index pool for flow id. */
+	void *meter_action;
+	/**< Flow meter action. */
 };
 
 /* RFC2697 parameter structure. */
@@ -1520,7 +1523,8 @@ int mlx5_flow_meter_attach(struct mlx5_priv *priv,
 			   struct mlx5_flow_meter_info *fm,
 			   const struct rte_flow_attr *attr,
 			   struct rte_flow_error *error);
-void mlx5_flow_meter_detach(struct mlx5_flow_meter_info *fm);
+void mlx5_flow_meter_detach(struct mlx5_priv *priv,
+			    struct mlx5_flow_meter_info *fm);
 
 /* mlx5_os.c */
 struct rte_pci_driver;

@@ -725,7 +725,6 @@ mlx5_dev_spawn(struct rte_device *dpdk_dev,
 	int own_domain_id = 0;
 	uint16_t port_id;
 	unsigned int i;
-	uint32_t log_obj_size;
 #ifdef HAVE_MLX5DV_DR_DEVX_PORT
 	struct mlx5dv_devx_port devx_port = { .comp_mask = 0 };
 #endif
@@ -1301,7 +1300,9 @@ err_secondary:
 				"required for coalescing is %d bytes",
 				config->hca_attr.lro_min_mss_size);
 		}
-#if defined(HAVE_MLX5DV_DR) && defined(HAVE_MLX5_DR_CREATE_ACTION_FLOW_METER)
+#if defined(HAVE_MLX5DV_DR) && \
+	(defined(HAVE_MLX5_DR_CREATE_ACTION_FLOW_METER) || \
+	 defined(HAVE_MLX5_DR_CREATE_ACTION_ASO))
 		if (config->hca_attr.qos.sup &&
 		    config->hca_attr.qos.srtcm_sup &&
 		    config->dv_flow_en) {
@@ -1336,7 +1337,7 @@ err_secondary:
 		}
 		if (config->hca_attr.qos.sup &&
 			config->hca_attr.qos.flow_meter_aso_sup) {
-			log_obj_size =
+			uint32_t log_obj_size =
 				rte_log2_u32(MLX5_ASO_MTRS_PER_POOL >> 1);
 			if (log_obj_size >=
 			config->hca_attr.qos.log_meter_aso_granularity &&
@@ -1381,16 +1382,19 @@ err_secondary:
 	if (priv->mtr_en) {
 		bool mtr_reg_share =
 				!!config->hca_attr.qos.flow_meter_reg_share;
-		uint32_t mtr_num_max = MLX5_MTR_LOG_MAX_MTR;
+		uint32_t mtr_num_max = sh->meter_aso_en ?
+					MLX5_MTR_LOG_MAX_ASO_MTR :
+					MLX5_MTR_LOG_MAX_LEGACY_MTR;
 		uint32_t flow_per_mtr_max;
 
 		if (config->log_max_mtr_num == 0xFF)
-			config->log_max_mtr_num = MLX5_MTR_LOG_MAX_MTR;
+			config->log_max_mtr_num = mtr_num_max;
 		if (config->log_max_flow_per_mtr == 0xFF)
 			config->log_max_flow_per_mtr =
-				MLX5_MTR_IDLE_BITS_IN_COLOR_REG -
-				MLX5_MTR_LOG_MAX_MTR -
-				MLX5_MTR_RSVD_RSS_FLOW_ID_BITS;
+				sh->meter_aso_en ? 0 :
+					(MLX5_MTR_IDLE_BITS_IN_COLOR_REG -
+					 mtr_num_max -
+					 MLX5_MTR_RSVD_RSS_FLOW_ID_BITS);
 		if (config->log_max_mtr_num > mtr_num_max) {
 			DRV_LOG(ERR, "mtr_log_max_num cannot exceed %d.",
 				mtr_num_max);
