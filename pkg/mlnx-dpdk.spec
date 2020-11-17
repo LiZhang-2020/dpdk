@@ -84,7 +84,7 @@ for fast packet processing on x86 platforms.
 
 %prep
 %setup -q
-CFLAGS="$CFLAGS -fcommon -Werror" meson %{target} -Dprefix=/opt/mellanox/dpdk --includedir=include/dpdk -Ddrivers_install_subdir=dpdk/pmds --default-library=shared
+CFLAGS="$CFLAGS -fcommon -Werror" meson %{target} -Dprefix=/opt/mellanox/dpdk --includedir=include/dpdk -Ddisable_drivers=vdpa/ifc,net/txgbe,event/octeontx2,mempool/octeontx2,net/mlx4 -Dtests=false -Ddrivers_install_subdir=dpdk/pmds --default-library=shared
 
 %build
 %{__ninja} -v -C %{target}
