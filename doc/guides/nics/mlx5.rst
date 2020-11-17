@@ -98,6 +98,7 @@ Features
 - Hardware LRO.
 - Hairpin.
 - Multiple-thread flow insertion.
+- Matching on Geneve TLV option header with raw encap/decap action.
 
 Limitations
 -----------
@@ -175,7 +176,17 @@ Limitations
      - OAM
      - protocol type
      - options length
-       Currently, the only supported options length value is 0.
+
+- Match on Geneve TLv option is supported on the following fields:
+     - Class
+     - Type
+     - Length
+     - Data
+  Only one Class/Type/Length Geneve TLV option is supported per shared device.
+  Class/Type/Length fields must be specified as well as masks.
+  Class/Type/Length specified masks must be full.
+  Matching Geneve TLV option without specifying data is not supported.
+  Matching Geneve TLV option with data & mask == 0 is not supported.
 
 - VF: flow rules created on VF devices can only match traffic targeted at the
   configured MAC addresses (see ``rte_eth_dev_mac_addr_add()``).
@@ -1021,6 +1032,10 @@ Below are some firmware configurations listed.
    FLEX_PARSER_PROFILE_ENABLE=0
    or
    FLEX_PARSER_PROFILE_ENABLE=1
+
+- enable Geneve TLV option flow matching::
+
+   FLEX_PARSER_PROFILE_ENABLE=0
 
 - enable GTP flow matching::
 
