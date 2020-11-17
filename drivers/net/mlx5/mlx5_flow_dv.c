@@ -5498,6 +5498,15 @@ flow_dv_validate(struct rte_eth_dev *dev, const struct rte_flow_attr *attr,
 				return ret;
 			last_item = MLX5_FLOW_LAYER_GENEVE;
 			break;
+		case RTE_FLOW_ITEM_TYPE_GENEVE_OPT:
+			ret = mlx5_flow_validate_item_geneve_opt(items,
+								 last_item,
+								 dev,
+								 error);
+			if (ret < 0)
+				return ret;
+			last_item = MLX5_FLOW_LAYER_GENEVE_OPT;
+			break;
 		case RTE_FLOW_ITEM_TYPE_MPLS:
 			ret = mlx5_flow_validate_item_mpls(dev, items,
 							   item_flags,
@@ -5506,7 +5515,6 @@ flow_dv_validate(struct rte_eth_dev *dev, const struct rte_flow_attr *attr,
 				return ret;
 			last_item = MLX5_FLOW_LAYER_MPLS;
 			break;
-
 		case RTE_FLOW_ITEM_TYPE_MARK:
 			ret = flow_dv_validate_item_mark(dev, items, attr,
 							 error);

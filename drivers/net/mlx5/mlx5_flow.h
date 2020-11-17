@@ -138,6 +138,9 @@ enum mlx5_feature_name {
 #define MLX5_FLOW_LAYER_OUTER_L3_IPV6_FRAG_EXT (1u << 30)
 #define MLX5_FLOW_LAYER_INNER_L3_IPV6_FRAG_EXT (1u << 31)
 
+/* Pattern tunnel Layer bits (continued). */
+#define MLX5_FLOW_LAYER_GENEVE_OPT (UINT64_C(1) << 32)
+
 /* Outer Masks. */
 #define MLX5_FLOW_LAYER_OUTER_L3 \
 	(MLX5_FLOW_LAYER_OUTER_L3_IPV4 | MLX5_FLOW_LAYER_OUTER_L3_IPV6)
@@ -1388,6 +1391,10 @@ int mlx5_flow_validate_item_nvgre(const struct rte_flow_item *item,
 				  struct rte_flow_error *error);
 int mlx5_flow_validate_item_geneve(const struct rte_flow_item *item,
 				   uint64_t item_flags,
+				   struct rte_eth_dev *dev,
+				   struct rte_flow_error *error);
+int mlx5_flow_validate_item_geneve_opt(const struct rte_flow_item *item,
+				   uint64_t last_item,
 				   struct rte_eth_dev *dev,
 				   struct rte_flow_error *error);
 int mlx5_flow_validate_item_ecpri(const struct rte_flow_item *item,
