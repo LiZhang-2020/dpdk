@@ -80,6 +80,7 @@ struct mlx5_regex_priv {
 	struct ibv_pd *pd;
 	struct mlx5_dbr_page_list dbrpgs; /* Door-bell pages. */
 	struct mlx5_mr_share_cache mr_scache; /* Global shared MR cache. */
+	uint8_t is_bf2; /* The device is BF2 device. */
 };
 
 /* mlx5_regex.c */
