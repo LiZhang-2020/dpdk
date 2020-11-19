@@ -7321,6 +7321,65 @@ exit:
 }
 
 /**
+ * Add Geneve TLV option item to matcher.
+ *
+ * @param[in, out] dev
+ *   Pointer to rte_eth_dev structure.
+ * @param[in, out] matcher
+ *   Flow matcher.
+ * @param[in, out] key
+ *   Flow matcher value.
+ * @param[in] item
+ *   Flow pattern to translate.
+ * @param[out] error
+ *   Pointer to error structure.
+ */
+static int
+flow_dv_translate_item_geneve_opt(struct rte_eth_dev *dev, void *matcher,
+				  void *key, const struct rte_flow_item *item,
+				  struct rte_flow_error *error)
+{
+	const struct rte_flow_item_geneve_opt *geneve_opt_m = item->mask;
+	const struct rte_flow_item_geneve_opt *geneve_opt_v = item->spec;
+	void *misc3_m = MLX5_ADDR_OF(fte_match_param, matcher,
+			misc_parameters_3);
+	void *misc3_v = MLX5_ADDR_OF(fte_match_param, key, misc_parameters_3);
+	rte_be32_t opt_data_key = 0, opt_data_mask = 0;
+	int ret = 0;
+
+	if (!geneve_opt_v)
+		return -1;
+	if (!geneve_opt_m)
+		geneve_opt_m = &rte_flow_item_geneve_opt_mask;
+	ret = flow_dev_geneve_tlv_option_resource_register(dev, item,
+							   error);
+	if (ret) {
+		DRV_LOG(ERR, "Failed to create geneve_tlv_obj");
+		return ret;
+	}
+	/* Set the data. */
+	if (geneve_opt_v->data) {
+		memcpy(&opt_data_key, geneve_opt_v->data,
+				RTE_MIN((uint32_t)(geneve_opt_v->length * 4),
+					sizeof(opt_data_key)));
+		MLX5_ASSERT((uint32_t)(geneve_opt_v->length * 4) <=
+				sizeof(opt_data_key));
+		memcpy(&opt_data_mask, geneve_opt_m->data,
+				RTE_MIN((uint32_t)(geneve_opt_v->length * 4),
+					sizeof(opt_data_mask)));
+		MLX5_ASSERT((uint32_t)(geneve_opt_v->length * 4) <=
+				sizeof(opt_data_mask));
+		MLX5_SET(fte_match_set_misc3, misc3_m,
+				geneve_tlv_option_0_data,
+				rte_be_to_cpu_32(opt_data_mask));
+		MLX5_SET(fte_match_set_misc3, misc3_v,
+				geneve_tlv_option_0_data,
+			rte_be_to_cpu_32(opt_data_key & opt_data_mask));
+	}
+	return ret;
+}
+
+/**
  * Add MPLS item to matcher and to the value.
  *
  * @param[in, out] matcher
@@ -10536,6 +10595,17 @@ flow_dv_translate(struct rte_eth_dev *dev,
 						      items, tunnel);
 			matcher.priority = MLX5_TUNNEL_PRIO_GET(rss_desc);
 			last_item = MLX5_FLOW_LAYER_GENEVE;
+			break;
+		case RTE_FLOW_ITEM_TYPE_GENEVE_OPT:
+			ret = flow_dv_translate_item_geneve_opt(dev, match_mask,
+							  match_value,
+							  items, error);
+			if (ret)
+				return rte_flow_error_set(error, -ret,
+					RTE_FLOW_ERROR_TYPE_ITEM, NULL,
+					"cannot create GENEVE TLV option");
+			flow->geneve_tlv_option = 1;
+			last_item = MLX5_FLOW_LAYER_GENEVE_OPT;
 			break;
 		case RTE_FLOW_ITEM_TYPE_MPLS:
 			flow_dv_translate_item_mpls(match_mask, match_value,
