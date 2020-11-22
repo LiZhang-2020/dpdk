@@ -8468,6 +8468,60 @@ flow_dv_translate_item_ecpri(struct rte_eth_dev *dev, void *matcher,
 	}
 }
 
+/**
+ * Add SFT item to matcher. SFT items are first converted to
+ * corresponding registers then translated as TAG items.
+ *
+ * @param[in] dev
+ *   The devich to configure through.
+ * @param match_mask
+ *   pointer to match mask buffer.
+ * @param match_value
+ *   pointer to match value buffer.
+ * @param[in] item
+ *   Flow pattern to translate.
+ */
+static void
+flow_dv_translate_item_sft(struct rte_eth_dev *dev, void *match_mask,
+			   void *match_value, const struct rte_flow_item *item)
+{
+	uint32_t data;
+	int reg;
+
+	const struct rte_flow_item_sft *sft_m = item->mask;
+	const struct rte_flow_item_sft *sft_v = item->spec;
+
+	if (!sft_v || !sft_m) /* TODO: Should add defalut sft mask? */
+		return;
+	if (sft_m->fid_valid) {
+		reg = REG_C_1; /* TODO: mlx5_sft_get_fid_reg(); */
+		data = (sft_v->fid & sft_m->fid);
+	} else if (sft_m->zone_valid) {
+		reg = REG_C_1; /* TODO: mlx5_sft_get_zone_reg(); */
+		data = (sft_v->zone & sft_m->zone);
+	} else if (sft_m->state) {
+		reg = REG_C_1; /* TODO: mlx5_sft_get_state_reg(); */
+		data = sft_v->state;
+	} else if (sft_m->user_data) {
+		reg = REG_C_1; /* TODO: mlx5_sft_get_user_data_reg(); */
+		data = *(uint32_t *)sft_v->user_data;
+	}
+	const struct mlx5_rte_flow_item_tag tag_v = {
+		.id = reg,
+		.data = data,
+	};
+	const struct mlx5_rte_flow_item_tag tag_m = {
+		.data = UINT32_MAX,
+	};
+	const struct rte_flow_item tag_item = {
+		.type = (enum rte_flow_item_type)MLX5_RTE_FLOW_ITEM_TYPE_TAG,
+		.spec = &tag_v,
+		.mask = &tag_m,
+	};
+	flow_dv_translate_mlx5_item_tag(dev, match_mask, match_value,
+					&tag_item);
+}
+
 static uint32_t matcher_zero[MLX5_ST_SZ_DW(fte_match_param)] = { 0 };
 
 #define HEADER_IS_ZERO(match_criteria, headers)				     \
@@ -11125,6 +11179,11 @@ flow_dv_translate(struct rte_eth_dev *dev,
 						     match_value, items);
 			/* No other protocol should follow eCPRI layer. */
 			last_item = MLX5_FLOW_LAYER_ECPRI;
+			break;
+		case RTE_FLOW_ITEM_TYPE_SFT:
+			flow_dv_translate_item_sft(dev, match_mask,
+						   match_value, items);
+			last_item = MLX5_FLOW_LAYER_SFT;
 			break;
 		default:
 			break;
