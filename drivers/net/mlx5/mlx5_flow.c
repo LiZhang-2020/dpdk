@@ -2953,6 +2953,37 @@ mlx5_flow_validate_item_ecpri(const struct rte_flow_item *item,
 }
 
 /**
+ * Validate SFT item.
+ *
+ * @param[in] item
+ *   Item specification.
+ * @param[in] item_flags
+ *   Bit-fields that holds the items detected until now.
+ *   will be used to check whether item fields are supported.
+ * @param[out] error
+ *   Pointer to error structure.
+ *
+ * @return
+ *   0 on success, a negative errno value otherwise and rte_errno is set.
+ */
+int
+mlx5_flow_validate_item_sft(const struct rte_flow_item *item,
+			    uint64_t item_flags,
+			    struct rte_flow_error *error)
+{
+	const struct rte_flow_item_sft *mask = item->mask;
+	if (!mask)
+		return rte_flow_error_set(error, EINVAL,
+					  RTE_FLOW_ERROR_TYPE_ITEM, item,
+					  "SFT mask is missing.");
+	if (item_flags & MLX5_FLOW_LAYER_SFT)
+		return rte_flow_error_set(error, ENOTSUP,
+					  RTE_FLOW_ERROR_TYPE_ITEM, item,
+					  "multiple SFT items are not supported.");
+	return 0;
+}
+
+/**
  * Release resource related QUEUE/RSS action split.
  *
  * @param dev

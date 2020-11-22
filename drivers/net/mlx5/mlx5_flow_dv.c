@@ -4798,6 +4798,42 @@ flow_dv_validate_action_sample(uint64_t action_flags,
 }
 
 /**
+ * Validate the SFT action.
+ *
+ * @param[in] action_flags
+ *   Holds the actions detected until now.
+ * @param[in] action
+ *   Pointer to the modify action.
+ * @param[in] item_flags
+ *   Holds the items detected.
+ * @param[out] error
+ *   Pointer to error structure.
+ *
+ * @return
+ *   0 on success, a negative errno value otherwise and rte_errno is set.
+ */
+static int
+flow_dv_validate_action_sft(const struct rte_flow_action *action,
+			    struct rte_flow_error *error)
+{
+	if (action->type == RTE_FLOW_ACTION_TYPE_SFT && !action->conf)
+		return rte_flow_error_set(error, EINVAL,
+					  RTE_FLOW_ERROR_TYPE_ACTION_CONF,
+					  NULL, "SFT action configuration"
+					  " not set");
+	/* Check the next actions following the SFT action */
+	action++;
+	for (; action->type != RTE_FLOW_ACTION_TYPE_END; action++) {
+		if (action->type != RTE_FLOW_ACTION_TYPE_JUMP)
+			return rte_flow_error_set(error, EINVAL,
+					  RTE_FLOW_ERROR_TYPE_ACTION,
+					  NULL, "only action JUMP supported "
+					  "following SFT");
+	}
+	return 0;
+}
+
+/**
  * Find existing modify-header resource or create and register a new one.
  *
  * @param dev[in, out]
@@ -5876,6 +5912,13 @@ flow_dv_validate(struct rte_eth_dev *dev, const struct rte_flow_attr *attr,
 				return ret;
 			last_item = MLX5_FLOW_LAYER_ECPRI;
 			break;
+		case RTE_FLOW_ITEM_TYPE_SFT:
+			ret = mlx5_flow_validate_item_sft(items, item_flags,
+							  error);
+			if (ret < 0)
+				return ret;
+			last_item = MLX5_FLOW_LAYER_SFT;
+			break;
 		default:
 			return rte_flow_error_set(error, ENOTSUP,
 						  RTE_FLOW_ERROR_TYPE_ITEM,
@@ -6375,6 +6418,12 @@ flow_dv_validate(struct rte_eth_dev *dev, const struct rte_flow_attr *attr,
 						"must be the first");
 
 			action_flags |= MLX5_FLOW_ACTION_TUNNEL_SET;
+			break;
+		case RTE_FLOW_ACTION_TYPE_SFT:
+			ret = flow_dv_validate_action_sft(actions, error);
+			if (ret < 0)
+				return ret;
+			action_flags |= MLX5_FLOW_ACTION_SFT;
 			break;
 		default:
 			return rte_flow_error_set(error, ENOTSUP,
