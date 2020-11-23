@@ -10335,6 +10335,83 @@ flow_dv_translate_create_aso_age(struct rte_eth_dev *dev,
 }
 
 /**
+ * Set SFT register action
+ *
+ * @param[in] data
+ *   Register data to set.
+ * @param[in] reg
+ *   Register number to be set.
+ * @param[in] resource
+ *   Pointer to modify header resource.
+ * @param[out] error
+ *   Pointer to the error structure.
+ *
+ * @return
+ *   0 on success, a negative errno value otherwise and rte_errno is set.
+ */
+static int
+flow_dv_sft_action_set_reg(uint32_t data, int reg,
+			   struct mlx5_flow_dv_modify_hdr_resource *resource,
+			   struct rte_flow_error *error)
+{
+	const struct mlx5_rte_flow_action_set_tag set_action = {
+		.id = reg,
+		.data = data,
+	};
+	const struct rte_flow_action action = {
+		.conf = &set_action,
+	};
+	return flow_dv_convert_action_set_reg(resource, &action, error);
+}
+
+/**
+ * Convert SFT action to DV specification.
+ *
+ * @param[in] sft_zone
+ *   Pointer to sample action structure.
+ * @param[in, out] actions_n
+ *   Pointer number of actions.
+ * @param[in] mhdr_res
+ *   Modify header resource.
+ * @param[in, out] jump_group
+ *   Pointer to group to jump to.
+ * @param[in, out] modify_action_position,
+ *   Pointer to first action array index of modify action.
+ * @param[out] error
+ *   Pointer to the error structure.
+ *
+ * @return
+ *   0 on success, a negative errno value otherwise and rte_errno is set.
+ */
+static int
+flow_dv_convert_action_sft(uint32_t sft_zone,
+			   int *actions_n,
+			   struct mlx5_flow_dv_modify_hdr_resource *mhdr_res,
+			   uint32_t *jump_group,
+			   uint32_t *modify_action_position,
+			   struct rte_flow_error *error)
+{
+	int ret;
+
+	/* Add sft_zone reg action */
+	ret = flow_dv_sft_action_set_reg(sft_zone,
+			REG_C_4, mhdr_res, error);
+	if (ret)
+		return ret;
+	/* Add jump_group reg action */
+	ret = flow_dv_sft_action_set_reg(*jump_group,
+			REG_C_5, mhdr_res, error);
+	if (ret)
+		return ret;
+	if (mhdr_res->actions_num &&
+			*modify_action_position == UINT32_MAX)
+		*modify_action_position = (*actions_n)++;
+	*jump_group = MLX5_FLOW_TABLE_LEVEL_SFT;
+
+	return 0;
+}
+
+/**
  * Fill the flow with DV spec, lock free
  * (mutex should be acquired by caller).
  *
@@ -10405,6 +10482,7 @@ flow_dv_translate(struct rte_eth_dev *dev,
 	uint32_t sample_act_pos = UINT32_MAX;
 	uint32_t num_of_dest = 0;
 	int tmp_actions_n = 0;
+	uint32_t sft_zone = UINT32_MAX;
 	uint32_t table;
 	int ret = 0;
 	const struct mlx5_flow_tunnel *tunnel;
@@ -10776,8 +10854,29 @@ flow_dv_translate(struct rte_eth_dev *dev,
 			action_flags |= MLX5_FLOW_ACTION_DECAP;
 			break;
 		case RTE_FLOW_ACTION_TYPE_JUMP:
+			/**
+			 * Handle SFT special case. Given application flow:
+			 * flow create <port> ingress <pattern> / end actions \
+			 * sft zone Z / jump group index G / end
+			 * Induce two flows:
+			 * flow create <port> ingress <pattern> / end actions \
+			 * set reg x=Z / set reg y=G / jump to sft_table / end
+			 * If not already created:
+			 * flow create <port> ingress group post_sft_table \
+			 * pattern reg y==G / end action jump group index G \
+			 * end
+			 */
 			jump_group = ((const struct rte_flow_action_jump *)
 							action->conf)->group;
+			if (sft_zone != UINT32_MAX) {
+				if (flow_dv_convert_action_sft(sft_zone,
+						&actions_n, mhdr_res,
+						&jump_group,
+						&modify_action_position,
+						error))
+					return -1;
+				sft_zone = UINT32_MAX;
+			}
 			grp_info.std_tbl_fix = 0;
 			if (dev_flow->skip_scale &
 				(1 << MLX5_SCALE_JUMP_FLOW_GROUP_BIT))
@@ -10974,6 +11073,12 @@ flow_dv_translate(struct rte_eth_dev *dev,
 			    (action_flags & MLX5_FLOW_ACTION_PORT_ID))
 				sample_act->action_flags |=
 							MLX5_FLOW_ACTION_ENCAP;
+			break;
+		case RTE_FLOW_ACTION_TYPE_SFT:
+			/* Save zone. Use it in next JUMP action. */
+			sft_zone = ((const struct rte_flow_action_sft *)
+				action->conf)->zone;
+			action_flags |= MLX5_FLOW_ACTION_SFT;
 			break;
 		case RTE_FLOW_ACTION_TYPE_END:
 			actions_end = true;
