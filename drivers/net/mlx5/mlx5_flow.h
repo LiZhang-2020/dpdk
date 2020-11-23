@@ -399,6 +399,7 @@ enum mlx5_flow_fate_type {
 	MLX5_FLOW_FATE_DROP,
 	MLX5_FLOW_FATE_DEFAULT_MISS,
 	MLX5_FLOW_FATE_SHARED_RSS,
+	MLX5_FLOW_FATE_SFT,
 	MLX5_FLOW_FATE_MAX,
 };
 
@@ -670,6 +671,8 @@ struct mlx5_flow_handle {
 		/**< Indicates default miss fate action. */
 		uint32_t rix_srss;
 		/**< Indicates shared RSS fate action. */
+		uint32_t rix_sft;
+		/**< Indicates SFT fate action. */
 	};
 #ifdef HAVE_IBV_FLOW_DV_SUPPORT
 	struct mlx5_flow_handle_dv dvh;
@@ -1493,6 +1496,8 @@ int flow_dv_sft_match_cb(struct mlx5_hlist *list,
 			 void *cb_ctx);
 void flow_dv_sft_remove_cb(struct mlx5_hlist *list,
 			   struct mlx5_hlist_entry *entry);
+struct mlx5_flow_sft_data_entry *flow_dv_sft_resource_get(struct rte_eth_dev *dev,
+		uint32_t jump_group, struct rte_flow_error *error);
 
 struct mlx5_hlist_entry *flow_dv_tag_create_cb(struct mlx5_hlist *list,
 					       uint64_t key, void *cb_ctx);

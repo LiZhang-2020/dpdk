@@ -8816,6 +8816,134 @@ flow_dv_sft_remove_cb(struct mlx5_hlist *list,
 	mlx5_ipool_free(sh->ipool[MLX5_IPOOL_SFT], sft_data->idx);
 }
 
+/* Post SFT call parameters */
+struct post_sft_cb_params {
+	uint32_t group_id;
+	struct mlx5_flow *dev_flow;
+};
+
+/**
+ * Get an SFT resource with jump_group as key.
+ *
+ * @param[in, out] dev
+ *   Pointer to rte_eth_dev structure.
+ * @param[in] jump_group
+ *   Flow jump group (resource key).
+ * @param[out] error
+ *   Pointer to error structure.
+ *
+ * @return
+ *   Returns SFT resource, NULL in case of failed.
+ */
+struct mlx5_flow_sft_data_entry *
+flow_dv_sft_resource_get(struct rte_eth_dev *dev,
+			 uint32_t jump_group,
+			 struct rte_flow_error *error)
+{
+	struct mlx5_priv *priv = dev->data->dev_private;
+	struct mlx5_hlist_entry *entry;
+	struct mlx5_flow_sft_data_entry *sft_data;
+
+	struct mlx5_flow_cb_ctx ctx = {
+		.dev = dev,
+	};
+	entry = mlx5_hlist_register(priv->sh->flow_sfts, jump_group, &ctx);
+	if (!entry) {
+		rte_flow_error_set(error, ENOMEM,
+				   RTE_FLOW_ERROR_TYPE_UNSPECIFIED, NULL,
+				   "cannot get sft");
+		return NULL;
+	}
+	DRV_LOG(DEBUG, "SFT group %u registered.", jump_group);
+	sft_data = container_of(entry, struct mlx5_flow_sft_data_entry, entry);
+	return sft_data;
+}
+
+/**
+ * Register in the SFT resource the IPOOL index and override
+ * the fate action as FATE_SFT.
+ *
+ * @param[in] dev
+ *   Pointer to rte_eth_dev structure.
+ * @param[in] sft_data
+ *   Pointer to flow table resource.
+ * @parm[in] dev_flow
+ *   Pointer to the dev_flow.
+ * @param[out] error
+ *   Pointer to error structure.
+ *
+ * @return
+ *   0 as success.
+ */
+static int
+flow_dv_sft_resource_register
+			(struct rte_eth_dev *dev __rte_unused,
+			 struct mlx5_flow_sft_data_entry *sft_data,
+			 struct mlx5_flow *dev_flow,
+			 struct rte_flow_error *error __rte_unused)
+{
+	MLX5_ASSERT(sft_data);
+	dev_flow->handle->rix_sft = sft_data->idx;
+	dev_flow->handle->fate_action = MLX5_FLOW_FATE_SFT;
+	return 0;
+}
+
+/**
+ * Follow up on SFT flow destroy.
+ * This is a callback routine from flow_list_destroy.
+ *
+ * @param[in] dev
+ *   Pointer to rte_eth_dev structure.
+ * @param[in] param
+ *   Pointer to callback parameters.
+ * @param[out] error
+ *   Pointer to error structure.
+ *
+ * @return
+ *   0 as success.
+ */
+static int
+mlx5_post_sft_destroy_callback(struct rte_eth_dev *dev, void *param,
+			       struct rte_flow_error *error)
+{
+	struct mlx5_dev_ctx_shared *sh = MLX5_SH(dev);
+	RTE_SET_USED(error);
+	if (!param)
+		return 0;
+
+	struct mlx5_flow_sft_data_entry *sft_data = param;
+	return mlx5_hlist_unregister(sh->flow_sfts, &sft_data->entry);
+}
+
+/**
+ * Follow up on SFT flow create.
+ * This is a callback routine from flow_list_create.
+ *
+ * @param[in] dev
+ *   Pointer to rte_eth_dev structure.
+ * @param[in] param
+ *   Pointer to callback parameters.
+ * @param[in] error
+ *   Pointer to error structure.
+ *
+ * @return
+ *   0 on success, netgavie value otherwise and rte_errno is set.
+ */
+static int
+mlx5_post_sft_create_callback(struct rte_eth_dev *dev, void *param,
+			      struct rte_flow_error *error)
+{
+	struct post_sft_cb_params *params = param;
+
+	struct mlx5_flow_sft_data_entry *sft_data =
+		flow_dv_sft_resource_get(dev, params->group_id, error);
+	if (!sft_data)
+		return -1;
+	flow_dv_sft_resource_register(dev, sft_data, params->dev_flow, error);
+	mlx5_free(param);
+	return 0;
+}
+
 /**
  * Release a flow table.
  *
@@ -10389,9 +10517,13 @@ flow_dv_convert_action_sft(uint32_t sft_zone,
 			   struct mlx5_flow_dv_modify_hdr_resource *mhdr_res,
 			   uint32_t *jump_group,
 			   uint32_t *modify_action_position,
+			   struct mlx5_flow *dev_flow,
+			   struct mlx5_flow_workspace *wks,
 			   struct rte_flow_error *error)
 {
 	int ret;
+	uint32_t sft_jump_group = 0;
+	struct post_sft_cb_params *sft_cb_param;
 
 	/* Add sft_zone reg action */
 	ret = flow_dv_sft_action_set_reg(sft_zone,
@@ -10406,8 +10538,27 @@ flow_dv_convert_action_sft(uint32_t sft_zone,
 	if (mhdr_res->actions_num &&
 			*modify_action_position == UINT32_MAX)
 		*modify_action_position = (*actions_n)++;
+	sft_jump_group = *jump_group;
 	*jump_group = MLX5_FLOW_TABLE_LEVEL_SFT;
 
+	/* Set thread workspace with callback parameters */
+	sft_cb_param =
+		mlx5_malloc(MLX5_MEM_ZERO,
+				sizeof(struct post_sft_cb_params),
+				0, SOCKET_ID_ANY);
+	if (!sft_cb_param) {
+		return rte_flow_error_set
+			(error, ENOMEM,
+			 RTE_FLOW_ERROR_TYPE_ACTION,
+			 NULL,
+			 "cannot allocate sft cb param.");
+	}
+	*sft_cb_param = (struct post_sft_cb_params){
+		.group_id = sft_jump_group,
+			.dev_flow = dev_flow,
+	};
+	wks->cb_param = sft_cb_param;
+	wks->cb = mlx5_post_sft_create_callback;
 	return 0;
 }
 
@@ -10873,7 +11024,7 @@ flow_dv_translate(struct rte_eth_dev *dev,
 						&actions_n, mhdr_res,
 						&jump_group,
 						&modify_action_position,
-						error))
+						dev_flow, wks, error))
 					return -1;
 				sft_zone = UINT32_MAX;
 			}
@@ -11802,6 +11953,39 @@ flow_dv_jump_tbl_resource_release(struct rte_eth_dev *dev,
 	return flow_dv_tbl_resource_release(MLX5_SH(dev), &tbl_data->tbl);
 }
 
+/**
+ * Set thread workspace which SFT group should be released.
+ * This is a release request for the calling thread.
+ *
+ * @param dev
+ *   Pointer to Ethernet device.
+ * @param handle
+ *   Pointer to mlx5_flow_handle.
+ *
+ * @return
+ *   1 while a reference on it exists, 0 when freed.
+ */
+static int
+flow_dv_sft_resource_release(struct rte_eth_dev *dev,
+			     struct mlx5_flow_handle *handle)
+{
+	struct mlx5_priv *priv = dev->data->dev_private;
+	struct mlx5_flow_sft_data_entry *sft_data;
+
+	sft_data = mlx5_ipool_get(priv->sh->ipool[MLX5_IPOOL_SFT],
+				  handle->rix_sft);
+	if (!sft_data)
+		return 0;
+	/*
+	 * Update a request in thread work space with a callback. The
+	 * calling thread in flow_list_destroy() will execute the callback.
+	 */
+	struct mlx5_flow_workspace *wks = mlx5_flow_get_thread_workspace();
+	wks->cb_param = sft_data;
+	wks->cb = mlx5_post_sft_destroy_callback;
+	return 0;
+}
+
 void
 flow_dv_modify_remove_cb(struct mlx5_hlist *list __rte_unused,
 			 struct mlx5_hlist_entry *entry)
@@ -11955,6 +12139,12 @@ flow_dv_fate_resource_release(struct rte_eth_dev *dev,
 	case MLX5_FLOW_FATE_PORT_ID:
 		flow_dv_port_id_action_resource_release(dev,
 				handle->rix_port_id_action);
+		break;
+	case MLX5_FLOW_FATE_SHARED_RSS:
+		flow_dv_shared_rss_action_release(dev, handle->rix_srss);
+		break;
+	case MLX5_FLOW_FATE_SFT:
+		flow_dv_sft_resource_release(dev, handle);
 		break;
 	default:
 		DRV_LOG(DEBUG, "Incorrect fate action:%d", handle->fate_action);
