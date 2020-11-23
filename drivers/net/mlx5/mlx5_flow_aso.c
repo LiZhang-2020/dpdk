@@ -196,7 +196,6 @@ mlx5_aso_destroy_sq(struct mlx5_aso_sq *sq)
 	}
 	if (sq->cq.cq)
 		mlx5_aso_cq_destroy(&sq->cq);
-	mlx5_aso_devx_dereg_mr(&sq->mr);
 	memset(sq, 0, sizeof(*sq));
 }
 
@@ -207,7 +206,7 @@ mlx5_aso_destroy_sq(struct mlx5_aso_sq *sq)
  *   ASO SQ to initialize.
  */
 static void
-mlx5_aso_init_sq(struct mlx5_aso_sq *sq)
+mlx5_aso_age_init_sq(struct mlx5_aso_sq *sq)
 {
 	volatile struct mlx5_aso_wqe *restrict wqe;
 	int i;
@@ -230,6 +229,39 @@ mlx5_aso_init_sq(struct mlx5_aso_sq *sq)
 			 (ASO_OP_ALWAYS_TRUE << ASO_CSEG_COND_0_OPER_OFFSET) |
 			 (BYTEWISE_64BYTE << ASO_CSEG_DATA_MASK_MODE_OFFSET));
 		wqe->aso_cseg.data_mask = RTE_BE64(UINT64_MAX);
+	}
+}
+
+/**
+ * Initialize Send Queue used for ASO flow meter access.
+ *
+ * @param[in] sq
+ *   ASO SQ to initialize.
+ */
+static void
+mlx5_aso_mtr_init_sq(struct mlx5_aso_sq *sq)
+{
+	volatile struct mlx5_aso_wqe *restrict wqe;
+	int i;
+	int size = 1 << sq->log_desc_n;
+	uint32_t idx;
+
+	/* All the next fields state should stay constant. */
+	for (i = 0, wqe = &sq->wqes[0]; i < size; ++i, ++wqe) {
+		wqe->general_cseg.sq_ds = rte_cpu_to_be_32((sq->sqn << 8) |
+							  (sizeof(*wqe) >> 4));
+		wqe->aso_cseg.operand_masks = RTE_BE32(0u |
+			 (ASO_OPER_LOGICAL_OR << ASO_CSEG_COND_OPER_OFFSET) |
+			 (ASO_OP_ALWAYS_TRUE << ASO_CSEG_COND_1_OPER_OFFSET) |
+			 (ASO_OP_ALWAYS_TRUE << ASO_CSEG_COND_0_OPER_OFFSET) |
+			 (BYTEWISE_64BYTE << ASO_CSEG_DATA_MASK_MODE_OFFSET));
+		wqe->general_cseg.flags = RTE_BE32(MLX5_COMP_ALWAYS <<
+							 MLX5_COMP_MODE_OFFSET);
+		for (idx = 0; idx < MLX5_ASO_METERS_PER_WQE;
+			idx++)
+			wqe->aso_dseg.mtrs[idx].v_bo_sc_bbog_mm =
+				RTE_BE32((1 << ASO_DSEG_VALID_OFFSET) |
+				(MLX5_FLOW_COLOR_GREEN << ASO_DSEG_SC_OFFSET));
 	}
 }
 
@@ -267,9 +299,6 @@ mlx5_aso_sq_create(void *ctx, struct mlx5_aso_sq *sq, int socket,
 	uint32_t wq_size = sizeof(struct mlx5_aso_wqe) * sq_desc_n;
 	int ret;
 
-	if (mlx5_aso_devx_reg_mr(ctx, (MLX5_ASO_AGE_ACTIONS_PER_POOL / 8) *
-				 sq_desc_n, &sq->mr, socket, pdn))
-		return -1;
 	if (mlx5_aso_cq_create(ctx, &sq->cq, log_desc_n, socket,
 				mlx5_os_get_devx_uar_page_id(uar), eqn))
 		goto error;
@@ -326,7 +355,6 @@ mlx5_aso_sq_create(void *ctx, struct mlx5_aso_sq *sq, int socket,
 	sq->sqn = sq->sq->id;
 	sq->db_rec = RTE_PTR_ADD(sq->umem_buf, (uintptr_t)(wq_attr->dbr_addr));
 	sq->uar_addr = (volatile uint64_t *)((uint8_t *)uar->base_addr + 0x800);
-	mlx5_aso_init_sq(sq);
 	return 0;
 error:
 	mlx5_aso_destroy_sq(sq);
@@ -343,11 +371,37 @@ error:
  *   0 on success, a negative errno value otherwise and rte_errno is set.
  */
 int
-mlx5_aso_queue_init(struct mlx5_dev_ctx_shared *sh)
+mlx5_aso_queue_init(struct mlx5_dev_ctx_shared *sh,
+			enum mlx5_access_aso_opc_mod aso_opc_mod)
 {
-	return mlx5_aso_sq_create(sh->ctx, &sh->aso_age_mng->aso_sq, 0,
-				  sh->tx_uar, sh->pdn, sh->eqn,
-				  MLX5_ASO_QUEUE_LOG_DESC);
+	uint32_t sq_desc_n = 1 << MLX5_ASO_QUEUE_LOG_DESC;
+
+	switch (aso_opc_mod) {
+	case ASO_OPC_MOD_FLOW_HIT:
+		if (mlx5_aso_devx_reg_mr(sh->ctx,
+			(MLX5_ASO_AGE_ACTIONS_PER_POOL / 8) *
+			sq_desc_n, &sh->aso_age_mng->aso_sq.mr, 0, sh->pdn))
+			return -1;
+		if (mlx5_aso_sq_create(sh->ctx, &sh->aso_age_mng->aso_sq, 0,
+			sh->tx_uar, sh->pdn, sh->eqn,
+			MLX5_ASO_QUEUE_LOG_DESC)) {
+			mlx5_aso_devx_dereg_mr(&sh->aso_age_mng->aso_sq.mr);
+			return -1;
+		}
+		mlx5_aso_age_init_sq(&sh->aso_age_mng->aso_sq);
+		break;
+	case ASO_OPC_MOD_POLICER:
+		if (mlx5_aso_sq_create(sh->ctx,  &sh->mtrmng->sq, 0,
+			sh->tx_uar, sh->pdn, sh->eqn,
+			MLX5_ASO_QUEUE_LOG_DESC))
+			return -1;
+		mlx5_aso_mtr_init_sq(&sh->mtrmng->sq);
+		break;
+	default:
+		DRV_LOG(ERR, "Unknown ASO operation mode");
+		return -1;
+	}
+	return 0;
 }
 
 /**
@@ -357,9 +411,24 @@ mlx5_aso_queue_init(struct mlx5_dev_ctx_shared *sh)
  *   Pointer to shared device context.
  */
 void
-mlx5_aso_queue_uninit(struct mlx5_dev_ctx_shared *sh)
+mlx5_aso_queue_uninit(struct mlx5_dev_ctx_shared *sh,
+				enum mlx5_access_aso_opc_mod aso_opc_mod)
 {
-	mlx5_aso_destroy_sq(&sh->aso_age_mng->aso_sq);
+	struct mlx5_aso_sq *sq;
+
+	switch (aso_opc_mod) {
+	case ASO_OPC_MOD_FLOW_HIT:
+		mlx5_aso_devx_dereg_mr(&sh->aso_age_mng->aso_sq.mr);
+		sq = &sh->aso_age_mng->aso_sq;
+		break;
+	case ASO_OPC_MOD_POLICER:
+		sq = &sh->mtrmng->sq;
+		break;
+	default:
+		DRV_LOG(ERR, "Unknown ASO operation mode");
+		return;
+	}
+	mlx5_aso_destroy_sq(sq);
 }
 
 /**
@@ -634,7 +703,7 @@ mlx5_flow_aso_alarm(void *arg)
  *   0 on success, a negative errno value otherwise and rte_errno is set.
  */
 int
-mlx5_aso_queue_start(struct mlx5_dev_ctx_shared *sh)
+mlx5_aso_flow_hit_queue_poll_start(struct mlx5_dev_ctx_shared *sh)
 {
 	if (rte_eal_alarm_set(US_PER_S, mlx5_flow_aso_alarm, sh)) {
 		DRV_LOG(ERR, "Cannot reinitialize ASO age alarm.");
@@ -653,7 +722,7 @@ mlx5_aso_queue_start(struct mlx5_dev_ctx_shared *sh)
  *   0 on success, a negative errno value otherwise and rte_errno is set.
  */
 int
-mlx5_aso_queue_stop(struct mlx5_dev_ctx_shared *sh)
+mlx5_aso_flow_hit_queue_poll_stop(struct mlx5_dev_ctx_shared *sh)
 {
 	int retries = 1024;
 
