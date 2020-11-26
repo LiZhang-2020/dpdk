@@ -69,6 +69,12 @@ BuildRequires: kernel-devel, kernel-headers
 %endif
 %endif
 
+%if %{with bluefield}
+%global dpdk_libdir lib
+%else
+%global dpdk_libdir %_lib
+%endif
+
 %description
 DPDK core includes kernel modules, core libraries and tools.
 testpmd application allows to test fast packet processing environments
@@ -101,18 +107,18 @@ rm -rf %{buildroot}
 DESTDIR=%{buildroot} %{__ninja} -v -C %{target} install
 
 %files
-%dir /opt/mellanox/dpdk/lib64/dpdk
-%dir /opt/mellanox/dpdk/lib64/dpdk/pmds
+%dir /opt/mellanox/dpdk/%{dpdk_libdir}/dpdk
+%dir /opt/mellanox/dpdk/%{dpdk_libdir}/dpdk/pmds
 /opt/mellanox/dpdk/bin/*
-/opt/mellanox/dpdk/lib64/*.so.*
-/opt/mellanox/dpdk/lib64/dpdk/*/*.so.*
+/opt/mellanox/dpdk/%{dpdk_libdir}/*.so.*
+/opt/mellanox/dpdk/%{dpdk_libdir}/dpdk/*/*.so.*
 
 %files devel
 /opt/mellanox/dpdk/include/dpdk
-/opt/mellanox/dpdk/lib64/*.so
-/opt/mellanox/dpdk/lib64/dpdk/*/*.so
-/opt/mellanox/dpdk/lib64/*.a
-/opt/mellanox/dpdk/lib64/pkgconfig/*.pc
+/opt/mellanox/dpdk/%{dpdk_libdir}/*.so
+/opt/mellanox/dpdk/%{dpdk_libdir}/dpdk/*/*.so
+/opt/mellanox/dpdk/%{dpdk_libdir}/*.a
+/opt/mellanox/dpdk/%{dpdk_libdir}/pkgconfig/*.pc
 
 %post
 /sbin/ldconfig
