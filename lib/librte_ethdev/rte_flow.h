@@ -2248,6 +2248,15 @@ enum rte_flow_action_type {
 	 * struct rte_flow_shared_action).
 	 */
 	RTE_FLOW_ACTION_TYPE_SHARED,
+
+	/**
+	 * Copy tag to the GTP tunnel ID
+	 *
+	 * Copies the tag register with specified index to the GTP tunnel ID.
+	 *
+	 * See struct rte_flow_action_copy_teid.
+	 */
+	RTE_FLOW_ACTION_TYPE_COPY_TEID,
 };
 
 /**
@@ -2840,6 +2849,15 @@ struct rte_flow_action_set_dscp {
  * - destroy action
  */
 struct rte_flow_shared_action;
+
+/**
+ * RTE_FLOW_ACTION_TYPE_COPY_TEID
+ *
+ * Copy the tag register with specified index to the GTP TEID field
+ */
+struct rte_flow_action_copy_teid {
+	uint8_t index;
+};
 
 /* Mbuf dynamic field offset for metadata. */
 extern int32_t rte_flow_dynf_metadata_offs;
