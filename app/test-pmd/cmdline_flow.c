@@ -413,6 +413,8 @@ enum index {
 	ACTION_SAMPLE_INDEX_VALUE,
 	ACTION_SHARED,
 	SHARED_ACTION_ID2PTR,
+	ACTION_COPY_TEID,
+	ACTION_COPY_TEID_INDEX,
 };
 
 /** Maximum size for pattern in struct rte_flow_item_raw. */
@@ -1334,6 +1336,7 @@ static const enum index next_action[] = {
 	ACTION_AGE,
 	ACTION_SAMPLE,
 	ACTION_SHARED,
+	ACTION_COPY_TEID,
 	ZERO,
 };
 
@@ -1580,6 +1583,12 @@ static const enum index next_action_sample[] = {
 	ACTION_COUNT,
 	ACTION_PORT_ID,
 	ACTION_RAW_ENCAP,
+	ACTION_NEXT,
+	ZERO,
+};
+
+static const enum index action_copy_teid[] = {
+	ACTION_COPY_TEID_INDEX,
 	ACTION_NEXT,
 	ZERO,
 };
@@ -4353,6 +4362,22 @@ static const struct token token_list[] = {
 		.name = "action",
 		.help = "specify action to share",
 		.next = NEXT(next_action),
+	},
+	[ACTION_COPY_TEID] = {
+		.name = "copy_teid",
+		.help = "copy teid from tag",
+		.priv = PRIV_ACTION(COPY_TEID,
+			sizeof(struct rte_flow_action_copy_teid)),
+		.next = NEXT(action_copy_teid),
+		.call = parse_vc,
+	},
+	[ACTION_COPY_TEID_INDEX] = {
+		.name = "index",
+		.help = "index of tag array",
+		.next = NEXT(action_copy_teid, NEXT_ENTRY(UNSIGNED)),
+		.args = ARGS(ARGS_ENTRY
+				(struct rte_flow_action_copy_teid, index)),
+		.call = parse_vc_conf,
 	},
 };
 
