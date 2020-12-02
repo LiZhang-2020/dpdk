@@ -218,6 +218,7 @@ enum mlx5_feature_name {
 #define MLX5_FLOW_ACTION_SAMPLE (1ull << 36)
 #define MLX5_FLOW_ACTION_TUNNEL_SET (1ull << 37)
 #define MLX5_FLOW_ACTION_TUNNEL_MATCH (1ull << 38)
+#define MLX5_FLOW_ACTION_COPY_TEID (1ull << 39)
 
 #define MLX5_FLOW_FATE_ACTIONS \
 	(MLX5_FLOW_ACTION_DROP | MLX5_FLOW_ACTION_QUEUE | \
@@ -245,6 +246,7 @@ enum mlx5_feature_name {
 				      MLX5_FLOW_ACTION_DEC_TCP_ACK | \
 				      MLX5_FLOW_ACTION_OF_SET_VLAN_VID | \
 				      MLX5_FLOW_ACTION_SET_TAG | \
+				      MLX5_FLOW_ACTION_COPY_TEID | \
 				      MLX5_FLOW_ACTION_MARK_EXT | \
 				      MLX5_FLOW_ACTION_SET_META | \
 				      MLX5_FLOW_ACTION_SET_IPV4_DSCP | \
