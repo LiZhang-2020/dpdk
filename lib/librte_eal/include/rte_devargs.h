@@ -69,7 +69,7 @@ struct rte_devargs {
 	struct rte_class *cls; /**< class handle. */
 	const char *bus_str; /**< bus-related part of device string. */
 	const char *cls_str; /**< class-related part of device string. */
-	const char *data; /**< Device string storage. */
+	char *data; /**< Device string storage. */
 };
 
 /**
