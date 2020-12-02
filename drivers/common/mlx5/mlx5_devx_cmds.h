@@ -520,5 +520,21 @@ int mlx5_devx_cmd_query_virtio_q_counters(struct mlx5_devx_obj *couners_obj,
 __rte_internal
 struct mlx5_devx_obj *mlx5_devx_cmd_create_flow_hit_aso_obj(void *ctx,
 							    uint32_t pd);
-
+/**
+ * Create general object of type FLOW_METER_ASO using DevX API..
+ *
+ * @param[in] ctx
+ *   Device context.
+ * @param [in] pd
+ *   PD value to associate the FLOW_METER_ASO object with.
+ * @param [in] log_obj_size
+ *   log_obj_size define to allocate number of 2 * meters
+ *   in one FLOW_METER_ASO object.
+ *
+ * @return
+ *   The DevX object created, NULL otherwise and rte_errno is set.
+ */
+__rte_internal
+struct mlx5_devx_obj *mlx5_devx_cmd_create_flow_meter_aso_obj(void *ctx,
+					uint32_t pd, uint32_t log_obj_size);
 #endif /* RTE_PMD_MLX5_DEVX_CMDS_H_ */
