@@ -386,3 +386,24 @@ err_cq:
 	rte_free(qp->sqs);
 	return ret;
 }
+
+void
+mlx5_regex_clean_ctrl(struct rte_regexdev *dev)
+{
+	struct mlx5_regex_priv *priv = dev->data->dev_private;
+	struct mlx5_regex_qp *qp;
+	int qp_ind;
+	int i;
+
+	if (!priv->qps)
+		return;
+	for (qp_ind = 0; qp_ind < priv->nb_queues; qp_ind++) {
+		qp = &priv->qps[qp_ind];
+		mlx5_mr_btree_free(&qp->mr_ctrl.cache_bh);
+		for (i = 0; i < qp->nb_obj; i++)
+			regex_ctrl_destroy_sq(priv, qp, i);
+		regex_ctrl_destroy_cq(priv, &qp->cq);
+		rte_free(qp->sqs);
+		qp->sqs = NULL;
+	}
+}
