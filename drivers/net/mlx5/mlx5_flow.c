@@ -5841,6 +5841,92 @@ mlx5_flow_create_esw_table_zero_flow(struct rte_eth_dev *dev)
 }
 
 /**
+ * Create a dedicated flow rule on post SFT table.
+ *
+ * A flow will have the format:
+ * flow create <port> ingress group <post sft table> \
+ * pattern reg==G / end action jump group index G \ end
+ *
+ * @param dev
+ *   Pointer to Ethernet device.
+ * @param post_sft
+ *   Group where this rule is inserted into.
+ * @param reg
+ *   Register used in pattern matching.
+ * @param jump_group
+ *   New group where to jump into.
+ * @param transfer
+ *   Is eswitch mode
+ *
+ * @return
+ *   A positive flow index on success, 0 otherwise and rte_errno is set.
+ */
+uint32_t
+mlx5_flow_add_post_sft_rule(struct rte_eth_dev *dev, uint32_t post_sft,
+			    int reg, int jump_group, uint8_t transfer,
+			    struct rte_flow_error *error)
+{
+	struct mlx5_priv *priv = dev->data->dev_private;
+
+	const struct rte_flow_attr attr = {
+		.group = post_sft,
+		.priority = 0,
+		.ingress = 1,
+		.egress = 0,
+		.transfer = transfer,
+	};
+	const struct mlx5_rte_flow_item_tag tag_v = {
+		.data = jump_group,
+		.id = reg,
+	};
+	const struct mlx5_rte_flow_item_tag tag_m = {
+		.data = UINT32_MAX,
+	};
+	const struct rte_flow_item pattern[] = {
+		{
+			.type = MLX5_RTE_FLOW_ITEM_TYPE_TAG,
+			.spec = &tag_v,
+			.mask = &tag_m,
+		},
+		{
+			.type = RTE_FLOW_ITEM_TYPE_END,
+		},
+	};
+	struct rte_flow_action_jump jump = {
+		.group = jump_group,
+	};
+	const struct rte_flow_action actions[] = {
+		{
+			.type = RTE_FLOW_ACTION_TYPE_JUMP,
+			.conf = &jump,
+		},
+		{
+			.type = RTE_FLOW_ACTION_TYPE_END,
+		},
+	};
+
+	return flow_list_create(dev, &priv->ctrl_flows, &attr, pattern,
+				actions, false, error);
+}
+
+/**
+ * Remove the post SFT rule per table <G>
+ *
+ * @param dev
+ *   Pointer to Ethernet device.
+ * @param flow_idx
+ *   Flow index to remove.
+ *
+ */
+void
+mlx5_flow_remove_post_sft_rule(struct rte_eth_dev *dev, uint32_t sft_flow_idx)
+{
+	struct mlx5_priv *priv = dev->data->dev_private;
+
+	flow_list_destroy(dev, &priv->ctrl_flows, sft_flow_idx);
+}
+
+/**
  * Validate a flow supported by the NIC.
  *
  * @see rte_flow_validate()

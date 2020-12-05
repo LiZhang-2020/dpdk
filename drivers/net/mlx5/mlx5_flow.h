@@ -1441,6 +1441,11 @@ int mlx5_flow_validate_item_ecpri(const struct rte_flow_item *item,
 int mlx5_flow_validate_item_sft(const struct rte_flow_item *item,
 				uint64_t item_flags,
 				struct rte_flow_error *error);
+uint32_t mlx5_flow_add_post_sft_rule(struct rte_eth_dev *dev,
+				     uint32_t post_sft, int reg,
+				     int jump_group, uint8_t transfer,
+				     struct rte_flow_error *error);
+void mlx5_flow_remove_post_sft_rule(struct rte_eth_dev *dev, uint32_t flow_idx);
 struct mlx5_meter_domains_infos *mlx5_flow_create_mtr_tbls
 					(struct rte_eth_dev *dev,
 					 const struct mlx5_flow_meter *fm);
