@@ -1137,6 +1137,10 @@ struct mlx5_flow_workspace {
 	struct mlx5_flow_rss_desc rss_desc;
 	uint32_t rssq_num; /* Allocated queue num in rss_desc. */
 	uint32_t flow_idx; /* Intermediate device flow index. */
+	/* Post flow callback. */
+	int (*cb)(struct rte_eth_dev *dev, void *param,
+		    struct rte_flow_error *error);
+	void *cb_param; /* Post flow callback parameter. */
 };
 
 struct mlx5_flow_split_info {

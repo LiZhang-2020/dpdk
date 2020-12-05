@@ -5497,6 +5497,8 @@ flow_rss_workspace_adjust(struct mlx5_flow_workspace *wks,
  *   Associated actions (list terminated by the END action).
  * @param[in] external
  *   This flow rule is created by request external to PMD.
+ * @param[in] wks
+ *   Pointer to thread work space.
  * @param[out] error
  *   Perform verbose error reporting if not NULL.
  *
@@ -5504,11 +5506,12 @@ flow_rss_workspace_adjust(struct mlx5_flow_workspace *wks,
  *   A flow index on success, 0 otherwise and rte_errno is set.
  */
 static uint32_t
-flow_list_create(struct rte_eth_dev *dev, uint32_t *list,
-		 const struct rte_flow_attr *attr,
-		 const struct rte_flow_item items[],
-		 const struct rte_flow_action original_actions[],
-		 bool external, struct rte_flow_error *error)
+mlx5_flow_list_create(struct rte_eth_dev *dev, uint32_t *list,
+		      const struct rte_flow_attr *attr,
+		      const struct rte_flow_item items[],
+		      const struct rte_flow_action original_actions[],
+		      bool external, struct mlx5_flow_workspace *wks,
+		      struct rte_flow_error *error)
 {
 	struct mlx5_priv *priv = dev->data->dev_private;
 	struct rte_flow *flow = NULL;
@@ -5544,7 +5547,6 @@ flow_list_create(struct rte_eth_dev *dev, uint32_t *list,
 	struct rte_flow_action *translated_actions = NULL;
 	struct mlx5_flow_tunnel *tunnel;
 	struct tunnel_default_miss_ctx default_miss_ctx = { 0, };
-	struct mlx5_flow_workspace *wks = mlx5_flow_push_thread_workspace();
 	struct mlx5_flow_split_info flow_split_info = {
 		.external = !!external,
 		.skip_scale = 0,
@@ -5713,7 +5715,6 @@ flow_list_create(struct rte_eth_dev *dev, uint32_t *list,
 		__atomic_add_fetch(&tunnel->refctn, 1, __ATOMIC_RELAXED);
 		mlx5_free(default_miss_ctx.queue);
 	}
-	mlx5_flow_pop_thread_workspace();
 	return idx;
 error:
 	MLX5_ASSERT(flow);
@@ -5729,10 +5730,64 @@ error:
 	rte_errno = ret; /* Restore rte_errno. */
 	ret = rte_errno;
 	rte_errno = ret;
-	mlx5_flow_pop_thread_workspace();
 error_before_hairpin_split:
 	mlx5_free(translated_actions);
 	return 0;
+}
+
+/**
+ * Create a flow and add it to @p list.
+ * Call mlx5_flow_list_create with thread workspace.
+ *
+ * @param dev
+ *   Pointer to Ethernet device.
+ * @param list
+ *   Pointer to a TAILQ flow list. If this parameter NULL,
+ *   no list insertion occurred, flow is just created,
+ *   this is caller's responsibility to track the
+ *   created flow.
+ * @param[in] attr
+ *   Flow rule attributes.
+ * @param[in] items
+ *   Pattern specification (list terminated by the END pattern item).
+ * @param[in] actions
+ *   Associated actions (list terminated by the END action).
+ * @param[in] external
+ *   This flow rule is created by request external to PMD.
+ * @param[out] error
+ *   Perform verbose error reporting if not NULL.
+ *
+ * @return
+ *   A flow index on success, 0 otherwise and rte_errno is set.
+ */
+static uint32_t
+flow_list_create(struct rte_eth_dev *dev, uint32_t *list,
+		      const struct rte_flow_attr *attr,
+		      const struct rte_flow_item items[],
+		      const struct rte_flow_action original_actions[],
+		      bool external, struct rte_flow_error *error)
+{
+	uint32_t flow_idx;
+	int ret = 0;
+	struct mlx5_flow_workspace *wks = mlx5_flow_push_thread_workspace();
+	wks->cb = NULL;
+	flow_idx = mlx5_flow_list_create(dev, list, attr, items,
+					 original_actions, external, wks,
+					 error);
+	if (!flow_idx)
+		goto end;
+	if (wks->cb) {
+		ret = wks->cb(dev, wks->cb_param, error);
+		if (ret) {
+			struct mlx5_priv *priv = dev->data->dev_private;
+			flow_list_destroy(dev, &priv->ctrl_flows, flow_idx);
+			flow_idx = 0;
+			goto end;
+		}
+	}
+end:
+	mlx5_flow_pop_thread_workspace();
+	return flow_idx;
 }
 
 /**
@@ -5867,8 +5922,8 @@ mlx5_flow_create(struct rte_eth_dev *dev,
  *   Index of flow to destroy.
  */
 static void
-flow_list_destroy(struct rte_eth_dev *dev, uint32_t *list,
-		  uint32_t flow_idx)
+mlx5_flow_list_destroy(struct rte_eth_dev *dev, uint32_t *list,
+		       uint32_t flow_idx)
 {
 	struct mlx5_priv *priv = dev->data->dev_private;
 	struct rte_flow *flow = mlx5_ipool_get(priv->sh->ipool
@@ -5899,6 +5954,34 @@ flow_list_destroy(struct rte_eth_dev *dev, uint32_t *list,
 	}
 	flow_mreg_del_copy_action(dev, flow);
 	mlx5_ipool_free(priv->sh->ipool[MLX5_IPOOL_RTE_FLOW], flow_idx);
+}
+
+/**
+ * Destroy a flow in a list.
+ * Call mlx5_flow_list_destroy.
+ *
+ * @param dev
+ *   Pointer to Ethernet device.
+ * @param list
+ *   Pointer to the Indexed flow list. If this parameter NULL,
+ *   there is no flow removal from the list. Be noted that as
+ *   flow is add to the indexed list, memory of the indexed
+ *   list points to maybe changed as flow destroyed.
+ * @param[in] flow_idx
+ *   Index of flow to destroy.
+ */
+static void
+flow_list_destroy(struct rte_eth_dev *dev, uint32_t *list,
+		  uint32_t flow_idx)
+{
+	struct rte_flow_error error;
+	struct mlx5_flow_workspace *wks = mlx5_flow_push_thread_workspace();
+
+	wks->cb = NULL;
+	mlx5_flow_list_destroy(dev, list, flow_idx);
+	if (wks->cb)
+		wks->cb(dev, wks->cb_param, &error);
+	mlx5_flow_pop_thread_workspace();
 }
 
 /**
