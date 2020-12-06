@@ -281,6 +281,17 @@ static const struct mlx5_indexed_pool_config mlx5_ipool_cfg[] = {
 		.need_lock = 1,
 		.type = "mlx5_flow_tnl_tbl_ipool",
 	},
+	[MLX5_IPOOL_SFT] = {
+		.size = sizeof(struct mlx5_flow_sft_data_entry),
+		.trunk_size = 64,
+		.grow_trunk = 3,
+		.grow_shift = 2,
+		.need_lock = 1,
+		.release_mem_en = 1,
+		.malloc = mlx5_malloc,
+		.free = mlx5_free,
+		.type = "mlx5_sft_ipool",
+	},
 #endif
 	[MLX5_IPOOL_MTR] = {
 		.size = sizeof(struct mlx5_flow_meter),

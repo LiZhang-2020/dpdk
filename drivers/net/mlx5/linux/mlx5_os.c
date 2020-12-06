@@ -48,7 +48,8 @@
 #include "mlx5_nl.h"
 #include "mlx5_devx.h"
 
-#define MLX5_TAGS_HLIST_ARRAY_SIZE 8192
+#define MLX5_TAGS_HLIST_ARRAY_SIZE	8192
+#define MLX5_FLOW_SFT_HLIST_ARRAY_SIZE	4096
 
 #ifndef HAVE_IBV_MLX5_MOD_MPW
 #define MLX5DV_CONTEXT_FLAGS_MPW_ALLOWED (1 << 2)
@@ -300,6 +301,20 @@ mlx5_alloc_shared_dr(struct mlx5_priv *priv)
 		goto error;
 	}
 	sh->encaps_decaps->ctx = sh;
+	snprintf(s, sizeof(s), "%s_sfts_table", sh->ibdev_name);
+	sh->flow_sfts = mlx5_hlist_create(s,
+					  MLX5_FLOW_SFT_HLIST_ARRAY_SIZE,
+					  0, 0,
+					  flow_dv_sft_create_cb,
+					  flow_dv_sft_match_cb,
+					  flow_dv_sft_remove_cb);
+	if (!sh->flow_sfts) {
+		DRV_LOG(ERR, "sft with hash creation failed.");
+		err = ENOMEM;
+		goto error;
+	}
+	struct rte_eth_dev *dev = &rte_eth_devices[priv->dev_data->port_id];
+	sh->flow_sfts->ctx = dev;
 #endif
 #ifdef HAVE_MLX5DV_DR
 	void *domain;
@@ -392,6 +407,10 @@ error:
 		mlx5_release_tunnel_hub(sh, priv->dev_port);
 		sh->tunnel_hub = NULL;
 	}
+	if (sh->flow_sfts) {
+		mlx5_hlist_destroy(sh->flow_sfts);
+		sh->flow_sfts = NULL;
+	}
 	mlx5_free_table_hash_list(priv);
 	return err;
 }
@@ -453,6 +472,10 @@ mlx5_os_free_shared_dr(struct mlx5_priv *priv)
 	if (sh->tunnel_hub) {
 		mlx5_release_tunnel_hub(sh, priv->dev_port);
 		sh->tunnel_hub = NULL;
+	}
+	if (sh->flow_sfts) {
+		mlx5_hlist_destroy(sh->flow_sfts);
+		sh->flow_sfts = NULL;
 	}
 	mlx5_cache_list_destroy(&sh->port_id_action_list);
 	mlx5_cache_list_destroy(&sh->push_vlan_action_list);

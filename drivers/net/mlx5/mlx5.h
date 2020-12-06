@@ -46,6 +46,7 @@ enum mlx5_ipool_index {
 	MLX5_IPOOL_DEST_ARRAY, /* Pool for destination array resource. */
 	MLX5_IPOOL_TUNNEL_ID, /* Pool for tunnel offload context */
 	MLX5_IPOOL_TNL_TBL_ID, /* Pool for tunnel table ID. */
+	MLX5_IPOOL_SFT, /* Pool for SFT resource. */
 #endif
 	MLX5_IPOOL_MTR, /* Pool for meter resource. */
 	MLX5_IPOOL_MCP, /* Pool for metadata resource. */
@@ -749,6 +750,7 @@ struct mlx5_dev_ctx_shared {
 	/* UAR same-page access control required in 32bit implementations. */
 #endif
 	struct mlx5_hlist *flow_tbls;
+	struct mlx5_hlist *flow_sfts;
 	struct mlx5_flow_tunnel_hub *tunnel_hub;
 	/* Direct Rules tables for FDB, NIC TX+RX */
 	void *esw_drop_action; /* Pointer to DR E-Switch drop action. */

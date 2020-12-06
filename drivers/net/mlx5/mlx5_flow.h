@@ -552,6 +552,14 @@ struct mlx5_flow_tbl_data_entry {
 	uint32_t table_id; /**< Table ID. */
 };
 
+/* SFT data structure of the hash organization. */
+struct mlx5_flow_sft_data_entry {
+	struct mlx5_hlist_entry entry; /**< hash list entry. */
+	uint32_t jump_group; /**< Resource key. */
+	uint32_t sft_flow_idx; /**< SFT flow index. */
+	uint32_t idx; /**< Index in mempool. */
+};
+
 /* Sub rdma-core actions list. */
 struct mlx5_flow_sub_actions_list {
 	uint32_t actions_num; /**< Number of sample actions. */
@@ -1476,6 +1484,15 @@ struct mlx5_flow_tbl_resource *flow_dv_tbl_resource_get(struct rte_eth_dev *dev,
 		uint32_t table_id, uint8_t egress, uint8_t transfer,
 		bool external, const struct mlx5_flow_tunnel *tunnel,
 		uint32_t group_id, uint8_t dummy, struct rte_flow_error *error);
+
+/* Hash list callbacks for flow sfts: */
+struct mlx5_hlist_entry *flow_dv_sft_create_cb(struct mlx5_hlist *list,
+					       uint64_t key, void *entry_ctx);
+int flow_dv_sft_match_cb(struct mlx5_hlist *list,
+			 struct mlx5_hlist_entry *entry, uint64_t key,
+			 void *cb_ctx);
+void flow_dv_sft_remove_cb(struct mlx5_hlist *list,
+			   struct mlx5_hlist_entry *entry);
 
 struct mlx5_hlist_entry *flow_dv_tag_create_cb(struct mlx5_hlist *list,
 					       uint64_t key, void *cb_ctx);

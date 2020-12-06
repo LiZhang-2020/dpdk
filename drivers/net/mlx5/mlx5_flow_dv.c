@@ -8754,6 +8754,68 @@ flow_dv_tbl_remove_cb(struct mlx5_hlist *list,
 	mlx5_ipool_free(sh->ipool[MLX5_IPOOL_JUMP], tbl_data->idx);
 }
 
+struct mlx5_hlist_entry *
+flow_dv_sft_create_cb(struct mlx5_hlist *list, uint64_t key64, void *cb_ctx)
+{
+	struct mlx5_flow_cb_ctx *ctx = cb_ctx;
+	struct rte_eth_dev *dev = ctx->dev;
+	struct mlx5_dev_ctx_shared *sh = MLX5_SH(dev);
+	struct mlx5_flow_sft_data_entry *sft_data;
+	struct rte_flow_error *error = cb_ctx;
+	uint32_t idx = 0;
+	RTE_SET_USED(list);
+
+	sft_data = mlx5_ipool_zmalloc(sh->ipool[MLX5_IPOOL_SFT], &idx);
+	if (!sft_data) {
+		rte_flow_error_set(error, ENOMEM,
+				   RTE_FLOW_ERROR_TYPE_UNSPECIFIED,
+				   NULL,
+				   "failed to allocate flow sft data entry");
+		return NULL;
+	}
+	sft_data->idx = idx;
+	sft_data->jump_group = key64;
+	/* Create an SFT flow */
+	sft_data->sft_flow_idx =
+		mlx5_flow_add_post_sft_rule(dev,
+					    MLX5_FLOW_TABLE_LEVEL_POST_SFT,
+					    REG_C_4, sft_data->jump_group,
+					    0, error);
+	if (!sft_data->sft_flow_idx)
+		goto error;
+	return &sft_data->entry;
+error:
+	if (sft_data)
+		mlx5_ipool_free(sh->ipool[MLX5_IPOOL_SFT], idx);
+	return NULL;
+}
+
+int
+flow_dv_sft_match_cb(struct mlx5_hlist *list __rte_unused,
+		     struct mlx5_hlist_entry *entry, uint64_t key,
+		     void *cb_ctx __rte_unused)
+{
+	struct mlx5_flow_sft_data_entry *sft_data =
+		container_of(entry, struct mlx5_flow_sft_data_entry, entry);
+
+	return key != sft_data->jump_group;
+}
+
+void
+flow_dv_sft_remove_cb(struct mlx5_hlist *list,
+		      struct mlx5_hlist_entry *entry)
+{
+	struct rte_eth_dev *dev = list->ctx;
+	struct mlx5_dev_ctx_shared *sh = MLX5_SH(dev);
+	struct mlx5_flow_sft_data_entry *sft_data =
+		container_of(entry, struct mlx5_flow_sft_data_entry, entry);
+
+	MLX5_ASSERT(entry && sh);
+	if (sft_data->jump_group)
+		mlx5_flow_remove_post_sft_rule(dev, sft_data->sft_flow_idx);
+	mlx5_ipool_free(sh->ipool[MLX5_IPOOL_SFT], sft_data->idx);
+}
+
 /**
  * Release a flow table.
  *
