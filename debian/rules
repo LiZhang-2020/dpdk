@@ -82,6 +82,9 @@ ifneq (,$(filter dpdk_config_options=%,$(DEB_BUILD_OPTIONS)))
     DPDK_CONFIG_OPTIONS ?= $(subst $(comma),$(space),$(patsubst dpdk_config_options=%,%,$(filter dpdk_config_options=%,$(DEB_BUILD_OPTIONS))))
 endif
 
+# Change default max ethports to 256
+DPDK_CONFIG_OPTIONS += -Dmax_ethports=256
+
 ifneq (,$(findstring bluefield,$(DEB_BUILD_OPTIONS)))
     DPDK_CONFIG_OPTIONS += --cross-file=../config/arm/arm64_bluefield_linux_native_gcc
 endif

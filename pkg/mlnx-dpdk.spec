@@ -91,7 +91,7 @@ MASON_PARAMS=%{?mason_params}
 MASON_PARAMS="$MASON_PARAMS --cross-file config/arm/arm64_bluefield_linux_native_gcc"
 %endif
 
-CFLAGS="$CFLAGS -fcommon -Werror" meson %{target} -Dprefix=/opt/mellanox/dpdk --includedir=include/dpdk -Ddisable_drivers=vdpa/ifc,net/txgbe,event/octeontx2,mempool/octeontx2,net/mlx4 -Dtests=false -Ddrivers_install_subdir=dpdk/pmds --default-library=shared $MASON_PARAMS
+CFLAGS="$CFLAGS -fcommon -Werror" meson %{target} -Dprefix=/opt/mellanox/dpdk --includedir=include/dpdk -Dmax_ethports=256 -Ddisable_drivers=vdpa/ifc,net/txgbe,event/octeontx2,mempool/octeontx2,net/mlx4 -Dtests=false -Ddrivers_install_subdir=dpdk/pmds --default-library=shared $MASON_PARAMS
 
 %build
 %{__ninja} -v -C %{target}

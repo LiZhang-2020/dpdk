@@ -22,7 +22,7 @@ option('lib_musdk_dir', type: 'string', value: '',
 	description: 'path to the MUSDK library installation directory')
 option('machine', type: 'string', value: 'native',
 	description: 'set the target machine type')
-option('max_ethports', type: 'integer', value: 256,
+option('max_ethports', type: 'integer', value: 32,
 	description: 'maximum number of Ethernet devices')
 option('max_ethctrls', type: 'integer', value: 4,
 	description: 'maximum number of Ethernet controllers')
