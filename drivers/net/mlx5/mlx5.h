@@ -996,8 +996,6 @@ struct mlx5_priv {
 	/* Whether meter_id in first REG_C(color REG_C). */
 	unsigned int mtr_flow_id_reg_in_first:1;
 	/* Whether meter flow_id in first REG_C(color REG_C). */
-	unsigned int mtr_flow_id_offset:5;
-	/* The bit offset of meter flow id in REG_C. */
 	uint16_t domain_id; /* Switch domain identifier. */
 	uint16_t vport_id; /* Associated VF vport index (if any). */
 	uint32_t vport_meta_tag; /* Used for vport index match ove VF LAG. */

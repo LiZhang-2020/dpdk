@@ -1397,24 +1397,14 @@ err_secondary:
 		if (mtr_reg_share) {
 			/* The meter_id is in first reg. */
 			priv->mtr_id_reg_in_first = 1;
-			if ((config->log_max_mtr_num +
-			     config->log_max_flow_per_mtr) <=
-			    MLX5_MTR_IDLE_BITS_IN_COLOR_REG) {
-				/* The flow_id also shares first reg. */
-				priv->mtr_flow_id_reg_in_first = 1;
-				priv->mtr_flow_id_offset =
-					config->log_max_mtr_num +
-					MLX5_MTR_COLOR_BITS;
-			} else {
-				/* The meter flow_id is in second register. */
-				priv->mtr_flow_id_reg_in_first = 0;
-				priv->mtr_flow_id_offset = 0;
-			}
+			priv->mtr_flow_id_reg_in_first =
+				((config->log_max_mtr_num +
+				  config->log_max_flow_per_mtr) <=
+				 MLX5_MTR_IDLE_BITS_IN_COLOR_REG) ? 1 : 0;
 		} else {
 			/* Both meter_id and flow_id are in second register. */
 			priv->mtr_id_reg_in_first = 0;
 			priv->mtr_flow_id_reg_in_first = 0;
-			priv->mtr_flow_id_offset = config->log_max_mtr_num;
 		}
 	}
 	if (config->tx_pp) {
