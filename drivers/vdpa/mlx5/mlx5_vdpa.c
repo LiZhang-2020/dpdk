@@ -295,6 +295,7 @@ mlx5_vdpa_dev_close(int vid)
 	}
 	priv->configured = 0;
 	priv->vid = 0;
+	pthread_mutex_init(&priv->vq_config_lock, NULL);
 	DRV_LOG(INFO, "vDPA device %d was closed.", vid);
 	return ret;
 }
