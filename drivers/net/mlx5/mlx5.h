@@ -627,7 +627,8 @@ struct mlx5_flow_tbl_resource {
 #define MLX5_FLOW_TABLE_LEVEL_METER (MLX5_MAX_TABLES - 4)
 /* SFT tables */
 #define MLX5_FLOW_TABLE_LEVEL_SFT (MLX5_MAX_TABLES - 5)
-#define MLX5_FLOW_TABLE_LEVEL_POST_SFT (MLX5_MAX_TABLES - 6)
+#define MLX5_FLOW_TABLE_LEVEL_ITMD_SFT (MLX5_MAX_TABLES - 6)
+#define MLX5_FLOW_TABLE_LEVEL_POST_SFT (MLX5_MAX_TABLES - 7)
 #define MLX5_MAX_TABLES_EXTERNAL MLX5_FLOW_TABLE_LEVEL_POST_SFT
 #define MLX5_MAX_TABLES_FDB UINT16_MAX
 #define MLX5_FLOW_TABLE_FACTOR 10
@@ -741,6 +742,7 @@ struct mlx5_dev_ctx_shared {
 	uint32_t dv_meta_mask; /* flow META metadata supported mask. */
 	uint32_t dv_mark_mask; /* flow MARK metadata supported mask. */
 	uint32_t dv_regc0_mask; /* available bits of metatada reg_c[0]. */
+	uint16_t nb_sft_queue;
 	void *fdb_domain; /* FDB Direct Rules name space handle. */
 	void *rx_domain; /* RX Direct Rules name space handle. */
 	void *tx_domain; /* TX Direct Rules name space handle. */
@@ -767,6 +769,7 @@ struct mlx5_dev_ctx_shared {
 	struct mlx5_flow_counter_mng cmng; /* Counters management structure. */
 	void *default_miss_action; /* Default miss action. */
 	struct mlx5_indexed_pool *ipool[MLX5_IPOOL_MAX];
+	struct mlx5_indexed_pool **ipool_sft;
 	/* Memory Pool for mlx5 flow resources. */
 	struct mlx5_l3t_tbl *cnt_id_tbl; /* Shared counter lookup table. */
 	/* Shared interrupt handler section. */
@@ -968,6 +971,7 @@ struct mlx5_priv {
 	unsigned int mtr_en:1; /* Whether support meter. */
 	unsigned int mtr_reg_share:1; /* Whether support meter REG_C share. */
 	unsigned int sampler_en:1; /* Whether support sampler. */
+	unsigned int sft_en:1; /* Whether support SFT. */
 	uint16_t domain_id; /* Switch domain identifier. */
 	uint16_t vport_id; /* Associated VF vport index (if any). */
 	uint32_t vport_meta_tag; /* Used for vport index match ove VF LAG. */
@@ -1026,6 +1030,7 @@ struct mlx5_priv {
 	LIST_HEAD(fdir, mlx5_fdir_flow) fdir_flows; /* fdir flows. */
 	rte_spinlock_t shared_act_sl; /* Shared actions spinlock. */
 	uint32_t rss_shared_actions; /* RSS shared actions. */
+	uint32_t *sft_lists;
 };
 
 #define PORT_ID(priv) ((priv)->dev_data->port_id)
