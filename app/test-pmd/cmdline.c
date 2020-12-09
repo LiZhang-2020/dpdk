@@ -8413,6 +8413,49 @@ cmdline_parse_inst_t cmd_set_xstats_hide_zero = {
 	},
 };
 
+/* *** SET SFT ON|OFF *** */
+struct cmd_set_sft_result {
+	cmdline_fixed_string_t keyword;
+	cmdline_fixed_string_t name;
+	cmdline_fixed_string_t on_off;
+};
+
+static void
+cmd_set_sft_parsed(void *parsed_result,
+			__rte_unused struct cmdline *cl,
+			__rte_unused void *data)
+{
+	struct cmd_set_sft_result *res;
+	uint16_t on_off = 0;
+
+	res = parsed_result;
+	on_off = !strcmp(res->on_off, "on") ? 1 : 0;
+	set_sft(on_off);
+}
+
+cmdline_parse_token_string_t cmd_set_sft_keyword =
+	TOKEN_STRING_INITIALIZER(struct cmd_set_sft_result,
+				 keyword, "set");
+cmdline_parse_token_string_t cmd_set_sft_name =
+	TOKEN_STRING_INITIALIZER(struct cmd_set_sft_result,
+				 name, "sft");
+cmdline_parse_token_string_t cmd_set_sft_on_off =
+	TOKEN_STRING_INITIALIZER(struct cmd_set_sft_result,
+				 on_off, "on#off");
+
+cmdline_parse_inst_t cmd_set_sft = {
+	.f = cmd_set_sft_parsed,
+	.data = NULL,
+	.help_str = "set sft on|off",
+	.tokens = {
+		(void *)&cmd_set_sft_keyword,
+		(void *)&cmd_set_sft_name,
+		(void *)&cmd_set_sft_on_off,
+		NULL,
+	},
+};
+
+
 /* *** SET OPTION TO ENABLE MEASUREMENT OF CPU CYCLES *** */
 struct cmd_set_record_core_cycles_result {
 	cmdline_fixed_string_t keyword;
@@ -16910,6 +16953,7 @@ cmdline_parse_ctx_t main_ctx[] = {
 	(cmdline_parse_inst_t *)&cmd_set_fwd_eth_peer,
 	(cmdline_parse_inst_t *)&cmd_set_qmap,
 	(cmdline_parse_inst_t *)&cmd_set_xstats_hide_zero,
+	(cmdline_parse_inst_t *)&cmd_set_sft,
 	(cmdline_parse_inst_t *)&cmd_set_record_core_cycles,
 	(cmdline_parse_inst_t *)&cmd_set_record_burst_stats,
 	(cmdline_parse_inst_t *)&cmd_operate_port,

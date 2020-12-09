@@ -345,6 +345,8 @@ extern struct queue_stats_mappings *rx_queue_stats_mappings;
 extern uint16_t nb_tx_queue_stats_mappings;
 extern uint16_t nb_rx_queue_stats_mappings;
 
+extern uint8_t sft;
+
 extern uint8_t xstats_hide_zero; /**< Hide zero values for xstats display */
 
 /* globals used for configuration */
@@ -886,6 +888,10 @@ void tx_vlan_reset(portid_t port_id);
 void tx_vlan_pvid_set(portid_t port_id, uint16_t vlan_id, int on);
 
 void set_qmap(portid_t port_id, uint8_t is_rx, uint16_t queue_id, uint8_t map_value);
+
+void init_sft(void);
+
+void set_sft(uint8_t on_off);
 
 void set_xstats_hide_zero(uint8_t on_off);
 
