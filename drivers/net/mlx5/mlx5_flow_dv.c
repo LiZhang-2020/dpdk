@@ -8468,44 +8468,10 @@ flow_dv_translate_item_ecpri(struct rte_eth_dev *dev, void *matcher,
 	}
 }
 
-/**
- * Add SFT item to matcher. SFT items are first converted to
- * corresponding registers then translated as TAG items.
- *
- * @param[in] dev
- *   The devich to configure through.
- * @param match_mask
- *   pointer to match mask buffer.
- * @param match_value
- *   pointer to match value buffer.
- * @param[in] item
- *   Flow pattern to translate.
- */
 static void
-flow_dv_translate_item_sft(struct rte_eth_dev *dev, void *match_mask,
-			   void *match_value, const struct rte_flow_item *item)
+sft_translate_item(struct rte_eth_dev *dev, int reg, uint32_t data,
+		   void *match_mask, void *match_value)
 {
-	uint32_t data;
-	int reg;
-
-	const struct rte_flow_item_sft *sft_m = item->mask;
-	const struct rte_flow_item_sft *sft_v = item->spec;
-
-	if (!sft_v || !sft_m) /* TODO: Should add defalut sft mask? */
-		return;
-	if (sft_m->fid_valid) {
-		reg = REG_C_1; /* TODO: mlx5_sft_get_fid_reg(); */
-		data = (sft_v->fid & sft_m->fid);
-	} else if (sft_m->zone_valid) {
-		reg = REG_C_1; /* TODO: mlx5_sft_get_zone_reg(); */
-		data = (sft_v->zone & sft_m->zone);
-	} else if (sft_m->state) {
-		reg = REG_C_1; /* TODO: mlx5_sft_get_state_reg(); */
-		data = sft_v->state;
-	} else if (sft_m->user_data) {
-		reg = REG_C_1; /* TODO: mlx5_sft_get_user_data_reg(); */
-		data = *(uint32_t *)sft_v->user_data;
-	}
 	const struct mlx5_rte_flow_item_tag tag_v = {
 		.id = reg,
 		.data = data,
@@ -8520,6 +8486,102 @@ flow_dv_translate_item_sft(struct rte_eth_dev *dev, void *match_mask,
 	};
 	flow_dv_translate_mlx5_item_tag(dev, match_mask, match_value,
 					&tag_item);
+}
+
+/**
+ * Add SFT item to matcher. SFT items are first converted to
+ * corresponding registers then translated as TAG items.
+ *
+ * @param[in] dev
+ *   The devich to configure through.
+ * @param match_mask
+ *   pointer to match mask buffer.
+ * @param match_value
+ *   pointer to match value buffer.
+ * @param[in] item
+ *   Flow pattern to translate.
+ */
+static int
+flow_dv_translate_item_sft(struct rte_eth_dev *dev, void *match_mask,
+			   void *match_value, const struct rte_flow_item *item,
+			   struct rte_flow_error *error)
+{
+	uint32_t data;
+	int reg;
+	union sft_mark mark = { .val = 0 };
+	union sft_mark mask = { .val = 0 };
+	const struct rte_flow_item_sft *sft_m = item->mask;
+	const struct rte_flow_item_sft *sft_v = item->spec;
+
+	DRV_LOG(DEBUG, "Value: fid=%u zone=%u f_valid=%u z_valid=%u reserved=%u state=%u user_data_size=%u user_data=%p",
+	sft_v->fid, sft_v->zone, sft_v->fid_valid, sft_v->zone_valid,
+	sft_v->reserved, sft_v->state, sft_v->user_data_size,
+	(void *)sft_v->user_data);
+	DRV_LOG(DEBUG, "Mask: fid=%u zone=%u f_valid=%u z_valid=%u reserved=%u state=%u user_data_size=%u user_data=%p",
+	sft_m->fid, sft_m->zone, sft_m->fid_valid, sft_m->zone_valid,
+	sft_m->reserved, sft_m->state, sft_m->user_data_size,
+	(void *)sft_m->user_data);
+
+	if (!(sft_v->fid_valid ^ sft_v->zone_valid)) {
+		return rte_flow_error_set(error, EINVAL,
+				   RTE_FLOW_ERROR_TYPE_UNSPECIFIED,
+				   NULL, "invalid fid/zone");
+	} else if (sft_v->fid_valid) {
+		reg = mlx5_flow_get_reg_id(dev, MLX5_SFT_FID, 0, error);
+		if (reg < 0)
+			return rte_flow_error_set(error, EINVAL,
+				   RTE_FLOW_ERROR_TYPE_UNSPECIFIED,
+				   NULL, "cannot get register for sft fid");
+		mark.fid_valid = 1;
+		mask.fid_valid = 1;
+		data = sft_v->fid & sft_m->fid;
+	} else {
+		reg = mlx5_flow_get_reg_id(dev, MLX5_SFT_ZONE, 0, error);
+		if (reg < 0)
+			return rte_flow_error_set(error, EINVAL,
+				   RTE_FLOW_ERROR_TYPE_UNSPECIFIED,
+				   NULL, "cannot get register for sft zone");
+		mark.zone_valid = 1;
+		mask.zone_valid = 1;
+		data = sft_v->zone & sft_m->zone;
+	}
+	if (sft_m->user_data) {
+		reg = mlx5_flow_get_reg_id(dev, MLX5_SFT_APP_DATA, 0, error);
+		data = *(uint32_t *)sft_v->user_data;
+		sft_translate_item(dev, reg, data, match_mask, match_value);
+	}
+	if (sft_m->state) {
+		/* By default, the application state will be zero if not set. */
+		mark.app_state = sft_v->state & sft_m->state;
+		mask.app_state = sft_m->state;
+	}
+	if (mark.val) {
+		/*
+		 * The RTE_FLOW_ITEM_TYPE_MARK can be used for matching only
+		 * when XMETA feature is enabled and not with legacy mode.
+		 * In NIC Rx domain and legacy mode, MARK in CQE and REG_C_1
+		 * will be set with the same value. MARK is used for decoding
+		 * and checking application state, while REG_C_1 will be used
+		 * for matching.
+		 */
+		const struct mlx5_rte_flow_item_tag tag_v = {
+			.id = REG_C_1,
+			.data = mark.val,
+		};
+		const struct mlx5_rte_flow_item_tag tag_m = {
+			.data = mask.val,
+		};
+                const struct rte_flow_item tag_item = {
+                        .type = (enum rte_flow_item_type)
+				MLX5_RTE_FLOW_ITEM_TYPE_TAG,
+                        .spec = &tag_v,
+                        .mask = &tag_m,
+                        .last = NULL,
+                };
+		flow_dv_translate_mlx5_item_tag(dev, match_mask,
+						match_value, &tag_item);
+	}
+	return 0;
 }
 
 static uint32_t matcher_zero[MLX5_ST_SZ_DW(fte_match_param)] = { 0 };
@@ -8763,8 +8825,14 @@ flow_dv_sft_create_cb(struct mlx5_hlist *list, uint64_t key64, void *cb_ctx)
 	struct mlx5_flow_sft_data_entry *sft_data;
 	struct rte_flow_error *error = cb_ctx;
 	uint32_t idx = 0;
+	int reg = mlx5_flow_get_reg_id(dev, MLX5_SFT_JUMP_GROUP, 0, error);
 	RTE_SET_USED(list);
 
+	if (reg < 0)
+		rte_flow_error_set(error, ENOMEM,
+				   RTE_FLOW_ERROR_TYPE_UNSPECIFIED,
+				   NULL,
+				   "failed to select register for sft jump");
 	sft_data = mlx5_ipool_zmalloc(sh->ipool[MLX5_IPOOL_SFT], &idx);
 	if (!sft_data) {
 		rte_flow_error_set(error, ENOMEM,
@@ -8779,7 +8847,7 @@ flow_dv_sft_create_cb(struct mlx5_hlist *list, uint64_t key64, void *cb_ctx)
 	sft_data->sft_flow_idx =
 		mlx5_flow_add_post_sft_rule(dev,
 					    MLX5_FLOW_TABLE_LEVEL_POST_SFT,
-					    REG_C_4, sft_data->jump_group,
+					    reg, sft_data->jump_group,
 					    0, error);
 	if (!sft_data->sft_flow_idx)
 		goto error;
@@ -10478,10 +10546,11 @@ flow_dv_translate_create_aso_age(struct rte_eth_dev *dev,
  *   0 on success, a negative errno value otherwise and rte_errno is set.
  */
 static int
-flow_dv_sft_action_set_reg(uint32_t data, int reg,
+flow_dv_sft_action_set_reg(struct rte_eth_dev *dev, uint32_t data, enum mlx5_feature_name sft_feature,
 			   struct mlx5_flow_dv_modify_hdr_resource *resource,
 			   struct rte_flow_error *error)
 {
+	int reg = mlx5_flow_get_reg_id(dev, sft_feature, 0, error);
 	const struct mlx5_rte_flow_action_set_tag set_action = {
 		.id = reg,
 		.data = data,
@@ -10489,8 +10558,30 @@ flow_dv_sft_action_set_reg(uint32_t data, int reg,
 	const struct rte_flow_action action = {
 		.conf = &set_action,
 	};
-	return flow_dv_convert_action_set_reg(resource, &action, error);
+
+	return reg < 0 ? reg : 
+	       flow_dv_convert_action_set_reg(resource, &action, error);
 }
+
+static void *
+flow_dv_translate_action_mlx5_mark(struct rte_eth_dev *dev,
+				   struct mlx5_flow *dev_flow,
+				   const struct rte_flow_action *action,
+				   struct rte_flow_error *error)
+{
+	/* Legacy (non-extensive) MARK action. */
+	uint32_t tag_be = mlx5_flow_mark_set
+					(((const struct rte_flow_action_mark *)
+					(action->conf))->id);
+
+	MLX5_ASSERT(!dev_flow->handle->dvh.rix_tag);
+	if (flow_dv_tag_resource_register(dev, tag_be, dev_flow, error))
+		return NULL;
+	MLX5_ASSERT(dev_flow->dv.tag_resource);
+
+	return dev_flow->dv.tag_resource->action;
+}
+
 
 /**
  * Convert SFT action to DV specification.
@@ -10510,55 +10601,60 @@ flow_dv_sft_action_set_reg(uint32_t data, int reg,
  *
  * @return
  *   0 on success, a negative errno value otherwise and rte_errno is set.
+ *
+ * Handle SFT special case. Given application flow:
+ * flow create <port> ingress <pattern> / end actions \
+ * sft zone Z / jump group index G / end
+ * Induce two flows:
+ * flow create <port> ingress <pattern> / end actions \
+ * set reg x=Z / set reg y=G / jump to sft_table / end
+ * If not already created:
+ * flow create <port> ingress group post_sft_table \
+ * pattern reg y==G / end action jump group index G \  end
  */
 static int
-flow_dv_convert_action_sft(uint32_t sft_zone,
-			   int *actions_n,
+flow_dv_convert_action_sft(struct rte_eth_dev *dev,
+			   const struct rte_flow_action *action,
 			   struct mlx5_flow_dv_modify_hdr_resource *mhdr_res,
-			   uint32_t *jump_group,
-			   uint32_t *modify_action_position,
 			   struct mlx5_flow *dev_flow,
 			   struct mlx5_flow_workspace *wks,
 			   struct rte_flow_error *error)
 {
 	int ret;
-	uint32_t sft_jump_group = 0;
+	uint32_t sft_zone, jump_group;
 	struct post_sft_cb_params *sft_cb_param;
 
 	/* Add sft_zone reg action */
-	ret = flow_dv_sft_action_set_reg(sft_zone,
-			REG_C_4, mhdr_res, error);
+	sft_zone = ((const struct rte_flow_action_sft *)action->conf)->zone;
+	/* metadata values in RX mbuf are in Little Endian format */
+	sft_zone = rte_cpu_to_be_32(sft_zone);
+	ret = flow_dv_sft_action_set_reg(dev, sft_zone,
+			MLX5_SFT_ZONE, mhdr_res, error);
 	if (ret)
 		return ret;
 	/* Add jump_group reg action */
-	ret = flow_dv_sft_action_set_reg(*jump_group,
-			REG_C_5, mhdr_res, error);
+	while (action->type != RTE_FLOW_ACTION_TYPE_JUMP)
+		action++;
+	jump_group = ((const struct rte_flow_action_jump *)action->conf)->group;
+	ret = flow_dv_sft_action_set_reg(dev, jump_group,
+			MLX5_SFT_JUMP_GROUP, mhdr_res, error);
 	if (ret)
 		return ret;
-	if (mhdr_res->actions_num &&
-			*modify_action_position == UINT32_MAX)
-		*modify_action_position = (*actions_n)++;
-	sft_jump_group = *jump_group;
-	*jump_group = MLX5_FLOW_TABLE_LEVEL_SFT;
-
 	/* Set thread workspace with callback parameters */
 	sft_cb_param =
 		mlx5_malloc(MLX5_MEM_ZERO,
 				sizeof(struct post_sft_cb_params),
 				0, SOCKET_ID_ANY);
-	if (!sft_cb_param) {
-		return rte_flow_error_set
-			(error, ENOMEM,
-			 RTE_FLOW_ERROR_TYPE_ACTION,
-			 NULL,
-			 "cannot allocate sft cb param.");
-	}
+	if (!sft_cb_param)
+		return rte_flow_error_set (error, ENOMEM, RTE_FLOW_ERROR_TYPE_ACTION,
+			 NULL, "cannot allocate sft cb param");
 	*sft_cb_param = (struct post_sft_cb_params){
-		.group_id = sft_jump_group,
-			.dev_flow = dev_flow,
+		.group_id = jump_group,
+		.dev_flow = dev_flow,
 	};
 	wks->cb_param = sft_cb_param;
 	wks->cb = mlx5_post_sft_create_callback;
+
 	return 0;
 }
 
@@ -10633,7 +10729,6 @@ flow_dv_translate(struct rte_eth_dev *dev,
 	uint32_t sample_act_pos = UINT32_MAX;
 	uint32_t num_of_dest = 0;
 	int tmp_actions_n = 0;
-	uint32_t sft_zone = UINT32_MAX;
 	uint32_t table;
 	int ret = 0;
 	const struct mlx5_flow_tunnel *tunnel;
@@ -10795,16 +10890,13 @@ flow_dv_translate(struct rte_eth_dev *dev,
 			/* Fall-through */
 		case MLX5_RTE_FLOW_ACTION_TYPE_MARK:
 			/* Legacy (non-extensive) MARK action. */
-			tag_be = mlx5_flow_mark_set
-			      (((const struct rte_flow_action_mark *)
-			       (actions->conf))->id);
-			MLX5_ASSERT(!handle->dvh.rix_tag);
-			if (flow_dv_tag_resource_register(dev, tag_be,
-							  dev_flow, error))
-				return -rte_errno;
-			MLX5_ASSERT(dev_flow->dv.tag_resource);
-			dev_flow->dv.actions[actions_n++] =
-					dev_flow->dv.tag_resource->action;
+			dev_flow->dv.actions[actions_n] = 
+				flow_dv_translate_action_mlx5_mark(dev, dev_flow,
+								   actions, error);
+			if (dev_flow->dv.actions[actions_n])
+				++actions_n;
+			else
+				return rte_errno;
 			break;
 		case RTE_FLOW_ACTION_TYPE_SET_META:
 			if (flow_dv_convert_action_set_meta
@@ -11005,29 +11097,10 @@ flow_dv_translate(struct rte_eth_dev *dev,
 			action_flags |= MLX5_FLOW_ACTION_DECAP;
 			break;
 		case RTE_FLOW_ACTION_TYPE_JUMP:
-			/**
-			 * Handle SFT special case. Given application flow:
-			 * flow create <port> ingress <pattern> / end actions \
-			 * sft zone Z / jump group index G / end
-			 * Induce two flows:
-			 * flow create <port> ingress <pattern> / end actions \
-			 * set reg x=Z / set reg y=G / jump to sft_table / end
-			 * If not already created:
-			 * flow create <port> ingress group post_sft_table \
-			 * pattern reg y==G / end action jump group index G \
-			 * end
-			 */
 			jump_group = ((const struct rte_flow_action_jump *)
 							action->conf)->group;
-			if (sft_zone != UINT32_MAX) {
-				if (flow_dv_convert_action_sft(sft_zone,
-						&actions_n, mhdr_res,
-						&jump_group,
-						&modify_action_position,
-						dev_flow, wks, error))
-					return -1;
-				sft_zone = UINT32_MAX;
-			}
+			if (action_flags & MLX5_FLOW_ACTION_SFT)
+				jump_group = MLX5_FLOW_TABLE_LEVEL_SFT;
 			grp_info.std_tbl_fix = 0;
 			if (dev_flow->skip_scale &
 				(1 << MLX5_SCALE_JUMP_FLOW_GROUP_BIT))
@@ -11227,9 +11300,11 @@ flow_dv_translate(struct rte_eth_dev *dev,
 			break;
 		case RTE_FLOW_ACTION_TYPE_SFT:
 			/* Save zone. Use it in next JUMP action. */
-			sft_zone = ((const struct rte_flow_action_sft *)
-				action->conf)->zone;
-			action_flags |= MLX5_FLOW_ACTION_SFT;
+			ret = flow_dv_convert_action_sft(dev, actions, mhdr_res,
+							 dev_flow, wks, error);
+			if (ret)
+				return ret;
+			action_flags |= MLX5_FLOW_ACTION_SET_TAG | MLX5_FLOW_ACTION_SFT;
 			break;
 		case RTE_FLOW_ACTION_TYPE_END:
 			actions_end = true;
@@ -11499,8 +11574,11 @@ flow_dv_translate(struct rte_eth_dev *dev,
 			last_item = MLX5_FLOW_LAYER_ECPRI;
 			break;
 		case RTE_FLOW_ITEM_TYPE_SFT:
-			flow_dv_translate_item_sft(dev, match_mask,
-						   match_value, items);
+			ret = flow_dv_translate_item_sft(dev, match_mask,
+							 match_value, items,
+							 error);
+			if (ret)
+				return -rte_errno;
 			last_item = MLX5_FLOW_LAYER_SFT;
 			break;
 		default:

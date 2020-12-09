@@ -751,6 +751,7 @@ struct mlx5_dev_ctx_shared {
 #endif
 	struct mlx5_hlist *flow_tbls;
 	struct mlx5_hlist *flow_sfts;
+	struct mlx5_hlist *sft_zones_hash;
 	struct mlx5_flow_tunnel_hub *tunnel_hub;
 	/* Direct Rules tables for FDB, NIC TX+RX */
 	void *esw_drop_action; /* Pointer to DR E-Switch drop action. */

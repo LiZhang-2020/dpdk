@@ -734,6 +734,8 @@ mlx5_flow_get_reg_id(struct rte_eth_dev *dev,
 		return REG_B;
 	case MLX5_HAIRPIN_TX:
 		return REG_A;
+	case MLX5_SFT_FID:
+	case MLX5_SFT_ZONE:
 	case MLX5_METADATA_RX:
 		switch (config->dv_xmeta_en) {
 		case MLX5_XMETA_MODE_LEGACY:
@@ -756,6 +758,7 @@ mlx5_flow_get_reg_id(struct rte_eth_dev *dev,
 			return REG_C_1;
 		}
 		break;
+	case MLX5_SFT_APP_STATE:
 	case MLX5_FLOW_MARK:
 		switch (config->dv_xmeta_en) {
 		case MLX5_XMETA_MODE_LEGACY:
@@ -826,6 +829,10 @@ mlx5_flow_get_reg_id(struct rte_eth_dev *dev,
 						  NULL, "unsupported tag id");
 		}
 		return config->flow_mreg_c[id + start_reg - REG_C_0];
+	case MLX5_SFT_APP_DATA:
+		return REG_C_0;
+	case MLX5_SFT_JUMP_GROUP:
+		return REG_C_4;
 	}
 	MLX5_ASSERT(false);
 	return rte_flow_error_set(error, EINVAL,
@@ -5884,7 +5891,8 @@ mlx5_flow_add_post_sft_rule(struct rte_eth_dev *dev, uint32_t post_sft,
 	};
 	const struct rte_flow_item pattern[] = {
 		{
-			.type = MLX5_RTE_FLOW_ITEM_TYPE_TAG,
+			.type = (typeof(pattern[0].type))
+				MLX5_RTE_FLOW_ITEM_TYPE_TAG,
 			.spec = &tag_v,
 			.mask = &tag_m,
 		},
@@ -5906,7 +5914,7 @@ mlx5_flow_add_post_sft_rule(struct rte_eth_dev *dev, uint32_t post_sft,
 	};
 
 	return flow_list_create(dev, &priv->ctrl_flows, &attr, pattern,
-				actions, false, error);
+				actions, true, error);
 }
 
 /**

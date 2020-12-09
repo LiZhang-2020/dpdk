@@ -68,6 +68,19 @@ struct mlx5_rte_flow_item_tx_queue {
 	uint32_t queue;
 };
 
+__extension__
+union sft_mark {
+	uint32_t val;
+	struct {
+		uint32_t fid_valid:1;
+		uint32_t zone_valid:1;
+		uint32_t control:1;
+		uint32_t reserved:13;
+		uint32_t app_state:8;
+		uint32_t _unused_:8;
+	};
+};
+
 /* Feature name to allocate metadata register. */
 enum mlx5_feature_name {
 	MLX5_HAIRPIN_RX,
@@ -81,6 +94,11 @@ enum mlx5_feature_name {
 	MLX5_MTR_COLOR,
 	MLX5_MTR_SFX,
 	MLX5_ASO_FLOW_HIT,
+	MLX5_SFT_FID,
+	MLX5_SFT_ZONE,
+	MLX5_SFT_APP_DATA,
+	MLX5_SFT_APP_STATE,
+	MLX5_SFT_JUMP_GROUP,
 };
 
 /* Default queue number. */
