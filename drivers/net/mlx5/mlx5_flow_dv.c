@@ -773,13 +773,13 @@ flow_dv_convert_action_modify_ttl
 	uint8_t l3_ipv4 = 0xFF;
 
 	switch (action_type) {
-	case RTE_FLOW_ACTION_TYPE_DEC_IPV4_TTL:
+	case RTE_FLOW_ACTION_TYPE_SET_IPV4_TTL:
 		l3_ipv4 = 1;
 		break;
-	case RTE_FLOW_ACTION_TYPE_DEC_IPV6_HOP:
+	case RTE_FLOW_ACTION_TYPE_SET_IPV6_HOP:
 		l3_ipv4 = 0;
 		break;
-	case RTE_FLOW_ACTION_TYPE_DEC_TTL:
+	case RTE_FLOW_ACTION_TYPE_SET_TTL:
 		if (!attr->valid)
 			flow_dv_attr_init(items, attr, dev_flow, tunnel_decap);
 		l3_ipv4 = attr->ipv4;
