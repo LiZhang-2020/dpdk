@@ -2826,6 +2826,7 @@ const struct eth_dev_ops mlx5_os_dev_ops = {
 	.hairpin_queue_peer_update = mlx5_hairpin_queue_peer_update,
 	.hairpin_queue_peer_bind = mlx5_hairpin_queue_peer_bind,
 	.hairpin_queue_peer_unbind = mlx5_hairpin_queue_peer_unbind,
+	.sft_ops_get = mlx5_sft_ops_get,
 };
 
 /* Available operations from secondary process. */
@@ -2910,4 +2911,5 @@ const struct eth_dev_ops mlx5_os_dev_ops_isolate = {
 	.hairpin_queue_peer_update = mlx5_hairpin_queue_peer_update,
 	.hairpin_queue_peer_bind = mlx5_hairpin_queue_peer_bind,
 	.hairpin_queue_peer_unbind = mlx5_hairpin_queue_peer_unbind,
+	.sft_ops_get = mlx5_sft_ops_get,
 };

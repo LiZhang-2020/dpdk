@@ -1340,4 +1340,8 @@ int mlx5_aso_queue_start(struct mlx5_dev_ctx_shared *sh);
 int mlx5_aso_queue_stop(struct mlx5_dev_ctx_shared *sh);
 void mlx5_aso_queue_uninit(struct mlx5_dev_ctx_shared *sh);
 
+/* mlx5_sft.c */
+
+int mlx5_sft_ops_get(struct rte_eth_dev * dev, void * arg);
+
 #endif /* RTE_PMD_MLX5_H_ */
