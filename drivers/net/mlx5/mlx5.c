@@ -180,6 +180,12 @@
 /* Decap will be used or not. */
 #define MLX5_DECAP_EN "decap_en"
 
+/* Device parameter to configure log 2 of the max meter number. */
+#define MLX5_LOG_MAX_MTR_NUM "mtr_log_max_num"
+
+/* Device parameter to configure log 2 of the max flow number per meter. */
+#define MLX5_LOG_MAX_FLOW_PER_MTR "log_max_flow_per_mtr"
+
 /* Shared memory between primary and secondary processes. */
 struct mlx5_shared_data *mlx5_shared_data;
 
@@ -294,10 +300,13 @@ static const struct mlx5_indexed_pool_config mlx5_ipool_cfg[] = {
 	},
 #endif
 	[MLX5_IPOOL_MTR] = {
+		/**
+		 * The ipool index should grow continually from small to big,
+		 * for meter idx, so not set grow_trunk to avoid meter index
+		 * not jump continually.
+		 */
 		.size = sizeof(struct mlx5_flow_meter),
 		.trunk_size = 64,
-		.grow_trunk = 3,
-		.grow_shift = 2,
 		.need_lock = 1,
 		.release_mem_en = 1,
 		.malloc = mlx5_malloc,
@@ -1600,6 +1609,20 @@ mlx5_args_check(const char *key, const char *val, void *opaque)
 		config->sys_mem_en = !!tmp;
 	} else if (strcmp(MLX5_DECAP_EN, key) == 0) {
 		config->decap_en = !!tmp;
+	} else if (strcmp(MLX5_LOG_MAX_MTR_NUM, key) == 0) {
+		if (tmp >= 0xFF) {
+			DRV_LOG(ERR, "Invalid value for %s.", key);
+			rte_errno = EINVAL;
+			return -rte_errno;
+		}
+		config->log_max_mtr_num = tmp;
+	} else if (strcmp(MLX5_LOG_MAX_FLOW_PER_MTR, key) == 0) {
+		if (tmp >= 0xFF) {
+			DRV_LOG(ERR, "Invalid value for %s.", key);
+			rte_errno = EINVAL;
+			return -rte_errno;
+		}
+		config->log_max_flow_per_mtr = tmp;
 	} else {
 		DRV_LOG(WARNING, "%s: unknown parameter", key);
 		rte_errno = EINVAL;
@@ -1662,6 +1685,8 @@ mlx5_args(struct mlx5_dev_config *config, struct rte_devargs *devargs)
 		MLX5_RECLAIM_MEM,
 		MLX5_SYS_MEM_EN,
 		MLX5_DECAP_EN,
+		MLX5_LOG_MAX_MTR_NUM,
+		MLX5_LOG_MAX_FLOW_PER_MTR,
 		NULL,
 	};
 	struct rte_kvargs *kvlist;

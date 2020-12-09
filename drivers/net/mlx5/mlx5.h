@@ -182,6 +182,25 @@ struct mlx5_stats_ctrl {
 /* Maximal number of segments to split. */
 #define MLX5_MAX_RXQ_NSEG (1u << MLX5_MAX_LOG_RQ_SEGS)
 
+/* The bit size of one register. */
+#define MLX5_REG_BITS 32
+
+/* Maximal log of meter number. */
+#define MLX5_MTR_LOG_MAX_MTR 12
+
+/* Maximal flow number per meter. */
+#define MLX5_MTR_LOG_MAX_FLOW_PER_MTR 23
+
+/* Idle bits for non-color usage in color register. */
+#define MLX5_MTR_IDLE_BITS_IN_COLOR_REG (MLX5_REG_BITS - MLX5_MTR_COLOR_BITS)
+
+/* Reserverd bits for rss flow id. */
+#define MLX5_MTR_RSVD_RSS_FLOW_ID_BITS 4
+
+#define UINT32_T(x) ((uint32_t)(x))
+
+#define LS32_MASK(bits) ((UINT32_T(1) << (bits)) - 1)
+
 /* LRO configurations structure. */
 struct mlx5_lro_config {
 	uint32_t supported:1; /* Whether LRO is supported. */
@@ -249,6 +268,8 @@ struct mlx5_dev_config {
 	unsigned int ind_table_max_size; /* Maximum indirection table size. */
 	unsigned int max_dump_files_num; /* Maximum dump files per queue. */
 	unsigned int log_hp_size; /* Single hairpin queue data size in total. */
+	uint8_t log_max_mtr_num; /* Maximux meter number */
+	uint8_t log_max_flow_per_mtr; /* Maximux flow number per meter */
 	int txqs_inline; /* Queue number threshold for inlining. */
 	int txq_inline_min; /* Minimal amount of data bytes to inline. */
 	int txq_inline_max; /* Max packet size for inlining with SEND. */
@@ -968,10 +989,15 @@ struct mlx5_priv {
 	unsigned int representor:1; /* Device is a port representor. */
 	unsigned int master:1; /* Device is a E-Switch master. */
 	unsigned int txpp_en:1; /* Tx packet pacing enabled. */
-	unsigned int mtr_en:1; /* Whether support meter. */
-	unsigned int mtr_reg_share:1; /* Whether support meter REG_C share. */
 	unsigned int sampler_en:1; /* Whether support sampler. */
 	unsigned int sft_en:1; /* Whether support SFT. */
+	unsigned int mtr_en:1; /* Whether support meter. */
+	unsigned int mtr_id_reg_in_first:1;
+	/* Whether meter_id in first REG_C(color REG_C). */
+	unsigned int mtr_flow_id_reg_in_first:1;
+	/* Whether meter flow_id in first REG_C(color REG_C). */
+	unsigned int mtr_flow_id_offset:5;
+	/* The bit offset of meter flow id in REG_C. */
 	uint16_t domain_id; /* Switch domain identifier. */
 	uint16_t vport_id; /* Associated VF vport index (if any). */
 	uint32_t vport_meta_tag; /* Used for vport index match ove VF LAG. */
@@ -1293,11 +1319,10 @@ int mlx5_pmd_socket_init(void);
 int mlx5_flow_meter_ops_get(struct rte_eth_dev *dev, void *arg);
 struct mlx5_flow_meter *mlx5_flow_meter_find(struct mlx5_priv *priv,
 					     uint32_t meter_id);
-struct mlx5_flow_meter *mlx5_flow_meter_attach
-					(struct mlx5_priv *priv,
-					 uint32_t meter_id,
-					 const struct rte_flow_attr *attr,
-					 struct rte_flow_error *error);
+int mlx5_flow_meter_attach(struct mlx5_priv *priv,
+			   struct mlx5_flow_meter *fm,
+			   const struct rte_flow_attr *attr,
+			   struct rte_flow_error *error);
 void mlx5_flow_meter_detach(struct mlx5_flow_meter *fm);
 
 /* mlx5_os.c */
