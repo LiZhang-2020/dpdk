@@ -1654,24 +1654,7 @@ RTE_STD_C11
 struct rte_flow_item_geneve_opt {
 	rte_be16_t option_class;
 	uint8_t option_type;
-#if RTE_BYTE_ORDER == RTE_LITTLE_ENDIAN
-	union {
-		uint8_t len_rsvd;
-		struct {
-			uint8_t length:5;
-			uint8_t rsvd0:3;
-		};
-	};
-#else
-
-	union {
-		uint8_t len_rsvd;
-		struct {
-			uint8_t rsvd0:3;
-			uint8_t length:5;
-		};
-	};
-#endif
+	uint8_t option_len;
 	uint32_t *data;
 };
 #ifdef PEDANTIC
