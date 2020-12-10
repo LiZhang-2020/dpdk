@@ -3400,7 +3400,7 @@ static const struct token token_list[] = {
 		.help = "GENEVE option data length (in 32b words)",
 		.next = NEXT(item_geneve_opt, NEXT_ENTRY(UNSIGNED), item_param),
 		.args = ARGS(ARGS_ENTRY_BOUNDED(
-				struct rte_flow_item_geneve_opt, len_rsvd,
+				struct rte_flow_item_geneve_opt, option_len,
 				0, 31)),
 	},
 	[ITEM_GENEVE_OPT_DATA] = {
@@ -8077,11 +8077,12 @@ cmd_set_raw_parsed(const struct buffer *in)
 								item->spec;
 			size = sizeof(struct rte_flow_item_geneve_opt) -
 			       sizeof(opt->data);
-			if (opt->length && opt->data) {
-				*total_size += opt->length * sizeof(uint32_t);
+			if (opt->option_len && opt->data) {
+				*total_size += opt->option_len *
+					       sizeof(uint32_t);
 				rte_memcpy(data_tail - (*total_size),
 					   opt->data,
-					   opt->length * sizeof(uint32_t));
+					   opt->option_len * sizeof(uint32_t));
 			}
 			break;
 		case RTE_FLOW_ITEM_TYPE_L2TPV3OIP:
