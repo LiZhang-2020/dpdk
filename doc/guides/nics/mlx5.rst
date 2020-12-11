@@ -857,7 +857,7 @@ Driver options
   +------+-----------+-----------+-------------+-------------+
   | 1    | 24 bits   | vary 0-32 | 32 bits     | yes         |
   +------+-----------+-----------+-------------+-------------+
-  | 2    | vary 0-32 | 32 bits   | 32 bits     | yes         |
+  | 2    | vary 0-24 | 32 bits   | 32 bits     | yes         |
   +------+-----------+-----------+-------------+-------------+
 
   If there is no E-Switch configuration the ``dv_xmeta_en`` parameter is
@@ -868,6 +868,17 @@ Driver options
   The Direct Verbs/Rules (engaged with ``dv_flow_en`` = 1) supports all
   of the extensive metadata features. The legacy Verbs supports FLAG and
   MARK metadata actions over NIC Rx steering domain only.
+
+  Setting META value to zero in flow action means there is no item provided
+  and receiving datapath will not report in mbufs the metadata are present.
+  Setting MARK value to zero in flow action means the zero FDIR ID value
+  will be reported on packet receiving.
+
+  For the MARK action the last 16 values in the full range are reserved for
+  internal PMD purposes (to emulate FLAG action). The valid range for the
+  MARK action values is 0-0xFFEF for the 16-bit mode and 0-xFFFFEF
+  for the 24-bit mode, the flows with the MARK action value outside
+  the specified range will be rejected.
 
 - ``dv_flow_en`` parameter [int]
 
