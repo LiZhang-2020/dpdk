@@ -58,6 +58,16 @@
 #define MLX5DV_FLOW_VLAN_PCP_MASK_BE RTE_BE16(MLX5DV_FLOW_VLAN_PCP_MASK)
 #define MLX5DV_FLOW_VLAN_VID_MASK_BE RTE_BE16(MLX5DV_FLOW_VLAN_VID_MASK)
 
+#define MLX5_IS_SET_TP_SRC(type) \
+(type == RTE_FLOW_ACTION_TYPE_SET_TP_SRC || \
+type == RTE_FLOW_ACTION_TYPE_SET_UDP_TP_SRC || \
+type == RTE_FLOW_ACTION_TYPE_SET_TCP_TP_SRC)
+
+#define MLX5_IS_SET_TTL(type) \
+(type == RTE_FLOW_ACTION_TYPE_SET_TTL || \
+type == RTE_FLOW_ACTION_TYPE_SET_IPV4_TTL || \
+type == RTE_FLOW_ACTION_TYPE_SET_IPV6_HOP)
+
 union flow_dv_attr {
 	struct {
 		uint32_t valid:1;
@@ -6193,8 +6203,8 @@ flow_dv_validate(struct rte_eth_dev *dev, const struct rte_flow_attr *attr,
 			/* Count all modify-header actions as one action. */
 			if (!(action_flags & MLX5_FLOW_MODIFY_HDR_ACTIONS))
 				++actions_n;
-			action_flags |= actions->type ==
-					RTE_FLOW_ACTION_TYPE_SET_TP_SRC ?
+			action_flags |=
+				MLX5_IS_SET_TP_SRC(actions->type) ?
 						MLX5_FLOW_ACTION_SET_TP_SRC :
 						MLX5_FLOW_ACTION_SET_TP_DST;
 			rw_act_num += MLX5_ACT_NUM_MDF_PORT;
@@ -6216,8 +6226,7 @@ flow_dv_validate(struct rte_eth_dev *dev, const struct rte_flow_attr *attr,
 			/* Count all modify-header actions as one action. */
 			if (!(action_flags & MLX5_FLOW_MODIFY_HDR_ACTIONS))
 				++actions_n;
-			action_flags |= actions->type ==
-					RTE_FLOW_ACTION_TYPE_SET_TTL ?
+			action_flags |= MLX5_IS_SET_TTL(type) ?
 						MLX5_FLOW_ACTION_SET_TTL :
 						MLX5_FLOW_ACTION_DEC_TTL;
 			rw_act_num += MLX5_ACT_NUM_MDF_TTL;
@@ -10679,8 +10688,7 @@ flow_dv_translate(struct rte_eth_dev *dev,
 					 &flow_attr, dev_flow, !!(action_flags &
 					 MLX5_FLOW_ACTION_DECAP), error))
 				return -rte_errno;
-			action_flags |= actions->type ==
-				RTE_FLOW_ACTION_TYPE_SET_TP_SRC ?
+			action_flags |= MLX5_IS_SET_TP_SRC(actions->type) ?
 				MLX5_FLOW_ACTION_SET_TP_SRC :
 				MLX5_FLOW_ACTION_SET_TP_DST;
 			break;
