@@ -10703,7 +10703,7 @@ flow_dv_translate(struct rte_eth_dev *dev,
 					 dev_flow, !!(action_flags &
 					 MLX5_FLOW_ACTION_DECAP), error))
 				return -rte_errno;
-			action_flags |= action_type;
+			action_flags |= MLX5_FLOW_ACTION_SET_TTL;
 			break;
 		case RTE_FLOW_ACTION_TYPE_INC_TCP_SEQ:
 		case RTE_FLOW_ACTION_TYPE_DEC_TCP_SEQ:
