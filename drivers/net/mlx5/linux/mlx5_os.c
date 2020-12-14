@@ -783,7 +783,7 @@ mlx5_dev_spawn(struct rte_device *dpdk_dev,
 		}
 		/* Check SF/VF ID: */
 		for (i = 0; i < eth_da.nb_representor_ports; ++i)
-			if (eth_da.representor_ports[i] ==
+			if (RTE_ETH_REPR_PORT(eth_da.representor_ports[i]) ==
 			    (uint16_t)switch_info->port_name)
 				break;
 		if (eth_da.type != RTE_ETH_REPRESENTOR_PF &&
@@ -805,11 +805,11 @@ mlx5_dev_spawn(struct rte_device *dpdk_dev,
 				 switch_info->port_name);
 	} else {
 		/* Bonding device. */
-		if (!switch_info->representor)
+		if (!switch_info->representor) {
 			snprintf(name, sizeof(name), "%s_%s",
 				 dpdk_dev->name,
 				 mlx5_os_get_dev_device_name(spawn->phys_dev));
-		else
+		} else {
 			err = snprintf(name, sizeof(name), "%s_%s_representor_c%dpf%d%s%u",
 				dpdk_dev->name,
 				mlx5_os_get_dev_device_name(spawn->phys_dev),
@@ -821,6 +821,14 @@ mlx5_dev_spawn(struct rte_device *dpdk_dev,
 			if (err >= (int)sizeof(name))
 				DRV_LOG(WARNING, "representor name overflow %s",
 					name);
+			if (RTE_ETH_REPR_PORT(switch_info->port_name) !=
+			    switch_info->port_name) {
+				rte_errno = EINVAL;
+				DRV_LOG(ERR, "unsupported representor port ID: %s",
+					name);
+				goto error;
+			}
+		}
 	}
 	/* check if the device is already spawned */
 	if (rte_eth_dev_get_port_by_name(name, &port_id) == 0) {
@@ -1105,9 +1113,19 @@ err_secondary:
 	priv->vport_id = switch_info->representor ?
 			 switch_info->port_name + 1 : -1;
 #endif
-	/* representor_id field keeps the unmodified VF index. */
-	priv->representor_id = switch_info->representor ?
-			       switch_info->port_name : -1;
+	if (switch_info->representor && spawn->pf_bond >= 0)
+		/* representor_id field keeps encoded index. */
+		priv->representor_id =
+			RTE_ETH_REPR(switch_info->ctrl_num,
+				     switch_info->pf_num,
+				     switch_info->name_type ==
+						MLX5_PHYS_PORT_NAME_TYPE_PFSF,
+				     switch_info->port_name);
+	else if (switch_info->representor)
+		/* representor_id field keeps the unmodified VF index. */
+		priv->representor_id = switch_info->port_name;
+	else
+		priv->representor_id = -1;
 	/*
 	 * Look for sibling devices in order to reuse their switch domain
 	 * if any, otherwise allocate one.

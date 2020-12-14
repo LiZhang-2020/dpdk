@@ -169,7 +169,9 @@ mlx5_mac_addr_set(struct rte_eth_dev *dev, struct rte_ether_addr *mac_addr)
 				return mlx5_os_vf_mac_addr_modify
 				       (priv,
 					mlx5_ifindex(&rte_eth_devices[port_id]),
-					mac_addr, priv->representor_id);
+					mac_addr,
+					RTE_ETH_REPR_PORT(priv->representor_id)
+					);
 			}
 		}
 		rte_errno = -ENOTSUP;
