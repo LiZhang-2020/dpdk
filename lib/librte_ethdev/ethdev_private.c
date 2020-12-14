@@ -93,18 +93,22 @@ rte_eth_devargs_process_list(char *str, uint16_t *list, uint16_t *len_list,
 }
 
 /*
- * representor format:
+ * Parse representor ports, expand and update representor port ID.
+ * Representor format:
  *   #: range or single number of VF representor - legacy
  *   c#: controller id or range
  *   [c#]pf#: PF port representor/s
  *   [[c#]pf#]vf#: VF port representor/s
  *   [[c#]pf#]sf#: SF port representor/s
+ *
+ * See RTE_ETH_REPR() for representor ID format.
  */
 int
 rte_eth_devargs_parse_representor_ports(char *str, void *data)
 {
 	struct rte_eth_devargs *eth_da = data;
 	int ret;
+	uint32_t c, p, f, i = 0;
 
 	eth_da->type = RTE_ETH_REPRESENTOR_NONE;
 	/* parse c# */
@@ -138,6 +142,42 @@ rte_eth_devargs_parse_representor_ports(char *str, void *data)
 	}
 	ret = rte_eth_devargs_process_list(str, eth_da->representor_ports,
 		&eth_da->nb_representor_ports, RTE_MAX_ETHPORTS);
+	if (ret < 0)
+		goto err;
+
+	/* Set default values, expand and update representor ID. */
+	if (!eth_da->nb_controllers) {
+		eth_da->nb_controllers = 1;
+		eth_da->controllers[0] = 0;
+	}
+	if (!eth_da->nb_ports) {
+		eth_da->nb_ports = 1;
+		eth_da->ports[0] = 0;
+	}
+	if (!eth_da->nb_representor_ports) {
+		eth_da->nb_representor_ports = 1;
+		eth_da->representor_ports[0] = 0;
+	}
+	for (c = 0; c < eth_da->nb_controllers; ++c) {
+		for (p = 0; p < eth_da->nb_ports; ++p) {
+			for (f = 0; f < eth_da->nb_representor_ports; ++f) {
+				i = c * eth_da->nb_ports *
+					eth_da->nb_representor_ports +
+				    p * eth_da->nb_representor_ports + f;
+				if (i >= RTE_DIM(eth_da->representor_ports)) {
+					RTE_LOG(ERR, EAL, "too many representor specified: %s",
+						str);
+					return -EINVAL;
+				}
+				eth_da->representor_ports[i] = RTE_ETH_REPR(
+					eth_da->controllers[c],
+					eth_da->ports[p],
+					eth_da->type == RTE_ETH_REPRESENTOR_SF,
+					eth_da->representor_ports[f]);
+			}
+		}
+	}
+	eth_da->nb_representor_ports = i + 1;
 err:
 	if (ret < 0)
 		RTE_LOG(ERR, EAL, "wrong representor format: %s", str);

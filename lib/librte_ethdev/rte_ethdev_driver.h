@@ -1219,6 +1219,28 @@ struct rte_eth_devargs {
 };
 
 /**
+ * Encoding representor port ID.
+ *
+ * The compact format is used for device iterator that comparing
+ * ethdev representor ID with target devargs.
+ *
+ * xxxx xxxx xxxx xxxx
+ * |||| |LLL LLLL LLLL vf/sf id
+ * |||| L 1:sf, 0:vf
+ * ||LL pf id
+ * LL controller(host) id
+ */
+#define RTE_ETH_REPR(c, pf, sf, port) \
+	((((c) & 3) << 14) |     \
+	(((pf) & 3) << 12) |     \
+	(!!(sf) << 11) |         \
+	((port) & 0x7ff))
+/** Get 'pf' port id from representor ID */
+#define RTE_ETH_REPR_PF(repr) (((repr) >> 12) & 3)
+/** Get 'vf' or 'sf' port from representor ID */
+#define RTE_ETH_REPR_PORT(repr) ((repr) & 0x7ff)
+
+/**
  * PMD helper function to parse ethdev arguments
  *
  * @param devargs
