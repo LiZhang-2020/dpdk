@@ -6519,6 +6519,26 @@ mlx5_flow_lacp_miss(struct rte_eth_dev *dev)
 }
 
 /**
+ * Wrapper to create a SFT default miss flow.
+ *
+ * @see rte_flow_create()
+ * @see rte_flow_ops
+ */
+struct rte_flow *
+mlx5_sft_ctrl_flow_create(struct rte_eth_dev *dev,
+			  const struct rte_flow_attr *attr,
+			  const struct rte_flow_item items[],
+			  const struct rte_flow_action actions[],
+			  struct rte_flow_error *error)
+{
+	struct mlx5_priv *priv = dev->data->dev_private;
+
+	/* The default SFT flow should be created after port is started. */
+	return (void *)(uintptr_t)flow_list_create(dev, &priv->ctrl_flows,
+				  attr, items, actions, false, error);
+}
+
+/**
  * Destroy a flow.
  *
  * @see rte_flow_destroy()
