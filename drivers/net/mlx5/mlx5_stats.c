@@ -43,6 +43,8 @@ mlx5_xstats_get(struct rte_eth_dev *dev, struct rte_eth_xstat *stats,
 	struct mlx5_xstats_ctrl *xstats_ctrl = &priv->xstats_ctrl;
 	uint16_t mlx5_stats_n = xstats_ctrl->mlx5_stats_n;
 
+	if (!n)
+		return 0;
 	if (n >= mlx5_stats_n && stats) {
 		int stats_n;
 		int ret;
@@ -276,6 +278,9 @@ mlx5_xstats_get_names(struct rte_eth_dev *dev,
 	struct mlx5_xstats_ctrl *xstats_ctrl = &priv->xstats_ctrl;
 	unsigned int mlx5_xstats_n = xstats_ctrl->mlx5_stats_n;
 
+	/* Bonding device doesn't support counters. */
+	if (priv->pf_bond >= 0 && priv->master)
+		return 0;
 	if (n >= mlx5_xstats_n && xstats_names) {
 		for (i = 0; i != mlx5_xstats_n; ++i) {
 			strncpy(xstats_names[i].name,
