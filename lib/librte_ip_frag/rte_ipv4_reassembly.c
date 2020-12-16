@@ -89,6 +89,7 @@ rte_ipv4_frag_process(struct rte_ip_frag_tbl *tbl,
 	const unaligned_uint64_t *psd;
 	uint16_t flag_offset, ip_ofs, ip_flag;
 	int32_t ip_len;
+	int32_t trim;
 
 	flag_offset = rte_be_to_cpu_16(ip_hdr->fragment_offset);
 	ip_ofs = (uint16_t)(flag_offset & RTE_IPV4_HDR_OFFSET_MASK);
@@ -103,23 +104,26 @@ rte_ipv4_frag_process(struct rte_ip_frag_tbl *tbl,
 
 	ip_ofs *= RTE_IPV4_HDR_OFFSET_UNITS;
 	ip_len = rte_be_to_cpu_16(ip_hdr->total_length) - mb->l3_len;
+	trim = mb->pkt_len - (ip_len + mb->l3_len + mb->l2_len);
 
-	RTE_IP_FRAG_LOG
-		(DEBUG, "%s:%d:\n"
-		 "mbuf: %p, tms: %" PRIu64
-		 ", key: <%" PRIx64 ", %#x>, ofs: %u, len: %d, flags: %#x\n"
-		 "tbl: %p, max_cycles: %" PRIu64 ", entry_mask: %#x, "
-		 "max_entries: %u, use_entries: %u\n\n",
-		 __func__, __LINE__,
-		 mb, tms, key.src_dst[0], key.id, ip_ofs, ip_len, ip_flag,
-		 tbl, tbl->max_cycles, tbl->entry_mask, tbl->max_entries,
-		 tbl->use_entries);
+	RTE_IP_FRAG_LOG(DEBUG, "%s:%d:\n"
+		"mbuf: %p, tms: %" PRIu64 ", key: <%" PRIx64 ", %#x>"
+		"ofs: %u, len: %d, padding: %d, flags: %#x\n"
+		"tbl: %p, max_cycles: %" PRIu64 ", entry_mask: %#x, "
+		"max_entries: %u, use_entries: %u\n\n",
+		__func__, __LINE__,
+		mb, tms, key.src_dst[0], key.id, ip_ofs, ip_len, trim, ip_flag,
+		tbl, tbl->max_cycles, tbl->entry_mask, tbl->max_entries,
+		tbl->use_entries);
 
 	/* check that fragment length is greater then zero. */
 	if (ip_len <= 0) {
 		IP_FRAG_MBUF2DR(dr, mb);
 		return NULL;
 	}
+
+	if (unlikely(trim > 0))
+		rte_pktmbuf_trim(mb, trim);
 
 	/* try to find/add entry into the fragment's table. */
 	if ((fp = ip_frag_find(tbl, dr, &key, tms)) == NULL) {
