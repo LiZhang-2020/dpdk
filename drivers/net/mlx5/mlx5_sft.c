@@ -14,6 +14,57 @@
 
 struct rte_flow *g_sft_flow;
 
+#ifdef RTE_LIBRTE_MLX5_DEBUG
+struct rte_flow *g_flows[MLX5_SFT_ENTRY_FLOW_COUNT_NB];
+uint32_t g_flows_nb;
+
+int mlx5_sft_flow_count_query(void)
+{
+	uint32_t i;
+	struct rte_flow_query_count count;
+	struct rte_flow_error fe;
+	struct rte_flow_action action[] = {
+		[0] = {
+			.type = RTE_FLOW_ACTION_TYPE_COUNT,
+		},
+		[1] = {
+			.type = RTE_FLOW_ACTION_TYPE_END,
+		},
+	};
+
+	if (!rte_flow_query(0, g_sft_flow, action, &count, &fe)) {
+		printf("default sft:\n"
+		       " hits_set: %u\n"
+		       " bytes_set: %u\n"
+		       " hits: %" PRIu64 "\n"
+		       " bytes: %" PRIu64 "\n",
+		       count.hits_set,
+		       count.bytes_set,
+		       count.hits,
+		       count.bytes);
+	}
+	for (i = 0; i < MLX5_SFT_ENTRY_FLOW_COUNT_NB; i++) {
+		if (g_flows[i] == NULL) {
+			continue;
+		}
+		memset(&count, 0, sizeof(struct rte_flow_query_count));
+		if (rte_flow_query(0, g_flows[i], action, &count, &fe))
+			continue;
+		printf("%u:\n"
+		       " hits_set: %u\n"
+		       " bytes_set: %u\n"
+		       " hits: %" PRIu64 "\n"
+		       " bytes: %" PRIu64 "\n",
+		       i,
+		       count.hits_set,
+		       count.bytes_set,
+		       count.hits,
+		       count.bytes);
+	}
+	return 0;
+}
+#endif
+
 static int mlx5_sft_start(struct rte_eth_dev *dev, uint16_t nb_queue,
 			  uint16_t data_len, struct rte_sft_error *error)
 {
@@ -75,12 +126,19 @@ static int mlx5_sft_start(struct rte_eth_dev *dev, uint16_t nb_queue,
 			.conf = &set_state,
 		},
 		[2] = {
+#ifdef RTE_LIBRTE_MLX5_DEBUG
+			.type = RTE_FLOW_ACTION_TYPE_COUNT,
+#else
+			.type = RTE_FLOW_ACTION_TYPE_VOID,
+#endif
+		},
+		[3] = {
 			.type = RTE_FLOW_ACTION_TYPE_JUMP,
 			.conf = &(struct rte_flow_action_jump){
 				.group = MLX5_FLOW_TABLE_LEVEL_POST_SFT,
 			},
 		},
-		[3] = {
+		[4] = {
 			.type = RTE_FLOW_ACTION_TYPE_END,
 		},
 	};
@@ -273,13 +331,20 @@ mlx5_sft_entry_create(struct rte_eth_dev *dev, uint32_t fid, uint16_t queue,
 			/* User data will be changed in modification. */
 			.conf = &set_data,
 		},
-		[2] = {
+		[3] = {
+#ifdef RTE_LIBRTE_MLX5_DEBUG
+			.type = RTE_FLOW_ACTION_TYPE_COUNT,
+#else
+			.type = RTE_FLOW_ACTION_TYPE_VOID,
+#endif
+		},
+		[4] = {
 			.type = RTE_FLOW_ACTION_TYPE_JUMP,
 			.conf = &(struct rte_flow_action_jump){
 				.group = MLX5_FLOW_TABLE_LEVEL_POST_SFT,
 			},
 		},
-		[3] = {
+		[5] = {
 			.type = RTE_FLOW_ACTION_TYPE_END,
 		},
 	};
@@ -425,6 +490,9 @@ mlx5_sft_entry_create(struct rte_eth_dev *dev, uint32_t fid, uint16_t queue,
 				  flow_error.cause, flow_error.message);
 		goto error_out;
 	}
+#ifdef RTE_LIBRTE_MLX5_DEBUG
+	g_flows[g_flows_nb++ % MLX5_SFT_ENTRY_FLOW_COUNT_NB] = entry->itmd_flow;
+#endif
 	/* Create the 1st flow in the SFT table then. */
 	rte_memcpy(&actions_sft.actions, actions,
 		   sizeof(struct rte_flow_action) * nb_actions);
@@ -442,6 +510,10 @@ mlx5_sft_entry_create(struct rte_eth_dev *dev, uint32_t fid, uint16_t queue,
 	pa_sft->type = (enum rte_flow_action_type)
 			MLX5_RTE_FLOW_ACTION_TYPE_TAG;
 	pa_sft->conf = &set_tag;
+#ifdef RTE_LIBRTE_MLX5_DEBUG
+	pa_sft++;
+	pa_sft->type = RTE_FLOW_ACTION_TYPE_COUNT;
+#endif
 	/* Jump to the intermediate-SFT table. */
 	pa_sft++;
 	jump.group = MLX5_FLOW_TABLE_LEVEL_ITMD_SFT;
@@ -461,6 +533,9 @@ mlx5_sft_entry_create(struct rte_eth_dev *dev, uint32_t fid, uint16_t queue,
 				  flow_error.cause, flow_error.message);
 		goto error_out;
 	}
+#ifdef RTE_LIBRTE_MLX5_DEBUG
+	g_flows[g_flows_nb++ % MLX5_SFT_ENTRY_FLOW_COUNT_NB] = entry->flow;
+#endif
 	/* Store the entry for debugging purpose. */
 	entry->idx = idx;
 	entry->state = mark.id;
@@ -587,12 +662,19 @@ static int mlx5_sft_entry_modify(struct rte_eth_dev *dev, uint16_t queue,
 			.conf = &set_data,
 		},
 		[3] = {
+#ifdef RTE_LIBRTE_MLX5_DEBUG
+			.type = RTE_FLOW_ACTION_TYPE_COUNT,
+#else
+			.type = RTE_FLOW_ACTION_TYPE_VOID,
+#endif
+		},
+		[4] = {
 			.type = RTE_FLOW_ACTION_TYPE_JUMP,
 			.conf = &(struct rte_flow_action_jump){
 				.group = MLX5_FLOW_TABLE_LEVEL_POST_SFT,
 			},
 		},
-		[4] = {
+		[5] = {
 			.type = RTE_FLOW_ACTION_TYPE_END,
 		},
 	};
@@ -637,6 +719,9 @@ static int mlx5_sft_entry_modify(struct rte_eth_dev *dev, uint16_t queue,
 					 RTE_SFT_ERROR_TYPE_UNSPECIFIED,
 					 flow_error.cause, flow_error.message);
 	}
+#ifdef RTE_LIBRTE_MLX5_DEBUG
+	g_flows[g_flows_nb++ % MLX5_SFT_ENTRY_FLOW_COUNT_NB] = entry->itmd_flow;
+#endif
 	/* Currently, the return value of flow destroy is not checked. */
 	mlx5_flow_remove_post_sft_rule(dev, (uintptr_t)(void *)old_flow);
 	entry->state = mark.id;

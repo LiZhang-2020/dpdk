@@ -29,4 +29,11 @@ struct rte_sft_entry {
 	 (((usr) & MLX5_SFT_USER_STAT_MASK) << \
 	  MLX5_SFT_USER_STAT_SHIFT))
 
+#ifdef RTE_LIBRTE_MLX5_DEBUG
+
+#define MLX5_SFT_ENTRY_FLOW_COUNT_NB		(16)
+int mlx5_sft_flow_count_query(void);
+
+#endif
+
 #endif
