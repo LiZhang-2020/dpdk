@@ -784,7 +784,7 @@ mlx5_dev_spawn(struct rte_device *dpdk_dev,
 		/* Check SF/VF ID: */
 		for (i = 0; i < eth_da.nb_representor_ports; ++i)
 			if (RTE_ETH_REPR_PORT(eth_da.representor_ports[i]) ==
-			    (uint16_t)switch_info->port_name)
+			    RTE_ETH_REPR_PORT((uint16_t)switch_info->port_name))
 				break;
 		if (eth_da.type != RTE_ETH_REPRESENTOR_PF &&
 		    i == eth_da.nb_representor_ports) {
@@ -821,7 +821,8 @@ mlx5_dev_spawn(struct rte_device *dpdk_dev,
 			if (err >= (int)sizeof(name))
 				DRV_LOG(WARNING, "representor name overflow %s",
 					name);
-			if (RTE_ETH_REPR_PORT(switch_info->port_name) !=
+			if (switch_info->port_name != -1 &&
+			    RTE_ETH_REPR_PORT(switch_info->port_name) !=
 			    switch_info->port_name) {
 				rte_errno = EINVAL;
 				DRV_LOG(ERR, "unsupported representor port ID: %s",
