@@ -1893,23 +1893,25 @@ mlx5_os_pci_probe(struct rte_pci_driver *pci_drv __rte_unused,
 			strerror(rte_errno));
 		return -rte_errno;
 	}
-	/* Parse representor information from device argument. */
-	if (pci_dev->device.devargs->cls_str)
-		ret = rte_eth_devargs_parse(pci_dev->device.devargs->cls_str,
-					    &eth_da);
-	if (ret) {
-		DRV_LOG(ERR, "failed to parse device arguments: %s",
-			pci_dev->device.devargs->cls_str);
-		return -rte_errno;
-	}
-	if (eth_da.type == RTE_ETH_REPRESENTOR_NONE) {
-		/* Support legacy device argument */
-		ret = rte_eth_devargs_parse(pci_dev->device.devargs->args,
-					    &eth_da);
+	if (pci_dev->device.devargs) {
+		/* Parse representor information from device argument. */
+		if (pci_dev->device.devargs->cls_str)
+			ret = rte_eth_devargs_parse(
+				pci_dev->device.devargs->cls_str, &eth_da);
 		if (ret) {
 			DRV_LOG(ERR, "failed to parse device arguments: %s",
-				pci_dev->device.devargs->args);
+				pci_dev->device.devargs->cls_str);
 			return -rte_errno;
+		}
+		if (eth_da.type == RTE_ETH_REPRESENTOR_NONE) {
+			/* Support legacy device argument */
+			ret = rte_eth_devargs_parse(
+				pci_dev->device.devargs->args, &eth_da);
+			if (ret) {
+				DRV_LOG(ERR, "failed to parse device arguments: %s",
+					pci_dev->device.devargs->args);
+				return -rte_errno;
+			}
 		}
 	}
 	errno = 0;
