@@ -10,6 +10,7 @@
 #include <rte_debug.h>
 #include <rte_string_fns.h>
 #include <rte_errno.h>
+#include <rte_devargs.h>
 
 #include "eal_private.h"
 
@@ -56,12 +57,22 @@ rte_bus_scan(void)
 	return 0;
 }
 
+static int
+cmp_dev_name(const struct rte_device *dev, const void *_name)
+{
+	const char *name = _name;
+
+	return strcmp(dev->name, name);
+}
+
 /* Probe all devices of all buses */
 int
 rte_bus_probe(void)
 {
 	int ret;
 	struct rte_bus *bus, *vbus = NULL;
+	struct rte_devargs *da;
+	struct rte_device *dev;
 
 	TAILQ_FOREACH(bus, &rte_bus_list, next) {
 		if (!strcmp(bus->name, "vdev")) {
@@ -80,6 +91,20 @@ rte_bus_probe(void)
 		if (ret)
 			RTE_LOG(ERR, EAL, "Bus (%s) probe failed.\n",
 				vbus->name);
+	}
+
+	/* For devargs with same name but different arguments, try them all. */
+	RTE_EAL_DEVARGS_FOREACH("pci", da) {
+		dev = da->bus->find_device(NULL, cmp_dev_name, da->name);
+		if (!dev || !rte_dev_is_probed(dev) || dev->devargs == da)
+			continue;
+		dev->devargs = da;
+		ret = dev->bus->plug(dev);
+		if (ret > 0)
+			ret = -ENOTSUP;
+		if (!ret && rte_dev_is_probed(dev))
+			RTE_LOG(ERR, EAL, "device probed %s %s", da->name,
+				da->args);
 	}
 
 	return 0;
