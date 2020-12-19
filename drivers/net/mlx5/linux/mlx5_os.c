@@ -1128,8 +1128,12 @@ err_secondary:
 						MLX5_PHYS_PORT_NAME_TYPE_PFSF,
 				     switch_info->port_name);
 	else if (switch_info->representor)
-		/* representor_id field keeps the unmodified VF index. */
-		priv->representor_id = switch_info->port_name;
+		/* representor_id field ignore PF port. */
+		priv->representor_id =
+			RTE_ETH_REPR(switch_info->ctrl_num, 0,
+				     switch_info->name_type ==
+						MLX5_PHYS_PORT_NAME_TYPE_PFSF,
+				     switch_info->port_name);
 	else
 		priv->representor_id = -1;
 	/*
