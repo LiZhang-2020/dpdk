@@ -765,22 +765,6 @@ mlx5_dev_spawn(struct rte_device *dpdk_dev,
 			rte_errno = EBUSY;
 			return NULL;
 		}
-		/* Check PF ID: */
-		if (spawn->pf_bond >= 0) {
-			for (i = 0; i < eth_da.nb_ports; ++i)
-				if (eth_da.ports[i] ==
-				    (uint16_t)switch_info->pf_num)
-					break;
-			if (eth_da.nb_ports && i == eth_da.nb_ports) {
-				rte_errno = EBUSY;
-				return NULL;
-			}
-		} else if (eth_da.nb_ports > 1 || eth_da.ports[0]) {
-			rte_errno = EINVAL;
-			DRV_LOG(ERR, "PF id not supported by non-bond device: %s",
-				dpdk_dev->devargs->args);
-			return NULL;
-		}
 		/* Check SF/VF ID: */
 		for (i = 0; i < eth_da.nb_representor_ports; ++i)
 			if (RTE_ETH_REPR_PORT(eth_da.representor_ports[i]) ==
@@ -789,6 +773,33 @@ mlx5_dev_spawn(struct rte_device *dpdk_dev,
 		if (eth_da.type != RTE_ETH_REPRESENTOR_PF &&
 		    i == eth_da.nb_representor_ports) {
 			rte_errno = EBUSY;
+			return NULL;
+		}
+		/* Check PF ID. Check after repr port to avoid warning flood. */
+		if (spawn->pf_bond >= 0) {
+			for (i = 0; i < eth_da.nb_ports; ++i)
+				if (eth_da.ports[i] ==
+				    (uint16_t)switch_info->pf_num)
+					break;
+			if (eth_da.nb_ports && i == eth_da.nb_ports) {
+				/* For backward compatibility, bonding
+				 * representor syntax supported with limitation,
+				 * device iterator won't find it:
+				 *    <PF1_BDF>,representor=#
+				 */
+				if (switch_info->pf_num > 0 &&
+				    eth_da.ports[0] == 0) {
+					DRV_LOG(WARNING, "Representor on Bonding PF should use pf#vf# format: %s",
+						dpdk_dev->devargs->args);
+				} else {
+					rte_errno = EBUSY;
+					return NULL;
+				}
+			}
+		} else if (eth_da.nb_ports > 1 || eth_da.ports[0]) {
+			rte_errno = EINVAL;
+			DRV_LOG(ERR, "PF id not supported by non-bond device: %s",
+				dpdk_dev->devargs->args);
 			return NULL;
 		}
 	}
