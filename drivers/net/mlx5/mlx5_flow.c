@@ -5674,7 +5674,7 @@ flow_list_create(struct rte_eth_dev *dev, uint32_t *list,
 		rte_spinlock_unlock(&priv->flow_list_lock);
 	}
 	flow_rxq_flags_set(dev, flow);
-	rte_free(translated_actions);
+	mlx5_free(translated_actions);
 	tunnel = flow_tunnel_from_rule(dev, attr, items, actions);
 	if (tunnel) {
 		flow->tunnel = 1;
@@ -5700,7 +5700,7 @@ error:
 	rte_errno = ret;
 	mlx5_flow_pop_thread_workspace();
 error_before_hairpin_split:
-	rte_free(translated_actions);
+	mlx5_free(translated_actions);
 	return 0;
 }
 
@@ -5784,7 +5784,7 @@ mlx5_flow_validate(struct rte_eth_dev *dev,
 	hairpin_flow = flow_check_hairpin_split(dev, attr, actions);
 	ret = flow_drv_validate(dev, attr, items, actions,
 				true, hairpin_flow, error);
-	rte_free(translated_actions);
+	mlx5_free(translated_actions);
 	return ret;
 }
 
