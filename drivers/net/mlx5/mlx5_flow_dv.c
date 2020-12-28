@@ -13789,7 +13789,7 @@ flow_dv_sample_remove_cb(struct mlx5_cache_list *list __rte_unused,
 	struct mlx5_priv *priv = dev->data->dev_private;
 
 	if (cache_resource->verbs_action)
-		claim_zero(mlx5_glue->destroy_flow_action
+		claim_zero(mlx5_flow_os_destroy_flow_action
 				(cache_resource->verbs_action));
 	if (cache_resource->normal_path_tbl)
 		flow_dv_tbl_resource_release(MLX5_SH(dev),
@@ -13841,7 +13841,7 @@ flow_dv_dest_array_remove_cb(struct mlx5_cache_list *list __rte_unused,
 
 	MLX5_ASSERT(cache_resource->action);
 	if (cache_resource->action)
-		claim_zero(mlx5_glue->destroy_flow_action
+		claim_zero(mlx5_flow_os_destroy_flow_action
 					(cache_resource->action));
 	for (; i < cache_resource->num_of_dest; i++)
 		flow_dv_sample_sub_actions_release(dev,
