@@ -154,7 +154,7 @@ mlx5_auxiliary_get_ifindex(const char *sf_name)
  *   0 on success, a negative errno value otherwise and rte_errno is set.
  */
 int
-mlx5_get_ifname(const struct rte_eth_dev *dev, char (*ifname)[IF_NAMESIZE])
+mlx5_get_ifname(const struct rte_eth_dev *dev, char (*ifname)[MLX5_NAMESIZE])
 {
 	struct mlx5_priv *priv = dev->data->dev_private;
 	unsigned int ifindex;
@@ -162,7 +162,7 @@ mlx5_get_ifname(const struct rte_eth_dev *dev, char (*ifname)[IF_NAMESIZE])
 	MLX5_ASSERT(priv);
 	MLX5_ASSERT(priv->sh);
 	if (priv->master && priv->sh->bond.ifindex > 0) {
-		memcpy(ifname, priv->sh->bond.ifname, IF_NAMESIZE);
+		memcpy(ifname, priv->sh->bond.ifname, MLX5_NAMESIZE);
 		return 0;
 	}
 	ifindex = mlx5_ifindex(dev);
