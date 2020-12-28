@@ -244,6 +244,8 @@ mlx5_flow_expand_rss_item_complete(const struct rte_flow_item *item)
 	return ret;
 }
 
+#define MLX5_RSS_EXP_ELT_N 16
+
 /**
  * Expand RSS flows into several possible flows according to the RSS hash
  * fields requested and the driver capabilities.
@@ -275,13 +277,12 @@ mlx5_flow_expand_rss(struct mlx5_flow_expand_rss *buf, size_t size,
 		     const struct mlx5_flow_expand_node graph[],
 		     int graph_root_index)
 {
-	const int elt_n = 16;
 	const struct rte_flow_item *item;
 	const struct mlx5_flow_expand_node *node = &graph[graph_root_index];
 	const int *next_node;
-	const int *stack[elt_n];
+	const int *stack[MLX5_RSS_EXP_ELT_N];
 	int stack_pos = 0;
-	struct rte_flow_item flow_items[elt_n];
+	struct rte_flow_item flow_items[MLX5_RSS_EXP_ELT_N];
 	unsigned int i;
 	size_t lsize;
 	size_t user_pattern_size = 0;
@@ -294,11 +295,11 @@ mlx5_flow_expand_rss(struct mlx5_flow_expand_rss *buf, size_t size,
 
 	memset(&missed_item, 0, sizeof(missed_item));
 	lsize = offsetof(struct mlx5_flow_expand_rss, entry) +
-		elt_n * sizeof(buf->entry[0]);
+		MLX5_RSS_EXP_ELT_N * sizeof(buf->entry[0]);
 	if (lsize > size)
 		return -EINVAL;
 	buf->entry[0].priority = 0;
-	buf->entry[0].pattern = (void *)&buf->entry[elt_n];
+	buf->entry[0].pattern = (void *)&buf->entry[MLX5_RSS_EXP_ELT_N];
 	buf->entries = 0;
 	addr = buf->entry[0].pattern;
 	for (item = pattern; item->type != RTE_FLOW_ITEM_TYPE_END; item++) {
@@ -405,7 +406,7 @@ mlx5_flow_expand_rss(struct mlx5_flow_expand_rss *buf, size_t size,
 		/* Go deeper. */
 		if (!node->optional && node->next) {
 			next_node = node->next;
-			if (stack_pos++ == elt_n) {
+			if (stack_pos++ == MLX5_RSS_EXP_ELT_N) {
 				rte_errno = E2BIG;
 				return -rte_errno;
 			}
