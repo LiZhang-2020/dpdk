@@ -235,10 +235,8 @@ static int mlx5_sft_stop(struct rte_eth_dev *dev, struct rte_sft_error *error)
 		struct rte_sft_entry *entry;
 
 		while (list) {
-			uint32_t *plist = &list;
-
 			entry = mlx5_ipool_get(sh->ipool_sft[i], list);
-			ILIST_REMOVE(sh->ipool_sft[i], plist,
+			ILIST_REMOVE(sh->ipool_sft[i], &priv->sft_lists[i],
 				     list, entry, next);
 			/* Try best to destroy all flows. */
 			mlx5_flow_remove_post_sft_rule(dev,
@@ -247,6 +245,7 @@ static int mlx5_sft_stop(struct rte_eth_dev *dev, struct rte_sft_error *error)
 					(uintptr_t)(void *)entry->itmd_flow);
 			// TODO: destroy the miss condition flow
 			mlx5_ipool_free(sh->ipool_sft[i], list);
+			list = priv->sft_lists[i];
 		}
 	}
 	for (idx = 0; idx < priv->rxqs_n; idx++) {
