@@ -538,6 +538,7 @@ struct mlx5_aso_sq_elem {
 
 struct mlx5_aso_sq {
 	uint16_t log_desc_n;
+	rte_spinlock_t sqsl;
 	struct mlx5_aso_cq cq;
 	struct mlx5_devx_obj *sq;
 	struct mlx5dv_devx_umem *wqe_umem; /* SQ buffer umem. */
