@@ -12790,12 +12790,12 @@ flow_dv_destroy(struct rte_eth_dev *dev, struct rte_flow *flow)
 					    dev_handle->dvh.rix_tag);
 		if (dev_handle->fate_action != MLX5_FLOW_FATE_SHARED_RSS)
 			flow_dv_fate_resource_release(dev, dev_handle);
+		else if (!srss)
+			srss = dev_handle->rix_srss;
 		if (fm && dev_handle->is_meter_flow_id &&
 		    dev_handle->split_flow_id)
 			mlx5_ipool_free(fm->flow_ipool,
 					dev_handle->split_flow_id);
-		else if (!srss)
-			srss = dev_handle->rix_srss;
 		mlx5_ipool_free(priv->sh->ipool[MLX5_IPOOL_MLX5_FLOW],
 			   tmp_idx);
 	}
