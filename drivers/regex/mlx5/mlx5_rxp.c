@@ -438,15 +438,17 @@ rxp_program_rof(struct mlx5_regex_priv *priv, const char *buf, uint32_t len,
 		case MLX5_RXP_ROF_ENTRY_EM:
 			if (skip)
 				continue;
-			for (i = 0; i < 7; i++) {
+			for (i = 0; i < 8; i++) {
 				ret = rxp_parse_line(line, &type,
 						     &rules[i].addr,
 						     &rules[i].value);
 				if (ret != 0)
 					goto parse_error;
-				line = strtok(NULL, del);
-				if (!line)
-					goto parse_error;
+				if (i < 7) {
+					line = strtok(NULL, del);
+					if (!line)
+						goto parse_error;
+				}
 			}
 			if ((uint8_t *)((uint8_t *)
 					priv->db[id].ptr +
@@ -585,14 +587,8 @@ program_rxp_rules(struct mlx5_regex_priv *priv, const char *buf, uint32_t len,
 		  uint8_t id)
 {
 	int ret;
-	int db_free;
 	uint32_t val;
 
-	db_free = mlnx_update_database(priv, id);
-	if (db_free < 0) {
-		DRV_LOG(ERR, "Failed to setup db memory!");
-		return db_free;
-	}
 	ret = rxp_init_eng(priv, id);
 	if (ret < 0)
 		return ret;
@@ -643,6 +639,16 @@ program_rxp_rules(struct mlx5_regex_priv *priv, const char *buf, uint32_t len,
 		DRV_LOG(ERR, "CSR write write failed!");
 		return -1;
 	}
+	ret = mlx5_devx_regex_register_read(priv->ctx, id, MLX5_RXP_CSR_CTRL,
+					    &val);
+	if (ret)
+		return ret;
+	val &= ~MLX5_RXP_CSR_CTRL_INIT;
+	ret = mlx5_devx_regex_register_write(priv->ctx, id, MLX5_RXP_CSR_CTRL,
+					     val);
+	if (ret)
+		return ret;
+	rxp_init_rtru(priv, id, MLX5_RXP_RTRU_CSR_CTRL_INIT_MODE_L1_L2);
 	if (priv->is_bf2) {
 		ret = rxp_poll_csr_for_value(priv->ctx, &val,
 					     MLX5_RXP_CSR_STATUS,
