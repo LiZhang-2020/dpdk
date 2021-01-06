@@ -1292,7 +1292,7 @@ struct mlx5_rxq_obj {
 		};
 		struct {
 			struct mlx5_devx_obj *devx_rmp; /* DevX RMP object. */
-			struct mlx5_devx_obj *devx_cq; /* DevX CQ object. */
+			struct mlx5_devx_cq cq_obj; /* DevX CQ object. */
 			void *devx_channel;
 		};
 	};

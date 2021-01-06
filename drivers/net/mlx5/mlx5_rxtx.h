@@ -207,11 +207,7 @@ struct mlx5_rxq_ctrl {
 	struct mlx5_devx_dbr_page *rq_dbrec_page;
 	uint64_t rq_dbr_offset;
 	/* Storing RQ door-bell information, needed when freeing door-bell. */
-	struct mlx5_devx_dbr_page *cq_dbrec_page;
-	uint64_t cq_dbr_offset;
-	/* Storing CQ door-bell information, needed when freeing door-bell. */
 	void *wq_umem; /* WQ buffer registration info. */
-	void *cq_umem; /* CQ buffer registration info. */
 };
 
 /* RX queue private data. */

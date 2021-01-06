@@ -176,30 +176,17 @@ mlx5_rxq_release_devx_rq_resources(struct mlx5_rxq_ctrl *rxq_ctrl)
 }
 
 /**
- * Release the resources allocated for the Rx CQ DevX object.
+ * Destroy the Rx queue DevX object.
  *
- * @param rxq_ctrl
- *   DevX Rx queue object.
+ * @param rxq_obj
+ *   Rxq object to destroy.
  */
 static void
-mlx5_rxq_release_devx_cq_resources(struct mlx5_rxq_ctrl *rxq_ctrl)
+mlx5_rxq_release_devx_resources(struct mlx5_rxq_ctrl *rxq_ctrl)
 {
-	struct mlx5_devx_dbr_page *dbr_page = rxq_ctrl->cq_dbrec_page;
-
-	if (rxq_ctrl->cq_umem) {
-		claim_zero(mlx5_glue->devx_umem_dereg(rxq_ctrl->cq_umem));
-		rxq_ctrl->cq_umem = NULL;
-	}
-	if (rxq_ctrl->rxq.cqes) {
-		rte_free((void *)(uintptr_t)rxq_ctrl->rxq.cqes);
-		rxq_ctrl->rxq.cqes = NULL;
-	}
-	if (dbr_page) {
-		claim_zero(mlx5_release_dbr(&rxq_ctrl->sh->dbrpgs,
-					    mlx5_os_get_umem_id(dbr_page->umem),
-					    rxq_ctrl->cq_dbr_offset));
-		rxq_ctrl->cq_dbrec_page = NULL;
-	}
+	mlx5_rxq_release_devx_rq_resources(rxq_ctrl);
+	mlx5_devx_cq_destroy(&rxq_ctrl->obj->cq_obj);
+	memset(&rxq_ctrl->obj->cq_obj, 0, sizeof(rxq_ctrl->obj->cq_obj));
 }
 
 /**
@@ -230,10 +217,6 @@ mlx5_rxq_devx_res_release(struct mlx5_rxq_priv *rxq)
 		}
 		if (!RXQ_CTRL_LAST(rxq))
 			return;
-		if (rxq_obj->devx_cq) {
-			claim_zero(mlx5_devx_cmd_destroy(rxq_obj->devx_cq));
-			rxq_obj->devx_cq = NULL;
-		}
 		if (rxq_obj->devx_rmp) {
 			claim_zero(mlx5_devx_cmd_destroy(rxq_obj->devx_rmp));
 			rxq_obj->devx_rmp = NULL;
@@ -243,8 +226,7 @@ mlx5_rxq_devx_res_release(struct mlx5_rxq_priv *rxq)
 							(rxq_obj->devx_channel);
 			rxq_obj->devx_channel = NULL;
 		}
-		mlx5_rxq_release_devx_rq_resources(rxq_obj->rxq_ctrl);
-		mlx5_rxq_release_devx_cq_resources(rxq_obj->rxq_ctrl);
+		mlx5_rxq_release_devx_resources(rxq_obj->rxq_ctrl);
 	}
 }
 
@@ -273,7 +255,7 @@ mlx5_rx_devx_get_event(struct mlx5_rxq_obj *rxq_obj)
 		rte_errno = errno;
 		return -rte_errno;
 	}
-	if (out.event_resp.cookie != (uint64_t)(uintptr_t)rxq_obj->devx_cq) {
+	if (out.event_resp.cookie != (uint64_t)(uintptr_t)rxq_obj->cq_obj.cq) {
 		rte_errno = EINVAL;
 		return -rte_errno;
 	}
@@ -470,7 +452,7 @@ mlx5_rxq_create_devx_rq(struct mlx5_rxq_priv *rxq)
 	struct mlx5_rxq_ctrl *rxq_ctrl = rxq->ctrl;
 	struct mlx5_rxq_data *rxq_data = &rxq->ctrl->rxq;
 	struct mlx5_devx_create_rq_attr rq_attr = { 0 };
-	uint32_t cqn = rxq_ctrl->obj->devx_cq->id;
+	uint32_t cqn = rxq_ctrl->obj->cq_obj.cq->id;
 	struct mlx5_devx_obj *rq;
 
 	/* Fill RQ attributes. */
@@ -498,31 +480,23 @@ mlx5_rxq_create_devx_rq(struct mlx5_rxq_priv *rxq)
  *   Pointer to Rx queue.
  *
  * @return
- *   The DevX CQ object initialized, NULL otherwise and rte_errno is set.
+ *   0 on success, a negative errno value otherwise and rte_errno is set.
  */
-static struct mlx5_devx_obj *
+static int
 mlx5_rxq_create_devx_cq_resources(struct mlx5_rxq_priv *rxq)
 {
-	struct mlx5_devx_obj *cq_obj = 0;
+	struct mlx5_devx_cq *cq_obj = 0;
 	struct mlx5_devx_cq_attr cq_attr = { 0 };
 	struct mlx5_priv *priv = rxq->priv;
+	struct mlx5_dev_ctx_shared *sh = priv->sh;
 	uint16_t port_id = priv->dev_data->port_id;
 	struct mlx5_rxq_ctrl *rxq_ctrl = rxq->ctrl;
 	struct mlx5_rxq_data *rxq_data = &rxq_ctrl->rxq;
-	size_t page_size = rte_mem_page_size();
 	unsigned int cqe_n = mlx5_rxq_cqe_num(rxq_data);
-	struct mlx5_devx_dbr_page *dbr_page;
-	int64_t dbr_offset;
-	void *buf = NULL;
-	uint16_t event_nums[1] = {0};
 	uint32_t log_cqe_n;
-	uint32_t cq_size;
+	uint16_t event_nums[1] = { 0 };
 	int ret = 0;
 
-	if (page_size == (size_t)-1) {
-		DRV_LOG(ERR, "Failed to get page_size.");
-		goto error;
-	}
 	if (priv->config.cqe_comp && !rxq_data->hw_timestamp &&
 	    !rxq_data->lro) {
 		cq_attr.cqe_comp_en = 1u;
@@ -574,71 +548,37 @@ mlx5_rxq_create_devx_cq_resources(struct mlx5_rxq_priv *rxq)
 			"Port %u Rx CQE compression is disabled for LRO.",
 			port_id);
 	}
+	cq_attr.uar_page_id = mlx5_os_get_devx_uar_page_id(sh->devx_rx_uar);
 	log_cqe_n = log2above(cqe_n);
-	cq_size = sizeof(struct mlx5_cqe) * (1 << log_cqe_n);
-	buf = rte_calloc_socket(__func__, 1, cq_size, page_size,
-				rxq_ctrl->socket);
-	if (!buf) {
-		DRV_LOG(ERR, "Failed to allocate memory for CQ.");
-		goto error;
-	}
-	rxq_data->cqes = (volatile struct mlx5_cqe (*)[])(uintptr_t)buf;
-	rxq_ctrl->cq_umem = mlx5_glue->devx_umem_reg(priv->sh->ctx, buf,
-						     cq_size,
-						     IBV_ACCESS_LOCAL_WRITE);
-	if (!rxq_ctrl->cq_umem) {
-		DRV_LOG(ERR, "Failed to register umem for CQ.");
-		goto error;
-	}
-	/* Allocate CQ door-bell. */
-	dbr_offset = mlx5_get_dbr(priv->sh->ctx, &priv->sh->dbrpgs, &dbr_page);
-	if (dbr_offset < 0) {
-		DRV_LOG(ERR, "Failed to allocate CQ door-bell.");
-		goto error;
-	}
-	rxq_ctrl->cq_dbr_offset = dbr_offset;
-	rxq_ctrl->cq_dbrec_page = dbr_page;
-	rxq_data->cq_db = (uint32_t *)((uintptr_t)dbr_page->dbrs +
-			  (uintptr_t)rxq_ctrl->cq_dbr_offset);
-	rxq_data->cq_uar =
-			mlx5_os_get_devx_uar_base_addr(priv->sh->devx_rx_uar);
 	/* Create CQ using DevX API. */
-	cq_attr.eqn = priv->sh->eqn;
-	cq_attr.uar_page_id =
-			mlx5_os_get_devx_uar_page_id(priv->sh->devx_rx_uar);
-	cq_attr.q_umem_id = mlx5_os_get_umem_id(rxq_ctrl->cq_umem);
-	cq_attr.q_umem_valid = 1;
-	cq_attr.log_cq_size = log_cqe_n;
-	cq_attr.log_page_size = rte_log2_u32(page_size);
-	cq_attr.db_umem_offset = rxq_ctrl->cq_dbr_offset;
-	cq_attr.db_umem_id = mlx5_os_get_umem_id(dbr_page->umem);
-	cq_attr.db_umem_valid = 1;
-	cq_obj = mlx5_devx_cmd_create_cq(priv->sh->ctx, &cq_attr);
-	if (!cq_obj)
-		goto error;
+	ret = mlx5_devx_cq_create(sh->ctx, &rxq_ctrl->obj->cq_obj, log_cqe_n,
+				  &cq_attr, sh->numa_node);
+	if (ret)
+		return ret;
+	cq_obj = &rxq_ctrl->obj->cq_obj;
+	rxq_data->cqes = (volatile struct mlx5_cqe (*)[])
+							(uintptr_t)cq_obj->cqes;
+	rxq_data->cq_db = cq_obj->db_rec;
+	rxq_data->cq_uar = mlx5_os_get_devx_uar_base_addr(sh->devx_rx_uar);
 	rxq_data->cqe_n = log_cqe_n;
-	rxq_data->cqn = cq_obj->id;
+	rxq_data->cqn = cq_obj->cq->id;
 	if (rxq_ctrl->obj->devx_channel) {
 		ret = mlx5_glue->devx_subscribe_devx_event
 						(rxq_ctrl->obj->devx_channel,
-						 cq_obj->obj,
+						 cq_obj->cq->obj,
 						 sizeof(event_nums),
 						 event_nums,
 						 (uint64_t)(uintptr_t)cq_obj);
 		if (ret) {
 			DRV_LOG(ERR, "Fail to subscribe CQ to event channel.");
-			rte_errno = errno;
-			goto error;
+			ret = errno;
+			mlx5_devx_cq_destroy(cq_obj);
+			memset(cq_obj, 0, sizeof(*cq_obj));
+			rte_errno = ret;
+			return -ret;
 		}
 	}
-	/* Initialise CQ to 1's to mark HW ownership for all CQEs. */
-	memset((void *)(uintptr_t)rxq_data->cqes, 0xFF, cq_size);
-	return cq_obj;
-error:
-	if (cq_obj)
-		mlx5_devx_cmd_destroy(cq_obj);
-	mlx5_rxq_release_devx_cq_resources(rxq_ctrl);
-	return NULL;
+	return 0;
 }
 
 /**
@@ -733,8 +673,8 @@ mlx5_rxq_devx_obj_new(struct mlx5_rxq_priv *rxq)
 		tmpl->fd = mlx5_os_get_devx_channel_fd(tmpl->devx_channel);
 	}
 	/* Create CQ using DevX API. */
-	tmpl->devx_cq = mlx5_rxq_create_devx_cq_resources(rxq);
-	if (!tmpl->devx_cq) {
+	ret = mlx5_rxq_create_devx_cq_resources(rxq);
+	if (ret) {
 		DRV_LOG(ERR, "Failed to create CQ.");
 		goto error;
 	}
@@ -762,12 +702,9 @@ error:
 	ret = rte_errno; /* Save rte_errno before cleanup. */
 	if (tmpl->devx_rmp != NULL)
 		claim_zero(mlx5_devx_cmd_destroy(tmpl->devx_rmp));
-	if (tmpl->devx_cq)
-		claim_zero(mlx5_devx_cmd_destroy(tmpl->devx_cq));
 	if (tmpl->devx_channel)
 		mlx5_glue->devx_destroy_event_channel(tmpl->devx_channel);
-	mlx5_rxq_release_devx_rq_resources(rxq_ctrl);
-	mlx5_rxq_release_devx_cq_resources(rxq_ctrl);
+	mlx5_rxq_release_devx_resources(rxq_ctrl);
 	rte_errno = ret; /* Restore rte_errno. */
 	return -rte_errno;
 }
@@ -791,7 +728,7 @@ mlx5_rxq_devx_res_new(struct mlx5_rxq_priv *rxq)
 	if (rxq->ctrl->type == MLX5_RXQ_TYPE_HAIRPIN)
 		return mlx5_rxq_obj_hairpin_new(rxq);
 	/* Create shared resources. */
-	if (rxq->ctrl->obj->devx_cq == NULL) {
+	if (rxq->ctrl->obj->cq_obj.cq == NULL) {
 		ret = mlx5_rxq_devx_obj_new(rxq);
 		if (ret != 0)
 			goto error;
@@ -1219,8 +1156,12 @@ mlx5_rxq_devx_obj_drop_create(struct rte_eth_dev *dev)
 	rxq_ctrl->sh = priv->sh;
 	rxq_ctrl->obj = rxq_obj;
 	/* Create CQ using DevX API. */
-	rxq_obj->devx_cq = mlx5_rxq_create_devx_cq_resources(rxq);
-	if (rxq_obj->devx_cq == NULL) {
+	ret = mlx5_rxq_create_devx_cq_resources(rxq);
+	if (ret) {
+		DRV_LOG(ERR, "Failed to create CQ.");
+		goto error;
+	}
+	if (rxq_obj->cq_obj.cq == NULL) {
 		DRV_LOG(ERR, "Port %u drop queue CQ creation failed.",
 			dev->data->port_id);
 		goto error;
@@ -1250,15 +1191,14 @@ mlx5_rxq_devx_obj_drop_create(struct rte_eth_dev *dev)
 error:
 	ret = rte_errno; /* Save rte_errno before cleanup. */
 	if (rxq_obj != NULL) {
-		if (rxq_obj->devx_cq != NULL)
-			claim_zero(mlx5_devx_cmd_destroy(rxq_obj->devx_cq));
+		mlx5_devx_cq_destroy(&rxq_obj->cq_obj);
+		memset(&rxq_obj->cq_obj, 0, sizeof(rxq_obj->cq_obj));
 		if (rxq_obj->devx_channel != NULL)
 			mlx5_glue->devx_destroy_event_channel
 							(rxq_obj->devx_channel);
 	}
 	if (rxq_ctrl != NULL) {
-		mlx5_rxq_release_devx_rq_resources(rxq_ctrl);
-		mlx5_rxq_release_devx_cq_resources(rxq_ctrl);
+		mlx5_rxq_release_devx_resources(rxq_ctrl);
 		mlx5_free(rxq_ctrl);
 	}
 	if (rxq != NULL) {
@@ -1286,12 +1226,11 @@ mlx5_rxq_devx_obj_drop_release(struct rte_eth_dev *dev)
 
 	if (rxq->devx_rq != NULL)
 		claim_zero(mlx5_devx_cmd_destroy(rxq->devx_rq));
-	if (rxq_obj->devx_cq != NULL)
-		claim_zero(mlx5_devx_cmd_destroy(rxq_obj->devx_cq));
+	mlx5_devx_cq_destroy(&rxq_obj->cq_obj);
+	memset(&rxq_obj->cq_obj, 0, sizeof(rxq_obj->cq_obj));
 	if (rxq_obj->devx_channel != NULL)
 		mlx5_glue->devx_destroy_event_channel(rxq_obj->devx_channel);
-	mlx5_rxq_release_devx_rq_resources(rxq_ctrl);
-	mlx5_rxq_release_devx_cq_resources(rxq_ctrl);
+	mlx5_rxq_release_devx_resources(rxq_ctrl);
 	mlx5_free(rxq_obj);
 	mlx5_free(rxq_ctrl);
 	mlx5_free(rxq);
