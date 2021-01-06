@@ -168,13 +168,13 @@ __prep_one(struct mlx5_regex_priv *priv, struct mlx5_regex_sq *sq,
 			       RTE_REGEX_OPS_REQ_GROUP_ID2_VALID_F |
 			       RTE_REGEX_OPS_REQ_GROUP_ID3_VALID_F)))
 		group0 = op->group_id0;
-	uint8_t *wqe = (uint8_t *)(uintptr_t)sq->wqe + wqe_offset;
+	uint8_t *wqe = (uint8_t *)(uintptr_t)sq->sq_obj.wqes + wqe_offset;
 	int ds = 4; /*  ctrl + meta + input + output */
 
 	set_wqe_ctrl_seg((struct mlx5_wqe_ctrl_seg *)wqe,
 			 (priv->has_umr ? (pi * 4 + 3) : pi),
 			 MLX5_OPCODE_MMO, MLX5_OPC_MOD_MMO_REGEX,
-			 sq->obj->id, 0, ds, 0, 0);
+			 sq->sq_obj.sq->id, 0, ds, 0, 0);
 	set_regex_ctrl_seg(wqe + 12, 0, group0, group1, group2, group3,
 			   control);
 	struct mlx5_wqe_data_seg *input_seg =
@@ -208,13 +208,13 @@ send_doorbell(struct mlx5_regex_priv *priv, struct mlx5_regex_sq *sq)
 	size_t wqe_offset = (sq->db_pi & (sq_size_get(sq) - 1)) *
 		(MLX5_SEND_WQE_BB << (priv->has_umr ? 2 : 0)) +
 		(priv->has_umr ? MLX5_REGEX_UMR_WQE_SIZE : 0);
-	uint8_t *wqe = (uint8_t *)(uintptr_t)sq->wqe + wqe_offset;
+	uint8_t *wqe = (uint8_t *)(uintptr_t)sq->sq_obj.wqes + wqe_offset;
 	/* Or the fm_ce_se instead of set, avoid the fence be cleared. */
 	((struct mlx5_wqe_ctrl_seg *)wqe)->fm_ce_se |= MLX5_WQE_CTRL_CQ_UPDATE;
 	uint64_t *doorbell_addr =
 		(uint64_t *)((uint8_t *)uar->base_addr + 0x800);
 	rte_io_wmb();
-	sq->dbr[MLX5_SND_DBR] = rte_cpu_to_be_32((priv->has_umr ?
+	sq->sq_obj.db_rec[MLX5_SND_DBR] = rte_cpu_to_be_32((priv->has_umr ?
 					(sq->db_pi * 4 + 3) : sq->db_pi) &
 					MLX5_REGEX_MAX_WQE_INDEX);
 	rte_wmb();
@@ -249,7 +249,7 @@ complete_umr_wqe(struct mlx5_regex_qp *qp, struct mlx5_regex_sq *sq,
 	size_t wqe_offset = (umr_index & (sq_size_get(sq) - 1)) *
 		(MLX5_SEND_WQE_BB * 4);
 	struct mlx5_wqe_ctrl_seg *wqe = (struct mlx5_wqe_ctrl_seg *)((uint8_t *)
-				   (uintptr_t)sq->wqe + wqe_offset);
+				   (uintptr_t)sq->sq_obj.wqes + wqe_offset);
 	struct mlx5_wqe_umr_ctrl_seg *ucseg =
 				(struct mlx5_wqe_umr_ctrl_seg *)(wqe + 1);
 	struct mlx5_wqe_mkey_context_seg *mkc =
@@ -260,7 +260,7 @@ complete_umr_wqe(struct mlx5_regex_qp *qp, struct mlx5_regex_sq *sq,
 	memset(wqe, 0, MLX5_REGEX_UMR_WQE_SIZE);
 	/* Set WQE control seg. Non-inline KLM UMR WQE size must be 9 WQE_DS. */
 	set_wqe_ctrl_seg(wqe, (umr_index * 4), MLX5_OPCODE_UMR,
-			 0, sq->obj->id, 0, 9, 0,
+			 0, sq->sq_obj.sq->id, 0, 9, 0,
 			 rte_cpu_to_be_32(mkey_job->imkey->id));
 	/* Set UMR WQE control seg. */
 	ucseg->mkey_mask |= rte_cpu_to_be_64(MLX5_WQE_UMR_CTRL_MKEY_MASK_LEN |
@@ -294,13 +294,13 @@ prep_nop_regex_wqe_set(struct mlx5_regex_priv *priv, struct mlx5_regex_sq *sq,
 	size_t wqe_offset = (pi & (sq_size_get(sq) - 1)) *
 			    (MLX5_SEND_WQE_BB << 2);
 	struct mlx5_wqe_ctrl_seg *wqe = (struct mlx5_wqe_ctrl_seg *)((uint8_t *)
-				   (uintptr_t)sq->wqe + wqe_offset);
+				   (uintptr_t)sq->sq_obj.wqes + wqe_offset);
 
 	/* Clear the WQE memory used as UMR WQE previously. */
 	if ((rte_be_to_cpu_32(wqe->opmod_idx_opcode) & 0xff) != MLX5_OPCODE_NOP)
 		memset(wqe, 0, MLX5_REGEX_UMR_WQE_SIZE);
 	/* UMR WQE size is 9 DS, align nop WQE to 3 WQEBBS(12 DS). */
-	set_wqe_ctrl_seg(wqe, pi * 4, MLX5_OPCODE_NOP, 0, sq->obj->id,
+	set_wqe_ctrl_seg(wqe, pi * 4, MLX5_OPCODE_NOP, 0, sq->sq_obj.sq->id,
 			 0, 12, 0, 0);
 	__prep_one(priv, sq, op, job, pi, klm);
 }
@@ -603,7 +603,7 @@ setup_sqs(struct mlx5_regex_priv *priv, struct mlx5_regex_qp *queue)
 	uint32_t job_id;
 	for (sqid = 0; sqid < queue->nb_obj; sqid++) {
 		struct mlx5_regex_sq *sq = &queue->sqs[sqid];
-		uint8_t *wqe = (uint8_t *)sq->wqe;
+		uint8_t *wqe = (uint8_t *)(uintptr_t)sq->sq_obj.wqes;
 		for (entry = 0 ; entry < sq_size_get(sq); entry++) {
 			job_id = sqid * sq_size_get(sq) + entry;
 			struct mlx5_regex_job *job = &queue->jobs[job_id];
@@ -613,7 +613,7 @@ setup_sqs(struct mlx5_regex_priv *priv, struct mlx5_regex_qp *queue)
 				set_wqe_ctrl_seg
 					((struct mlx5_wqe_ctrl_seg *)wqe,
 					 entry * 2, MLX5_OPCODE_NOP, 0,
-					 sq->obj->id, 0, 12, 0, 0);
+					 sq->sq_obj.sq->id, 0, 12, 0, 0);
 				wqe += MLX5_REGEX_UMR_WQE_SIZE;
 			}
 			set_metadata_seg((struct mlx5_wqe_metadata_seg *)
@@ -645,7 +645,7 @@ setup_buffers(struct mlx5_regex_priv *priv, struct mlx5_regex_qp *qp)
 		return -ENOMEM;
 
 	qp->metadata = mlx5_glue->reg_mr(pd, ptr,
-					 MLX5_REGEX_METADATA_SIZE*qp->nb_desc,
+					 MLX5_REGEX_METADATA_SIZE * qp->nb_desc,
 					 IBV_ACCESS_LOCAL_WRITE);
 	if (!qp->metadata) {
 		DRV_LOG(ERR, "Failed to register metadata");
