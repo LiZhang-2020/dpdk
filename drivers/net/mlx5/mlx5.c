@@ -41,9 +41,6 @@
 /* Device parameter to enable RX completion queue compression. */
 #define MLX5_RXQ_CQE_COMP_EN "rxq_cqe_comp_en"
 
-/* Device parameter to enable RX completion entry padding to 128B. */
-#define MLX5_RXQ_CQE_PAD_EN "rxq_cqe_pad_en"
-
 /* Device parameter to enable padding Rx packet to cacheline size. */
 #define MLX5_RXQ_PKT_PAD_EN "rxq_pkt_pad_en"
 
@@ -1914,8 +1911,6 @@ mlx5_args_check(const char *key, const char *val, void *opaque)
 		}
 		config->cqe_comp = !!tmp;
 		config->cqe_comp_fmt = tmp;
-	} else if (strcmp(MLX5_RXQ_CQE_PAD_EN, key) == 0) {
-		config->cqe_pad = !!tmp;
 	} else if (strcmp(MLX5_RXQ_PKT_PAD_EN, key) == 0) {
 		config->hw_padding = !!tmp;
 	} else if (strcmp(MLX5_RX_MPRQ_EN, key) == 0) {
@@ -2062,7 +2057,6 @@ mlx5_args(struct mlx5_dev_config *config, struct rte_devargs *devargs)
 {
 	const char **params = (const char *[]){
 		MLX5_RXQ_CQE_COMP_EN,
-		MLX5_RXQ_CQE_PAD_EN,
 		MLX5_RXQ_PKT_PAD_EN,
 		MLX5_RX_MPRQ_EN,
 		MLX5_RX_MPRQ_LOG_STRIDE_NUM,
