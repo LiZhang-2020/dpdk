@@ -568,6 +568,15 @@ enum rte_flow_item_type {
 	 * See struct rte_flow_item_sanity_checks.
 	 */
 	RTE_FLOW_ITEM_TYPE_SANITY_CHECKS,
+
+	/**
+	 * [META]
+	 *
+	 * Matches conntrack state.
+	 *
+	 * See struct rte_flow_item_conntrack.
+	 */
+	RTE_FLOW_ITEM_TYPE_CONNTRACK,
 };
 
 /**
@@ -1717,6 +1726,41 @@ struct rte_flow_item_sft {
 	uint8_t *user_data; /**< Arbitrary user data. */
 };
 
+#define RTE_FLOW_CONNTRACK_FLAG_STATE_VALID (1 << 0)
+/**< The packet is valid. */
+#define RTE_FLOW_CONNTRACK_FLAG_STATE_CHANGED (1 << 1)
+/**< The state of the connection was changed. */
+#define RTE_FLOW_CONNTRACK_FLAG_ERROR (1 << 2)
+/**< Error was detected on this packet. */
+#define RTE_FLOW_CONNTRACK_FLAG_DISABLED (1 << 3)
+/**< The HW module is disabled can be due to application command or
+ * invalid state.
+ */
+#define RTE_FLOW_CONNTRACK_FLAG_BAD_PKT (1 << 4)
+/**< The packet contains some bad field(s). */
+
+/**
+ * @warning
+ * @b EXPERIMENTAL: this structure may change without prior notice
+ *
+ * RTE_FLOW_ITEM_TYPE_CONNTRACK
+ *
+ * Matches the state of a packet after it passed the connection tracking
+ * examination. The state is a bit mask of one RTE_FLOW_CONNTRACK_FLAG*
+ * or a reasonable combination of the bits.
+ *
+ */
+struct rte_flow_item_conntrack {
+	uint32_t flags;
+};
+
+/** Default mask for RTE_FLOW_ITEM_TYPE_CONNTRACK. */
+#ifndef __cplusplus
+static const struct rte_flow_item_conntrack rte_flow_item_conntrack_mask = {
+	.flags = 0xffffffff,
+};
+#endif
+
 /**
  * @warning
  * @b EXPERIMENTAL: this structure may change without prior notice
@@ -2405,6 +2449,17 @@ enum rte_flow_action_type {
 	 * See struct rte_flow_action_modify_field.
 	 */
 	RTE_FLOW_ACTION_TYPE_MODIFY_FIELD,
+
+	/**
+	 * [META]
+	 *
+	 * Enable tracking a TCP connection state.
+	 *
+	 * Send packet to HW connection tracking module for examination.
+	 *
+	 * See struct rte_flow_action_conntrack.
+	 */
+	RTE_FLOW_ACTION_TYPE_CONNTRACK,
 };
 
 /**
@@ -2992,6 +3047,110 @@ struct rte_flow_action_set_dscp {
 	uint8_t dscp;
 };
 
+enum rte_flow_conntrack_state {
+	RTE_FLOW_CONNTRACK_STATE_SYN_RECV,
+	RTE_FLOW_CONNTRACK_STATE_ESTABLISHED,
+	RTE_FLOW_CONNTRACK_STATE_FIN_WAIT,
+	RTE_FLOW_CONNTRACK_STATE_CLOSE_WAIT,
+	RTE_FLOW_CONNTRACK_STATE_LAST_ACK,
+	RTE_FLOW_CONNTRACK_STATE_TIME_WAIT,
+};
+
+struct rte_flow_tcp_dir_param {
+	uint32_t scale:4; /**< TCP window scaling factor, 0xF to disable. */
+	uint32_t close_initiated:1; /**< This FIN was sent by this direction. */
+	uint32_t last_ack_seen:1;
+	/**< An ACK packet has been received by this side. */
+	uint32_t data_unacked:1;
+	/**< If set indicates that there is unacked data on the connection. */
+	uint32_t sent_end;
+	/**< Maximal value of sequence + payload length over sent packets. */
+	uint32_t reply_end;
+	/**< Maximal value of ACK + window size over received packets. */
+	uint32_t max_win;
+	/**< Same as the member reply_end. */
+	uint32_t max_ack;
+	/**< Maximal value of ACK over received packets. */
+};
+
+enum rte_flow_conntrack_index {
+	RTE_FLOW_CONNTRACK_INDEX_NONE = 0,
+	RTE_FLOW_CONNTRACK_INDEX_SYN = (1 << 0),
+	RTE_FLOW_CONNTRACK_INDEX_SYN_ACK = (1 << 1),
+	RTE_FLOW_CONNTRACK_INDEX_FIN = (1 << 2),
+	RTE_FLOW_CONNTRACK_INDEX_ACK = (1 << 3),
+	RTE_FLOW_CONNTRACK_INDEX_RST = (1 << 4),
+};
+
+/**
+ * @warning
+ * @b EXPERIMENTAL: this structure may change without prior notice
+ *
+ * RTE_FLOW_ACTION_TYPE_CONNTRACK
+ *
+ * Configuration and initial state for the conntrack HW module.
+ */
+struct rte_flow_action_conntrack {
+	uint16_t peer_port; /**< The peer port number, can be the same port. */
+	uint32_t is_original_dir:1;
+	/**< Direction of this connection when creating, the value only affect
+	 * the subsequent flows creation.
+	 */
+	uint32_t enable:1;
+	/**< Enable / disable the conntrack HW module. When disabled, the
+	 * result will always be RTE_FLOW_CONNTRACK_FLAG_DISABLED.
+	 * In this state the HW will act as passthrough.
+	 */
+	uint32_t live_connection:1;
+	/**< Seen at least one ack, after the connection was established. */
+	uint32_t selective_ack:1;
+	/**< Enable selective ACK on this connection. */
+	uint32_t challenge_ack_passed:1;
+	uint32_t last_direction:1;
+	/**< 1: If the last packet is seen that it arrived from
+	 * the original direction.
+	 */
+	uint32_t liberal_mode:1;
+	/**< No TCP check will be done except the state change. */
+	enum rte_flow_conntrack_state state;
+	/**< The current state of the connection. */
+	uint8_t max_ack_window;
+	/**< Scaling factor for maximal allowed ACK window. */
+	uint8_t retransmission_limit;
+	/**< Retransmission times exceed maximal allowed number. */
+	struct rte_flow_tcp_dir_param original_dir;
+	/**< TCP parameters of the original direction. */
+	struct rte_flow_tcp_dir_param reply_dir;
+	/**< TCP parameters of the reply direction. */
+	uint16_t last_window;
+	/**< The window value of the last packet passed this conntrack. */
+	enum rte_flow_conntrack_index last_index;
+	uint32_t last_seq;
+	/**< The sequence of the last packet passed this conntrack. */
+	uint32_t last_ack;
+	/**< The acknowledgement of the last packet passed this conntrack. */
+	uint32_t last_end;
+	/**< The total value ACK + payload length of the last packet passed
+	 * this conntrack.
+	 */
+};
+
+/**
+ * RTE_FLOW_ACTION_TYPE_CONNTRACK
+ *
+ * Wrapper structure for the context update interface.
+ * Ports cannot support updating, and the only valid solution is to
+ * destroy the old context and create a new one instead.
+ */
+struct rte_flow_modify_conntrack {
+	struct rte_flow_action_conntrack new_ct;
+	/**< New connection tracking parameters to be updated. */
+	uint32_t direction:1; /**< The direction field will be updated. */
+	uint32_t state:1;
+	/**< All the other fields except direction will be updated. */
+	uint32_t reserved:30; /**< Reserved bits for the future usage. */
+};
+
 /**
  * RTE_FLOW_ACTION_TYPE_SHARED
  *
@@ -3004,6 +3163,22 @@ struct rte_flow_action_set_dscp {
  * - destroy action
  */
 struct rte_flow_shared_action;
+
+/**
+ * @warning
+ * @b EXPERIMENTAL: this structure may change without prior notice
+ *
+ * RTE_FLOW_ACTION_TYPE_SHARED
+ *
+ * Opaque type returned after successfully creating an action context.
+ *
+ * This handle can be used to manage and query the related action:
+ * - share it across multiple flow rules over multiple ports
+ * - update action context configuration
+ * - query action context data
+ * - destroy action context
+ */
+struct rte_flow_action_ctx;
 
 /**
  * Field IDs for MODIFY_FIELD action.
@@ -3966,6 +4141,161 @@ rte_flow_shared_action_query(uint16_t port_id,
 			     const struct rte_flow_shared_action *action,
 			     void *data,
 			     struct rte_flow_error *error);
+
+/**
+ * Specify action context configuration
+ */
+struct rte_flow_action_ctx_conf {
+	/**
+	 * Flow direction for the action configuration.
+	 *
+	 * Action should be valid at least for one flow direction,
+	 * otherwise it is invalid for both ingress and egress rules.
+	 */
+	uint32_t ingress:1;
+	/**< Action valid for rules applied to ingress traffic. */
+	uint32_t egress:1;
+	/**< Action valid for rules applied to egress traffic. */
+	/**
+	 * When set to 1, indicates that the action is valid for
+	 * transfer traffic; otherwise, for non-transfer traffic.
+	 *
+	 * See struct rte_flow_attr.
+	 */
+	uint32_t transfer:1;
+};
+
+/**
+ * @warning
+ * @b EXPERIMENTAL: this API may change without prior notice.
+ *
+ * Create an action that can be used by flow create and shared by different
+ * flows. The created action has single state and configuration
+ * across all flow rules using it.
+ *
+ * @param[in] port_id
+ *    The port identifier of the Ethernet device.
+ * @param[in] conf
+ *   Action configuration for the action creation.
+ * @param[in] action
+ *   Specific configuration of the action.
+ * @param[out] error
+ *   Perform verbose error reporting if not NULL. PMDs initialize this
+ *   structure in case of error only.
+ * @return
+ *   A valid handle in case of success, NULL otherwise and rte_errno is set
+ *   to one of the error codes defined:
+ *   - (ENODEV) if *port_id* invalid.
+ *   - (ENOSYS) if underlying device does not support this functionality.
+ *   - (EIO) if underlying device is removed.
+ *   - (EINVAL) if *action* invalid.
+ *   - (ENOTSUP) if *action* valid but unsupported.
+ */
+__rte_experimental
+struct rte_flow_action_ctx *
+rte_flow_action_ctx_create(uint16_t port_id,
+			   const struct rte_flow_action_ctx_conf *conf,
+			   const struct rte_flow_action *action,
+			   struct rte_flow_error *error);
+
+/**
+ * @warning
+ * @b EXPERIMENTAL: this API may change without prior notice.
+ *
+ * Destroy action context by handle.
+ *
+ * @param[in] port_id
+ *    The port identifier of the Ethernet device.
+ * @param[in] action
+ *   Handle for the action to be destroyed.
+ * @param[out] error
+ *   Perform verbose error reporting if not NULL. PMDs initialize this
+ *   structure in case of error only.
+ * @return
+ *   - (0) if success.
+ *   - (-ENODEV) if *port_id* invalid.
+ *   - (-ENOSYS) if underlying device does not support this functionality.
+ *   - (-EIO) if underlying device is removed.
+ *   - (-ENOENT) if action pointed by *action* handle was not found.
+ *   - (-EBUSY) if action pointed by *action* handle still used by some rules
+ *   rte_errno is also set.
+ */
+__rte_experimental
+int
+rte_flow_action_ctx_destroy(uint16_t port_id,
+			    struct rte_flow_action_ctx *action,
+			    struct rte_flow_error *error);
+
+/**
+ * @warning
+ * @b EXPERIMENTAL: this API may change without prior notice.
+ *
+ * Update in-place the action configuration and / or state pointed
+ * by *action* handle with the configuration provided as *update* argument.
+ * The update of the action configuration effects all flow rules reusing
+ * the action via handle.
+ * The mask allows the modification of specific values.
+ *
+ * @param[in] port_id
+ *    The port identifier of the Ethernet device.
+ * @param[in] action
+ *   Handle for the shared action to be updated.
+ * @param[in] update
+ *   Action specification used to modify the action pointed by handle.
+ *   *update* could be of same type with the action pointed by the *action*
+ *   handle argument, or a wrapper structure includes *action* and bit
+ *   fields to indicate the member of *action* to update.
+ * @param[out] error
+ *   Perform verbose error reporting if not NULL. PMDs initialize this
+ *   structure in case of error only.
+ * @return
+ *   - (0) if success.
+ *   - (-ENODEV) if *port_id* invalid.
+ *   - (-ENOSYS) if underlying device does not support this functionality.
+ *   - (-EIO) if underlying device is removed.
+ *   - (-EINVAL) if *update* invalid.
+ *   - (-ENOTSUP) if *update* valid but unsupported.
+ *   - (-ENOENT) if action pointed by *ctx* was not found.
+ *   rte_errno is also set.
+ */
+__rte_experimental
+int
+rte_flow_action_ctx_update(uint16_t port_id,
+			   struct rte_flow_action_ctx *action,
+			   const void *update,
+			   struct rte_flow_error *error);
+
+/**
+ * @warning
+ * @b EXPERIMENTAL: this API may change without prior notice.
+ *
+ * Query the action by handle.
+ *
+ * Retrieve action-specific data such as counters, connection track objects.
+ * Data is gathered by special action which may be present/referenced in
+ * more than one flow rule definition.
+ *
+ * @see RTE_FLOW_ACTION_TYPE_COUNT
+ * @see RTE_FLOW_ACTION_TYPE_CONNTRACK
+ *
+ * @param port_id
+ *   Port identifier of Ethernet device.
+ * @param[in] action
+ *   Handle for the shared action to query.
+ * @param[in, out] data
+ *   Pointer to storage for the associated query data type.
+ * @param[out] error
+ *   Perform verbose error reporting if not NULL. PMDs initialize this
+ *   structure in case of error only.
+ *
+ * @return
+ *   0 on success, a negative errno value otherwise and rte_errno is set.
+ */
+__rte_experimental
+int
+rte_flow_action_ctx_query(uint16_t port_id,
+			  const struct rte_flow_action_ctx *action,
+			  void *data, struct rte_flow_error *error);
 
 /* Tunnel has a type and the key information. */
 struct rte_flow_tunnel {
