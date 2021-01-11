@@ -135,7 +135,7 @@ sft_process_rx(const struct fwd_stream *fs, uint16_t num, struct rte_mbuf **m_in
 static void
 pkt_burst_io_forward(struct fwd_stream *fs)
 {
-	struct rte_mbuf *pkts_burst[MAX_PKT_BURST] = {0, };
+	struct rte_mbuf *pkts_burst[MAX_PKT_BURST];
 	uint16_t nb_rx;
 	uint16_t nb_tx;
 	uint32_t retry;
