@@ -359,7 +359,7 @@ enum mlx5_feature_name {
 #define MLX5_GENEVE_VER_VAL(a) \
 		(((a) >> (MLX5_GENEVE_VER_SHIFT)) & (MLX5_GENEVE_VER_MASK))
 #define MLX5_GENEVE_OPTLEN_MASK 0x3F
-#define MLX5_GENEVE_OPTLEN_SHIFT 7
+#define MLX5_GENEVE_OPTLEN_SHIFT 8
 #define MLX5_GENEVE_OPTLEN_VAL(a) \
 	    (((a) >> (MLX5_GENEVE_OPTLEN_SHIFT)) & (MLX5_GENEVE_OPTLEN_MASK))
 #define MLX5_GENEVE_OAMF_MASK 0x1
@@ -1385,6 +1385,7 @@ int mlx5_flow_validate_item_geneve(const struct rte_flow_item *item,
 				   struct rte_flow_error *error);
 int mlx5_flow_validate_item_geneve_opt(const struct rte_flow_item *item,
 				   uint64_t last_item,
+				   const struct rte_flow_item *geneve_item,
 				   struct rte_eth_dev *dev,
 				   struct rte_flow_error *error);
 int mlx5_flow_validate_item_ecpri(const struct rte_flow_item *item,

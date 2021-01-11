@@ -5830,6 +5830,7 @@ flow_dv_validate(struct rte_eth_dev *dev, const struct rte_flow_attr *attr,
 	uint8_t item_ipv6_proto = 0;
 	int fdb_mirror_limit = 0;
 	int modify_after_mirror = 0;
+	const struct rte_flow_item *geneve_item = NULL;
 	const struct rte_flow_item *gre_item = NULL;
 	const struct rte_flow_item *gtp_item = NULL;
 	const struct rte_flow_action_raw_decap *decap;
@@ -6115,11 +6116,13 @@ flow_dv_validate(struct rte_eth_dev *dev, const struct rte_flow_attr *attr,
 							     error);
 			if (ret < 0)
 				return ret;
+			geneve_item = items;
 			last_item = MLX5_FLOW_LAYER_GENEVE;
 			break;
 		case RTE_FLOW_ITEM_TYPE_GENEVE_OPT:
 			ret = mlx5_flow_validate_item_geneve_opt(items,
 								 last_item,
+								 geneve_item,
 								 dev,
 								 error);
 			if (ret < 0)
@@ -8017,7 +8020,7 @@ flow_dev_geneve_tlv_option_resource_register(struct rte_eth_dev *dev,
 			geneve_opt_resource->option_type ==
 			geneve_opt_v->option_type &&
 			geneve_opt_resource->length ==
-			geneve_opt_v->length) {
+			geneve_opt_v->option_len) {
 			/* We already have GENVE TLV option obj allocated. */
 			__atomic_fetch_add(&geneve_opt_resource->refcnt, 1,
 					   __ATOMIC_RELAXED);
@@ -8032,7 +8035,7 @@ flow_dev_geneve_tlv_option_resource_register(struct rte_eth_dev *dev,
 		obj = mlx5_devx_cmd_create_geneve_tlv_option(sh->ctx,
 				geneve_opt_v->option_class,
 				geneve_opt_v->option_type,
-				geneve_opt_v->length);
+				geneve_opt_v->option_len);
 		if (!obj) {
 			ret = rte_flow_error_set(error, ENODATA,
 				RTE_FLOW_ERROR_TYPE_UNSPECIFIED, NULL,
@@ -8054,7 +8057,7 @@ flow_dev_geneve_tlv_option_resource_register(struct rte_eth_dev *dev,
 		geneve_opt_resource->obj = obj;
 		geneve_opt_resource->option_class = geneve_opt_v->option_class;
 		geneve_opt_resource->option_type = geneve_opt_v->option_type;
-		geneve_opt_resource->length = geneve_opt_v->length;
+		geneve_opt_resource->length = geneve_opt_v->option_len;
 		__atomic_store_n(&geneve_opt_resource->refcnt, 1,
 				__ATOMIC_RELAXED);
 	}
@@ -8084,6 +8087,8 @@ flow_dv_translate_item_geneve_opt(struct rte_eth_dev *dev, void *matcher,
 {
 	const struct rte_flow_item_geneve_opt *geneve_opt_m = item->mask;
 	const struct rte_flow_item_geneve_opt *geneve_opt_v = item->spec;
+	void *misc_m = MLX5_ADDR_OF(fte_match_param, matcher, misc_parameters);
+	void *misc_v = MLX5_ADDR_OF(fte_match_param, key, misc_parameters);
 	void *misc3_m = MLX5_ADDR_OF(fte_match_param, matcher,
 			misc_parameters_3);
 	void *misc3_v = MLX5_ADDR_OF(fte_match_param, key, misc_parameters_3);
@@ -8100,17 +8105,30 @@ flow_dv_translate_item_geneve_opt(struct rte_eth_dev *dev, void *matcher,
 		DRV_LOG(ERR, "Failed to create geneve_tlv_obj");
 		return ret;
 	}
+	/*
+	 * Set the option length in GENEVE header if not requested.
+	 * The GENEVE TLV option length is expressed by the option length field
+	 * in the GENEVE header.
+	 * If the option length was not requested but the GENEVE TLV option item
+	 * is present we set the option length field implicitly.
+	 */
+	if (!MLX5_GET16(fte_match_set_misc, misc_m, geneve_opt_len)) {
+		MLX5_SET(fte_match_set_misc, misc_m, geneve_opt_len,
+			 MLX5_GENEVE_OPTLEN_MASK);
+		MLX5_SET(fte_match_set_misc, misc_v, geneve_opt_len,
+			 geneve_opt_v->option_len + 1);
+	}
 	/* Set the data. */
 	if (geneve_opt_v->data) {
 		memcpy(&opt_data_key, geneve_opt_v->data,
-				RTE_MIN((uint32_t)(geneve_opt_v->length * 4),
-					sizeof(opt_data_key)));
-		MLX5_ASSERT((uint32_t)(geneve_opt_v->length * 4) <=
+			RTE_MIN((uint32_t)(geneve_opt_v->option_len * 4),
+				sizeof(opt_data_key)));
+		MLX5_ASSERT((uint32_t)(geneve_opt_v->option_len * 4) <=
 				sizeof(opt_data_key));
 		memcpy(&opt_data_mask, geneve_opt_m->data,
-				RTE_MIN((uint32_t)(geneve_opt_v->length * 4),
-					sizeof(opt_data_mask)));
-		MLX5_ASSERT((uint32_t)(geneve_opt_v->length * 4) <=
+			RTE_MIN((uint32_t)(geneve_opt_v->option_len * 4),
+				sizeof(opt_data_mask)));
+		MLX5_ASSERT((uint32_t)(geneve_opt_v->option_len * 4) <=
 				sizeof(opt_data_mask));
 		MLX5_SET(fte_match_set_misc3, misc3_m,
 				geneve_tlv_option_0_data,
@@ -14420,4 +14438,3 @@ const struct mlx5_flow_driver_ops mlx5_flow_dv_drv_ops = {
 };
 
 #endif /* HAVE_IBV_FLOW_DV_SUPPORT */
-
