@@ -1769,6 +1769,11 @@ err_secondary:
 	mlx5_flow_counter_mode_config(eth_dev);
 	if (priv->config.dv_flow_en)
 		eth_dev->data->dev_flags |= RTE_ETH_DEV_FLOW_OPS_THREAD_SAFE;
+	err = mlx5_flow_isolate(eth_dev, config->isolated_mode, NULL);
+	if (err < 0) {
+		err = -err;
+		goto error;
+	}
 	return eth_dev;
 error:
 	if (priv) {

@@ -996,6 +996,12 @@ Driver options
   By default, the PMD will set this value to 0 when ASO is supported, and 8
   when ASO is not supported.
 
+- ``isolated_mode`` parameter [int]
+
+  A nonzero value configures the port to initialize in :ref:`flow_isolated_mode`.
+
+  Set to zero by default.
+
 .. _mlx5_firmware_config:
 
 Firmware configuration

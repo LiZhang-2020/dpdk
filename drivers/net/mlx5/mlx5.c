@@ -186,6 +186,9 @@
 /* Device parameter to configure log 2 of the max flow number per meter. */
 #define MLX5_LOG_MAX_FLOW_PER_MTR "log_max_flow_per_mtr"
 
+/* Device parameter to configure port in isolated mode. */
+#define MLX5_ISOLATED_MODE "isolated_mode"
+
 /* Shared memory between primary and secondary processes. */
 struct mlx5_shared_data *mlx5_shared_data;
 
@@ -1703,6 +1706,8 @@ mlx5_args_check(const char *key, const char *val, void *opaque)
 			return -rte_errno;
 		}
 		config->log_max_flow_per_mtr = tmp;
+	} else if (strcmp(MLX5_ISOLATED_MODE, key) == 0) {
+		config->isolated_mode = !!tmp;
 	} else {
 		DRV_LOG(WARNING, "%s: unknown parameter", key);
 		rte_errno = EINVAL;
@@ -1767,6 +1772,7 @@ mlx5_args(struct mlx5_dev_config *config, struct rte_devargs *devargs)
 		MLX5_DECAP_EN,
 		MLX5_LOG_MAX_MTR_NUM,
 		MLX5_LOG_MAX_FLOW_PER_MTR,
+		MLX5_ISOLATED_MODE,
 		NULL,
 	};
 	struct rte_kvargs *kvlist;
