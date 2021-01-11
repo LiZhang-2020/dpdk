@@ -229,6 +229,7 @@ usage(char* progname)
 	printf("  --hairpin-mode=0xXX: bitmask set the hairpin port mode.\n "
 	       "    0x10 - explicit Tx rule, 0x02 - hairpin ports paired\n"
 	       "    0x01 - hairpin ports loop, 0x00 - hairpin port self\n");
+	printf("  --with-sft: SFT function can be used with dynamic metadata\n");
 }
 
 #ifdef RTE_LIB_CMDLINE
@@ -698,6 +699,7 @@ launch_args_parse(int argc, char** argv)
 		{ "rx-mq-mode",                 1, 0, 0 },
 		{ "record-core-cycles",         0, 0, 0 },
 		{ "record-burst-stats",         0, 0, 0 },
+		{ "with-sft",			0, 0, 0 },
 		{ 0, 0, 0, 0 },
 	};
 
@@ -1466,6 +1468,8 @@ launch_args_parse(int argc, char** argv)
 				record_core_cycles = 1;
 			if (!strcmp(lgopts[opt_idx].name, "record-burst-stats"))
 				record_burst_stats = 1;
+			if (!strcmp(lgopts[opt_idx].name, "with-sft"))
+				start_with_sft = 1;
 			break;
 		case 'h':
 			usage(argv[0]);

@@ -346,6 +346,7 @@ extern uint16_t nb_tx_queue_stats_mappings;
 extern uint16_t nb_rx_queue_stats_mappings;
 
 extern uint8_t sft;
+extern uint8_t start_with_sft;
 
 extern uint8_t xstats_hide_zero; /**< Hide zero values for xstats display */
 
