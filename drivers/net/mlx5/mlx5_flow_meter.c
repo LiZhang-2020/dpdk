@@ -33,7 +33,7 @@ mlx5_flow_meter_action_create(struct mlx5_priv *priv,
 #ifdef HAVE_MLX5_DR_CREATE_ACTION_FLOW_METER
 	struct mlx5dv_dr_flow_meter_attr mtr_init;
 	uint32_t fmp[MLX5_ST_SZ_DW(flow_meter_parameters)];
-	struct mlx5_flow_meter_srtcm_rfc2697_prm *srtcm =
+	struct mlx5_flow_meter_srtcm_prm *srtcm =
 						     &fm->profile->srtcm_prm;
 	uint32_t cbs_cir = rte_be_to_cpu_32(srtcm->cbs_cir);
 	uint32_t ebs_eir = rte_be_to_cpu_32(srtcm->ebs_eir);
@@ -157,6 +157,32 @@ mlx5_flow_meter_profile_validate(struct rte_eth_dev *dev,
 					      "Invalid metering parameters.");
 		}
 	}
+	if (priv->sh->meter_aso_en &&
+		profile->alg == RTE_MTR_SRTCMP) {
+		if (priv->config.hca_attr.qos.srtcm_sup) {
+			/* Verify support for flow meter parameters. */
+			if (profile->srtcmp.cir > 0 &&
+			    (profile->srtcmp.cir <<
+					MLX5_MTRS_PPS_MAP_BPS_SHIFT)
+						<= MLX5_SRTCM_CIR_MAX &&
+			    profile->srtcmp.cbs > 0 &&
+			    (profile->srtcmp.cbs <<
+					MLX5_MTRS_PPS_MAP_BPS_SHIFT)
+						<= MLX5_SRTCM_CBS_MAX &&
+			    (profile->srtcmp.ebs <<
+					MLX5_MTRS_PPS_MAP_BPS_SHIFT)
+						<= MLX5_SRTCM_EBS_MAX)
+				return 0;
+			else
+				return -rte_mtr_error_set
+					     (error, ENOTSUP,
+					      RTE_MTR_ERROR_TYPE_MTR_PARAMS,
+					      NULL,
+					      profile->srtcmp.ebs ?
+					      "Metering value ebs must be 0." :
+					      "Invalid metering parameters.");
+		}
+	}
 	return -rte_mtr_error_set(error, ENOTSUP,
 				  RTE_MTR_ERROR_TYPE_METER_PROFILE,
 				  NULL, "Metering algorithm not supported.");
@@ -238,19 +264,35 @@ mlx5_flow_meter_xbs_man_exp_calc(uint64_t xbs, uint8_t *man, uint8_t *exp)
  */
 static int
 mlx5_flow_meter_param_fill(struct mlx5_flow_meter_profile *fmp,
-			  struct rte_mtr_error *error)
+			struct mlx5_priv *priv, struct rte_mtr_error *error)
 {
-	struct mlx5_flow_meter_srtcm_rfc2697_prm *srtcm = &fmp->srtcm_prm;
+	struct mlx5_flow_meter_srtcm_prm *srtcm = &fmp->srtcm_prm;
 	uint8_t man, exp;
 	uint32_t cbs_exp, cbs_man, cir_exp, cir_man;
 	uint32_t ebs_exp, ebs_man;
+	uint64_t cir, cbs, ebs;
 
-	if (fmp->profile.alg != RTE_MTR_SRTCM_RFC2697)
-		return -rte_mtr_error_set(error, ENOTSUP,
+	if (fmp->profile.alg == RTE_MTR_SRTCM_RFC2697) {
+		cir = fmp->profile.srtcm_rfc2697.cir;
+		cbs = fmp->profile.srtcm_rfc2697.cbs;
+		ebs = fmp->profile.srtcm_rfc2697.ebs;
+	} else {
+		if (priv->sh->meter_aso_en &&
+			fmp->profile.alg == RTE_MTR_SRTCMP) {
+			cir = fmp->profile.srtcmp.cir <<
+				MLX5_MTRS_PPS_MAP_BPS_SHIFT;
+			cbs = fmp->profile.srtcmp.cbs <<
+				MLX5_MTRS_PPS_MAP_BPS_SHIFT;
+			ebs = fmp->profile.srtcmp.ebs <<
+				MLX5_MTRS_PPS_MAP_BPS_SHIFT;
+		} else {
+			return -rte_mtr_error_set(error, ENOTSUP,
 				RTE_MTR_ERROR_TYPE_METER_PROFILE,
 				NULL, "Metering algorithm not supported.");
+		}
+	}
 	/* cir = 8G * cir_mantissa * 1/(2^cir_exponent)) Bytes/Sec */
-	mlx5_flow_meter_cir_man_exp_calc(fmp->profile.srtcm_rfc2697.cir,
+	mlx5_flow_meter_cir_man_exp_calc(cir,
 				    &man, &exp);
 	/* Check if cir mantissa is too large. */
 	if (exp > ASO_DSEG_CIR_EXP_MASK)
@@ -261,7 +303,7 @@ mlx5_flow_meter_param_fill(struct mlx5_flow_meter_profile *fmp,
 	cir_man = man;
 	cir_exp = exp;
 	 /* cbs = cbs_mantissa * 2^cbs_exponent */
-	mlx5_flow_meter_xbs_man_exp_calc(fmp->profile.srtcm_rfc2697.cbs,
+	mlx5_flow_meter_xbs_man_exp_calc(cbs,
 				    &man, &exp);
 	/* Check if cbs mantissa is too large. */
 	if (exp > ASO_DSEG_EXP_MASK)
@@ -275,7 +317,7 @@ mlx5_flow_meter_param_fill(struct mlx5_flow_meter_profile *fmp,
 				cbs_man << ASO_DSEG_CBS_MAN_OFFSET |
 				cir_exp << ASO_DSEG_CIR_EXP_OFFSET |
 				cir_man);
-	mlx5_flow_meter_xbs_man_exp_calc(fmp->profile.srtcm_rfc2697.ebs,
+	mlx5_flow_meter_xbs_man_exp_calc(ebs,
 				    &man, &exp);
 	/* Check if ebs mantissa is too large. */
 	if (exp > ASO_DSEG_EXP_MASK)
@@ -316,11 +358,14 @@ mlx5_flow_mtr_cap_get(struct rte_eth_dev *dev,
 					  RTE_MTR_ERROR_TYPE_UNSPECIFIED, NULL,
 					  "Meter is not supported");
 	memset(cap, 0, sizeof(*cap));
-	if (priv->sh->meter_aso_en)
+	if (priv->sh->meter_aso_en) {
 	    /* 2 meters per one ASO cache line. */
 		cap->n_max = 1 << (qattr->log_max_num_meter_aso + 1);
-	else
+		cap->meter_srtcmp_n_max = qattr->srtcm_sup ? cap->n_max : 0;
+	} else {
 		cap->n_max = 1 << qattr->log_max_flow_meter;
+		cap->meter_srtcmp_n_max = 0;
+	}
 	cap->n_shared_max = cap->n_max;
 	cap->identical = 1;
 	cap->shared_identical = 1;
@@ -382,7 +427,7 @@ mlx5_flow_meter_profile_add(struct rte_eth_dev *dev,
 	fmp->id = meter_profile_id;
 	fmp->profile = *profile;
 	/* Fill the flow meter parameters for the PRM. */
-	ret = mlx5_flow_meter_param_fill(fmp, error);
+	ret = mlx5_flow_meter_param_fill(fmp, priv, error);
 	if (ret)
 		goto error;
 	/* Add to list. */
@@ -539,7 +584,7 @@ mlx5_flow_meter_validate(struct mlx5_priv *priv, uint32_t meter_id,
 static int
 mlx5_flow_meter_action_modify(struct mlx5_priv *priv,
 		struct mlx5_flow_meter_info *fm,
-		const struct mlx5_flow_meter_srtcm_rfc2697_prm *srtcm,
+		const struct mlx5_flow_meter_srtcm_prm *srtcm,
 		uint64_t modify_bits, uint32_t active_state, uint32_t is_enable)
 {
 #ifdef HAVE_MLX5_DR_CREATE_ACTION_FLOW_METER
@@ -899,7 +944,7 @@ mlx5_flow_meter_modify_state(struct mlx5_priv *priv,
 			     uint32_t new_state,
 			     struct rte_mtr_error *error)
 {
-	static const struct mlx5_flow_meter_srtcm_rfc2697_prm srtcm = {
+	static const struct mlx5_flow_meter_srtcm_prm srtcm = {
 		.cbs_cir = RTE_BE32(MLX5_IFC_FLOW_METER_DISABLE_CBS_CIR_VAL),
 		.ebs_eir = 0,
 	};

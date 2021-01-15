@@ -744,8 +744,13 @@ struct mlx5_flow_meter_info {
 	/**< Flow meter action. */
 };
 
-/* RFC2697 parameter structure. */
-struct mlx5_flow_meter_srtcm_rfc2697_prm {
+/* PPS(packets per second) map to BPS(Bytes per second).
+ * HW treat packet as 128bytes in PPS mode
+ */
+#define MLX5_MTRS_PPS_MAP_BPS_SHIFT 7
+
+/* RFC2697/PPS parameter structure. */
+struct mlx5_flow_meter_srtcm_prm {
 	rte_be32_t cbs_cir;
 	/*
 	 * bit 24-28: cbs_exponent, bit 16-23 cbs_mantissa,
@@ -765,8 +770,8 @@ struct mlx5_flow_meter_profile {
 	uint32_t id; /**< Profile id. */
 	struct rte_mtr_meter_profile profile; /**< Profile detail. */
 	union {
-		struct mlx5_flow_meter_srtcm_rfc2697_prm srtcm_prm;
-		/**< srtcm_rfc2697 struct. */
+		struct mlx5_flow_meter_srtcm_prm srtcm_prm;
+		/**< srtcm_rfc2697/srtcm_pps struct. */
 	};
 	uint32_t ref_cnt; /**< Use count. */
 };

@@ -381,6 +381,7 @@ Limitations
   - Green color is not supported with drop action.
   - Yellow detection is not supported.
   - Red color must be with drop action.
+  - meter srTCMp algorithm is supported.
 
 Statistics
 ----------
