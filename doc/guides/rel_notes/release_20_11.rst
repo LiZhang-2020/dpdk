@@ -429,6 +429,11 @@ New Features
   can leverage IOAT DMA channels with vhost asynchronous APIs.
   See the :doc:`../sample_app_ug/vhost` for more details.
 
+* **Added support for meter PPS profile.**
+
+  Currently meter algorithms only supports bytes per second(BPS).
+  Add this new meter algorithm to support packet per second (PPS) mode.
+  So that it can meter traffic by packet per second.
 
 Removed Items
 -------------

@@ -17,7 +17,8 @@ The main features are:
 * Part of DPDK rte_ethdev API
 * Capability query API
 * Metering algorithms: RFC 2697 Single Rate Three Color Marker (srTCM), RFC 2698
-  and RFC 4115 Two Rate Three Color Marker (trTCM)
+  and RFC 4115 Two Rate Three Color Marker (trTCM),
+  Single Rate Three Color Marker, Packet based (srTCMp).
 * Policer actions (per meter output color): recolor, drop
 * Statistics (per policer output color)
 
