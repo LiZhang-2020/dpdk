@@ -154,6 +154,22 @@ struct mlx5_hca_attr {
 	struct mlx5_hca_qos_attr qos;
 	struct mlx5_hca_vdpa_attr vdpa;
 	struct mlx5_hca_flow_attr flow;
+	int log_max_qp_sz;
+	int log_max_cq_sz;
+	int log_max_qp;
+	int log_max_cq;
+	uint32_t log_max_pd;
+	uint32_t log_max_mrw_sz;
+	uint32_t log_max_srq;
+	uint32_t log_max_srq_sz;
+	uint32_t rss_ind_tbl_cap;
+	uint32_t mmo_dma_en:1;
+	uint32_t mmo_compress_en:1;
+	uint32_t mmo_decompress_en:1;
+	uint32_t compress_min_block_size:4;
+	uint32_t log_max_mmo_dma:5;
+	uint32_t log_max_mmo_compress:5;
+	uint32_t log_max_mmo_decompress:5;
 };
 
 struct mlx5_devx_wq_attr {
