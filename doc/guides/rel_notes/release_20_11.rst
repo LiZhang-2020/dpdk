@@ -438,6 +438,12 @@ New Features
   Add this new meter algorithm to support packet per second (PPS) mode.
   So that it can meter traffic by packet per second.
 
+* **Added mlx5 compress PMD.**
+
+  Added a new compress PMD driver for Bluefield 2 adapters.
+
+  See the :doc:`../compressdevs/mlx5` for more details.
+
 Removed Items
 -------------
 
