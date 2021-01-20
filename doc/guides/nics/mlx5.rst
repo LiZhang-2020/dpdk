@@ -1558,6 +1558,11 @@ Supported hardware offloads
    |                       | |  rdma-core 32 | | rdma-core 32  |
    |                       | |  ConnectX-6 Dx| | ConnectX-6 Dx |
    +-----------------------+-----------------+-----------------+
+   | Encapsulation         | | DPDK 21.02    | | DPDK 21.02    |
+   | GENEVE TLV option     | | OFED 5.2      | | OFED 5.2      |
+   |                       | | rdma-core 34  | | rdma-core 34  |
+   |                       | | ConnectX-6 Dx | | ConnectX-6 Dx |
+   +-----------------------+-----------------+-----------------+
 
 Notes for metadata
 ------------------
