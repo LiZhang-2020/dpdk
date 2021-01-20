@@ -61,6 +61,7 @@ static const struct {
 	/* Keep class "net" for backward compatibility. */
 	{ .name = "net", .drv_class = MLX5_CLASS_ETH },
 	{ .name = "regex", .drv_class = MLX5_CLASS_REGEX },
+	{ .name = "compress", .drv_class = MLX5_CLASS_COMPRESS },
 };
 
 static int

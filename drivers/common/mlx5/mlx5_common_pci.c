@@ -8,7 +8,6 @@
 #include <rte_errno.h>
 #include <rte_pci.h>
 #include <rte_bus_pci.h>
-
 #include "mlx5_common_utils.h"
 #include "mlx5_common_private.h"
 
