@@ -26,7 +26,7 @@ do { \
 
 static inline void
 print_ether_addr(const char *what, const struct rte_ether_addr *eth_addr,
-		 char print_buf[], int buf_size, int *cur_len)
+		 char print_buf[], size_t buf_size, size_t *cur_len)
 {
 	char buf[RTE_ETHER_ADDR_FMT_SIZE];
 
@@ -85,9 +85,9 @@ dump_pkt_burst(uint16_t port_id, uint16_t queue, struct rte_mbuf *pkts[],
 	uint32_t vx_vni;
 	const char *reason;
 	int dynf_index;
-	int buf_size = MAX_STRING_LEN;
-	char print_buf[buf_size];
-	int cur_len = 0;
+	char print_buf[MAX_STRING_LEN];
+	size_t buf_size = MAX_STRING_LEN;
+	size_t cur_len = 0;
 
 	if (!nb_pkts)
 		return;
