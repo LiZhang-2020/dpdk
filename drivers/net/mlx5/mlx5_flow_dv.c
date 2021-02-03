@@ -4684,6 +4684,8 @@ flow_dv_modify_create_cb(struct mlx5_hlist *list, uint64_t key __rte_unused,
  *   Pointer to the RSS action in sample action list.
  * @param[out] count
  *   Pointer to the COUNT action in sample action list.
+ * @param[out] fdb_mirror_limit
+ *   Pointer to the FDB mirror limitation flag.
  * @param[out] error
  *   Pointer to error structure.
  *
@@ -4699,6 +4701,7 @@ flow_dv_validate_action_sample(uint64_t *action_flags,
 			       const struct rte_flow_action_rss *rss,
 			       const struct rte_flow_action_rss **sample_rss,
 			       const struct rte_flow_action_count **count,
+			       int *fdb_mirror_limit,
 			       struct rte_flow_error *error)
 {
 	struct mlx5_priv *priv = dev->data->dev_private;
@@ -4870,6 +4873,9 @@ flow_dv_validate_action_sample(uint64_t *action_flags,
 						  NULL,
 						  "E-Switch must has a dest "
 						  "port for mirroring");
+		if (!priv->config.hca_attr.reg_c_preserve &&
+		     priv->representor_id != -1)
+			*fdb_mirror_limit = 1;
 	}
 	/* Continue validation for Xcap actions.*/
 	if ((sub_action_flags & MLX5_FLOW_XCAP_ACTIONS) &&
@@ -5822,6 +5828,8 @@ flow_dv_validate(struct rte_eth_dev *dev, const struct rte_flow_attr *attr,
 	uint16_t ether_type = 0;
 	int actions_n = 0;
 	uint8_t item_ipv6_proto = 0;
+	int fdb_mirror_limit = 0;
+	int modify_after_mirror = 0;
 	const struct rte_flow_item *gre_item = NULL;
 	const struct rte_flow_item *gtp_item = NULL;
 	const struct rte_flow_action_raw_decap *decap;
@@ -6246,6 +6254,9 @@ flow_dv_validate(struct rte_eth_dev *dev, const struct rte_flow_attr *attr,
 					++actions_n;
 				action_flags |= MLX5_FLOW_ACTION_FLAG |
 						MLX5_FLOW_ACTION_MARK_EXT;
+				if (action_flags & MLX5_FLOW_ACTION_SAMPLE)
+					modify_after_mirror = 1;
+
 			} else {
 				action_flags |= MLX5_FLOW_ACTION_FLAG;
 				++actions_n;
@@ -6265,6 +6276,8 @@ flow_dv_validate(struct rte_eth_dev *dev, const struct rte_flow_attr *attr,
 					++actions_n;
 				action_flags |= MLX5_FLOW_ACTION_MARK |
 						MLX5_FLOW_ACTION_MARK_EXT;
+				if (action_flags & MLX5_FLOW_ACTION_SAMPLE)
+					modify_after_mirror = 1;
 			} else {
 				action_flags |= MLX5_FLOW_ACTION_MARK;
 				++actions_n;
@@ -6280,6 +6293,8 @@ flow_dv_validate(struct rte_eth_dev *dev, const struct rte_flow_attr *attr,
 			/* Count all modify-header actions as one action. */
 			if (!(action_flags & MLX5_FLOW_MODIFY_HDR_ACTIONS))
 				++actions_n;
+			if (action_flags & MLX5_FLOW_ACTION_SAMPLE)
+				modify_after_mirror = 1;
 			action_flags |= MLX5_FLOW_ACTION_SET_META;
 			rw_act_num += MLX5_ACT_NUM_SET_META;
 			break;
@@ -6292,6 +6307,8 @@ flow_dv_validate(struct rte_eth_dev *dev, const struct rte_flow_attr *attr,
 			/* Count all modify-header actions as one action. */
 			if (!(action_flags & MLX5_FLOW_MODIFY_HDR_ACTIONS))
 				++actions_n;
+			if (action_flags & MLX5_FLOW_ACTION_SAMPLE)
+				modify_after_mirror = 1;
 			action_flags |= MLX5_FLOW_ACTION_SET_TAG;
 			rw_act_num += MLX5_ACT_NUM_SET_TAG;
 			break;
@@ -6466,6 +6483,8 @@ flow_dv_validate(struct rte_eth_dev *dev, const struct rte_flow_attr *attr,
 					RTE_FLOW_ACTION_TYPE_SET_MAC_SRC ?
 						MLX5_FLOW_ACTION_SET_MAC_SRC :
 						MLX5_FLOW_ACTION_SET_MAC_DST;
+			if (action_flags & MLX5_FLOW_ACTION_SAMPLE)
+				modify_after_mirror = 1;
 			/*
 			 * Even if the source and destination MAC addresses have
 			 * overlap in the header with 4B alignment, the convert
@@ -6488,6 +6507,8 @@ flow_dv_validate(struct rte_eth_dev *dev, const struct rte_flow_attr *attr,
 			/* Count all modify-header actions as one action. */
 			if (!(action_flags & MLX5_FLOW_MODIFY_HDR_ACTIONS))
 				++actions_n;
+			if (action_flags & MLX5_FLOW_ACTION_SAMPLE)
+				modify_after_mirror = 1;
 			action_flags |= actions->type ==
 					RTE_FLOW_ACTION_TYPE_SET_IPV4_SRC ?
 						MLX5_FLOW_ACTION_SET_IPV4_SRC :
@@ -6513,6 +6534,8 @@ flow_dv_validate(struct rte_eth_dev *dev, const struct rte_flow_attr *attr,
 			/* Count all modify-header actions as one action. */
 			if (!(action_flags & MLX5_FLOW_MODIFY_HDR_ACTIONS))
 				++actions_n;
+			if (action_flags & MLX5_FLOW_ACTION_SAMPLE)
+				modify_after_mirror = 1;
 			action_flags |= actions->type ==
 					RTE_FLOW_ACTION_TYPE_SET_IPV6_SRC ?
 						MLX5_FLOW_ACTION_SET_IPV6_SRC :
@@ -6536,6 +6559,8 @@ flow_dv_validate(struct rte_eth_dev *dev, const struct rte_flow_attr *attr,
 			/* Count all modify-header actions as one action. */
 			if (!(action_flags & MLX5_FLOW_MODIFY_HDR_ACTIONS))
 				++actions_n;
+			if (action_flags & MLX5_FLOW_ACTION_SAMPLE)
+				modify_after_mirror = 1;
 			action_flags |=
 				MLX5_IS_SET_TP_SRC(actions->type) ?
 						MLX5_FLOW_ACTION_SET_TP_SRC :
@@ -6559,6 +6584,8 @@ flow_dv_validate(struct rte_eth_dev *dev, const struct rte_flow_attr *attr,
 			/* Count all modify-header actions as one action. */
 			if (!(action_flags & MLX5_FLOW_MODIFY_HDR_ACTIONS))
 				++actions_n;
+			if (action_flags & MLX5_FLOW_ACTION_SAMPLE)
+				modify_after_mirror = 1;
 			action_flags |= MLX5_IS_SET_TTL(type) ?
 						MLX5_FLOW_ACTION_SET_TTL :
 						MLX5_FLOW_ACTION_DEC_TTL;
@@ -6571,6 +6598,12 @@ flow_dv_validate(struct rte_eth_dev *dev, const struct rte_flow_attr *attr,
 							   error);
 			if (ret)
 				return ret;
+			if ((action_flags & MLX5_FLOW_ACTION_SAMPLE) &&
+			    fdb_mirror_limit)
+				return rte_flow_error_set(error, EINVAL,
+						  RTE_FLOW_ERROR_TYPE_ACTION,
+						  NULL,
+						  "sample and jump action combination is not supported");
 			++actions_n;
 			action_flags |= MLX5_FLOW_ACTION_JUMP;
 			break;
@@ -6588,6 +6621,8 @@ flow_dv_validate(struct rte_eth_dev *dev, const struct rte_flow_attr *attr,
 			/* Count all modify-header actions as one action. */
 			if (!(action_flags & MLX5_FLOW_MODIFY_HDR_ACTIONS))
 				++actions_n;
+			if (action_flags & MLX5_FLOW_ACTION_SAMPLE)
+				modify_after_mirror = 1;
 			action_flags |= actions->type ==
 					RTE_FLOW_ACTION_TYPE_INC_TCP_SEQ ?
 						MLX5_FLOW_ACTION_INC_TCP_SEQ :
@@ -6608,6 +6643,8 @@ flow_dv_validate(struct rte_eth_dev *dev, const struct rte_flow_attr *attr,
 			/* Count all modify-header actions as one action. */
 			if (!(action_flags & MLX5_FLOW_MODIFY_HDR_ACTIONS))
 				++actions_n;
+			if (action_flags & MLX5_FLOW_ACTION_SAMPLE)
+				modify_after_mirror = 1;
 			action_flags |= actions->type ==
 					RTE_FLOW_ACTION_TYPE_INC_TCP_ACK ?
 						MLX5_FLOW_ACTION_INC_TCP_ACK :
@@ -6681,6 +6718,8 @@ flow_dv_validate(struct rte_eth_dev *dev, const struct rte_flow_attr *attr,
 			/* Count all modify-header actions as one action. */
 			if (!(action_flags & MLX5_FLOW_MODIFY_HDR_ACTIONS))
 				++actions_n;
+			if (action_flags & MLX5_FLOW_ACTION_SAMPLE)
+				modify_after_mirror = 1;
 			action_flags |= MLX5_FLOW_ACTION_SET_IPV4_DSCP;
 			rw_act_num += MLX5_ACT_NUM_SET_DSCP;
 			break;
@@ -6697,6 +6736,8 @@ flow_dv_validate(struct rte_eth_dev *dev, const struct rte_flow_attr *attr,
 			/* Count all modify-header actions as one action. */
 			if (!(action_flags & MLX5_FLOW_MODIFY_HDR_ACTIONS))
 				++actions_n;
+			if (action_flags & MLX5_FLOW_ACTION_SAMPLE)
+				modify_after_mirror = 1;
 			action_flags |= MLX5_FLOW_ACTION_SET_IPV6_DSCP;
 			rw_act_num += MLX5_ACT_NUM_SET_DSCP;
 			break;
@@ -6706,6 +6747,7 @@ flow_dv_validate(struct rte_eth_dev *dev, const struct rte_flow_attr *attr,
 							     attr, item_flags,
 							     rss, &sample_rss,
 							     &sample_count,
+							     &fdb_mirror_limit,
 							     error);
 			if (ret < 0)
 				return ret;
@@ -6890,6 +6932,11 @@ flow_dv_validate(struct rte_eth_dev *dev, const struct rte_flow_attr *attr,
 					  NULL, "too many header modify"
 					  " actions to support");
 	}
+	/* Eswitch egress mirror and modify flow has limitation on CX5 */
+	if (fdb_mirror_limit && modify_after_mirror)
+		return rte_flow_error_set(error, EINVAL,
+				RTE_FLOW_ERROR_TYPE_ACTION, NULL,
+				"sample before modify action is not supported");
 	return 0;
 }
 
