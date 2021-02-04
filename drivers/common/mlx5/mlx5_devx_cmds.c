@@ -266,6 +266,7 @@ mlx5_devx_cmd_mkey_create(void *ctx,
 	MLX5_SET(mkc, mkc, qpn, 0xffffff);
 	MLX5_SET(mkc, mkc, pd, attr->pd);
 	MLX5_SET(mkc, mkc, mkey_7_0, attr->umem_id & 0xFF);
+	MLX5_SET(mkc, mkc, umr_en, attr->umr_en);
 	MLX5_SET(mkc, mkc, translations_octword_size, translation_size);
 	MLX5_SET(mkc, mkc, relaxed_ordering_write,
 		attr->relaxed_ordering_write);
@@ -732,6 +733,10 @@ mlx5_devx_cmd_query_hca_attr(void *ctx,
 				MLX5_GENERAL_OBJ_TYPES_CAP_GENEVE_TLV_OPT);
 	attr->reg_c_preserve =
 		MLX5_GET(cmd_hca_cap, hcattr, reg_c_preserve);
+	attr->umr_indirect_mkey_disabled =
+		MLX5_GET(cmd_hca_cap, hcattr, umr_indirect_mkey_disabled);
+	attr->umr_modify_entity_size_disabled =
+		MLX5_GET(cmd_hca_cap, hcattr, umr_modify_entity_size_disabled);
 	if (attr->qos.sup) {
 		MLX5_SET(query_hca_cap_in, in, op_mod,
 			 MLX5_GET_HCA_CAP_OP_MOD_QOS_CAP |

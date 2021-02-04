@@ -183,6 +183,8 @@ has_sym_args = [
 	[ 'HAVE_DEVLINK', 'linux/devlink.h', 'DEVLINK_GENL_NAME' ],
         [ 'HAVE_MLX5_DR_CREATE_ACTION_ASO', 'infiniband/mlx5dv.h',
         'mlx5dv_dr_action_create_aso' ],
+        [ 'HAVE_MLX5_UMR_IMKEY', 'infiniband/mlx5dv.h',
+        'MLX5_WQE_UMR_CTRL_FLAG_INLINE' ],
 ]
 config = configuration_data()
 foreach arg:has_sym_args
