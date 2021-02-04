@@ -1964,6 +1964,7 @@ port_action_handle_query(portid_t port_id, uint32_t id)
 		return -EINVAL;
 	switch (pia->type) {
 	case RTE_FLOW_ACTION_TYPE_RSS:
+	case RTE_FLOW_ACTION_TYPE_AGE:
 		data = &default_data;
 		break;
 	default:
@@ -1979,6 +1980,20 @@ port_action_handle_query(portid_t port_id, uint32_t id)
 			printf("Shared RSS action:\n\trefs:%u\n",
 			       *((uint32_t *)data));
 		break;
+	case RTE_FLOW_ACTION_TYPE_AGE:
+		if (!ret) {
+			struct rte_flow_query_age *resp = data;
+
+			printf("AGE:\n"
+			       " aged: %u\n"
+			       " sec_since_last_hit_valid: %u\n"
+			       " sec_since_last_hit: %" PRIu32 "\n",
+			       resp->aged,
+			       resp->sec_since_last_hit_valid,
+			       resp->sec_since_last_hit);
+		}
+		data = NULL;
+		break;
 	default:
 		printf("Indirect action %u (type: %d) on port %u doesn't"
 		       " support query\n", id, pia->type, port_id);
@@ -1986,6 +2001,7 @@ port_action_handle_query(portid_t port_id, uint32_t id)
 	}
 	return ret;
 }
+
 static struct port_flow_tunnel *
 port_flow_tunnel_offload_cmd_prep(portid_t port_id,
 				  const struct rte_flow_item *pattern,
