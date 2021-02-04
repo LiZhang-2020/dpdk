@@ -634,6 +634,7 @@ static const struct rte_flow_ops mlx5_flow_ops = {
 	.isolate = mlx5_flow_isolate,
 	.query = mlx5_flow_query,
 	.dev_dump = mlx5_flow_dev_dump,
+	.dev_single_dump = mlx5_flow_dump_rule,
 	.get_aged_flows = mlx5_flow_get_aged_flows,
 	.shared_action_create = mlx5_shared_action_create,
 	.shared_action_destroy = mlx5_shared_action_destroy,
@@ -7584,6 +7585,43 @@ mlx5_flow_dev_dump(struct rte_eth_dev *dev,
 	}
 	return mlx5_devx_cmd_flow_dump(sh->fdb_domain, sh->rx_domain,
 				       sh->tx_domain, file);
+}
+
+int
+mlx5_flow_dump_rule(struct rte_eth_dev *dev, struct rte_flow *flow_idx,
+			FILE *file,
+			struct rte_flow_error *error __rte_unused)
+{
+	struct mlx5_priv *priv = dev->data->dev_private;
+	uint32_t handle_idx;
+	int ret;
+	struct mlx5_flow_handle *dh;
+	struct rte_flow *flow = mlx5_ipool_get(priv->sh->ipool
+			[MLX5_IPOOL_RTE_FLOW], (uintptr_t)(void *)flow_idx);
+
+	if (!priv->config.dv_flow_en) {
+		if (fputs("device dv flow disabled\n", file) <= 0)
+			return -errno;
+		return -ENOTSUP;
+	}
+
+	if (!flow)
+		return -ENOENT;
+	handle_idx = flow->dev_handles;
+	while (handle_idx) {
+		dh = mlx5_ipool_get(priv->sh->ipool[MLX5_IPOOL_MLX5_FLOW],
+				handle_idx);
+		if (!dh)
+			return -ENOENT;
+		if (dh->drv_flow) {
+			ret = mlx5_devx_cmd_flow_single_dump(dh->drv_flow,
+					file);
+			if (ret)
+				return -ENOENT;
+		}
+		handle_idx = dh->next.next;
+	}
+	return 0;
 }
 
 /**

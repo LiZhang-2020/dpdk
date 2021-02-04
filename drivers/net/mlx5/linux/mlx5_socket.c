@@ -32,12 +32,15 @@ static void
 mlx5_pmd_socket_handle(void *cb __rte_unused)
 {
 	int conn_sock;
-	int ret;
+	int ret, j;
 	struct cmsghdr *cmsg = NULL;
-	int data;
+	#define LENGTH 9
+	/*The first byte for port_id and the rest for flowptr.*/
+	int data[LENGTH];
+	uint64_t flow_ptr = 0;
 	char buf[CMSG_SPACE(sizeof(int))] = { 0 };
 	struct iovec io = {
-		.iov_base = &data,
+		.iov_base = &data[0],
 		.iov_len = sizeof(data),
 	};
 	struct msghdr msg = {
@@ -50,7 +53,9 @@ mlx5_pmd_socket_handle(void *cb __rte_unused)
 	int fd;
 	FILE *file = NULL;
 	struct rte_eth_dev *dev;
+	struct rte_flow_error err;
 
+	memset(data, 0, sizeof(data));
 	/* Accept the connection from the client. */
 	conn_sock = accept(server_socket, NULL, NULL);
 	if (conn_sock < 0) {
@@ -88,15 +93,23 @@ mlx5_pmd_socket_handle(void *cb __rte_unused)
 	}
 	/* Dump flow. */
 	dev = &rte_eth_devices[port_id];
-	ret = mlx5_flow_dev_dump(dev, file, NULL);
+	/*The first byte in data for port_id and the following 8 for flowptr*/
+	for (j = 1; j < LENGTH; j++)
+		flow_ptr = (flow_ptr << 8) + data[j];
+	if (flow_ptr == 0)
+		ret = mlx5_flow_dev_dump(dev, file, NULL);
+	else
+		ret = mlx5_flow_dump_rule(dev,
+			(struct rte_flow *)((uintptr_t)flow_ptr), file, &err);
+
 	/* Set-up the ancillary data and reply. */
 	msg.msg_controllen = 0;
 	msg.msg_control = NULL;
 	msg.msg_iovlen = 1;
 	msg.msg_iov = &io;
-	data = -ret;
-	io.iov_len = sizeof(data);
-	io.iov_base = &data;
+	data[0] = -ret;
+	io.iov_len = sizeof(data[0]);
+	io.iov_base = &data[0];
 	do {
 		ret = sendmsg(conn_sock, &msg, 0);
 	} while (ret < 0 && errno == EINTR);
