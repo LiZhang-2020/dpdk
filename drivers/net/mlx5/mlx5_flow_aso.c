@@ -259,6 +259,41 @@ mlx5_aso_mtr_init_sq(struct mlx5_aso_sq *sq)
 	}
 }
 
+/*
+ * Initialize Send Queue used for ASO connection tracking.
+ *
+ * @param[in] sq
+ *   ASO SQ to initialize.
+ */
+static void
+mlx5_aso_ct_init_sq(struct mlx5_aso_sq *sq)
+{
+	volatile struct mlx5_aso_wqe *restrict wqe;
+	int i;
+	int size = 1 << sq->log_desc_n;
+	uint64_t addr;
+
+	/* All the next fields state should stay constant. */
+	for (i = 0, wqe = &sq->wqes[0]; i < size; ++i, ++wqe) {
+		wqe->general_cseg.sq_ds = rte_cpu_to_be_32((sq->sqn << 8) |
+							  (sizeof(*wqe) >> 4));
+		/* One unique MR for the query data. */
+		wqe->aso_cseg.lkey = rte_cpu_to_be_32(sq->mr.mkey->id);
+		/* Magic number 64 represents the length of a ASO CT obj. */
+		addr = (uint64_t)((uintptr_t)sq->mr.buf + i * 64);
+		wqe->aso_cseg.va_h = rte_cpu_to_be_32((uint32_t)(addr >> 32));
+		wqe->aso_cseg.va_l_r = rte_cpu_to_be_32((uint32_t)addr | 1u);
+		wqe->aso_cseg.operand_masks = rte_cpu_to_be_32
+			(0u |
+			 (ASO_OPER_LOGICAL_OR << ASO_CSEG_COND_OPER_OFFSET) |
+			 (ASO_OP_ALWAYS_TRUE << ASO_CSEG_COND_1_OPER_OFFSET) |
+			 (ASO_OP_ALWAYS_TRUE << ASO_CSEG_COND_0_OPER_OFFSET) |
+			 (BYTEWISE_64BYTE << ASO_CSEG_DATA_MASK_MODE_OFFSET));
+		/* Data mask may be different for each modification. */
+		/* wqe->aso_cseg.data_mask = RTE_BE64(UINT64_MAX); */
+	}
+}
+
 /**
  * Create Send Queue used for ASO access.
  *
@@ -391,6 +426,16 @@ mlx5_aso_queue_init(struct mlx5_dev_ctx_shared *sh,
 			MLX5_ASO_QUEUE_LOG_DESC))
 			return -1;
 		mlx5_aso_mtr_init_sq(&sh->mtrmng->sq);
+		break;
+	case ASO_OPC_MOD_CONNECTION_TRACKING:
+		/* 64B per object for query. */
+		if (mlx5_aso_devx_reg_mr(sh->ctx, 64 * sq_desc_n,
+			&sh->ct_mng->aso_sq.mr, 0, sh->pdn))
+			return -1;
+		if (mlx5_aso_sq_create(sh->ctx, &sh->ct_mng->aso_sq, 0,
+			sh->tx_uar, sh->pdn, sh->eqn, MLX5_ASO_QUEUE_LOG_DESC))
+			return -1;
+		mlx5_aso_ct_init_sq(&sh->ct_mng->aso_sq);
 		break;
 	default:
 		DRV_LOG(ERR, "Unknown ASO operation mode");
