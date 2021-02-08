@@ -3309,7 +3309,11 @@ following sections.
 
 - Dump internal representation information of all flows in hardware::
 
-   flow dump {port_id} {output_file}
+   flow dump {port_id} all {output_file}
+
+   for one flow :
+
+   flow dump {port_id} rule {rule_id} {output_file}
 
 - List and destroy aged flow rules::
 
