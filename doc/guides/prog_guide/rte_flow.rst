@@ -3016,6 +3016,50 @@ Return values:
 
 - 0 on success, a negative errno value otherwise and ``rte_errno`` is set.
 
+Dump
+~~~~~
+
+Dump information for all or one flows.
+
+This Function rte_flow_dev_dump will dump the information for all the flows.
+
+.. code-block:: c
+
+   int
+   rte_flow_dev_dump(uint16_t port_id, FILE *file,
+                     struct rte_flow_error *error);
+
+Arguments:
+
+- ``port_id``: port identifier of Ethernet device.
+- ``file``: a pointer to a file for output
+- ``error``: perform verbose error reporting if not NULL. PMDs initialize
+  this structure in case of error only.
+
+Return values:
+
+- 0 on success, a negative errno value otherwise and ``rte_errno`` is set.
+
+This Function rte_flow_dump will dump the information for one flow.
+
+.. code-block:: c
+
+   int
+   rte_flow_dump(uint16_t port_id, struct rte_flow *flow, FILE *file,
+                 struct rte_flow_error *error);
+
+Arguments:
+
+- ``port_id``: port identifier of Ethernet device.
+- ``file``: a pointer to a file for output
+- ``flow``: flow rule handle to dump.
+- ``error``: perform verbose error reporting if not NULL. PMDs initialize
+  this structure in case of error only.
+
+Return values:
+
+- 0 on success, a negative errno value otherwise and ``rte_errno`` is set.
+
 Query
 ~~~~~
 
