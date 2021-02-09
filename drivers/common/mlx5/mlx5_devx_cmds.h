@@ -552,4 +552,8 @@ struct mlx5_devx_obj *mlx5_devx_cmd_queue_counter_alloc(void *ctx);
 __rte_internal
 int mlx5_devx_cmd_queue_counter_query(struct mlx5_devx_obj *dcs, int clear,
 				      uint32_t *out_of_buffers);
+
+__rte_internal
+struct mlx5_devx_obj *mlx5_devx_cmd_create_conn_track_offload_obj(void *ctx,
+					uint32_t pd, uint32_t log_obj_size);
 #endif /* RTE_PMD_MLX5_DEVX_CMDS_H_ */
