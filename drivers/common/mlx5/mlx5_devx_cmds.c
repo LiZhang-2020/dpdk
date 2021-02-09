@@ -737,6 +737,9 @@ mlx5_devx_cmd_query_hca_attr(void *ctx,
 		MLX5_GET(cmd_hca_cap, hcattr, umr_indirect_mkey_disabled);
 	attr->umr_modify_entity_size_disabled =
 		MLX5_GET(cmd_hca_cap, hcattr, umr_modify_entity_size_disabled);
+	attr->ct_offload = !!(MLX5_GET64(cmd_hca_cap, hcattr,
+					   general_obj_types) &
+				MLX5_GENERAL_OBJ_TYPES_CAP_CONN_TRACK_OFFLOAD);
 	if (attr->qos.sup) {
 		MLX5_SET(query_hca_cap_in, in, op_mod,
 			 MLX5_GET_HCA_CAP_OP_MOD_QOS_CAP |
