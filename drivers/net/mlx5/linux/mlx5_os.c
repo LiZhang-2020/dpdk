@@ -952,6 +952,7 @@ err_secondary:
 	sh = mlx5_alloc_shared_dev_ctx(spawn, config);
 	if (!sh)
 		return NULL;
+	sh->numa_node = dpdk_dev->numa_node;
 	config->devx = sh->devx;
 #ifdef HAVE_MLX5DV_DR_ACTION_DEST_DEVX_TIR
 	config->dest_tir = 1;
@@ -1168,7 +1169,7 @@ err_secondary:
 	 * Look for sibling devices in order to reuse their switch domain
 	 * if any, otherwise allocate one.
 	 */
-	MLX5_ETH_FOREACH_DEV(port_id, priv->pci_dev) {
+	MLX5_ETH_FOREACH_DEV(port_id, dpdk_dev) {
 		const struct mlx5_priv *opriv =
 			rte_eth_devices[port_id].data->dev_private;
 
@@ -2586,7 +2587,6 @@ mlx5_os_open_device(const struct mlx5_dev_spawn_data *spawn,
 	int dbmap_env;
 	int err = 0;
 
-	sh->numa_node = spawn->pci_dev->device.numa_node;
 	pthread_mutex_init(&sh->txpp.mutex, NULL);
 	/*
 	 * Configure environment variable "MLX5_BF_SHUT_UP"

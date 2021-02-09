@@ -15,6 +15,7 @@
 #include <rte_ethdev_driver.h>
 #include <rte_common.h>
 #include <rte_eal_paging.h>
+#include <rte_bus_pci.h>
 
 #include <mlx5_common.h>
 #include <mlx5_common_mr.h>
@@ -814,7 +815,7 @@ txq_set_params(struct mlx5_txq_ctrl *txq_ctrl)
 	if (config->txqs_inline == MLX5_ARG_UNSET)
 		txqs_inline =
 #if defined(RTE_ARCH_ARM64)
-		(priv->pci_dev->id.device_id ==
+		(priv->pci_dev && priv->pci_dev->id.device_id ==
 			PCI_DEVICE_ID_MELLANOX_CONNECTX5BF) ?
 			MLX5_INLINE_MAX_TXQS_BLUEFIELD :
 #endif
