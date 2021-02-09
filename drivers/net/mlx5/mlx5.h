@@ -950,6 +950,9 @@ enum mlx5_aso_ct_state {
 	ASO_CONNTRACK_MAX, /* Guard. */
 };
 
+#define MLX5_MAKE_CT_IDX(pool, offset) \
+		((pool) * MLX5_ASO_CT_ACTIONS_PER_POOL + (offset) + 1)
+
 /* Generic ASO connection tracking structure. */
 struct mlx5_aso_ct_action {
 	LIST_ENTRY(mlx5_aso_ct_action) next; /* Pointer to the next ASO CT. */
