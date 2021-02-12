@@ -8,4 +8,4 @@ sources = files('rte_ipv4_fragmentation.c',
 		'rte_ip_frag_common.c',
 		'ip_frag_internal.c')
 headers = files('rte_ip_frag.h')
-deps += ['ethdev', 'hash']
+deps += ['net', 'hash']

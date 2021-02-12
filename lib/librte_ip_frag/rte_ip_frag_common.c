@@ -12,6 +12,14 @@
 
 #define	IP_FRAG_HASH_FNUM	2
 
+void
+rte_ip_frag_release_collected(struct ip_frag_pkt *fp,
+			      struct rte_ip_frag_death_row *dr)
+{
+	fp->key.locked = 0;
+	ip_frag_free(fp, dr);
+}
+
 /* free mbufs from death row */
 void
 rte_ip_frag_free_death_row(struct rte_ip_frag_death_row *dr,
@@ -52,7 +60,7 @@ rte_ip_frag_table_create(uint32_t bucket_num, uint32_t bucket_entries,
 	/* check input parameters. */
 	if (rte_is_power_of_2(bucket_entries) == 0 ||
 			nb_entries > UINT32_MAX || nb_entries == 0 ||
-			nb_entries < max_entries) {
+			nb_entries > max_entries) {
 		RTE_LOG(ERR, USER1, "%s: invalid input parameter\n", __func__);
 		return NULL;
 	}

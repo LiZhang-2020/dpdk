@@ -78,6 +78,69 @@ ipv4_frag_reassemble(struct ip_frag_pkt *fp)
 	return m;
 }
 
+struct ip_frag_pkt *
+rte_ipv4_frag_process(struct rte_ip_frag_tbl *tbl,
+		      struct rte_ip_frag_death_row *dr,
+		      struct rte_mbuf *mb, uint64_t tms,
+		      struct rte_ipv4_hdr *ip_hdr)
+{
+	struct ip_frag_pkt *fp;
+	struct ip_frag_key key;
+	const unaligned_uint64_t *psd;
+	uint16_t flag_offset, ip_ofs, ip_flag;
+	int32_t ip_len;
+
+	flag_offset = rte_be_to_cpu_16(ip_hdr->fragment_offset);
+	ip_ofs = (uint16_t)(flag_offset & RTE_IPV4_HDR_OFFSET_MASK);
+	ip_flag = (uint16_t)(flag_offset & RTE_IPV4_HDR_MF_FLAG);
+
+	psd = (unaligned_uint64_t *)&ip_hdr->src_addr;
+	/* use first 8 bytes only */
+	key.src_dst[0] = psd[0];
+	key.id = ip_hdr->packet_id;
+	key.key_len = IPV4_KEYLEN;
+	key.locked = 0;
+
+	ip_ofs *= RTE_IPV4_HDR_OFFSET_UNITS;
+	ip_len = rte_be_to_cpu_16(ip_hdr->total_length) - mb->l3_len;
+
+	IP_FRAG_LOG(DEBUG, "%s:%d:\n"
+			   "mbuf: %p, tms: %" PRIu64
+		", key: <%" PRIx64 ", %#x>, ofs: %u, len: %d, flags: %#x\n"
+				   "tbl: %p, max_cycles: %" PRIu64 ", entry_mask: %#x, "
+								   "max_entries: %u, use_entries: %u\n\n",
+		    __func__, __LINE__,
+		    mb, tms, key.src_dst[0], key.id, ip_ofs, ip_len, ip_flag,
+		    tbl, tbl->max_cycles, tbl->entry_mask, tbl->max_entries,
+		    tbl->use_entries);
+
+	/* check that fragment length is greater then zero. */
+	if (ip_len <= 0) {
+		IP_FRAG_MBUF2DR(dr, mb);
+		return NULL;
+	}
+
+	/* try to find/add entry into the fragment's table. */
+	if ((fp = ip_frag_find(tbl, dr, &key, tms)) == NULL) {
+		IP_FRAG_MBUF2DR(dr, mb);
+		return NULL;
+	}
+
+	IP_FRAG_LOG
+		(DEBUG, "%s:%d:\n"
+		 "tbl: %p, max_entries: %u, use_entries: %u\n"
+		 "ipv4_frag_pkt: %p, key: <%" PRIx64 ", %#x>, start: %" PRIu64
+		 ", total_size: %u, frag_size: %u, last_idx: %u\n\n",
+		 __func__, __LINE__,
+		 tbl, tbl->max_entries, tbl->use_entries,
+		 fp, fp->key.src_dst[0], fp->key.id, fp->start,
+		 fp->total_size, fp->frag_size, fp->last_idx);
+
+
+	/* process the fragmented packet. */
+	return ip_frag_process(tbl, fp, dr, mb, ip_ofs, ip_len, ip_flag);
+}
+
 /*
  * Process new mbuf with fragment of IPV4 packet.
  * Incoming mbuf should have it's l2_len/l3_len fields setuped correclty.
@@ -100,69 +163,24 @@ rte_ipv4_frag_reassemble_packet(struct rte_ip_frag_tbl *tbl,
 	struct rte_ipv4_hdr *ip_hdr)
 {
 	struct ip_frag_pkt *fp;
-	struct ip_frag_key key;
-	const unaligned_uint64_t *psd;
-	uint16_t flag_offset, ip_ofs, ip_flag;
-	int32_t ip_len;
 
-	flag_offset = rte_be_to_cpu_16(ip_hdr->fragment_offset);
-	ip_ofs = (uint16_t)(flag_offset & RTE_IPV4_HDR_OFFSET_MASK);
-	ip_flag = (uint16_t)(flag_offset & RTE_IPV4_HDR_MF_FLAG);
-
-	psd = (unaligned_uint64_t *)&ip_hdr->src_addr;
-	/* use first 8 bytes only */
-	key.src_dst[0] = psd[0];
-	key.id = ip_hdr->packet_id;
-	key.key_len = IPV4_KEYLEN;
-
-	ip_ofs *= RTE_IPV4_HDR_OFFSET_UNITS;
-	ip_len = rte_be_to_cpu_16(ip_hdr->total_length) - mb->l3_len;
-
-	IP_FRAG_LOG(DEBUG, "%s:%d:\n"
-		"mbuf: %p, tms: %" PRIu64
-		", key: <%" PRIx64 ", %#x>, ofs: %u, len: %d, flags: %#x\n"
-		"tbl: %p, max_cycles: %" PRIu64 ", entry_mask: %#x, "
-		"max_entries: %u, use_entries: %u\n\n",
-		__func__, __LINE__,
-		mb, tms, key.src_dst[0], key.id, ip_ofs, ip_len, ip_flag,
-		tbl, tbl->max_cycles, tbl->entry_mask, tbl->max_entries,
-		tbl->use_entries);
-
-	/* check that fragment length is greater then zero. */
-	if (ip_len <= 0) {
-		IP_FRAG_MBUF2DR(dr, mb);
+	fp = rte_ipv4_frag_process(tbl, dr, mb, tms, ip_hdr);
+	if (!fp)
 		return NULL;
-	}
 
-	/* try to find/add entry into the fragment's table. */
-	if ((fp = ip_frag_find(tbl, dr, &key, tms)) == NULL) {
-		IP_FRAG_MBUF2DR(dr, mb);
-		return NULL;
-	}
-
-	IP_FRAG_LOG(DEBUG, "%s:%d:\n"
-		"tbl: %p, max_entries: %u, use_entries: %u\n"
-		"ipv4_frag_pkt: %p, key: <%" PRIx64 ", %#x>, start: %" PRIu64
-		", total_size: %u, frag_size: %u, last_idx: %u\n\n",
-		__func__, __LINE__,
-		tbl, tbl->max_entries, tbl->use_entries,
-		fp, fp->key.src_dst[0], fp->key.id, fp->start,
-		fp->total_size, fp->frag_size, fp->last_idx);
-
-
-	/* process the fragmented packet. */
-	mb = ip_frag_process(fp, dr, mb, ip_ofs, ip_len, ip_flag);
+	mb = ip_frag_reasemble(fp, dr);
 	ip_frag_inuse(tbl, fp);
 
-	IP_FRAG_LOG(DEBUG, "%s:%d:\n"
-		"mbuf: %p\n"
-		"tbl: %p, max_entries: %u, use_entries: %u\n"
-		"ipv4_frag_pkt: %p, key: <%" PRIx64 ", %#x>, start: %" PRIu64
-		", total_size: %u, frag_size: %u, last_idx: %u\n\n",
-		__func__, __LINE__, mb,
-		tbl, tbl->max_entries, tbl->use_entries,
-		fp, fp->key.src_dst[0], fp->key.id, fp->start,
-		fp->total_size, fp->frag_size, fp->last_idx);
+	IP_FRAG_LOG
+		(DEBUG, "%s:%d:\n"
+		 "mbuf: %p\n"
+		 "tbl: %p, max_entries: %u, use_entries: %u\n"
+		 "ipv4_frag_pkt: %p, key: <%" PRIx64 ", %#x>, start: %" PRIu64
+		 ", total_size: %u, frag_size: %u, last_idx: %u\n\n",
+		 __func__, __LINE__, mb,
+		 tbl, tbl->max_entries, tbl->use_entries,
+		 fp, fp->key.src_dst[0], fp->key.id, fp->start,
+		 fp->total_size, fp->frag_size, fp->last_idx);
 
 	return mb;
 }

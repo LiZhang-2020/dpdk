@@ -52,7 +52,8 @@ struct ip_frag_key {
 		__extension__
 		struct {
 			uint32_t id;       /**< packet id */
-			uint32_t key_len;  /**< src/dst key length */
+			uint32_t key_len:4;  /**< src/dst key length */
+			uint32_t locked:1;
 		};
 	};
 };
@@ -71,6 +72,13 @@ struct ip_frag_pkt {
 	struct ip_frag       frags[IP_MAX_FRAG_NUM]; /**< fragments */
 } __rte_cache_aligned;
 
+static inline bool
+can_reassemble_ip_frags(const struct ip_frag_pkt *fp)
+{
+	return fp->frag_size >= fp->total_size &&
+	       fp->frags[IP_FIRST_FRAG_IDX].mb != NULL;
+}
+
 #define IP_FRAG_DEATH_ROW_LEN 32 /**< death row size (in packets) */
 
 /* death row size in mbufs */
@@ -82,6 +90,12 @@ struct rte_ip_frag_death_row {
 	struct rte_mbuf *row[IP_FRAG_DEATH_ROW_MBUF_LEN];
 	/**< mbufs to be freed */
 };
+
+static inline bool
+rte_ip_frag_dr_full(const struct rte_ip_frag_death_row *dr)
+{
+	return dr->cnt == IP_FRAG_DEATH_ROW_MBUF_LEN;
+}
 
 TAILQ_HEAD(ip_pkt_list, ip_frag_pkt); /**< @internal fragments tailq */
 
@@ -174,6 +188,14 @@ rte_ipv6_fragment_packet(struct rte_mbuf *pkt_in,
 		struct rte_mempool *pool_direct,
 		struct rte_mempool *pool_indirect);
 
+__rte_experimental
+struct ip_frag_pkt *
+rte_ipv6_frag_process(struct rte_ip_frag_tbl *tbl,
+		      struct rte_ip_frag_death_row *dr,
+		      struct rte_mbuf *mb,
+		      uint64_t tms,
+		      struct rte_ipv6_hdr *ip_hdr,
+		      struct ipv6_extension_fragment *frag_hdr);
 /**
  * This function implements reassembly of fragmented IPv6 packets.
  * Incoming mbuf should have its l2_len/l3_len fields setup correctly.
@@ -250,6 +272,12 @@ int32_t rte_ipv4_fragment_packet(struct rte_mbuf *pkt_in,
 			struct rte_mempool *pool_direct,
 			struct rte_mempool *pool_indirect);
 
+__rte_experimental
+struct ip_frag_pkt *
+rte_ipv4_frag_process(struct rte_ip_frag_tbl *tbl,
+		      struct rte_ip_frag_death_row *dr,
+		      struct rte_mbuf *mb, uint64_t tms,
+		      struct rte_ipv4_hdr *ip_hdr);
 /**
  * This function implements reassembly of fragmented IPv4 packets.
  * Incoming mbufs should have its l2_len/l3_len fields setup correctly.
@@ -293,6 +321,10 @@ rte_ipv4_frag_pkt_is_fragmented(const struct rte_ipv4_hdr *hdr)
 	return ip_flag != 0 || ip_ofs  != 0;
 }
 
+__rte_experimental
+void
+rte_ip_frag_release_collected(struct ip_frag_pkt *fp,
+			      struct rte_ip_frag_death_row *dr);
 /**
  * Free mbufs on a given death row.
  *

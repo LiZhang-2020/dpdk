@@ -16,5 +16,8 @@ DPDK_21 {
 EXPERIMENTAL {
 	global:
 
+	rte_ipv4_frag_process;
+	rte_ipv6_frag_process;
 	rte_frag_table_del_expired_entries;
+	rte_ip_frag_release_collected;
 };

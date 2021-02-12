@@ -32,9 +32,13 @@
 #endif /* IP_FRAG_TBL_STAT */
 
 /* internal functions declarations */
-struct rte_mbuf * ip_frag_process(struct ip_frag_pkt *fp,
+struct ip_frag_pkt *
+ip_frag_process(struct rte_ip_frag_tbl *tbl, struct ip_frag_pkt *fp,
 		struct rte_ip_frag_death_row *dr, struct rte_mbuf *mb,
 		uint16_t ofs, uint16_t len, uint16_t more_frags);
+
+struct rte_mbuf *
+ip_frag_reasemble(struct ip_frag_pkt *fp, struct rte_ip_frag_death_row *dr);
 
 struct ip_frag_pkt * ip_frag_find(struct rte_ip_frag_tbl *tbl,
 		struct rte_ip_frag_death_row *dr,
