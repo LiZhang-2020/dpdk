@@ -12,14 +12,12 @@
 #include <rte_tcp.h>
 #include <rte_malloc.h>
 #include <rte_rwlock.h>
+#include <rte_ip_frag.h>
+#include <rte_cycles.h>
 
 #include "rte_sft.h"
 #include "rte_sft_driver.h"
 #include "sft_utils.h"
-
-extern int sft_logtype;
-#define RTE_SFT_LOG(level, ...) \
-	rte_log(RTE_LOG_ ## level, sft_logtype, "" __VA_ARGS__)
 
 #define VOID_PTR(x) ((void *)(uintptr_t)(x))
 #define CONST_VOID_PTR(x) ((const void *)(uintptr_t)(x))
@@ -35,66 +33,170 @@ struct sft_hash {
 	struct rte_lhash *rstpl_hash;
 };
 
+struct ipfrag_ctx {
+	struct rte_ip_frag_tbl *table;
+	struct rte_ip_frag_death_row dr;
+};
+
 /**
  * sft_priv
  * singleton that concentrates SFT library internal variables
  */
 static struct {
-	struct sft_hash *hq;
-	struct sft_id_pool *fid_ids_pool;
-	rte_rwlock_t fid_rwlock; // TODO: lockless queue
+	struct sft_hash *hq; /**< per-queue hashes */
+	struct sft_id_pool *fid_ids_pool; /**< per-queue id pools */
+	struct ipfrag_ctx *ipfrag; /**< per-queue ipfrag contexts */
+	rte_rwlock_t fid_rwlock;
 	struct rte_sft_conf conf;
 } *sft_priv = NULL;
 
 #define SFT_DATA_LEN (sft_priv->conf.app_data_len * sizeof(int))
+#define SFT_IPFRAG_BUCKETS_NUM 128
 
-struct net_hdr {
-	void *ptr;
-	uint16_t protocol; // host_order
-};
-
-struct client_obj {
-	LIST_ENTRY(client_obj) chain;
-	const void *obj;
-	uint8_t id;
-};
-
-struct sft_lib_entry {
-	uint32_t fid;
-	/* entry zone is required to find out if mbuf was sent from
-	 * initiator or target connection side */
-	uint32_t zone;
-	uint16_t queue;
-	uint8_t app_state; // application defined flow state
-	uint8_t proto_state; // protocol state
-	uint8_t proto;
-	uint8_t event_dev_id;
-	uint8_t event_port_id;
-	uint8_t proto_enable;
-	uint32_t *data; // TODO: shoud it be __be32 ?
-	uint64_t ns_rx_timestamp;
-	/* initiator 7tuple determines direction of active mbuf.buf_addr
-	 * alternative is to extract it live from mbuf and run a hash search */
-	struct rte_sft_7tuple stpl[2];
-	struct rte_sft_entry *sft_entry[2];
-	struct rte_sft_actions_specs action_specs;
-	/* this is per queue list - no lock required */
-	LIST_HEAD(, client_obj) client_objects_head;
-	time_t last_activity_ts; // number of seconds since the Epoch
-	bool offload;
-};
-
-static __rte_always_inline bool
-sft_track_conn(const struct sft_lib_entry *entry)
+static inline uint64_t
+sft_calc_max_ipfrag_cycles(void)
 {
-	bool verdict;
+	uint64_t one_sec = rte_get_tsc_hz();
+	uint64_t cycles = one_sec * sft_priv->conf.ipfrag_timeout;
 
-	if (!entry)
-		verdict = true;
-	else
-		verdict = !!entry->proto_enable;
+	return cycles;
+}
 
-	return verdict;
+static void
+sft_destroy_ipfrag(void)
+{
+	uint16_t q;
+
+	if (!sft_priv->ipfrag)
+		return;
+	for (q = 0; q < sft_priv->conf.nb_queues; q++) {
+		struct ipfrag_ctx *ctx = &sft_priv->ipfrag[q];
+		if (ctx->table)
+			rte_ip_frag_table_destroy(ctx->table);
+	}
+	rte_free(sft_priv->ipfrag);
+	sft_priv->ipfrag = NULL;
+}
+
+static int
+sft_init_ipfrag_ctx(struct rte_sft_error *error)
+{
+	uint16_t q;
+	uint16_t max_queue_ipfrags = sft_priv->conf.nb_max_ipfrag;
+	uint32_t bucket_entries;
+	uint64_t max_cycles = sft_calc_max_ipfrag_cycles();
+	const char *err_msg;
+
+	bucket_entries = sft_priv->conf.nb_max_ipfrag / SFT_IPFRAG_BUCKETS_NUM;
+	bucket_entries /= 2; /* check rte_ip_frag_table_create() */
+	sft_priv->ipfrag = rte_calloc("sft ipfrag ctx",
+				      sft_priv->conf.nb_queues,
+				      sizeof(struct ipfrag_ctx), 0);
+	if (!sft_priv->ipfrag)
+		return rte_sft_error_set(error, ENOMEM,
+					 RTE_SFT_ERROR_TYPE_UNSPECIFIED,
+					 NULL, "no ipfrag context");
+	for (q = 0; q < sft_priv->conf.nb_queues; q++) {
+		struct ipfrag_ctx *ctx = &sft_priv->ipfrag[q];
+		ctx->table = rte_ip_frag_table_create(SFT_IPFRAG_BUCKETS_NUM,
+						      bucket_entries,
+						      max_queue_ipfrags,
+						      max_cycles,
+						      SOCKET_ID_ANY);
+		if (!ctx->table) {
+			err_msg = "cannot allocate ipfrag table";
+			goto err;
+		}
+	}
+	return 0;
+
+err:
+	sft_destroy_ipfrag();
+	return rte_sft_error_set(error, ENOMEM, RTE_SFT_ERROR_TYPE_UNSPECIFIED,
+				 NULL, err_msg);
+
+}
+
+static void
+sft_process_ipfrag(uint16_t queue, struct sft_mbuf *smb,
+		   struct rte_sft_mbuf_info *mif,
+		   struct rte_sft_flow_status *status,
+		   struct rte_sft_error *error)
+{
+	struct ipfrag_ctx *ctx = &sft_priv->ipfrag[queue];
+	struct ip_frag_pkt *fp;
+	bool dr_full;
+
+	RTE_SET_USED(error);
+retry:
+	dr_full = false;
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wcast-qual"
+	fp = !mif->is_ipv6 ?
+	     rte_ipv4_frag_process(ctx->table, &ctx->dr,
+				   (struct rte_mbuf *)smb->m_in,
+				   rte_rdtsc(),
+				   (struct rte_ipv4_hdr *)mif->ip4) :
+	     rte_ipv6_frag_process(ctx->table, &ctx->dr,
+				   (struct rte_mbuf *)smb->m_in,
+				   rte_rdtsc(), (struct rte_ipv6_hdr *)mif->ip6,
+				   (struct rte_ipv6_fragment_ext *)
+					   mif->ip6_frag);
+#pragma GCC diagnostic pop
+	dr_full = rte_ip_frag_dr_full(&ctx->dr);
+	if (ctx->dr.cnt)
+		rte_ip_frag_free_death_row(&ctx->dr, 0); /* clear all DR */
+	if (dr_full)
+		goto retry;
+	status->fragmented = !!(fp == NULL);
+	status->ipfrag_ctx = (uintptr_t)fp;
+	if (fp) {
+		/* first fragment is returned in m_out */
+		status->nb_ip_fragments = fp->last_idx - 1;
+		smb->m_out = fp->frags[IP_FIRST_FRAG_IDX].mb;
+		smb->m_in = smb->m_out;
+		fp->frags[IP_FIRST_FRAG_IDX].mb = NULL;
+	} else {
+		status->nb_ip_fragments = 0;
+		smb->m_out = NULL;
+	}
+}
+
+static void
+sft_track_conn(struct sft_mbuf *smb, struct rte_sft_mbuf_info *mif,
+	       const struct sft_lib_entry *entry,
+	       struct rte_sft_flow_status *status, struct rte_sft_error *error)
+{
+	if (entry->offload) {
+		status->proto_state = SFT_CT_STATE_OFFLOADED;
+		return;
+	}
+	switch (smb->m_in->l4_type << 8) {
+	case RTE_PTYPE_L4_TCP:
+		sft_tcp_track_conn(smb, mif, entry, status, error);
+		break;
+	case RTE_PTYPE_L4_UDP:
+		status->proto_state = SFT_CT_STATE_TRACKING;
+		break;
+	default:
+		status->proto_state = SFT_CT_STATE_ERROR;
+		status->ct_error = SFT_CT_ERROR_BAD_PROTOCOL;
+	}
+}
+
+static int
+sft_start_conn_track(struct sft_lib_entry *entry, struct rte_sft_error *error)
+{
+	switch (entry->proto) {
+	case IPPROTO_TCP:
+		return sft_tcp_start_track(entry, error);
+	default:
+		break;
+	}
+
+	return rte_sft_error_set(error, EINVAL,
+				 RTE_SFT_ERROR_CONN_TRACK, NULL,
+				 "cannot track protocol");
 }
 
 static const struct rte_sft_ops *
@@ -102,10 +204,8 @@ sft_ops_get(struct rte_eth_dev *dev)
 {
 	const struct rte_sft_ops *ops = NULL;
 
-	if (!dev || !dev->dev_ops || !dev->dev_ops->sft_ops_get)
-		ops = NULL;
-	else if (dev->dev_ops->sft_ops_get(dev, &ops))
-		ops = NULL;
+	if (dev && dev->dev_ops && dev->dev_ops->sft_ops_get)
+		dev->dev_ops->sft_ops_get(dev, &ops);
 
 	return ops;
 }
@@ -139,7 +239,7 @@ static __rte_always_inline int
 sft_fid_release(uint32_t fid)
 {
 	int ret;
-	
+
 	rte_rwlock_write_lock(&sft_priv->fid_rwlock);
 	ret = sft_id_release(sft_priv->fid_ids_pool, fid);
 	rte_rwlock_write_unlock(&sft_priv->fid_rwlock);
@@ -201,98 +301,106 @@ rte_sft_error_set(struct rte_sft_error *error,
 }
 
 static inline size_t
-ipv6_ext_hdr_len(const struct rte_ipv6_hdr *ipv6_hdr, uint16_t *next_proto)
+ipv6_ext_hdr_len(const struct rte_ipv6_hdr *ipv6_hdr, uint8_t *next_proto)
 {
 	size_t ext_len = 0, dx;
 	int proto = ipv6_hdr->proto;
+	const uint8_t *p = (typeof(p))(ipv6_hdr + 1);
 
-	const uint8_t *p = (const uint8_t *)ipv6_hdr + sizeof(*ipv6_hdr);
 	while ((proto = rte_ipv6_get_next_ext(p, proto, &dx)) != -EINVAL) {
 		ext_len += dx;
 		p += dx;
 	}
-
 	*next_proto = !ext_len ? ipv6_hdr->proto : p[1];
 
-	return sizeof(*ipv6_hdr) + ext_len;
-}
-
-static void
-stp_mbuf_l4_hdr(const struct net_hdr *l3_hdr,
-			    struct net_hdr *l4_hdr)
-{
-	switch (l3_hdr->protocol) {
-	case RTE_ETHER_TYPE_IPV4:
-		l4_hdr->ptr = (char *)l3_hdr->ptr +
-			      rte_ipv4_hdr_len(l3_hdr->ptr);
-		l4_hdr->protocol =
-		((const struct rte_ipv4_hdr *)l3_hdr->ptr)->next_proto_id;
-		break;
-	case RTE_ETHER_TYPE_IPV6:
-		l4_hdr->ptr = (char *)l3_hdr->ptr +
-			      ipv6_ext_hdr_len(l3_hdr->ptr, &l4_hdr->protocol);
-		break;
-	default:
-		l4_hdr->protocol = 0;
-		l4_hdr->ptr = NULL;
-	}
-}
-
-static void
-stp_mbuf_l3_hdr(const struct rte_mbuf *mbuf, struct net_hdr *nh) // use mif !!!
-{
-	struct rte_ether_hdr *eth_hdr = rte_pktmbuf_mtod(mbuf, typeof(eth_hdr));
-	size_t l2_len = RTE_ETHER_HDR_LEN;
-	uint16_t type;
-
-	type = rte_be_to_cpu_16(eth_hdr->ether_type);
-	while (type == RTE_ETHER_TYPE_VLAN ||
-	       type == RTE_ETHER_TYPE_QINQ) {
-		const struct rte_vlan_hdr *vlan_hdr;
-		vlan_hdr = (typeof(vlan_hdr))((const char *)eth_hdr + l2_len);
-		l2_len += sizeof(*vlan_hdr);
-		type = rte_be_to_cpu_16(vlan_hdr->eth_proto);
-	}
-	nh->ptr = (char *)eth_hdr + l2_len;
-	nh->protocol = type;
+	return ext_len;
 }
 
 static int
-stp_parse_ipv6(struct sft_mbuf_info *mif, struct rte_sft_error *error)
+stp_parse_ipv6(struct rte_sft_mbuf_info *mif, struct rte_sft_error *error)
 {
-	RTE_SET_USED(mif);
-	return rte_sft_error_set(error, ENOTSUP, RTE_SFT_ERROR_TYPE_UNSPECIFIED,
-				 NULL, "ipv6 not supported");
-}
+	mif->is_ipv6 = 1;
+	mif->is_fragment = !!(mif->ip6->proto == IPPROTO_FRAGMENT);
+	if (!mif->is_fragment) {
+		uint8_t l4_protocol;
+		size_t ext_len = ipv6_ext_hdr_len(mif->ip6, &l4_protocol);
 
-static int
-stp_parse_ipv4(struct sft_mbuf_info *mif, struct rte_sft_error *error)
-{
-	mif->l4_hdr = (const uint8_t *)mif->ip4 + rte_ipv4_hdr_len(mif->ip4);
-	switch (mif->ip4->next_proto_id) {
-	case IPPROTO_UDP:
-	case IPPROTO_TCP:
-		break;
-	default:
-		return rte_sft_error_set(error, ENOTSUP,
-					 RTE_SFT_ERROR_TYPE_UNSPECIFIED,
-					 NULL, "unsupported l4 protocol");
+		/* rfc2460:
+		 * "any extension headers [section 4] present are considered
+		 *  part of the payload, i.e., included in the length count"
+		 */
+		mif->l4_hdr = (const char *)mif->l3_hdr + ext_len;
+		mif->l4_protocol = l4_protocol;
+		switch (l4_protocol) {
+		case IPPROTO_TCP:
+			mif->data_len =
+				rte_be_to_cpu_16(mif->ip6->payload_len) -
+				ext_len - rte_tcp_hdr_len(mif->tcp);
+			break;
+		case IPPROTO_UDP:
+			mif->data_len =
+				rte_be_to_cpu_16(mif->ip6->payload_len) -
+				ext_len - sizeof(struct rte_udp_hdr);
+			break;
+		default:
+			return rte_sft_error_set(error, ENOTSUP,
+						 RTE_SFT_ERROR_TYPE_UNSPECIFIED,
+						 NULL,
+						 "unsupported l4 protocol");
+		}
+
 	}
 
 	return 0;
 }
 
+
 static int
-stp_parse_ethernet(struct sft_mbuf_info *mif, struct rte_sft_error *error)
+stp_parse_ipv4(struct rte_sft_mbuf_info *mif, struct rte_sft_error *error)
+{
+	mif->is_fragment = !!(mif->ip4->fragment_offset
+			   & rte_cpu_to_be_16(RTE_IPV4_HDR_FRAGMENT_MASK));
+	if (!mif->is_fragment) {
+		mif->l4_hdr =
+			(const uint8_t *)mif->ip4 + rte_ipv4_hdr_len(mif->ip4);
+		mif->l4_protocol = mif->ip4->next_proto_id;
+		switch (mif->ip4->next_proto_id) {
+		case IPPROTO_UDP:
+			mif->data_len = rte_be_to_cpu_16(mif->ip4->total_length)
+					- rte_ipv4_hdr_len(mif->ip4)
+					- sizeof(struct rte_tcp_hdr);
+			break;
+		case IPPROTO_TCP:
+			mif->data_len = rte_be_to_cpu_16(mif->ip4->total_length)
+					- rte_ipv4_hdr_len(mif->ip4)
+					- rte_tcp_hdr_len(mif->tcp);
+			break;
+		default:
+			return rte_sft_error_set(error, ENOTSUP,
+						 RTE_SFT_ERROR_TYPE_UNSPECIFIED,
+						 NULL,
+						 "unsupported l4 protocol");
+		}
+	} else {
+		mif->l4_hdr = NULL;
+		mif->data_len = rte_be_to_cpu_16(mif->ip4->total_length)
+				- rte_ipv4_hdr_len(mif->ip4);
+	}
+	return 0;
+}
+
+static int
+stp_parse_ethernet(struct rte_sft_mbuf_info *mif, const void *entry,
+		   struct rte_sft_error *error)
 {
 	size_t l2_len = RTE_ETHER_HDR_LEN;
 	int ret = 0;
-
 	mif->eth_type = rte_be_to_cpu_16(mif->eth_hdr->ether_type);
 	while (mif->eth_type == RTE_ETHER_TYPE_VLAN ||
 	       mif->eth_type == RTE_ETHER_TYPE_QINQ) {
 		const struct rte_vlan_hdr *vlan_hdr;
-		vlan_hdr = (typeof(vlan_hdr))((const char *)mif->eth_hdr + l2_len);
+		vlan_hdr =
+			(typeof(vlan_hdr))((const char *)mif->eth_hdr + l2_len);
 		l2_len += sizeof(*vlan_hdr);
 		mif->eth_type = rte_be_to_cpu_16(vlan_hdr->eth_proto);
 	}
@@ -305,72 +413,80 @@ stp_parse_ethernet(struct sft_mbuf_info *mif, struct rte_sft_error *error)
 		ret = stp_parse_ipv6(mif, error);
 		break;
 	default:
-		ret = rte_sft_error_set(error, ENOTSUP, RTE_SFT_ERROR_TYPE_UNSPECIFIED,
-					NULL, "unsupported L3 protocol");
+		ret = rte_sft_error_set(error, ENOTSUP,
+					RTE_SFT_ERROR_TYPE_UNSPECIFIED, NULL,
+					"unsupported L3 protocol");
 	}
+	RTE_SET_USED(entry);
 
 	return ret;
 }
 
 int
-sft_parse_mbuf(struct sft_mbuf_info *mif, struct rte_sft_error *error)
+rte_sft_parse_mbuf(const struct rte_mbuf *m, struct rte_sft_mbuf_info *mif,
+		   const void *entry, struct rte_sft_error *error)
 {
-	if (mif->m->l2_type != RTE_PTYPE_L2_ETHER)
-		return rte_sft_error_set(error, ENOTSUP,
-					 RTE_SFT_ERROR_TYPE_UNSPECIFIED,
-					 NULL, "no support for  "
-					 "non Ethernet packet");
-	mif->eth_hdr = rte_pktmbuf_mtod(mif->m, typeof(mif->eth_hdr));
-	return stp_parse_ethernet(mif, error);
+	mif->eth_hdr = rte_pktmbuf_mtod(m, typeof(mif->eth_hdr));
+	return stp_parse_ethernet(mif, entry, error);
 }
 
 void
-rte_sft_mbuf_stpl(struct sft_mbuf_info *mif, uint32_t zone,
-	      struct rte_sft_7tuple *stpl, struct rte_sft_error *error)
+rte_sft_mbuf_stpl(const struct rte_mbuf *m, struct rte_sft_mbuf_info *mif,
+		  uint32_t zone, struct rte_sft_7tuple *stpl,
+		  struct rte_sft_error *error)
 {
 	RTE_SET_USED(error);
 	memset(stpl, 0, sizeof(*stpl));
-	stpl->port_id = mif->m->port;
+	stpl->port_id = m->port;
 	stpl->zone = zone;
 	switch(mif->eth_type) {
 	case RTE_ETHER_TYPE_IPV4:
 		stpl->flow_5tuple.is_ipv6 = false;
 		stpl->flow_5tuple.ipv4.src_addr = mif->ip4->src_addr;
 		stpl->flow_5tuple.ipv4.dst_addr = mif->ip4->dst_addr;
-		stpl->flow_5tuple.proto = mif->ip4->next_proto_id; 
+		stpl->flow_5tuple.proto = mif->ip4->next_proto_id;
 		break;
 	case RTE_ETHER_TYPE_IPV6:
 		stpl->flow_5tuple.is_ipv6 = true;
-		break;	
+		break;
 	}
-	switch(stpl->flow_5tuple.proto) {
-	case IPPROTO_TCP:
-		stpl->flow_5tuple.src_port = mif->tcp->src_port;
-		stpl->flow_5tuple.dst_port = mif->tcp->dst_port;
-		break;
-	case IPPROTO_UDP:
-		stpl->flow_5tuple.src_port = mif->udp->src_port;
-		stpl->flow_5tuple.dst_port = mif->udp->dst_port;
-		break;
-	}	
+	if (!mif->is_fragment) {
+		switch (stpl->flow_5tuple.proto) {
+		case IPPROTO_TCP:
+			stpl->flow_5tuple.src_port = mif->tcp->src_port;
+			stpl->flow_5tuple.dst_port = mif->tcp->dst_port;
+			break;
+		case IPPROTO_UDP:
+			stpl->flow_5tuple.src_port = mif->udp->src_port;
+			stpl->flow_5tuple.dst_port = mif->udp->dst_port;
+			break;
+		}
+	} else {
+		stpl->flow_5tuple.src_port = 0xffff;
+		stpl->flow_5tuple.dst_port = 0xffff;
+	}
 }
 
 static int
-sft_mbuf_decode(uint16_t queue, struct rte_mbuf *mbuf,
+sft_mbuf_decode(uint16_t queue, const struct rte_mbuf *mbuf,
 		struct rte_sft_decode_info *info, struct rte_sft_error *error)
 {
 	int ret;
 	struct rte_eth_dev *dev = &rte_eth_devices[mbuf->port];
 	const struct rte_sft_ops *sft_ops = sft_ops_get(dev);
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wcast-qual"
+	struct rte_mbuf *m = (typeof(m))mbuf;
+#pragma GCC diagnostic pop
 
 	if (!sft_ops) {
 		info->state = 0;
 		return 0;
 	}
-	ret = sft_ops->sft_entry_decode(dev, queue, mbuf, info, error);
+	ret = sft_ops->sft_entry_decode(dev, queue, m, info, error);
 	if (ret)
 		return ret;
-	else if (info->state && (info->state & ~RTE_SFT_STATE_ALL))
+	else if (info->state && (info->state & ~RTE_SFT_STATE_MASK))
 		return rte_sft_error_set(error, EINVAL,
 				 RTE_SFT_ERROR_TYPE_UNSPECIFIED,
 				 NULL, "mbuf with invalid decode state");
@@ -389,8 +505,18 @@ sft_pmd_stop(struct rte_sft_error *error)
 		if (!sft_ops)
 			continue;
 		ret = sft_ops->sft_stop(dev, error);
-		if (ret)
+		switch (ret) {
+		case 0:
+			RTE_SFT_LOG(DEBUG, "port-%u: SFT stopped\n", port);
 			break;
+		case -ENOTSUP:
+			RTE_SFT_LOG(INFO, "port-%u: no SFT support\n", port);
+			ret = 0;
+			break;
+		default:
+			RTE_SFT_LOG(NOTICE, "port-%u: SFT stop failed err=%d\n",
+				    port, ret);
+		}
 	}
 
 	return ret;
@@ -411,23 +537,35 @@ sft_pmd_start(struct rte_sft_error *error)
 		if (!sft_ops)
 			continue;
 		ret = sft_ops->sft_start(dev, nb_queues, data_len, error);
-		if (ret)
+		switch (ret) {
+		case 0:
+			RTE_SFT_LOG(DEBUG, "port-%u: SFT started\n", port);
 			break;
+		case -ENOTSUP:
+			RTE_SFT_LOG(INFO, "port-%u: no SFT support\n", port);
+			ret = 0;
+			break;
+		default:
+			RTE_SFT_LOG(NOTICE, "port-%u: SFT init failed err=%d\n",
+				    port, ret);
+			goto out;
+		}
 	}
 
+out:
 	if (ret) {
 		struct rte_sft_error stop_error;
 		sft_pmd_stop(&stop_error);
 	}
 
-	return 0;
+	return ret;
 }
 
 union sft_action_ctx {
 	struct rte_flow_action_set_ipv4 ipv4_spec;
 	struct rte_flow_action_set_ipv6 ipv6_spec;
 	struct rte_flow_action_set_tp tp_spec;
-	struct rte_flow_action_age age; 
+	struct rte_flow_action_age age;
 };
 
 static int
@@ -478,11 +616,8 @@ sft_action_nat(struct rte_flow_action *action,
 		i++;
 	}
 
-	return i;	
+	return i;
 }
-
-#define SFT_PATTERNS_NUM 4
-#define SFT_ACTIONS_NUM 8
 
 __extension__
 struct sft_pattern_ctx {
@@ -494,7 +629,7 @@ struct sft_pattern_ctx {
 	union {
 		struct rte_flow_item_ipv4 ipv4_mask;
 		struct rte_flow_item_ipv6 ipv6_mask;
-		uint8_t l3_mask;		
+		uint8_t l3_mask;
 	};
 	union {
 		struct rte_flow_item_tcp tcp_spec;
@@ -546,7 +681,7 @@ sft_l4_pattern(struct rte_flow_item *p, const struct rte_sft_5tuple *ftpl,
 		struct sft_pattern_ctx *ctx)
 {
 	switch (ftpl->proto) {
-	case IPPROTO_TCP: 
+	case IPPROTO_TCP:
 		p->type = RTE_FLOW_ITEM_TYPE_TCP;
 		if (ftpl->src_port) {
 			ctx->tcp_spec.hdr.src_port = ftpl->src_port;
@@ -570,7 +705,7 @@ sft_l4_pattern(struct rte_flow_item *p, const struct rte_sft_5tuple *ftpl,
 		break;
 	default:
 		RTE_VERIFY(false);
-		
+
 	}
 	p->spec = &ctx->l4_spec;
 	p->mask = &ctx->l4_mask;
@@ -581,14 +716,22 @@ sft_hit_pattern(const struct sft_lib_entry *entry,
 		struct rte_flow_item patterns[2][SFT_PATTERNS_NUM],
 		struct sft_pattern_ctx ctx[2][SFT_PATTERNS_NUM])
 {
+	int i;
 	patterns[0][0].type = RTE_FLOW_ITEM_TYPE_ETH;
-	sft_l3_pattern(&patterns[0][1], &entry->stpl[0].flow_5tuple, &ctx[0][1]);
-	sft_l4_pattern(&patterns[0][2], &entry->stpl[0].flow_5tuple, &ctx[0][2]);
-	patterns[0][3].type = RTE_FLOW_ITEM_TYPE_END;
+	sft_l3_pattern(&patterns[0][1], &entry->stpl[0].flow_5tuple,
+		       &ctx[0][1]);
+	sft_l4_pattern(&patterns[0][2], &entry->stpl[0].flow_5tuple,
+		       &ctx[0][2]);
 	patterns[1][0].type = RTE_FLOW_ITEM_TYPE_ETH;
-	sft_l3_pattern(&patterns[1][1], &entry->stpl[1].flow_5tuple, &ctx[1][1]);
-	sft_l4_pattern(&patterns[1][2], &entry->stpl[1].flow_5tuple, &ctx[1][2]); 
-	patterns[1][3].type = RTE_FLOW_ITEM_TYPE_END;
+	sft_l3_pattern(&patterns[1][1], &entry->stpl[1].flow_5tuple,
+		       &ctx[1][1]);
+	sft_l4_pattern(&patterns[1][2], &entry->stpl[1].flow_5tuple,
+		       &ctx[1][2]);
+	for (i = 3; i < SFT_PATTERNS_NUM - 1; i++)
+		patterns[0][i].type = patterns[1][i].type =
+			RTE_FLOW_ITEM_TYPE_VOID;
+	patterns[0][i].type = patterns[1][i].type =
+		RTE_FLOW_ITEM_TYPE_END;
 }
 
 static void
@@ -600,11 +743,13 @@ sft_hit_actions(const struct sft_lib_entry *entry,
 	int rx = 0; /* reversed traffic actions index */
 
 	if (entry->action_specs.actions & RTE_SFT_ACTION_INITIATOR_NAT)
-		fx += sft_action_nat(&actions[0][fx], &entry->stpl[0].flow_5tuple,
+		fx += sft_action_nat(&actions[0][fx],
+				     &entry->stpl[0].flow_5tuple,
 				     entry->action_specs.initiator_nat,
 				     &ctx[0][fx]);
 	if (entry->action_specs.actions & RTE_SFT_ACTION_REVERSE_NAT)
-		rx += sft_action_nat(&actions[1][rx], &entry->stpl[1].flow_5tuple,
+		rx += sft_action_nat(&actions[1][rx],
+				     &entry->stpl[1].flow_5tuple,
 				     entry->action_specs.reverse_nat,
 				     &ctx[1][rx]);
 	if (entry->action_specs.actions & RTE_SFT_ACTION_COUNT) {
@@ -624,7 +769,11 @@ sft_hit_actions(const struct sft_lib_entry *entry,
 		ctx[1][rx++].age.timeout = entry->action_specs.aging;
 	}
 	RTE_VERIFY(fx < SFT_ACTIONS_NUM);
-	RTE_VERIFY(rx < SFT_ACTIONS_NUM);	
+	RTE_VERIFY(rx < SFT_ACTIONS_NUM);
+	for (; fx < SFT_ACTIONS_NUM - 1; fx++)
+		actions[0][fx].type = RTE_FLOW_ACTION_TYPE_VOID;
+	for (; rx < SFT_ACTIONS_NUM - 1; rx++)
+		actions[1][rx].type = RTE_FLOW_ACTION_TYPE_VOID;
 	actions[0][fx].type = RTE_FLOW_ACTION_TYPE_END;
 	actions[1][rx].type = RTE_FLOW_ACTION_TYPE_END;
 }
@@ -638,11 +787,13 @@ sft_miss_actions(const struct sft_lib_entry *entry,
 	int rx = 0; /* reversed traffic actions index */
 
 	if (entry->action_specs.actions & RTE_SFT_ACTION_INITIATOR_NAT)
-		fx += sft_action_nat(&actions[0][fx], &entry->stpl[0].flow_5tuple,
+		fx += sft_action_nat(&actions[0][fx],
+				     &entry->stpl[0].flow_5tuple,
 				     entry->action_specs.initiator_nat,
 				     &ctx[0][fx]);
 	if (entry->action_specs.actions & RTE_SFT_ACTION_REVERSE_NAT)
-		rx += sft_action_nat(&actions[1][rx], &entry->stpl[1].flow_5tuple,
+		rx += sft_action_nat(&actions[1][rx],
+				     &entry->stpl[1].flow_5tuple,
 				     entry->action_specs.reverse_nat,
 				     &ctx[1][rx]);
 	if (entry->action_specs.actions & RTE_SFT_ACTION_COUNT) {
@@ -654,7 +805,11 @@ sft_miss_actions(const struct sft_lib_entry *entry,
 		rx++;
 	}
 	RTE_VERIFY(fx < SFT_ACTIONS_NUM);
-	RTE_VERIFY(rx < SFT_ACTIONS_NUM);	
+	RTE_VERIFY(rx < SFT_ACTIONS_NUM);
+	for (; fx < SFT_ACTIONS_NUM - 1; fx++)
+		actions[0][fx].type = RTE_FLOW_ACTION_TYPE_VOID;
+	for (; rx < SFT_ACTIONS_NUM - 1; rx++)
+		actions[1][rx].type = RTE_FLOW_ACTION_TYPE_VOID;
 	actions[0][fx].type = RTE_FLOW_ACTION_TYPE_END;
 	actions[1][rx].type = RTE_FLOW_ACTION_TYPE_END;
 }
@@ -666,7 +821,7 @@ sft_miss_conditions(const struct sft_lib_entry *entry)
 
 	switch(entry->stpl[0].flow_5tuple.proto) {
 	case IPPROTO_TCP:
-		miss_conditions = RTE_SFT_MISS_TCP_FLAGS;
+		miss_conditions = entry->ct_enable ? RTE_SFT_MISS_TCP_FLAGS : 0;
 		break;
 	case IPPROTO_UDP:
 	default:
@@ -687,23 +842,63 @@ sft_flow_deactivate(struct sft_lib_entry *entry, struct rte_sft_error *error)
 	dev[1] = &rte_eth_devices[entry->stpl[1].port_id];
 	sft_get_dev_ops(dev, entry, ops);
 	if (ops[0] && entry->sft_entry[0])
-		ops[0]->sft_entry_destroy(dev[0], entry->sft_entry[0], entry->queue,
-					  error);
+		ops[0]->sft_entry_destroy(dev[0], entry->sft_entry[0],
+					  entry->queue, error);
 	if (ops[1] && entry->sft_entry[1])
-		ops[1]->sft_entry_destroy(dev[1], entry->sft_entry[1], entry->queue,
-					  error);
+		ops[1]->sft_entry_destroy(dev[1], entry->sft_entry[1],
+					  entry->queue, error);
 
-	return 0;		
+	return 0;
+}
+
+static __rte_always_inline int
+sft_create_entry(struct rte_eth_dev *dev[2], const struct rte_sft_ops *ops[2],
+		 struct sft_lib_entry *entry,
+		 struct rte_flow_item hit_pattern[2][SFT_PATTERNS_NUM],
+		 struct rte_flow_action hit_actions[2][SFT_PATTERNS_NUM],
+		 struct rte_flow_action miss_actions[2][SFT_PATTERNS_NUM],
+		 uint64_t miss_conditions, uint8_t dir,
+		 struct rte_sft_error *error)
+{
+	int ret;
+	struct rte_sft_entry *se;
+	sft_entry_create_t create_entry = ops[dir]->sft_create_entry;
+	bool initiator = !dir;
+
+	RTE_SET_USED(initiator);
+	se = create_entry(dev[dir], entry->fid, entry->queue,
+			  hit_pattern[dir], miss_conditions, hit_actions[dir],
+			  miss_actions[dir], entry->data, SFT_DATA_LEN,
+			  entry->app_state, error);
+	entry->sft_entry[dir] = se;
+	if (entry->sft_entry[dir]) {
+		ret = 0;
+	} else {
+		switch (rte_errno) {
+		default:
+			ret = -rte_errno;
+			RTE_SFT_LOG(NOTICE, "port-%u: "
+				    "failed to activate flow %u err=%d\n",
+				    dev[dir]->data->port_id, entry->fid, ret);
+			break;
+		case ENOTSUP:
+			ret = 0;
+			break;
+		}
+	}
+
+	return ret;
 }
 
 static int
 sft_flow_activate(struct sft_lib_entry *entry,
 		  struct rte_sft_error *error)
 {
+	int ret;
 	struct rte_eth_dev *dev[2];
 	const struct rte_sft_ops *ops[2];
 	struct rte_flow_item hit_pattern[2][SFT_PATTERNS_NUM];
-	struct sft_pattern_ctx hit_pattern_ctx[2][SFT_PATTERNS_NUM]; 
+	struct sft_pattern_ctx hit_pattern_ctx[2][SFT_PATTERNS_NUM];
 	struct rte_flow_action hit_actions[2][SFT_ACTIONS_NUM];
 	union sft_action_ctx hit_actions_ctx[2][SFT_ACTIONS_NUM];
 	struct rte_flow_action miss_actions[2][SFT_ACTIONS_NUM];
@@ -727,39 +922,23 @@ sft_flow_activate(struct sft_lib_entry *entry,
 	miss_conditions = sft_miss_conditions(entry);
 
 	if (ops[0]) {
-		entry->sft_entry[0] =
-		ops[0]->sft_create_entry(dev[0], entry->fid, entry->queue, hit_pattern[0],
-					  miss_conditions, hit_actions[0], miss_actions[0],
-					  entry->data, sft_priv->conf.app_data_len,
-					  entry->app_state, error);
-		if (!entry->sft_entry[0])
-			return -rte_errno;
+		ret = sft_create_entry(dev, ops, entry, hit_pattern,
+				       hit_actions, miss_actions,
+				       miss_conditions, 0, error);
+		if (ret)
+			return ret;
 	}
 	if (ops[1]) {
-		entry->sft_entry[1] =
-		ops[1]->sft_create_entry(dev[1], entry->fid, entry->queue, hit_pattern[1],
-					  miss_conditions, hit_actions[1], miss_actions[1],
-					  entry->data, sft_priv->conf.app_data_len,
-					  entry->app_state, error);
-		if (!entry->sft_entry[1] && ops[0]) {
-			int err = -rte_errno;
+		ret = sft_create_entry(dev, ops, entry, hit_pattern,
+				       hit_actions, miss_actions,
+				       miss_conditions, 1, error);
+		if (ret && entry->sft_entry[0]) {
 			ops[0]->sft_entry_destroy(dev[0], entry->sft_entry[0],
 						  entry->queue, error);
-			return err;
+			return ret;
 		}
 	}
 	return 0;
-}
-
-static inline void
-sft_search_hash(const struct rte_lhash *h, const void *key, void **data)
-{
-	int ret = rte_lhash_lookup(h, key, (uint64_t *)data);
-
-	if (ret == -ENOENT) {
-		*data = NULL;
-		ret = 0;
-	}
 }
 
 static void
@@ -784,64 +963,61 @@ sft_rstpl_locate_entry(uint16_t queue, const struct rte_sft_7tuple *stpl,
 }
 
 static void
-sft_mbuf_apply_nat(struct rte_mbuf *mbuf, const struct rte_sft_5tuple *nat)
+sft_mbuf_apply_nat(struct rte_sft_mbuf_info *mif,
+		   const struct rte_sft_5tuple *nat)
 {
-	struct net_hdr l3_hdr, l4_hdr;
-	struct rte_tcp_hdr *tcp_hdr;
-	struct rte_udp_hdr *udp_hdr;
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wcast-qual"
+	struct rte_ipv6_hdr *ip6 = (typeof(ip6))mif->ip6;
+	struct rte_ipv4_hdr *ip4 = (typeof(ip4))mif->ip4;
+	struct rte_tcp_hdr  *tcp = (typeof(tcp))mif->tcp;
+	struct rte_udp_hdr  *udp = (typeof(udp))mif->udp;
+#pragma GCC diagnostic pop
 
-	stp_mbuf_l3_hdr(mbuf, &l3_hdr); // use mif
-	stp_mbuf_l4_hdr(&l3_hdr, &l4_hdr); // use mif
 	if (!nat->is_ipv6) {
-		struct rte_ipv4_hdr *ipv4_hdr = l3_hdr.ptr;
 
-		RTE_VERIFY(l3_hdr.protocol == RTE_ETHER_TYPE_IPV4);
 		if (nat->ipv4.src_addr)
-			ipv4_hdr->src_addr = nat->ipv4.src_addr;
+			ip4->src_addr = nat->ipv4.src_addr;
 		if (nat->ipv4.dst_addr)
-		ipv4_hdr->dst_addr = nat->ipv4.dst_addr;
+			ip4->dst_addr = nat->ipv4.dst_addr;
 	} else {
-		struct rte_ipv6_hdr *ipv6_hdr = l3_hdr.ptr;
 
-		RTE_VERIFY(l3_hdr.protocol == RTE_ETHER_TYPE_IPV6);
-		
 		if (!ipv6_is_zero_addr(nat->ipv6.src_addr))
-			memcpy(ipv6_hdr->src_addr, nat->ipv6.src_addr,
-			       sizeof(ipv6_hdr->src_addr));
+			memcpy(ip6->src_addr, nat->ipv6.src_addr,
+			       sizeof(ip6->src_addr));
 		if (!ipv6_is_zero_addr(nat->ipv6.dst_addr))
-			memcpy(ipv6_hdr->dst_addr, nat->ipv6.dst_addr,
-			       sizeof(ipv6_hdr->dst_addr));
+			memcpy(ip6->dst_addr, nat->ipv6.dst_addr,
+			       sizeof(ip6->dst_addr));
 	}
-	switch (l4_hdr.protocol) {
+	switch (mif->l4_protocol) {
 	case IPPROTO_UDP:
-		udp_hdr = l4_hdr.ptr;
 		if (nat->src_port)
-			udp_hdr->src_port = nat->src_port;
+			udp->src_port = nat->src_port;
 		if (nat->dst_port)
-		udp_hdr->dst_port = nat->dst_port;
+			udp->dst_port = nat->dst_port;
 		break;
 	case IPPROTO_TCP:
-		tcp_hdr = l4_hdr.ptr;
 		if (nat->src_port)
-			tcp_hdr->src_port = nat->src_port;
+			tcp->src_port = nat->src_port;
 		if (nat->dst_port)
-		tcp_hdr->dst_port = nat->dst_port;
+			tcp->dst_port = nat->dst_port;
 		break;
 	default:
 		break;
 	}
-
 }
 
 static void
-sft_apply_mbuf_actions(struct rte_mbuf *mbuf,
+sft_apply_mbuf_actions(struct rte_sft_mbuf_info *mif,
 		       const struct rte_sft_actions_specs *action_specs,
 		       bool is_initiator)
 {
-	if (is_initiator && (action_specs->actions & RTE_SFT_ACTION_INITIATOR_NAT))
-		sft_mbuf_apply_nat(mbuf, action_specs->initiator_nat);
-	if(!is_initiator && (action_specs->actions & RTE_SFT_ACTION_REVERSE_NAT))
-		sft_mbuf_apply_nat(mbuf, action_specs->reverse_nat);
+	if (is_initiator &&
+	    (action_specs->actions & RTE_SFT_ACTION_INITIATOR_NAT))
+		sft_mbuf_apply_nat(mif, action_specs->initiator_nat);
+	if (!is_initiator &&
+	    (action_specs->actions & RTE_SFT_ACTION_REVERSE_NAT))
+		sft_mbuf_apply_nat(mif, action_specs->reverse_nat);
 	if (action_specs->actions & RTE_SFT_ACTION_COUNT)
 		RTE_VERIFY(false);
 	if (action_specs->actions & RTE_SFT_ACTION_AGE)
@@ -875,6 +1051,8 @@ sft_init_context(const struct rte_sft_conf *conf, struct rte_sft_error *error)
 	memcpy(&sft_priv->conf, conf, sizeof(sft_priv->conf));
 	if (!sft_priv->conf.nb_queues)
 		sft_priv->conf.nb_queues = 1;
+	if (!sft_priv->conf.ipfrag_timeout)
+		sft_priv->conf.ipfrag_timeout = SFT_IPFRAG_TIMEOUT;
 	sft_priv->fid_ids_pool = sft_id_pool_alloc(conf->nb_max_entries);
 	if (!sft_priv->fid_ids_pool)
 		goto error;
@@ -991,48 +1169,6 @@ sft_get_client_obj(uint16_t queue, const uint32_t fid, uint8_t id,
 	return cobj;
 }
 
-enum {
-	SFT_CT_STATE_UNKNOWN = 0,
-	SFT_CT_STATE_CONNECTING = 1,
-	SFT_CT_STATE_ACTIVE = 2,
-	SFT_CT_STATE_TERMINATING = 3,
-	SFT_CT_STATE_INVALID = 0xFF
-/* last state */
-};
-
-// TODO: massive WIP !!!
-static uint8_t
-sft_get_tcp_state(const struct sft_mbuf_info *mif)
-{
-	uint8_t flags = mif->tcp->tcp_flags;
-
-	if (flags == 0xFF)
-		return SFT_CT_STATE_INVALID;
-	else if (flags & RTE_TCP_SYN_FLAG)
-		return SFT_CT_STATE_CONNECTING;
-	else if (flags & (RTE_TCP_RST_FLAG | RTE_TCP_FIN_FLAG))
-		return SFT_CT_STATE_TERMINATING;
-
-	return SFT_CT_STATE_UNKNOWN;
-}
-
-static uint8_t
-sft_get_conn_state(const struct sft_mbuf_info *mif)
-{
-	uint8_t proto_state;
-
-	switch (mif->m->l4_type << 8) {
-	default:
-		proto_state = 0;
-		break;
-	case RTE_PTYPE_L4_TCP:
-		proto_state = sft_get_tcp_state(mif);
-		break;
-	}
-
-	return proto_state;
-}
-
 static int
 sft_set_data(struct sft_lib_entry *entry, const uint32_t *data,
 	     struct rte_sft_error *error)
@@ -1072,7 +1208,7 @@ sft_init_rstpl(struct rte_sft_7tuple *local, const struct rte_sft_7tuple *app)
 	local->flow_5tuple.proto = app->flow_5tuple.proto;
 	local->flow_5tuple.is_ipv6 = app->flow_5tuple.is_ipv6;
 	local->zone = app->zone;
-	local->port_id = app->port_id;	
+	local->port_id = app->port_id;
 }
 
 int
@@ -1086,7 +1222,7 @@ rte_sft_flow_destroy(uint16_t queue, uint32_t fid, struct rte_sft_error *error)
 	if (ret == -ENOENT)
 		return rte_sft_error_set(error, ENOENT,
 				  	 RTE_SFT_ERROR_TYPE_UNSPECIFIED, NULL,
-					 "invalid fid value");		
+					 "invalid fid value");
 	rte_lhash_del_key(stpl_hash(queue),
 			  (const void *)&entry->stpl[0], 0);
 	rte_lhash_del_key(rstpl_hash(queue),
@@ -1094,9 +1230,16 @@ rte_sft_flow_destroy(uint16_t queue, uint32_t fid, struct rte_sft_error *error)
 	sft_flow_deactivate(entry, error);
 	if (entry->data)
 		rte_free(entry->data);
-	while (!LIST_EMPTY(&entry->client_objects_head))
-		LIST_REMOVE(LIST_FIRST(&entry->client_objects_head), chain);
+	while (!LIST_EMPTY(&entry->client_objects_head)) {
+		struct client_obj *head;
+
+		head = LIST_FIRST(&entry->client_objects_head);
+		LIST_REMOVE(head, chain);
+		rte_free(head);
+	}
 	sft_fid_release(entry->fid);
+	if (entry->ct_enable)
+		sft_tcp_stop_conn_track(entry, error);
 	rte_free(entry);
 
 	return 0;
@@ -1118,7 +1261,7 @@ rte_sft_flow_get_status(const uint16_t queue, const uint32_t fid,
 	status->fid = entry->fid;
 	status->zone = entry->zone;
 	status->state = entry->app_state;
-	status->proto_state = entry->proto_state;
+	status->proto_state = (typeof(status->proto_state))entry->proto_state;
 	status->proto = entry->proto;
 	if (entry->data)
 		memcpy(status->data, entry->data, SFT_DATA_LEN);
@@ -1134,7 +1277,7 @@ rte_sft_flow_query(uint16_t queue, uint32_t fid,
 	RTE_SET_USED(queue);
 	RTE_SET_USED(fid);
 	RTE_SET_USED(data);
-	
+
 	return rte_sft_error_set(error, ENOENT, RTE_SFT_ERROR_TYPE_UNSPECIFIED,
 				 NULL, "not supported");
 }
@@ -1167,12 +1310,18 @@ rte_sft_flow_set_offload(uint16_t queue, uint32_t fid, bool offload,
 		return rte_sft_error_set(error, ENOENT,
 				  	 RTE_SFT_ERROR_TYPE_UNSPECIFIED, NULL,
 					 "invalid fid value");
-	if (entry->offload && !offload)
+	if (entry->offload && !offload) {
 		f_op = sft_flow_deactivate;
-	else if (!entry->offload && offload)
+		if (entry->ct_enable) {
+			sft_tcp_stop_conn_track(entry, error);
+			entry->ct_enable = 0;
+			entry->ct_obj = NULL;
+		}
+	} else if (!entry->offload && offload) {
 		f_op = sft_flow_activate;
-	else
+	} else {
 		f_op = NULL;
+	}
 
 	return f_op ? f_op(entry, error) : 0;
 }
@@ -1258,8 +1407,8 @@ rte_sft_flow_set_client_obj(uint16_t queue, uint32_t fid, uint8_t id,
 		if (!cobj)
 			return rte_sft_error_set(error, ENOMEM,
 						 RTE_SFT_ERROR_TYPE_UNSPECIFIED,
-						 NULL,
-						 "cannot allocate client object");
+						 NULL, "cannot allocate "
+						       "client object");
 		cobj->id = id;
 		cobj->obj = obj;
 		LIST_INSERT_HEAD(&entry->client_objects_head, cobj, chain);
@@ -1283,14 +1432,13 @@ rte_sft_flow_activate(uint16_t queue, uint32_t zone, struct rte_mbuf *mbuf_in,
 	int ret;
 	struct sft_lib_entry *entry;
 	struct rte_sft_7tuple stpl, rstpl;
-	struct sft_mbuf_info mif;
+	struct sft_mbuf smb = { .m_in = mbuf_in, .m_out = mbuf_in };
+	struct rte_sft_mbuf_info mif = { NULL, };
 
-	*mbuf_out = mbuf_in;
-	mif.m = mbuf_in;
-	ret = sft_parse_mbuf(&mif, error);
+	ret = rte_sft_parse_mbuf(mbuf_in, &mif, NULL, error);
 	if (ret)
 		return ret;
-	rte_sft_mbuf_stpl(&mif, zone, &stpl, error);
+	rte_sft_mbuf_stpl(mbuf_in, &mif, zone, &stpl, error);
 	sft_init_rstpl(&rstpl, rev_stpl);
 	if (stpl.flow_5tuple.is_ipv6 != rstpl.flow_5tuple.is_ipv6)
 		return rte_sft_error_set(error, EINVAL,
@@ -1323,12 +1471,16 @@ rte_sft_flow_activate(uint16_t queue, uint32_t zone, struct rte_mbuf *mbuf_in,
 	entry->zone = zone;
 	entry->app_state = state;
 	entry->proto = stpl.flow_5tuple.proto;
-	entry->proto_enable = !!proto_enable;
+	entry->ct_enable = sft_priv->conf.tcp_ct_enable && proto_enable;
 	entry->event_dev_id = dev_id;
 	entry->event_port_id = port_id;
 	entry->stpl[0] = stpl;
 	entry->stpl[1] = rstpl;
-	entry->offload = true;
+	entry->offload = false;
+	entry->l2_len = (uintptr_t)mif.l3_hdr - (uintptr_t)mif.eth_hdr;
+	entry->direction_key =
+		*(const typeof(entry->direction_key) *)mif.eth_hdr;
+	status->initiator = 1;
 	if (data && SFT_DATA_LEN != 0) {
 		ret = sft_set_data(entry, data, error);
 		if (ret)
@@ -1337,7 +1489,8 @@ rte_sft_flow_activate(uint16_t queue, uint32_t zone, struct rte_mbuf *mbuf_in,
 	if (action_specs) {
 		entry->action_specs = *action_specs;
 		if (action_specs->actions)
-			sft_apply_mbuf_actions(mbuf_in, action_specs, true);
+			sft_apply_mbuf_actions(&mif, action_specs,
+					       true);
 	} else {
 		memset(&entry->action_specs, 0, sizeof(entry->action_specs));
 	}
@@ -1366,14 +1519,22 @@ rte_sft_flow_activate(uint16_t queue, uint32_t zone, struct rte_mbuf *mbuf_in,
 					NULL, "failed to add reverse tuple");
 		goto err4;
 	}
+	if (entry->ct_enable) {
+		if (sft_start_conn_track(entry, error))
+			goto err5;
+		sft_track_conn(&smb, &mif, entry, status, error);
+	}
 	sft_flow_activate(entry, error);
 
 end:
 	status->fid = entry->fid;
 	status->activated = 1;
+	*mbuf_out = smb.m_out;
 
 	return 0;
 
+err5:
+	rte_lhash_del_key(rstpl_hash(queue), (const void *)&rstpl, NULL);
 err4:
 	rte_lhash_del_key(stpl_hash(queue), (const void *)&stpl, NULL);
 err3:
@@ -1385,6 +1546,98 @@ err1:
 	return ret;
 }
 
+static int
+sft_process_mbuf(uint16_t queue, struct sft_mbuf *smb,
+		 struct rte_sft_mbuf_info *mif,
+		 struct rte_sft_decode_info *decode_info,
+		 struct sft_lib_entry **entry,
+		 struct rte_sft_flow_status *status,
+		 struct rte_sft_error *error)
+{
+	int ret;
+	uint64_t rx_ol_flags = smb->m_in->ol_flags;
+
+	if ((rx_ol_flags & PKT_RX_IP_CKSUM_MASK) == PKT_RX_IP_CKSUM_BAD)
+		return rte_sft_error_set(error, EINVAL,
+					 RTE_SFT_ERROR_CHECKSUM, NULL,
+					 "bad L3 checksum");
+	if ((rx_ol_flags & PKT_RX_L4_CKSUM_MASK) == PKT_RX_L4_CKSUM_BAD)
+		return rte_sft_error_set(error, EINVAL,
+					 RTE_SFT_ERROR_CHECKSUM, NULL,
+					 "bad L4 checksum");
+	ret = sft_mbuf_decode(queue, smb->m_in, decode_info, error);
+	if (ret)
+		return ret;
+	if (decode_info->fid_valid) {
+		status->initiator = decode_info->direction;
+		mif->direction_located = 1;
+		sft_fid_locate_entry(queue, decode_info->fid, entry);
+	}
+	ret = rte_sft_parse_mbuf(smb->m_in, mif, NULL, error);
+	if (ret)
+		return ret;
+	if (mif->is_fragment) {
+		if (!sft_priv->conf.ipfrag_enable)
+			return rte_sft_error_set(error, ENOTSUP,
+						 RTE_SFT_ERROR_IPFRAG,
+						 NULL,
+						 "IP fragments not supported");
+		sft_process_ipfrag(queue, smb, mif, status, error);
+	}
+
+	return 0;
+}
+
+static struct sft_lib_entry *
+sft_stpl_to_entry(uint16_t queue, struct sft_mbuf *smb,
+		  struct rte_sft_mbuf_info *mif, uint32_t zone,
+		  struct rte_sft_flow_status *status,
+		  struct rte_sft_error *error)
+{
+	struct rte_sft_7tuple stpl;
+	struct sft_lib_entry *entry;
+
+	status->zone = zone;
+	status->zone_valid = 1;
+	rte_sft_mbuf_stpl(smb->m_in, mif, zone, &stpl, error);
+	status->proto = stpl.flow_5tuple.proto;
+	sft_stpl_locate_entry(queue, &stpl, &entry);
+	if (entry) {
+		status->initiator = 1;
+	} else {
+		status->initiator = 0;
+		sft_rstpl_locate_entry(queue, &stpl, &entry);
+	}
+	mif->direction_located = 1;
+
+	return entry;
+}
+
+static void
+sft_process_entry(struct sft_mbuf *smb, struct rte_sft_mbuf_info *mif,
+		  struct rte_sft_decode_info *decode_info,
+		  struct sft_lib_entry *entry,
+		  struct rte_sft_flow_status *status,
+		  struct rte_sft_error *error)
+{
+	status->fid = entry->fid;
+	status->activated = 1;
+	status->state = entry->app_state;
+	status->proto = entry->proto;
+	status->offloaded = entry->offload;
+
+	if (!mif->direction_located)
+		status->initiator = sft_match_directions(entry, smb->m_in);
+	if (entry->data)
+		memcpy(status->data, entry->data, SFT_DATA_LEN);
+	if (entry->action_specs.actions && !decode_info->fid_valid) {
+		sft_apply_mbuf_actions(mif, &entry->action_specs,
+				       status->initiator);
+	}
+	if (entry->ct_enable)
+		sft_track_conn(smb, mif, entry, status, error);
+}
+
 int
 rte_sft_process_mbuf_with_zone(uint16_t queue, struct rte_mbuf *mbuf_in,
 			       uint32_t zone, struct rte_mbuf **mbuf_out,
@@ -1394,61 +1647,33 @@ rte_sft_process_mbuf_with_zone(uint16_t queue, struct rte_mbuf *mbuf_in,
 	int ret;
 	struct sft_lib_entry *entry = NULL;
 	struct rte_sft_decode_info decode_info;
-	struct sft_mbuf_info mif;
+	struct sft_mbuf smb = { .m_in = mbuf_in, .m_out = mbuf_in };
+	struct rte_sft_mbuf_info mif = { NULL, };
 
-	*mbuf_out = mbuf_in;
-	mif.m = mbuf_in;
-	ret = sft_parse_mbuf(&mif, error);
-	if (ret)
+	ret = sft_process_mbuf(queue, &smb, &mif, &decode_info, &entry, status,
+			       error);
+	if (ret || status->fragmented)
 		return ret;
-	ret = sft_mbuf_decode(queue, mbuf_in, &decode_info, error);
-	if (ret)
-		return ret;
-	if (decode_info.state & RTE_SFT_STATE_FLAG_FID_VALID) {
-		sft_fid_locate_entry(queue, decode_info.fid, &entry);
-		if (entry) {
-			status->fid = entry->fid;
-			if (entry->zone != zone)
-				return rte_sft_error_set(error, EINVAL,
-				 	RTE_SFT_ERROR_TYPE_UNSPECIFIED,
-				 	NULL, "zones not match");
-		}
-	} else if (decode_info.state & RTE_SFT_STATE_FLAG_ZONE_VALID) {
+	if (decode_info.zone_valid) {
 		if (decode_info.zone != zone)
 			return rte_sft_error_set(error, EINVAL,
 				 		 RTE_SFT_ERROR_TYPE_UNSPECIFIED,
 				 		 NULL, "zones not match");
 	}
-	if (!entry) {
-		struct rte_sft_7tuple stpl;
-		rte_sft_mbuf_stpl(&mif, zone, &stpl, error);
-		status->proto = stpl.flow_5tuple.proto;		
-		sft_stpl_locate_entry(queue, &stpl, &entry);
-		if (entry) {
-			status->initiator = 1;
-		} else {
-			sft_rstpl_locate_entry(queue, &stpl, &entry);
-			if (entry)
-				status->initiator = 0;
-		}
-	}
+	if (!entry)
+		entry = sft_stpl_to_entry(queue, &smb, &mif, zone, status,
+					  error);
 	if (entry) {
 		if (entry->zone != zone)
 			return rte_sft_error_set(error, EINVAL,
 				 	RTE_SFT_ERROR_TYPE_UNSPECIFIED,
 				 	NULL, "zones not match");
-		status->fid = entry->fid;
-		status->state = entry->app_state;
-		status->activated = 1;
-		status->offloaded = 1;
-		if (entry->data)
-			memcpy(status->data, entry->data, SFT_DATA_LEN);
-		if (entry->action_specs.actions)
-			sft_apply_mbuf_actions(mbuf_in, &entry->action_specs,
-					       status->initiator);
+		sft_process_entry(&smb, &mif, &decode_info, entry, status,
+				  error);
+	} else {
+		status->proto_state = SFT_CT_STATE_NEW;
 	}
-	status->zone_valid = 1;
-	status->zone = zone;
+	*mbuf_out = smb.m_out;
 
 	return 0;
 }
@@ -1462,52 +1687,94 @@ rte_sft_process_mbuf(uint16_t queue, struct rte_mbuf *mbuf_in,
 	int ret;
 	struct rte_sft_decode_info decode_info;
 	struct sft_lib_entry *entry = NULL;
-	struct sft_mbuf_info mif;
+	struct sft_mbuf smb = { .m_in = mbuf_in, .m_out = mbuf_in };
+	struct rte_sft_mbuf_info mif = { NULL, };
 
-	*mbuf_out = mbuf_in;
-	mif.m = mbuf_in;
-	ret = sft_parse_mbuf(&mif, error);
-	if (ret)
+	ret = sft_process_mbuf(queue, &smb, &mif, &decode_info, &entry,
+			       status, error);
+	if (ret || status->fragmented)
 		return ret;
-	ret = sft_mbuf_decode(queue, mbuf_in, &decode_info, error);
-	if (ret)
-		return ret;
-	if (decode_info.state & RTE_SFT_STATE_FLAG_FID_VALID) {
-		sft_fid_locate_entry(queue, decode_info.fid, &entry);
-	} else if (decode_info.state & RTE_SFT_STATE_FLAG_ZONE_VALID) {
-		struct rte_sft_7tuple stpl;
+	if (decode_info.zone_valid)
+		entry = sft_stpl_to_entry(queue, &smb, &mif, decode_info.zone,
+					  status, error);
+	if (entry)
+		sft_process_entry(&smb, &mif, &decode_info, entry, status,
+				  error);
+	else
+		status->proto_state = SFT_CT_STATE_NEW;
+	*mbuf_out = smb.m_out;
 
-		status->zone = decode_info.zone;
-		status->zone_valid = 1; 
-		rte_sft_mbuf_stpl(&mif, decode_info.zone, &stpl, error);
-		status->proto = stpl.flow_5tuple.proto;	
-		sft_stpl_locate_entry(queue, &stpl, &entry);
-		if (entry) {
-			status->initiator = 1;
-		} else {
-			sft_rstpl_locate_entry(queue, &stpl, &entry);
-			if (entry)
-				status->initiator = 0;
-		}
-	}
-	if (entry) {
-		status->fid = entry->fid;
-		status->state = entry->app_state;
+	return 0;
+}
 
-		status->proto = entry->proto;
-		status->offloaded = 1;
-		if (entry->data)
-			memcpy(status->data, entry->data, SFT_DATA_LEN);
-		if (entry->action_specs.actions)
-			sft_apply_mbuf_actions(mbuf_in, &entry->action_specs,
-					       status->initiator);
+int
+rte_sft_drain_mbuf(uint16_t queue, uint32_t fid,
+		   const struct rte_mbuf **mbuf_out, uint16_t nb_out,
+		   bool initiator, uint16_t protocol,
+		   struct rte_sft_flow_status *status,
+		   struct rte_sft_error *error)
+{
+	int ret;
+
+	struct sft_lib_entry *entry;
+
+	sft_fid_locate_entry(queue, fid, &entry);
+	if (!entry)
+		return rte_sft_error_set(error, EINVAL,
+					 RTE_SFT_ERROR_TYPE_FLOW_NOT_DEFINED,
+					 NULL, "invalid fid value");
+
+	switch (protocol) {
+	case IPPROTO_TCP:
+		status->initiator = initiator;
+		ret = sft_tcp_drain_mbuf(entry, mbuf_out, nb_out, status);
+		if (ret < 0)
+			ret = rte_sft_error_set(error, EINVAL,
+						RTE_SFT_ERROR_TYPE_UNSPECIFIED,
+						NULL, "failed to drain TCP");
+		break;
+	case RTE_ETHER_TYPE_IPV4:
+	case RTE_ETHER_TYPE_IPV6:
+		ret = rte_sft_error_set(error, EINVAL,
+					RTE_SFT_ERROR_TYPE_UNSPECIFIED, NULL,
+					"de-fragmentation "
+					"not supported");
+		break;
+	default:
+		ret = rte_sft_error_set(error, EINVAL,
+					RTE_SFT_ERROR_TYPE_UNSPECIFIED, NULL,
+					"invalid protocol for drain");
+
 	}
-	if (sft_track_conn(entry)) {
-		status->proto_state  = sft_get_conn_state(&mif);
-		if (entry)
-			entry->proto_state = status->proto_state;
+	return ret;
+}
+
+int
+rte_sft_drain_fragment_mbuf(uint16_t queue, uintptr_t frag_ctx,
+			    uint16_t num_to_drain, struct rte_mbuf **mbuf_out,
+			    struct rte_sft_flow_status *status,
+			    struct rte_sft_error *error)
+{
+	struct ip_frag_pkt *fp = (typeof(fp))frag_ctx;
+	uint32_t fx, i;
+
+	RTE_SET_USED(queue);
+	RTE_SET_USED(error);
+	if (!fp->key.locked)
+		return rte_sft_error_set(error, EINVAL,
+					 RTE_SFT_ERROR_TYPE_UNSPECIFIED, NULL,
+					 "invalid IP fragments context");
+	for (fx = IP_FIRST_FRAG_IDX + 1, i = 0;
+	     fx != IP_FIRST_FRAG_IDX && i < num_to_drain;
+	     fx = (fx + 1) % IP_MAX_FRAG_NUM) {
+		if (!fp->frags[fx].mb)
+			continue;
+		mbuf_out[i++] = fp->frags[fx].mb;
+		fp->frags[fx].mb = NULL;
 	}
-	
+	status->nb_ip_fragments = i;
+	if (!i)
+		rte_ip_frag_release_collected(fp, &sft_priv->ipfrag[queue].dr);
 	return 0;
 }
 
@@ -1524,12 +1791,19 @@ rte_sft_init(const struct rte_sft_conf *conf, struct rte_sft_error *error)
 	ret = sft_create_hash(error);
 	if (ret)
 		goto err1;
+	if (conf->ipfrag_enable) {
+		ret = sft_init_ipfrag_ctx(error);
+		if (ret)
+			goto err2;
+	}
 	ret = sft_pmd_start(error);
 	if (ret)
-		goto err2;
+		goto err3;
 
 	return 0;
 
+err3:
+	sft_destroy_ipfrag();
 err2:
 	sft_destroy_hash();
 err1:
@@ -1546,4 +1820,8 @@ rte_sft_fini(struct rte_sft_error *error)
 	return 0;
 }
 
+/*
+ * enable SFT debug logs with EAL parameter:
+ *  --log-level=lib.sft:debug
+ */
 RTE_LOG_REGISTER(sft_logtype, lib.sft, NOTICE);

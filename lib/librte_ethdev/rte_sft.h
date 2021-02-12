@@ -228,6 +228,9 @@ extern "C" {
 #include <rte_ethdev.h>
 #include <rte_flow.h>
 
+#define RTE_SFT_APP_ERR_STATE 0
+#define RTE_SFT_APP_ERR_DATA_VAL 0
+
 /**
  * L3/L4 5-tuple - src/dest IP and port and IP protocol.
  *
@@ -273,6 +276,8 @@ struct rte_sft_conf {
 	uint32_t tcp_syn_aging; /**< TCP SYN default aging in sec. */
 	uint32_t default_aging; /**< All unlisted proto default aging in sec. */
 	uint32_t nb_max_entries; /**< Max entries in SFT. */
+	uint16_t nb_max_ipfrag; /**< Max IP fragments queue can store */
+	uint16_t ipfrag_timeout; /**< timeout for IP defarag library */
 	uint8_t app_data_len; /**< Number of uint32 of app data. */
 	uint32_t support_partial_match: 1;
 	/**< App can partial match on the data. */
@@ -280,7 +285,8 @@ struct rte_sft_conf {
 	/**< TCP packet reordering feature enabled bit. */
 	uint32_t tcp_ct_enable: 1;
 	/**< TCP connection tracking based on standard. */
-	uint32_t reserved: 29;
+	uint32_t ipfrag_enable: 1;
+	uint32_t reserved: 28;
 };
 
 #define RTE_SFT_ACTION_INITIATOR_NAT (1ul << 0)
@@ -319,17 +325,55 @@ struct rte_sft_query_data {
 };
 
 /**
+ * Connection tracking errors
+ */
+enum sft_ct_error {
+	SFT_CT_ERROR_NONE = 0,
+	SFT_CT_ERROR_BAD_PROTOCOL,
+	SFT_CT_ERROR_TCP_SYN,
+	SFT_CT_ERROR_TCP_FLAGS,
+	SFT_CT_ERROR_TCP_SEND_SEQ,
+	SFT_CT_ERROR_TCP_ACK_SEQ,
+	SFT_CT_ERROR_TCP_RCV_WND_SIZE,
+	SFT_CT_ERROR_SYS
+};
+
+/**
+ * Connection tracking states
+ */
+enum sft_ct_state {
+	SFT_CT_STATE_NEW = 0,      /**< no FID */
+	SFT_CT_STATE_ESTABLISHING, /**< connection establish in process */
+	SFT_CT_STATE_TRACKING,     /**<  */
+	SFT_CT_STATE_CLOSING,      /**<  */
+	SFT_CT_STATE_ERROR,        /**<  */
+	SFT_CT_STATE_RETRANSMIT,   /**<  */
+	SFT_CT_STATE_PARTIAL_RETRANSMIT,   /**<  */
+	SFT_CT_STATE_OFFLOADED     /**<  */
+};
+
+/**
  * Structure describes the state of the flow in SFT.
  */
 struct rte_sft_flow_status {
 	uint32_t fid; /**< SFT flow id. */
 	uint32_t zone; /**< Zone for lookup in SFT */
 	uint8_t state; /**< Application defined bidirectional flow state. */
-	uint8_t proto_state; /**< The state based on the protocol. */
+	enum sft_ct_state proto_state; /**< The state based on the protocol. */
+	enum sft_ct_error ct_error; /**< Connection tracking error */
 	uint16_t proto; /**< L4 protocol. */
+	/**< data_offset: mark valid data location in segment
+	 * > 0 prefix shift (retransmit)
+	 * < 0 suffix shift (rcv-window overrun)
+	 */
+	int16_t data_offset;
 	/**< Connection tracking flow state, based on standard. */
-	uint32_t nb_in_order_mbufs;
-	/**< Number of in-order mbufs available for drain */
+	union {
+		uint32_t nb_in_order_mbufs;
+		/**< Number of in-order mbufs available for drain */
+		uint32_t nb_ip_fragments;
+		/**< Number of IP fragments ready for drain */
+	};
 	uint32_t activated: 1; /**< Flow was activated. */
 	uint32_t zone_valid: 1; /**< Zone field is valid. */
 	uint32_t proto_state_change: 1; /**< Protocol state was changed. */
@@ -339,6 +383,7 @@ struct rte_sft_flow_status {
 	/**< The connection is offload and no packet should be stored. */
 	uint32_t initiator: 1; /**< marks if the mbuf is from the initiator. */
 	uint32_t reserved: 25;
+	uintptr_t ipfrag_ctx;
 	uint32_t data[];
 	/**< Application data. The length is defined by the configuration. */
 };
@@ -350,10 +395,13 @@ struct rte_sft_flow_status {
  * rte_flow_error.cause.
  */
 enum rte_sft_error_type {
-	RTE_SFT_ERROR_TYPE_NONE, /**< No error. */
+	RTE_SFT_ERROR_TYPE_NONE = 0, /**< No error. */
 	RTE_SFT_ERROR_TYPE_UNSPECIFIED, /**< Cause unspecified. */
 	RTE_SFT_ERROR_TYPE_FLOW_NOT_DEFINED, /**< The FID is not defined. */
 	RTE_SFT_ERROR_TYPE_HASH_ERROR, /**< There was error in hash. */
+	RTE_SFT_ERROR_CONN_TRACK,
+	RTE_SFT_ERROR_IPFRAG,
+	RTE_SFT_ERROR_CHECKSUM,
 };
 
 /**
@@ -609,6 +657,8 @@ rte_sft_process_mbuf_with_zone(uint16_t queue, struct rte_mbuf *mbuf_in,
  *   Number of buffers to be drained.
  * @param initiator
  *   true packets that will be drained belongs to the initiator.
+ * @param protocol
+ *   Packet protocol.
  * @param[out] status
  *   Connection status based on the last mbuf that was drained.
  * @param[out] error
@@ -621,8 +671,9 @@ rte_sft_process_mbuf_with_zone(uint16_t queue, struct rte_mbuf *mbuf_in,
  */
 __rte_experimental
 int
-rte_sft_drain_mbuf(uint16_t queue, uint32_t fid, struct rte_mbuf **mbuf_out,
-		   uint16_t nb_out, bool initiator,
+rte_sft_drain_mbuf(uint16_t queue, uint32_t fid,
+		   const struct rte_mbuf **mbuf_out, uint16_t nb_out,
+		   bool initiator, uint16_t protocol,
 		   struct rte_sft_flow_status *status,
 		   struct rte_sft_error *error);
 
@@ -878,6 +929,25 @@ void *
 rte_sft_flow_get_client_obj(uint16_t queue, const uint32_t fid,
 			    uint8_t client_id, struct rte_sft_error *error);
 
+/**
+ * @warning
+ * @b EXPERIMENTAL: this API may change without prior notice.
+ *
+ * Drain IP fragments after all data arrived.
+ */
+__rte_experimental
+int
+rte_sft_drain_fragment_mbuf(uint16_t queue, uintptr_t frag_ctx,
+			    uint16_t num_to_drain, struct rte_mbuf **mbuf_out,
+			    struct rte_sft_flow_status *status,
+			    struct rte_sft_error *error);
+
+/**
+ * @warning
+ * @b EXPERIMENTAL: this API may change without prior notice.
+ *
+ * Set SFT error details.
+ */
 int
 rte_sft_error_set(struct rte_sft_error *error,
 		  int code,
@@ -886,33 +956,56 @@ rte_sft_error_set(struct rte_sft_error *error,
 		  const char *message);
 
 /**
- * for application usage
+ * context for SFT mbuf parser
  */
 __extension__
-struct sft_mbuf_info {
-	const struct rte_mbuf *m;
+struct rte_sft_mbuf_info {
 	const struct rte_ether_hdr *eth_hdr;
 	union {
 		const struct rte_ipv4_hdr *ip4;
 		const struct rte_ipv6_hdr *ip6;
 		const void *l3_hdr;
 	};
+	const struct ipv6_extension_fragment *ip6_frag;
 	union {
 		const struct rte_tcp_hdr *tcp;
 		const struct rte_udp_hdr *udp;
 		const void *l4_hdr;
 	};
 	uint16_t eth_type;
+	uint16_t data_len;
+	uint32_t l4_protocol:8;
+	uint32_t is_fragment:1;
+	uint32_t is_ipv6:1;
+	uint32_t direction_located:1;
 };
 
+/**
+ * @warning
+ * @b EXPERIMENTAL: this API may change without prior notice.
+ *
+ * SFT mbuf parser.
+ */
 __rte_experimental
 int
-sft_parse_mbuf(struct sft_mbuf_info *mif, struct rte_sft_error *error);
+rte_sft_parse_mbuf(const struct rte_mbuf *m, struct rte_sft_mbuf_info *mif,
+		   const void *entry, struct rte_sft_error *error);
 
+/**
+ * @warning
+ * @b EXPERIMENTAL: this API may change without prior notice.
+ *
+ * Fill in SFT 7-tuple.
+ */
 __rte_experimental
 void
-rte_sft_mbuf_stpl(struct sft_mbuf_info *mif, uint32_t zone,
-		  struct rte_sft_7tuple *stpl, struct rte_sft_error *error);
+rte_sft_mbuf_stpl(const struct rte_mbuf *m, struct rte_sft_mbuf_info *mif,
+		  uint32_t zone, struct rte_sft_7tuple *stpl,
+		  struct rte_sft_error *error);
+
+extern int sft_logtype;
+#define RTE_SFT_LOG(level, ...) \
+	rte_log(RTE_LOG_ ## level, sft_logtype, "" __VA_ARGS__)
 
 #ifdef __cplusplus
 }

@@ -10,6 +10,7 @@ sources = files('ethdev_private.c',
 	'rte_mtr.c',
 	'rte_sft.c',
 	'rte_tm.c',
+	'sft_tcp.c',
 	'sft_utils.c')
 
 headers = files('rte_ethdev.h',
@@ -31,4 +32,4 @@ headers = files('rte_ethdev.h',
 	'rte_tm_driver.h',
 	'sft_utils.h')
 
-deps += ['hash', 'net', 'kvargs', 'meter', 'telemetry']
+deps += ['ip_frag', 'hash', 'net', 'kvargs', 'meter', 'telemetry']

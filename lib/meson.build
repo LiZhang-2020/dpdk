@@ -15,14 +15,14 @@ libraries = [
 	'ring',
 	'rcu', # rcu depends on ring
 	'hash',    # efd depends on this
-	'mempool', 'mbuf', 'net', 'meter', 'ethdev', 'pci', # core
+	'mempool', 'mbuf', 'net', 'ip_frag', 'meter', 'ethdev', 'pci', # core
 	'cmdline',
 	'metrics', # bitrate/latency stats depends on this
 	'timer',   # eventdev depends on this
 	'acl', 'bbdev', 'bitratestats', 'cfgfile',
 	'compressdev', 'cryptodev',
 	'distributor', 'efd', 'eventdev',
-	'gro', 'gso', 'ip_frag', 'jobstats',
+	'gro', 'gso', 'jobstats',
 	'kni', 'latencystats', 'lpm', 'member',
 	'power', 'pdump', 'rawdev', 'regexdev',
 	'rib', 'reorder', 'sched', 'security', 'stack', 'vhost',

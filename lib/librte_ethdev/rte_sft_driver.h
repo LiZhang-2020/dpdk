@@ -36,11 +36,12 @@ rte_sft_error_set(struct rte_sft_error *error, int code,
 #define RTE_SFT_STATE_FLAG_FID_VALID (1 << 0)
 #define RTE_SFT_STATE_FLAG_ZONE_VALID (1 << 1)
 #define RTE_SFT_STATE_FLAG_FLOW_MISS (1 << 2)
-#define RTE_SFT_STATE_ALL		\
-	(RTE_SFT_STATE_FLAG_FID_VALID | RTE_SFT_STATE_FLAG_ZONE_VALID | \
-	RTE_SFT_STATE_FLAG_FLOW_MISS)
+#define RTE_SFT_STATE_MASK 0x1f
 
 #define RTE_SFT_MISS_TCP_FLAGS (1 << 0)
+
+#define SFT_PATTERNS_NUM 8
+#define SFT_ACTIONS_NUM 8
 
 RTE_STD_C11
 struct rte_sft_decode_info {
@@ -48,7 +49,16 @@ struct rte_sft_decode_info {
 		uint32_t fid; /**< The fid value. */
 		uint32_t zone; /**< The zone value. */
 	};
-	uint32_t state;
+	union {
+		uint32_t state;
+		struct {
+			uint32_t fid_valid:1;
+			uint32_t zone_valid:1;
+			uint32_t direction:1;
+			uint32_t control:1;
+			uint32_t reserved:27;
+		};
+	};
 	/**< Flags that mark the packet state. see RTE_SFT_STATE_FLAG_*. */
 };
 
@@ -93,6 +103,8 @@ typedef int (*sft_stop_t) (struct rte_eth_dev *dev, struct rte_sft_error *error)
  *   ethdev handle of port.
  * @param fid
  *   Flow ID.
+ * @param zone
+ *   Flow zone.
  * @param queue
  *   The sft working queue.
  * @param pattern
@@ -123,12 +135,13 @@ typedef int (*sft_stop_t) (struct rte_eth_dev *dev, struct rte_sft_error *error)
  *   is set.
  */
 typedef struct rte_sft_entry *(*sft_entry_create_t)
-		(struct rte_eth_dev *dev, uint32_t fid, uint16_t queue,
-		 const struct rte_flow_item *pattern, uint64_t miss_conditions,
-		 const struct rte_flow_action *actions,
-		 const struct rte_flow_action *miss_actions,
-		 const uint32_t *data, uint16_t data_len, uint8_t state,
-		 struct rte_sft_error *error);
+	(struct rte_eth_dev *dev, uint32_t fid, uint16_t queue,
+	 const struct rte_flow_item *pattern,
+	 uint64_t miss_conditions,
+	 const struct rte_flow_action *actions,
+	 const struct rte_flow_action *miss_actions,
+	 const uint32_t *data, uint16_t data_len,
+	 uint8_t state, struct rte_sft_error *error);
 
 /**
  * @internal

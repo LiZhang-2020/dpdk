@@ -99,3 +99,14 @@ sft_id_release(struct sft_id_pool *pool, uint32_t id)
 	return 0;
 }
 
+const char *
+sft_ct_state_name(enum sft_ct_state state)
+{
+	static const char * const ct_names[] = {
+		"NEW", "ESTABLISHING", "TRACKING", "CLOSING",
+		"PACKET_ERROR", "PROTOCOL_ERROR", "RETRANSMIT", "OFFLOADED"
+	};
+
+	return state > SFT_CT_STATE_OFFLOADED ? "UNKNOWN" : ct_names[state];
+}
+
