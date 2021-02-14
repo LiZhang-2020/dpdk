@@ -534,6 +534,7 @@ struct mlx5_aso_sq_elem {
 			uint16_t burst_size;
 		};
 		struct mlx5_aso_mtr *mtr;
+		struct mlx5_aso_ct_action *ct;
 	};
 };
 
@@ -1641,6 +1642,11 @@ int mlx5_aso_meter_update_by_wqe(struct mlx5_dev_ctx_shared *sh,
 		struct mlx5_aso_mtr *mtr);
 int mlx5_aso_mtr_wait(struct mlx5_dev_ctx_shared *sh,
 		struct mlx5_aso_mtr *mtr);
+int mlx5_aso_ct_update_by_wqe(struct mlx5_dev_ctx_shared *sh,
+			      struct mlx5_aso_ct_action *ct,
+			      const struct rte_flow_action_conntrack *profile);
+int mlx5_aso_ct_wait_ready(struct mlx5_dev_ctx_shared *sh,
+			   struct mlx5_aso_ct_action *ct);
 
 /* mlx5_sft.c */
 
