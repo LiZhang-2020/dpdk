@@ -1000,58 +1000,6 @@ static enum mlx5_modification_field reg_to_field[] = {
 };
 
 /**
- * Convert copy tag register to GTP teid index field to modify-header
- * action according to the DV specification.
- *
- * @param[in] dev
- *   Pointer to the rte_eth_dev structure.
- * @param[in,out] resource
- *   Pointer to the modify-header resource.
- * @param[in] conf
- *   Pointer to action specification.
- * @param[out] error
- *   Pointer to the error structure.
- *
- * @return
- *   0 on success, a negative errno value otherwise and rte_errno is set.
- */
-static int
-flow_dv_convert_action_copy_teid
-			(struct rte_eth_dev *dev,
-			 struct mlx5_flow_dv_modify_hdr_resource *resource,
-			 const struct rte_flow_action_copy_teid *conf,
-			 struct rte_flow_error *error)
-{
-	rte_be32_t mask = RTE_BE32(UINT32_MAX);
-	struct rte_flow_item item = {
-		.spec = NULL,
-		.mask = &mask,
-	};
-	struct field_modify_info reg_c_x[] = {
-		[1] = {0, 0, 0},
-	};
-	struct field_modify_info hdr_teid = {
-		.offset = 0,
-		.id = MLX5_MODI_GTP_TEID,
-	};
-	enum mlx5_modification_field reg_type;
-	int ret;
-
-	ret = mlx5_flow_get_reg_id(dev, MLX5_APP_TAG, conf->index, error);
-	if (ret < 0)
-		return ret;
-	assert(ret != REG_NON);
-	assert((unsigned int)ret < RTE_DIM(reg_to_field));
-	reg_type = reg_to_field[ret];
-	assert(reg_type > 0);
-	reg_c_x[0] = (struct field_modify_info){4, 0, reg_type};
-	return flow_dv_convert_modify_action(&item, reg_c_x,
-					     &hdr_teid, resource,
-					     MLX5_MODIFICATION_TYPE_COPY,
-					     error);
-}
-
-/**
  * Convert register set to DV specification.
  *
  * @param[in,out] resource
@@ -2712,58 +2660,6 @@ flow_dv_validate_action_set_tag(struct rte_eth_dev *dev,
 		return rte_flow_error_set(error, EINVAL,
 					  RTE_FLOW_ERROR_TYPE_ACTION, action,
 					  "zero mask doesn't have any effect");
-	ret = mlx5_flow_get_reg_id(dev, MLX5_APP_TAG, conf->index, error);
-	if (ret < 0)
-		return ret;
-	if (!attr->transfer && attr->ingress &&
-	    (action_flags & terminal_action_flags))
-		return rte_flow_error_set(error, EINVAL,
-					  RTE_FLOW_ERROR_TYPE_ACTION, action,
-					  "set_tag has no effect"
-					  " with terminal actions");
-	return 0;
-}
-
-/**
- * Validate COPY_TEID action.
- *
- * @param[in] dev
- *   Pointer to the rte_eth_dev structure.
- * @param[in] action
- *   Pointer to the action structure.
- * @param[in] action_flags
- *   Holds the actions detected until now.
- * @param[in] attr
- *   Pointer to flow attributes
- * @param[out] error
- *   Pointer to error structure.
- *
- * @return
- *   0 on success, a negative errno value otherwise and rte_errno is set.
- */
-static int
-flow_dv_validate_action_copy_teid(struct rte_eth_dev *dev,
-				  const struct rte_flow_action *action,
-				  uint64_t action_flags,
-				  const struct rte_flow_attr *attr,
-				  struct rte_flow_error *error)
-{
-	const struct rte_flow_action_copy_teid *conf;
-	const uint64_t terminal_action_flags =
-		MLX5_FLOW_ACTION_DROP | MLX5_FLOW_ACTION_QUEUE |
-		MLX5_FLOW_ACTION_RSS;
-	int ret;
-
-	if (!mlx5_flow_ext_mreg_supported(dev))
-		return rte_flow_error_set(error, ENOTSUP,
-					  RTE_FLOW_ERROR_TYPE_ACTION, action,
-					  "extensive metadata register"
-					  " isn't supported");
-	if (!(action->conf))
-		return rte_flow_error_set(error, EINVAL,
-					  RTE_FLOW_ERROR_TYPE_ACTION, action,
-					  "configuration cannot be null");
-	conf = (const struct rte_flow_action_copy_teid *)action->conf;
 	ret = mlx5_flow_get_reg_id(dev, MLX5_APP_TAG, conf->index, error);
 	if (ret < 0)
 		return ret;
@@ -6314,17 +6210,6 @@ flow_dv_validate(struct rte_eth_dev *dev, const struct rte_flow_attr *attr,
 				modify_after_mirror = 1;
 			action_flags |= MLX5_FLOW_ACTION_SET_TAG;
 			rw_act_num += MLX5_ACT_NUM_SET_TAG;
-			break;
-		case RTE_FLOW_ACTION_TYPE_COPY_TEID:
-			ret = flow_dv_validate_action_copy_teid(dev, actions,
-								action_flags,
-								attr, error);
-			if (ret < 0)
-				return ret;
-			/* Count all modify-header actions as one action. */
-			if (!(action_flags & MLX5_FLOW_MODIFY_HDR_ACTIONS))
-				++actions_n;
-			action_flags |= MLX5_FLOW_ACTION_COPY_TEID;
 			break;
 		case RTE_FLOW_ACTION_TYPE_DROP:
 			ret = mlx5_flow_validate_action_drop(action_flags,
@@ -11348,14 +11233,6 @@ flow_dv_translate(struct rte_eth_dev *dev,
 				  actions->conf, error))
 				return -rte_errno;
 			action_flags |= MLX5_FLOW_ACTION_SET_TAG;
-			break;
-		case RTE_FLOW_ACTION_TYPE_COPY_TEID:
-			if (flow_dv_convert_action_copy_teid
-				(dev, mhdr_res,
-				 (const struct rte_flow_action_copy_teid *)
-				  actions->conf, error))
-				return -rte_errno;
-			action_flags |= MLX5_FLOW_ACTION_COPY_TEID;
 			break;
 		case RTE_FLOW_ACTION_TYPE_DROP:
 			action_flags |= MLX5_FLOW_ACTION_DROP;
