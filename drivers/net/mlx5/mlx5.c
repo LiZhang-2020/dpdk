@@ -177,8 +177,9 @@
 #define MLX5_SYS_MEM_EN "sys_mem_en"
 /* Decap will be used or not. */
 #define MLX5_DECAP_EN "decap_en"
-/* SFT control parameter*/
+/* SFT control parameters*/
 #define MLX5_SFT_EN "sft_en"
+#define MLX5_SFT_DBG "sft_dbg"
 
 /* Device parameter to configure log 2 of the max meter number. */
 #define MLX5_LOG_MAX_MTR_NUM "mtr_log_max_num"
@@ -1810,6 +1811,9 @@ mlx5_args_check(const char *key, const char *val, void *opaque)
 		config->decap_en = !!tmp;
 	} else if (strcmp(MLX5_SFT_EN, key) == 0) {
 		config->sft_en = !!tmp;
+	} else if (strcmp(MLX5_SFT_DBG, key) == 0) {
+		config->sft_dbg = !!tmp;
+		DRV_LOG(NOTICE, "set SFT debug on");
 	} else if (strcmp(MLX5_LOG_MAX_MTR_NUM, key) == 0) {
 		if (tmp >= 0xFF) {
 			DRV_LOG(ERR, "Invalid value for %s.", key);
@@ -1888,6 +1892,7 @@ mlx5_args(struct mlx5_dev_config *config, struct rte_devargs *devargs)
 		MLX5_SYS_MEM_EN,
 		MLX5_DECAP_EN,
 		MLX5_SFT_EN,
+		MLX5_SFT_DBG,
 		MLX5_LOG_MAX_MTR_NUM,
 		MLX5_LOG_MAX_FLOW_PER_MTR,
 		MLX5_ISOLATED_MODE,

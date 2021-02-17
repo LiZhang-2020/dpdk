@@ -263,6 +263,7 @@ struct mlx5_dev_config {
 	unsigned int sys_mem_en:1; /* The default memory allocator. */
 	unsigned int decap_en:1; /* Whether decap will be used or not. */
 	unsigned int sft_en:1; /* Control SFT functionality. Default is ON */
+	unsigned int sft_dbg:1; /* Debug SFT */
 	unsigned int dv_miss_info:1; /* restore packet after partial hw miss */
 	unsigned int isolated_mode:1; /* Isolated mode is requested. */
 	struct {

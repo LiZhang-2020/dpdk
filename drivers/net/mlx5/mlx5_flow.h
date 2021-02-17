@@ -1025,6 +1025,13 @@ flow_items_to_tunnel(const struct rte_flow_item items[])
 	return items[0].spec;
 }
 
+static inline bool
+mlx5_sft_dbg_enabled(const struct rte_eth_dev *dev)
+{
+	const struct mlx5_priv *priv = dev->data->dev_private;
+	return priv->config.sft_dbg == 1;
+}
+
 /* Flow structure. */
 struct rte_flow {
 	ILIST_ENTRY(uint32_t)next; /**< Index to the next flow structure. */

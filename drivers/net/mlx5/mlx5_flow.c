@@ -6181,6 +6181,11 @@ mlx5_flow_add_post_sft_rule(struct rte_eth_dev *dev, uint32_t post_sft,
 	};
 	const struct rte_flow_action actions[] = {
 		{
+			.type = mlx5_sft_dbg_enabled(dev) ?
+				RTE_FLOW_ACTION_TYPE_COUNT :
+				RTE_FLOW_ACTION_TYPE_VOID
+		},
+		{
 			.type = RTE_FLOW_ACTION_TYPE_JUMP,
 			.conf = &jump,
 		},

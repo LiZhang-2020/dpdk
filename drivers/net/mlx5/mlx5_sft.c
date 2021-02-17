@@ -37,7 +37,9 @@ sft_fragment_flow(struct rte_eth_dev *dev, const struct rte_flow_item pattern[],
 	};
 	const struct rte_flow_action actions[] = {
 		[0] = {
-			.type = RTE_FLOW_ACTION_TYPE_VOID /* for sft debug */
+			.type = mlx5_sft_dbg_enabled(dev) ?
+				RTE_FLOW_ACTION_TYPE_COUNT :
+				RTE_FLOW_ACTION_TYPE_VOID
 		},
 		[1] = {
 			.type = RTE_FLOW_ACTION_TYPE_MARK,
@@ -49,7 +51,7 @@ sft_fragment_flow(struct rte_eth_dev *dev, const struct rte_flow_item pattern[],
 			.type = (enum rte_flow_action_type)
 				MLX5_RTE_FLOW_ACTION_TYPE_TAG,
 			.conf = &(const struct mlx5_rte_flow_action_set_tag){
-				.id = state_reg,
+				.id = (enum modify_reg)state_reg,
 				.data = RTE_SFT_APP_ERR_STATE,
 				.length = 8,
 				.offset = 16
@@ -157,23 +159,25 @@ sft_l0_dflt_zone_rule(struct rte_eth_dev *dev, struct rte_flow_error *error)
 	 */
 	const struct rte_flow_action actions[] = {
 		[0] = {
+			.type = mlx5_sft_dbg_enabled(dev) ?
+				RTE_FLOW_ACTION_TYPE_COUNT :
+				RTE_FLOW_ACTION_TYPE_VOID
+		},
+		[1] = {
 			.type = RTE_FLOW_ACTION_TYPE_MARK,
 			.conf = &(struct rte_flow_action_mark){
 				.id = mark.val,
 			},
 		},
-		[1] = {
+		[2] = {
 			.type = (enum rte_flow_action_type)
 				MLX5_RTE_FLOW_ACTION_TYPE_TAG,
 			.conf = &(const struct mlx5_rte_flow_action_set_tag) {
-				.id = state_reg,
+				.id = (enum modify_reg)state_reg,
 				.data = mark.val,
 				.length = MLX5_REG_BITS,
 				.offset = 0
 			}
-		},
-		[2] = {
-			.type = RTE_FLOW_ACTION_TYPE_VOID, /* for sft debug */
 		},
 		[3] = {
 			.type = RTE_FLOW_ACTION_TYPE_JUMP,
@@ -206,13 +210,13 @@ mlx5_destroy_sft_l0_flows(struct rte_eth_dev *dev, struct rte_sft_error *err)
 	struct mlx5_priv *priv = dev->data->dev_private;
 	struct rte_flow_error rte_err;
 
+	RTE_SET_USED(err);
 	for (i = 0; i < MLX5_SFT_L0_DFLT_FLOWS_NUM; i++) {
 		if (!priv->sft_flows->l0_flows[i])
 			break;
 		mlx5_flow_destroy(dev, priv->sft_flows->l0_flows[i],
 				  &rte_err);
 	}
-	RTE_SET_USED(err);
 }
 
 static int
@@ -263,13 +267,16 @@ mlx5_create_sft_l1_miss_flow(struct rte_eth_dev *dev)
 	};
 	const struct rte_flow_action l1_actions[] = {
 		[0] = {
-			.type = RTE_FLOW_ACTION_TYPE_VOID /* for sft debug */
+			.type = mlx5_sft_dbg_enabled(dev) ?
+				RTE_FLOW_ACTION_TYPE_COUNT :
+				RTE_FLOW_ACTION_TYPE_VOID
+
 		},
 		[1] = {
 			.type = (enum rte_flow_action_type)
 				MLX5_RTE_FLOW_ACTION_TYPE_TAG,
 			.conf = &(const struct mlx5_rte_flow_action_set_tag){
-				.id = state_reg,
+				.id = (enum modify_reg)state_reg,
 				.data = RTE_SFT_APP_ERR_STATE,
 				.length = 8,
 				.offset = 16
@@ -338,6 +345,7 @@ mlx5_sft_release_mem(struct rte_eth_dev *dev, uint16_t nb_queue,
 	struct mlx5_dev_ctx_shared *sh = priv->sh;
 	uint16_t i;
 
+	RTE_SET_USED(error);
 	for (i = 0; i < nb_queue; i++)
 		mlx5_ipool_destroy(sh->ipool_sft[i]);
 	mlx5_free(sh->ipool_sft);
@@ -346,8 +354,6 @@ mlx5_sft_release_mem(struct rte_eth_dev *dev, uint16_t nb_queue,
 	priv->sft_lists = NULL;
 	mlx5_free(priv->sft_flows);
 	priv->sft_flows = NULL;
-
-	RTE_SET_USED(error);
 }
 
 static int
@@ -647,11 +653,11 @@ mlx5_sft_add_l1_rules(struct rte_eth_dev *dev, struct rte_sft_entry *entry,
 			.type = (enum rte_flow_item_type)
 				MLX5_RTE_FLOW_ITEM_TYPE_TAG,
 			.spec = &(const struct mlx5_rte_flow_item_tag){
-				.id = fid_reg,
+				.id = (enum modify_reg)fid_reg,
 				.data = entry->fid,
 			},
 			.mask = &(const struct mlx5_rte_flow_item_tag){
-				.id = UINT16_MAX,
+				.id = (enum modify_reg)UINT16_MAX,
 				.data = UINT32_MAX
 			}
 		},
@@ -681,13 +687,15 @@ mlx5_sft_add_l1_rules(struct rte_eth_dev *dev, struct rte_sft_entry *entry,
 	};
 	const struct rte_flow_action l1_actions[] = {
 		[0] = {
-			.type = RTE_FLOW_ACTION_TYPE_VOID /* for sft debug */
+			.type = mlx5_sft_dbg_enabled(dev) ?
+				RTE_FLOW_ACTION_TYPE_COUNT :
+				RTE_FLOW_ACTION_TYPE_VOID
 		},
 		[1] = {
 			.type = (enum rte_flow_action_type)
 				MLX5_RTE_FLOW_ACTION_TYPE_TAG,
 			.conf = &(struct mlx5_rte_flow_action_set_tag){
-				.id = state_reg,
+				.id = (enum modify_reg)state_reg,
 				.data = state,
 				.length = 8,
 				.offset = 16
@@ -697,7 +705,7 @@ mlx5_sft_add_l1_rules(struct rte_eth_dev *dev, struct rte_sft_entry *entry,
 			.type = (enum rte_flow_action_type)
 				MLX5_RTE_FLOW_ACTION_TYPE_TAG,
 			.conf = &(struct mlx5_rte_flow_action_set_tag) {
-				.id = data_reg,
+				.id = (enum modify_reg)data_reg,
 				.data = data,
 				.length = MLX5_REG_BITS,
 				.offset = 0
@@ -775,14 +783,19 @@ mlx5_sft_add_l0_rules(struct sft_entry_ctx *ctx, struct rte_sft_entry *entry,
 		.type = (enum rte_flow_item_type)
 			MLX5_RTE_FLOW_ITEM_TYPE_TAG,
 		.spec = &(struct mlx5_rte_flow_item_tag){
-			.id = zone_fid_reg,
+			.id = (enum modify_reg)zone_fid_reg,
 			.data = ctx->zone
 		},
 		.mask = &(struct mlx5_rte_flow_item_tag){
-			.id = UINT16_MAX,
+			.id = (enum modify_reg)UINT16_MAX,
 			.data = UINT32_MAX
 		}
 	};
+	if (mlx5_sft_dbg_enabled(ctx->dev)) {
+		ctx->l0_actions[i++] = (typeof(ctx->l0_actions[0])) {
+			.type = RTE_FLOW_ACTION_TYPE_COUNT
+		};
+	}
 	/* MARK & META actions are for application */
 	ctx->l0_actions[i++] = (typeof(ctx->l0_actions[0])) {
 		.type = RTE_FLOW_ACTION_TYPE_MARK,
@@ -799,7 +812,7 @@ mlx5_sft_add_l0_rules(struct sft_entry_ctx *ctx, struct rte_sft_entry *entry,
 		.type = (enum rte_flow_action_type)
 			MLX5_RTE_FLOW_ACTION_TYPE_TAG,
 		.conf = &(struct mlx5_rte_flow_action_set_tag){
-			.id = state_reg,
+			.id = (enum modify_reg)state_reg,
 			.data = mark.val,
 			.length = 16,
 			.offset = 0
@@ -809,7 +822,7 @@ mlx5_sft_add_l0_rules(struct sft_entry_ctx *ctx, struct rte_sft_entry *entry,
 		.type = (enum rte_flow_action_type)
 			MLX5_RTE_FLOW_ACTION_TYPE_TAG,
 		.conf = &(const struct mlx5_rte_flow_action_set_tag) {
-			.id = zone_fid_reg,
+			.id = (enum modify_reg)zone_fid_reg,
 			.data = ctx->fid,
 			.length = MLX5_REG_BITS,
 			.offset = 0
@@ -911,6 +924,7 @@ mlx5_sft_entry_create(struct rte_eth_dev *dev, uint32_t fid, uint32_t zone,
 	};
 	struct rte_sft_entry *entry;
 
+	RTE_SET_USED(miss_actions);
 	if (!priv->config.sft_en) {
 		rte_sft_error_set(error, ENOTSUP,
 				  RTE_SFT_ERROR_TYPE_UNSPECIFIED, NULL,
@@ -942,9 +956,6 @@ err1:
 err0:
 	rte_free(ctx.l0_actions);
 	return NULL;
-
-	RTE_SET_USED(miss_actions);
-
 }
 
 static int
@@ -954,8 +965,8 @@ mlx5_sft_entry_destroy(struct rte_eth_dev *dev,
 {
 	struct mlx5_priv *priv = dev->data->dev_private;
 	struct mlx5_dev_ctx_shared *sh = priv->sh;
-	RTE_SET_USED(queue);
 
+	RTE_SET_USED(queue);
 	if (!priv->config.sft_en)
 		return rte_sft_error_set(error, ENOTSUP,
 					 RTE_SFT_ERROR_TYPE_UNSPECIFIED, NULL,
@@ -982,8 +993,8 @@ static int mlx5_sft_entry_decode(struct rte_eth_dev *dev, uint16_t queue,
 	struct mlx5_dev_ctx_shared *sh = priv->sh;
 	union sft_mark mark;
 	uint32_t meta;
-	RTE_SET_USED(queue);
 
+	RTE_SET_USED(queue);
 	if (!priv->config.sft_en) {
 		info->state = 0;
 		return 0;
@@ -1024,14 +1035,15 @@ mlx5_sft_entry_modify(struct rte_eth_dev *dev, uint16_t queue,
 	struct rte_flow *l1_flow;
 	int ret;
 
+	RTE_SET_USED(queue);
 	if (!priv->config.sft_en)
-		rte_sft_error_set(error, ENOTSUP,
-				  RTE_SFT_ERROR_TYPE_UNSPECIFIED, NULL,
-				  "no PMD support for SFT");
+		return rte_sft_error_set(error, ENOTSUP,
+					 RTE_SFT_ERROR_TYPE_UNSPECIFIED, NULL,
+					 "no PMD support for SFT");
 	if (!data || data_len > sizeof(int))
-		rte_sft_error_set(error, EINVAL,
-				  RTE_SFT_ERROR_TYPE_UNSPECIFIED, NULL,
-				  "invalid data");
+		return rte_sft_error_set(error, EINVAL,
+					 RTE_SFT_ERROR_TYPE_UNSPECIFIED, NULL,
+					 "invalid data");
 	l1_flow = entry->sft_l1_flow;
 	if (!mlx5_sft_add_l1_rules(dev, entry, rte_cpu_to_be_32(*data),
 				   state, error)) {
@@ -1045,8 +1057,90 @@ mlx5_sft_entry_modify(struct rte_eth_dev *dev, uint16_t queue,
 	}
 
 	return ret;
+}
 
-	RTE_SET_USED(queue);
+static void
+mlx5_sft_dbg_fid_flow(const struct rte_eth_dev *dev,
+		      struct rte_sft_entry *entry,
+		      const struct rte_flow_action query_action[],
+		      const char *direction)
+{
+	int ret;
+	struct rte_flow_query_count count_data;
+	struct rte_flow_error flow_error;
+
+	printf("[%s] SFT FLOW %u L0: ", direction, entry->fid);
+	memset(&count_data, 0, sizeof(count_data));
+	ret = rte_flow_query(dev->data->port_id, entry->sft_l0_flow,
+			     query_action, &count_data, &flow_error);
+	if (!ret)
+		printf("hits: %" PRIu64 "\n", count_data.hits);
+	printf("[%s] SFT FLOW %u L1: ", direction, entry->fid);
+	memset(&count_data, 0, sizeof(count_data));
+	ret = rte_flow_query(dev->data->port_id, entry->sft_l1_flow,
+			     query_action, &count_data, &flow_error);
+	if (!ret)
+		printf("hits: %" PRIu64 "\n", count_data.hits);
+}
+
+static void
+mlx5_sft_debug(const struct rte_eth_dev *dev, struct rte_sft_entry *entry[2],
+	       struct rte_sft_error *error)
+{
+	uint32_t i, ret;
+	const struct mlx5_priv *priv = dev->data->dev_private;
+	const struct rte_flow_action query_action[] = {
+		[0] = { .type = RTE_FLOW_ACTION_TYPE_COUNT },
+		[1] = { .type = RTE_FLOW_ACTION_TYPE_END },
+	};
+	struct rte_flow *flow;
+	const char *l0_flow_names[MLX5_SFT_L0_DFLT_FLOWS_NUM] = {
+		"default miss",
+		"ipv4 fragment",
+		"ipv6 fragment"
+	};
+	struct rte_flow_query_count count_data;
+	struct rte_flow_error flow_error;
+
+	RTE_SET_USED(error);
+	mlx5_sft_dbg_fid_flow(dev, entry[0], query_action, "I");
+	mlx5_sft_dbg_fid_flow(dev, entry[1], query_action, "R");
+	printf("SFT DEFAULT L0 flows:\n");
+	for (i = 0; i < MLX5_SFT_L0_DFLT_FLOWS_NUM; i++) {
+		flow = priv->sft_flows->l0_flows[i];
+		if (!flow) {
+			printf("  [%u]:%s: empty\n", i, l0_flow_names[i]);
+			continue;
+		}
+		memset(&count_data, 0, sizeof(count_data));
+		ret = rte_flow_query(dev->data->port_id, flow,
+				     query_action, &count_data, &flow_error);
+		if (!ret) {
+			printf("  [%u]:%s:hits: %" PRIu64 "\n",
+				i, l0_flow_names[i], count_data.hits);
+		} else {
+			printf("  [%u]:%s: failed to query err=%d %s\n",
+			       i, l0_flow_names[i], rte_errno,
+			       flow_error.message);
+		}
+	}
+	printf("SFT DEFAULT L1 flows:\n");
+	flow = priv->sft_flows->l1_flow;
+	if (flow) {
+		memset(&count_data, 0, sizeof(count_data));
+		ret = rte_flow_query(dev->data->port_id, flow,
+				     query_action, &count_data, &flow_error);
+		if (!ret) {
+			printf("  [%u]:%s: hits: %" PRIu64 "\n",
+			       0, "default_miss", count_data.hits);
+		} else {
+			printf("  [%u]:%s: failed to query err=%d %s\n",
+			       0, "default_miss", rte_errno,
+			       flow_error.message);
+		}
+	} else {
+		printf("  [%u]:%s: empty\n", 0, "default_miss");
+	}
 }
 
 static const struct rte_sft_ops mlx5_sft_ops = {
@@ -1056,6 +1150,7 @@ static const struct rte_sft_ops mlx5_sft_ops = {
 	.sft_entry_modify = mlx5_sft_entry_modify,
 	.sft_entry_destroy = mlx5_sft_entry_destroy,
 	.sft_entry_decode = mlx5_sft_entry_decode,
+	.sft_debug = mlx5_sft_debug,
 };
 
 /*
