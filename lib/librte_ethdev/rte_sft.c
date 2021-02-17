@@ -412,6 +412,8 @@ stp_parse_ethernet(struct rte_sft_mbuf_info *mif, const void *entry,
 {
 	size_t l2_len = RTE_ETHER_HDR_LEN;
 	int ret = 0;
+
+	RTE_SET_USED(entry);
 	mif->eth_type = rte_be_to_cpu_16(mif->eth_hdr->ether_type);
 	while (mif->eth_type == RTE_ETHER_TYPE_VLAN ||
 	       mif->eth_type == RTE_ETHER_TYPE_QINQ) {
@@ -434,8 +436,6 @@ stp_parse_ethernet(struct rte_sft_mbuf_info *mif, const void *entry,
 					RTE_SFT_ERROR_TYPE_UNSPECIFIED, NULL,
 					"unsupported L3 protocol");
 	}
-	RTE_SET_USED(entry);
-
 	return ret;
 }
 
@@ -1955,6 +1955,22 @@ rte_sft_drain_fragment_mbuf(uint16_t queue, uintptr_t frag_ctx,
 	if (!i)
 		rte_ip_frag_release_collected(fp, &sft_priv->ipfrag[queue].dr);
 	return 0;
+}
+
+void
+rte_sft_debug(uint16_t port_id, uint16_t queue, uint32_t fid,
+	      struct rte_sft_error *error)
+{
+	struct rte_eth_dev *dev = &rte_eth_devices[port_id];
+	const struct rte_sft_ops *sft_ops = sft_ops_get(dev);
+	struct sft_lib_entry *entry = NULL;
+
+	if (!sft_ops || !sft_ops->sft_debug)
+		return;
+	sft_fid_locate_entry(queue, fid, &entry);
+	if (!entry)
+		return;
+	sft_ops->sft_debug(dev, entry->sft_entry, error);
 }
 
 int

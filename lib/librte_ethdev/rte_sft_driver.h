@@ -217,6 +217,14 @@ typedef int (*sft_entry_decode_t)(struct rte_eth_dev *dev, uint16_t queue,
 				  struct rte_sft_error *error);
 
 /**
+ *  @internal
+ *  Debug PMD sft
+ */
+typedef void
+(*sft_debug_t)(const struct rte_eth_dev *dev, struct rte_sft_entry *entry[2],
+	       struct rte_sft_error *error);
+
+/**
  * Generic sft operations structure implemented and returned by PMDs.
  *
  * If successful, this operation must result in a pointer to a PMD-specific.
@@ -233,6 +241,7 @@ struct rte_sft_ops {
 	sft_entry_modify_t sft_entry_modify;
 	sft_entry_destroy_t sft_entry_destroy;
 	sft_entry_decode_t sft_entry_decode;
+	sft_debug_t sft_debug;
 };
 
 #ifdef __cplusplus

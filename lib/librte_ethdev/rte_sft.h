@@ -995,6 +995,11 @@ rte_sft_error_set(struct rte_sft_error *error,
 		  const void *cause,
 		  const char *message);
 
+__rte_experimental
+void
+rte_sft_debug(uint16_t port_id, uint16_t queue, uint32_t fid,
+	      struct rte_sft_error *error);
+
 /**
  * context for SFT mbuf parser
  */
