@@ -421,8 +421,6 @@ enum index {
 	ACTION_SAMPLE_INDEX_VALUE,
 	ACTION_SHARED,
 	SHARED_ACTION_ID2PTR,
-	ACTION_COPY_TEID,
-	ACTION_COPY_TEID_INDEX,
 	ACTION_DEC_IPV4_TTL,
 	ACTION_SET_IPV4_TTL,
 	ACTION_SET_IPV4_TTL_VALUE,
@@ -1381,7 +1379,6 @@ static const enum index next_action[] = {
 	ACTION_AGE,
 	ACTION_SAMPLE,
 	ACTION_SHARED,
-	ACTION_COPY_TEID,
 	ACTION_DEC_IPV4_TTL,
 	ACTION_SET_IPV4_TTL,
 	ACTION_DEC_IPV6_HOP,
@@ -1650,12 +1647,6 @@ static const enum index action_set_ipv4_ttl[] = {
 
 static const enum index action_set_ipv6_hop[] = {
 	ACTION_SET_IPV6_HOP_VALUE,
-	ACTION_NEXT,
-	ZERO,
-};
-
-static const enum index action_copy_teid[] = {
-	ACTION_COPY_TEID_INDEX,
 	ACTION_NEXT,
 	ZERO,
 };
@@ -4526,22 +4517,6 @@ static const struct token token_list[] = {
 		.name = "action",
 		.help = "specify action to share",
 		.next = NEXT(next_action),
-	},
-	[ACTION_COPY_TEID] = {
-		.name = "copy_teid",
-		.help = "copy teid from tag",
-		.priv = PRIV_ACTION(COPY_TEID,
-			sizeof(struct rte_flow_action_copy_teid)),
-		.next = NEXT(action_copy_teid),
-		.call = parse_vc,
-	},
-	[ACTION_COPY_TEID_INDEX] = {
-		.name = "index",
-		.help = "index of tag array",
-		.next = NEXT(action_copy_teid, NEXT_ENTRY(UNSIGNED)),
-		.args = ARGS(ARGS_ENTRY
-				(struct rte_flow_action_copy_teid, index)),
-		.call = parse_vc_conf,
 	},
 	[ACTION_DEC_IPV4_TTL] = {
 		.name = "dec_ipv4_ttl",
