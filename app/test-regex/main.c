@@ -33,6 +33,7 @@ enum app_args {
 	ARG_NUM_OF_JOBS,
 	ARG_PERF_MODE,
 	ARG_NUM_OF_ITERATIONS,
+	ARG_NUM_OF_MBUF_SEGS,
 };
 
 struct job_ctx {
@@ -47,13 +48,15 @@ usage(const char *prog_name)
 		" --data NAME: data file to use\n"
 		" --nb_jobs: number of jobs to use\n"
 		" --perf N: only outputs the performance data\n"
-		" --nb_iter N: number of iteration to run\n",
+		" --nb_iter N: number of iteration to run\n"
+		" --nb_segs N: number of mbuf segments\n",
 		prog_name);
 }
 
 static void
 args_parse(int argc, char **argv, char *rules_file, char *data_file,
-	   uint32_t *nb_jobs, bool *perf_mode, uint32_t *nb_iterations)
+	   uint32_t *nb_jobs, bool *perf_mode, uint32_t *nb_iterations,
+	   uint32_t *nb_segs)
 {
 	char **argvopt;
 	int opt;
@@ -71,6 +74,8 @@ args_parse(int argc, char **argv, char *rules_file, char *data_file,
 		{ "perf", 0, 0, ARG_PERF_MODE},
 		/* Number of iterations to run with perf test */
 		{ "nb_iter", 1, 0, ARG_NUM_OF_ITERATIONS},
+		/* Number of mbuf segments. */
+		{ "nb_segs", 1, 0, ARG_NUM_OF_MBUF_SEGS},
 		/* End of options */
 		{ 0, 0, 0, 0 }
 	};
@@ -103,6 +108,9 @@ args_parse(int argc, char **argv, char *rules_file, char *data_file,
 			break;
 		case ARG_NUM_OF_ITERATIONS:
 			*nb_iterations = atoi(optarg);
+			break;
+		case ARG_NUM_OF_MBUF_SEGS:
+			*nb_segs = atoi(optarg);
 			break;
 		case ARG_HELP:
 			usage("RegEx test app");
@@ -163,14 +171,14 @@ error:
 }
 
 static int
-init_port(struct rte_mempool **mbuf_mp, uint32_t nb_jobs,
+init_port(struct rte_mempool **mbuf_mp, uint32_t nb_jobs, uint32_t nb_segs,
 	  uint16_t *nb_max_payload, char *rules_file, uint8_t *nb_max_matches)
 {
 	uint16_t id;
 	uint16_t num_devs;
 	char *rules = NULL;
 	long rules_len;
-	struct rte_regexdev_info info;
+	struct rte_regexdev_info info = { 0 };
 	struct rte_regexdev_config dev_conf = {
 		.nb_queue_pairs = 1,
 		.nb_groups = 1,
@@ -185,14 +193,6 @@ init_port(struct rte_mempool **mbuf_mp, uint32_t nb_jobs,
 	if (num_devs == 0) {
 		printf("Error, no devices detected.\n");
 		return -EINVAL;
-	}
-
-	*mbuf_mp = rte_pktmbuf_pool_create("mbuf_pool", nb_jobs, 0,
-					  0, MBUF_SIZE, rte_socket_id());
-	if (*mbuf_mp == NULL) {
-		printf("Error, can't create memory pool\n");
-		res = -ENOMEM;
-		goto error;
 	}
 
 	rules_len = read_file(rules_file, &rules);
@@ -232,6 +232,16 @@ init_port(struct rte_mempool **mbuf_mp, uint32_t nb_jobs,
 		}
 		printf(":: initializing device: %d done\n", id);
 	}
+
+	*mbuf_mp = rte_pktmbuf_pool_create("mbuf_pool", nb_jobs * nb_segs, 0,
+			0, rte_align32pow2(info.max_payload_size) / nb_segs,
+			rte_socket_id());
+	if (*mbuf_mp == NULL) {
+		printf("Error, can't create memory pool\n");
+		res = -ENOMEM;
+		goto error;
+	}
+
 	rte_free(rules);
 	return 0;
 error:
@@ -247,10 +257,72 @@ extbuf_free_cb(void *addr __rte_unused, void *fcb_opaque __rte_unused)
 {
 }
 
+static inline struct rte_mbuf *
+regex_create_segmented_mbuf(struct rte_mempool *mbuf_pool, int pkt_len,
+		int nb_segs, void *buf) {
+
+	struct rte_mbuf *m = NULL, *mbuf = NULL;
+	uint8_t *dst;
+	char *src = buf;
+	int data_len = 0;
+	int i, size;
+	int t_len;
+
+	if (pkt_len < 1) {
+		printf("Packet size must be 1 or more (is %d)\n", pkt_len);
+		return NULL;
+	}
+
+	if (nb_segs < 1) {
+		printf("Number of segments must be 1 or more (is %d)\n",
+				nb_segs);
+		return NULL;
+	}
+
+	t_len = pkt_len >= nb_segs ? pkt_len / nb_segs : 1;
+	size = pkt_len;
+
+	/* Create chained mbuf_src and fill it with buf data */
+	for (i = 0; size > 0; i++) {
+
+		m = rte_pktmbuf_alloc(mbuf_pool);
+		if (i == 0)
+			mbuf = m;
+
+		if (m == NULL) {
+			printf("Cannot create segment for source mbuf");
+			goto fail;
+		}
+
+		data_len = size > t_len ? t_len : size;
+		memset(rte_pktmbuf_mtod(m, uint8_t *), 0,
+				rte_pktmbuf_tailroom(m));
+		memcpy(rte_pktmbuf_mtod(m, uint8_t *), src, data_len);
+		dst = (uint8_t *)rte_pktmbuf_append(m, data_len);
+		if (dst == NULL) {
+			printf("Cannot append %d bytes to the mbuf\n",
+					data_len);
+			goto fail;
+		}
+
+		if (mbuf != m)
+			rte_pktmbuf_chain(mbuf, m);
+		src += data_len;
+		size -= data_len;
+
+	}
+	return mbuf;
+
+fail:
+	if (mbuf)
+		rte_pktmbuf_free(mbuf);
+	return NULL;
+}
+
 static int
 run_regex(struct rte_mempool *mbuf_mp, uint32_t nb_jobs,
 	  uint16_t nb_max_payload, bool perf_mode, uint32_t nb_iterations,
-	  char *data_file, uint8_t nb_max_matches)
+	  char *data_file, uint8_t nb_max_matches, uint32_t nb_segs)
 {
 	char *buf = NULL;
 	long buf_len;
@@ -297,12 +369,6 @@ run_regex(struct rte_mempool *mbuf_mp, uint32_t nb_jobs,
 			res = -ENOMEM;
 			goto end;
 		}
-		ops[i]->mbuf = rte_pktmbuf_alloc(mbuf_mp);
-		if (!ops[i]->mbuf) {
-			printf("Error, can't attach mbuf.\n");
-			res = -ENOMEM;
-			goto end;
-		}
 	}
 
 	buf_len = read_file(data_file, &buf);
@@ -328,11 +394,26 @@ run_regex(struct rte_mempool *mbuf_mp, uint32_t nb_jobs,
 	/* Assign each mbuf with the data to handle. */
 	for (i = 0; (pos < buf_len) && (i < nb_jobs) ; i++) {
 		long act_job_len = RTE_MIN(job_len, buf_len - pos);
-		rte_pktmbuf_attach_extbuf(ops[i]->mbuf, &buf[pos], 0,
-					  act_job_len, &shinfo);
+
+		if (nb_segs > 1) {
+			ops[i]->mbuf = regex_create_segmented_mbuf
+						(mbuf_mp, act_job_len,
+						 nb_segs, &buf[pos]);
+		} else {
+			ops[i]->mbuf = rte_pktmbuf_alloc(mbuf_mp);
+			if (ops[i]->mbuf) {
+				rte_pktmbuf_attach_extbuf(ops[i]->mbuf,
+				&buf[pos], 0, act_job_len, &shinfo);
+				ops[i]->mbuf->data_len = job_len;
+				ops[i]->mbuf->pkt_len = act_job_len;
+			}
+		}
+		if (!ops[i]->mbuf) {
+			printf("Error, can't add mbuf.\n");
+			res = -ENOMEM;
+			goto end;
+		}
 		jobs_ctx[i].mbuf = ops[i]->mbuf;
-		ops[i]->mbuf->data_len = job_len;
-		ops[i]->mbuf->pkt_len = act_job_len;
 		ops[i]->user_id = i;
 		ops[i]->group_id0 = 1;
 		pos += act_job_len;
@@ -418,7 +499,7 @@ main(int argc, char **argv)
 	char rules_file[MAX_FILE_NAME];
 	char data_file[MAX_FILE_NAME];
 	struct rte_mempool *mbuf_mp = NULL;
-	uint32_t nb_jobs = 0;
+	uint32_t nb_jobs = 0, nb_segs = 1;
 	uint16_t nb_max_payload = 0;
 	bool perf_mode = 0;
 	uint32_t nb_iterations = 0;
@@ -432,14 +513,14 @@ main(int argc, char **argv)
 	argv += ret;
 	if (argc > 1)
 		args_parse(argc, argv, rules_file, data_file, &nb_jobs,
-			   &perf_mode, &nb_iterations);
+			   &perf_mode, &nb_iterations, &nb_segs);
 
-	ret = init_port(&mbuf_mp, nb_jobs, &nb_max_payload, rules_file,
+	ret = init_port(&mbuf_mp, nb_jobs, nb_segs, &nb_max_payload, rules_file,
 			&nb_max_matches);
 	if (ret < 0)
 		rte_exit(EXIT_FAILURE, "init port failed\n");
 	ret = run_regex(mbuf_mp, nb_jobs, nb_max_payload, perf_mode,
-			nb_iterations, data_file, nb_max_matches);
+			nb_iterations, data_file, nb_max_matches, nb_segs);
 	if (ret < 0) {
 		rte_mempool_free(mbuf_mp);
 		rte_exit(EXIT_FAILURE, "RegEx function failed\n");
