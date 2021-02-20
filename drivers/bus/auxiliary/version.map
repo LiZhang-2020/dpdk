@@ -1,0 +1,10 @@
+DPDK_21 {
+	local: *;
+};
+
+EXPERIMENTAL {
+	global:
+
+	rte_auxiliary_register;
+	rte_auxiliary_unregister;
+};
