@@ -464,6 +464,10 @@ mlx5_aso_queue_uninit(struct mlx5_dev_ctx_shared *sh,
 	case ASO_OPC_MOD_POLICER:
 		sq = &sh->mtrmng->sq;
 		break;
+	case ASO_OPC_MOD_CONNECTION_TRACKING:
+		mlx5_aso_devx_dereg_mr(&sh->ct_mng->aso_sq.mr);
+		sq = &sh->ct_mng->aso_sq;
+		break;
 	default:
 		DRV_LOG(ERR, "Unknown ASO operation mode");
 		return;

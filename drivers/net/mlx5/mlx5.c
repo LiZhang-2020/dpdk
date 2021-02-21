@@ -694,6 +694,58 @@ mlx5_flow_aso_ct_mng_init(struct mlx5_dev_ctx_shared *sh)
 	return 0;
 }
 
+/*
+ * Close and release all the resources of the
+ * ASO connection tracking management structure.
+ *
+ * @param[in] sh
+ *   Pointer to mlx5_dev_ctx_shared object to free.
+ */
+static void
+mlx5_flow_aso_ct_mng_close(struct mlx5_dev_ctx_shared *sh)
+{
+	struct mlx5_aso_ct_pools_mng *mng = sh->ct_mng;
+	struct mlx5_aso_ct_pool *ct_pool;
+	struct mlx5_aso_ct_action *ct;
+	uint32_t idx;
+	uint32_t val;
+	uint32_t cnt;
+	int i;
+
+	mlx5_aso_queue_uninit(sh, ASO_OPC_MOD_CONNECTION_TRACKING);
+	idx = mng->next;
+	while (idx--) {
+		cnt = 0;
+		ct_pool = mng->pools[idx];
+		for (i = 0; i < MLX5_ASO_CT_ACTIONS_PER_POOL; i++) {
+			ct = &ct_pool->actions[i];
+			val = __atomic_sub_fetch(&ct->refcnt, 1,
+						 __ATOMIC_RELAXED);
+			MLX5_ASSERT(val <= 1);
+			if (val > 1)
+				cnt++;
+			if (ct->dr_action_orig)
+				claim_zero(mlx5_glue->destroy_flow_action
+							(ct->dr_action_orig));
+			if (ct->dr_action_rply)
+				claim_zero(mlx5_glue->destroy_flow_action
+							(ct->dr_action_rply));
+		}
+		claim_zero(mlx5_devx_cmd_destroy(ct_pool->devx_obj));
+		if (cnt) {
+			DRV_LOG(WARNING, "%u ASO CT objects are being used in the pool %u",
+				cnt, i);
+		}
+		mlx5_free(ct_pool);
+		/* in case of failure. */
+		mng->next--;
+	}
+	mlx5_free(mng->pools);
+	mlx5_free(mng);
+	/* Management structure must be cleared to 0s during allocation. */
+	sh->ct_mng = NULL;
+}
+
 /**
  * Initialize the flow resources' indexed mempool.
  *
@@ -1224,6 +1276,8 @@ mlx5_free_shared_dev_ctx(struct mlx5_dev_ctx_shared *sh)
 	}
 	if (sh->mtrmng)
 		mlx5_aso_flow_mtrs_mng_close(sh);
+	if (sh->ct_mng)
+		mlx5_flow_aso_ct_mng_close(sh);
 	mlx5_flow_ipool_destroy(sh);
 	mlx5_os_dev_shared_handler_uninstall(sh);
 	if (sh->cnt_id_tbl) {
