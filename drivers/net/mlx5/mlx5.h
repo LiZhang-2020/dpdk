@@ -1256,6 +1256,8 @@ struct mlx5_priv {
 	rte_spinlock_t shared_act_sl; /* Shared actions spinlock. */
 	uint32_t rss_shared_actions; /* RSS shared actions. */
 	uint32_t *sft_lists;
+	struct mlx5_devx_obj *q_counters; /* DevX queue counter object. */
+	uint32_t counter_set_id; /* Queue counter ID to set in DevX objects. */
 };
 
 #define PORT_ID(priv) ((priv)->dev_data->port_id)
