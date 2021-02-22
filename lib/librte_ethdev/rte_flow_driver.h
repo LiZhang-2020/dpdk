@@ -169,6 +169,29 @@ struct rte_flow_ops {
 		 struct rte_flow_item *pmd_items,
 		 uint32_t num_of_items,
 		 struct rte_flow_error *err);
+	/** See rte_flow_action_ctx_create() */
+	struct rte_flow_action_ctx *(*action_ctx_create)
+		(struct rte_eth_dev *dev,
+		 const struct rte_flow_action_ctx_conf *conf,
+		 const struct rte_flow_action *action,
+		 struct rte_flow_error *error);
+	/** See rte_flow_action_ctx_destroy() */
+	int (*action_ctx_destroy)
+		(struct rte_eth_dev *dev,
+		 struct rte_flow_action_ctx *action,
+		 struct rte_flow_error *error);
+	/** See rte_flow_action_ctx_update() */
+	int (*action_ctx_update)
+		(struct rte_eth_dev *dev,
+		 struct rte_flow_action_ctx *action,
+		 const void *update,
+		 struct rte_flow_error *error);
+	/** See rte_flow_action_ctx_query() */
+	int (*action_ctx_query)
+		(struct rte_eth_dev *dev,
+		 const struct rte_flow_action_ctx *action,
+		 void *data,
+		 struct rte_flow_error *error);
 };
 
 /**
