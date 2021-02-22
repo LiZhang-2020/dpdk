@@ -14292,11 +14292,13 @@ flow_dv_action_query(struct rte_eth_dev *dev,
 		     const struct rte_flow_shared_action *action, void *data,
 		     struct rte_flow_error *error)
 {
+	struct mlx5_priv *priv = dev->data->dev_private;
 	struct mlx5_age_param *age_param;
 	struct rte_flow_query_age *resp;
 	uint32_t act_idx = (uint32_t)(uintptr_t)action;
 	uint32_t type = act_idx >> MLX5_SHARED_ACTION_TYPE_OFFSET;
 	uint32_t idx = act_idx & ((1u << MLX5_SHARED_ACTION_TYPE_OFFSET) - 1);
+	struct mlx5_aso_ct_action *ct;
 
 	switch (type) {
 	case MLX5_SHARED_ACTION_TYPE_AGE:
@@ -14310,6 +14312,14 @@ flow_dv_action_query(struct rte_eth_dev *dev,
 			resp->sec_since_last_hit = __atomic_load_n
 			     (&age_param->sec_since_last_hit, __ATOMIC_RELAXED);
 		return 0;
+	case MLX5_SHARED_ACTION_TYPE_CT:
+		ct = flow_aso_ct_get_by_idx(dev, idx);
+		if (!ct->refcnt)
+			return rte_flow_error_set(error, ENOMEM,
+					RTE_FLOW_ERROR_TYPE_UNSPECIFIED,
+					NULL,
+					"CT object is inactive");
+		return mlx5_aso_ct_query_by_wqe(priv->sh, ct, data);
 	default:
 		return rte_flow_error_set(error, ENOTSUP,
 					  RTE_FLOW_ERROR_TYPE_ACTION,

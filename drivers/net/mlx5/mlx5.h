@@ -534,7 +534,10 @@ struct mlx5_aso_sq_elem {
 			uint16_t burst_size;
 		};
 		struct mlx5_aso_mtr *mtr;
-		struct mlx5_aso_ct_action *ct;
+		struct {
+			struct mlx5_aso_ct_action *ct;
+			char *query_data;
+		};
 	};
 };
 
@@ -947,6 +950,7 @@ enum mlx5_aso_ct_state {
 	ASO_CONNTRACK_FREE, /* Inactive, in the free list. */
 	ASO_CONNTRACK_WAIT, /* WQE sent in the SQ. */
 	ASO_CONNTRACK_READY, /* CQE received w/o error. */
+	ASO_CONNTRACK_QUERY, /* WQE for query sent. */
 	ASO_CONNTRACK_MAX, /* Guard. */
 };
 
@@ -1650,6 +1654,9 @@ int mlx5_aso_ct_update_by_wqe(struct mlx5_dev_ctx_shared *sh,
 			      const struct rte_flow_action_conntrack *profile);
 int mlx5_aso_ct_wait_ready(struct mlx5_dev_ctx_shared *sh,
 			   struct mlx5_aso_ct_action *ct);
+int mlx5_aso_ct_query_by_wqe(struct mlx5_dev_ctx_shared *sh,
+			     struct mlx5_aso_ct_action *ct,
+			     struct rte_flow_action_conntrack *profile);
 
 /* mlx5_sft.c */
 
