@@ -14417,6 +14417,74 @@ flow_dv_action_query(struct rte_eth_dev *dev,
 	}
 }
 
+static int
+__flow_dv_action_ct_update(struct rte_eth_dev *dev, uint32_t idx,
+			   const struct rte_flow_modify_conntrack *action_conf,
+			   struct rte_flow_error *error)
+{
+	struct mlx5_priv *priv = dev->data->dev_private;
+	struct mlx5_aso_ct_action *ct;
+	const struct rte_flow_action_conntrack *new_prf;
+	int ret = 0;
+
+	ct = flow_aso_ct_get_by_idx(dev, idx);
+	if (!ct->refcnt)
+		return rte_flow_error_set(error, ENOMEM,
+					  RTE_FLOW_ERROR_TYPE_UNSPECIFIED,
+					  NULL,
+					  "CT object is inactive");
+	new_prf = &action_conf->new_ct;
+	if (action_conf->direction)
+		ct->is_original = !!new_prf->is_original_dir;
+	if (action_conf->state) {
+		ret = mlx5_aso_ct_update_by_wqe(priv->sh, ct, new_prf);
+		/* Block until ready or a failure. */
+		if (!ret)
+			ret = mlx5_aso_ct_available(priv->sh, ct);
+	}
+	return ret;
+}
+
+/*
+ * Updates in place action context configuration, lock free,
+ * (mutex should be acquired by caller).
+ *
+ * @param[in] dev
+ *   Pointer to the Ethernet device structure.
+ * @param[in] action
+ *   The shared action object to be updated.
+ * @param[in] action_conf
+ *   Action specification used to modify *action*.
+ *   *action_conf* should be of type correlating with type of the *action*,
+ *   otherwise considered as invalid.
+ * @param[out] err
+ *   Perform verbose error reporting if not NULL. Initialized in case of
+ *   error only.
+ *
+ * @return
+ *   0 on success, otherwise negative errno value.
+ */
+static int
+flow_dv_action_ctx_update(struct rte_eth_dev *dev,
+			  struct rte_flow_action_ctx *action,
+			  const void *update,
+			  struct rte_flow_error *err)
+{
+	uint32_t act_idx = (uint32_t)(uintptr_t)action;
+	uint32_t type = act_idx >> MLX5_SHARED_ACTION_TYPE_OFFSET;
+	uint32_t idx = act_idx & ((1u << MLX5_SHARED_ACTION_TYPE_OFFSET) - 1);
+
+	switch (type) {
+	case MLX5_SHARED_ACTION_TYPE_CT:
+		return __flow_dv_action_ct_update(dev, idx, update, err);
+	default:
+		return rte_flow_error_set(err, ENOTSUP,
+					  RTE_FLOW_ERROR_TYPE_ACTION,
+					  NULL,
+					  "action context type update not supported");
+	}
+}
+
 /**
  * Query a dv flow  rule for its statistics via devx.
  *
@@ -15435,6 +15503,7 @@ const struct mlx5_flow_driver_ops mlx5_flow_dv_drv_ops = {
 	.action_update = flow_dv_action_update,
 	.action_query = flow_dv_action_query,
 	.sync_domain = flow_dv_sync_domain,
+	.action_ctx_update = flow_dv_action_ctx_update,
 };
 
 #endif /* HAVE_IBV_FLOW_DV_SUPPORT */
