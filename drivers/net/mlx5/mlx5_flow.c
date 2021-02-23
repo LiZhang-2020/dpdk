@@ -3547,6 +3547,15 @@ flow_shared_actions_translate(struct rte_eth_dev *dev,
 				break;
 			}
 			/* Fall-through */
+		case MLX5_SHARED_ACTION_TYPE_CT:
+			if (priv->sh->ct_aso_en) {
+				translated[shared->index].type =
+					RTE_FLOW_ACTION_TYPE_CONNTRACK;
+				translated[shared->index].conf =
+							 (void *)(uintptr_t)idx;
+				break;
+			}
+			/* Fall-through */
 		default:
 			mlx5_free(translated);
 			return rte_flow_error_set

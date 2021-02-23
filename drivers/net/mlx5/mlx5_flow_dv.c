@@ -11988,6 +11988,7 @@ flow_dv_translate_create_conntrack(struct rte_eth_dev *dev,
 		return rte_flow_error_set(error, EBUSY,
 					  RTE_FLOW_ERROR_TYPE_ACTION, NULL,
 					  "Failed to update CT");
+	ct->is_original = !!pro->is_original_dir;
 	return idx;
 }
 
@@ -12146,6 +12147,8 @@ flow_dv_translate(struct rte_eth_dev *dev,
 		int action_type = actions->type;
 		const struct rte_flow_action *found_action = NULL;
 		uint32_t jump_group = 0;
+		uint32_t ct_idx;
+		struct mlx5_aso_ct_action *ct;
 
 		if (!mlx5_flow_os_action_supported(action_type))
 			return rte_flow_error_set(error, ENOTSUP,
@@ -12622,6 +12625,21 @@ flow_dv_translate(struct rte_eth_dev *dev,
 					(dev, mhdr_res, actions, attr, error))
 				return -rte_errno;
 			action_flags |= MLX5_FLOW_ACTION_MODIFY_FIELD;
+			break;
+		case RTE_FLOW_ACTION_TYPE_CONNTRACK:
+			ct_idx = (uint32_t)(uintptr_t)action->conf;
+			ct = flow_aso_ct_get_by_idx(dev, ct_idx);
+			if (mlx5_aso_ct_available(priv->sh, ct))
+				return -rte_errno;
+			if (ct->is_original)
+				dev_flow->dv.actions[actions_n] =
+							ct->dr_action_orig;
+			else
+				dev_flow->dv.actions[actions_n] =
+							ct->dr_action_rply;
+			__atomic_fetch_add(&ct->refcnt, 1, __ATOMIC_RELAXED);
+			actions_n++;
+			action_flags |= MLX5_FLOW_ACTION_CT;
 			break;
 		case RTE_FLOW_ACTION_TYPE_END:
 			actions_end = true;

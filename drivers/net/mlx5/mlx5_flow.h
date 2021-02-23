@@ -249,6 +249,7 @@ enum mlx5_feature_name {
 #define MLX5_FLOW_ACTION_TUNNEL_MATCH (1ull << 38)
 #define MLX5_FLOW_ACTION_MODIFY_FIELD (1ull << 39)
 #define MLX5_FLOW_ACTION_SFT (1ull << 40)
+#define MLX5_FLOW_ACTION_CT (1ull << 41)
 
 #define MLX5_FLOW_FATE_ACTIONS \
 	(MLX5_FLOW_ACTION_DROP | MLX5_FLOW_ACTION_QUEUE | \
@@ -1054,6 +1055,10 @@ struct mlx5_shared_action_rss {
 };
 
 struct rte_flow_shared_action {
+	uint32_t id;
+};
+
+struct rte_flow_action_ctx {
 	uint32_t id;
 };
 
