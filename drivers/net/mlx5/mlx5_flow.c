@@ -626,6 +626,26 @@ mlx5_flow_tunnel_get_restore_info(struct rte_eth_dev *dev,
 				  struct rte_flow_restore_info *info,
 				  struct rte_flow_error *err);
 
+static struct rte_flow_action_ctx *
+mlx5_action_ctx_create(struct rte_eth_dev *dev,
+		       const struct rte_flow_action_ctx_conf *conf,
+		       const struct rte_flow_action *action,
+		       struct rte_flow_error *error);
+static int
+mlx5_action_ctx_destroy(struct rte_eth_dev *dev,
+			struct rte_flow_action_ctx *action,
+			struct rte_flow_error *error);
+static int
+mlx5_action_ctx_update(struct rte_eth_dev *dev,
+		       struct rte_flow_action_ctx *action,
+		       const void *update,
+		       struct rte_flow_error *error);
+static int
+mlx5_action_ctx_query(struct rte_eth_dev *dev,
+		      const struct rte_flow_action_ctx *action,
+		      void *data,
+		      struct rte_flow_error *error);
+
 static const struct rte_flow_ops mlx5_flow_ops = {
 	.validate = mlx5_flow_validate,
 	.create = mlx5_flow_create,
@@ -645,6 +665,10 @@ static const struct rte_flow_ops mlx5_flow_ops = {
 	.tunnel_action_decap_release = mlx5_flow_tunnel_action_release,
 	.tunnel_item_release = mlx5_flow_tunnel_item_release,
 	.get_restore_info = mlx5_flow_tunnel_get_restore_info,
+	.action_ctx_create = mlx5_action_ctx_create,
+	.action_ctx_destroy = mlx5_action_ctx_destroy,
+	.action_ctx_update = mlx5_action_ctx_update,
+	.action_ctx_query = mlx5_action_ctx_query,
 };
 
 /* Tunnel information. */
@@ -7864,6 +7888,58 @@ mlx5_shared_action_query(struct rte_eth_dev *dev,
 			flow_get_drv_ops(flow_get_drv_type(dev, &attr));
 
 	return flow_drv_action_query(dev, action, data, fops, error);
+}
+
+static struct rte_flow_action_ctx *
+mlx5_action_ctx_create(struct rte_eth_dev *dev,
+		       const struct rte_flow_action_ctx_conf *conf,
+		       const struct rte_flow_action *action,
+		       struct rte_flow_error *error)
+{
+	return (struct rte_flow_action_ctx *)mlx5_shared_action_create
+		(dev, (const struct rte_flow_shared_action_conf *)conf,
+		 action, error);
+}
+
+static int
+mlx5_action_ctx_destroy(struct rte_eth_dev *dev,
+			struct rte_flow_action_ctx *action,
+			struct rte_flow_error *error)
+{
+	return mlx5_shared_action_destroy(dev,
+		(struct rte_flow_shared_action *)action, error);
+}
+
+static int
+mlx5_action_ctx_update(struct rte_eth_dev *dev,
+		struct rte_flow_action_ctx *action,
+		const void *update,
+		struct rte_flow_error *error)
+{
+	struct rte_flow_attr attr = { .transfer = 0 };
+	static const char err_msg[] = "action context update unsupported";
+	const struct mlx5_flow_driver_ops *fops =
+			flow_get_drv_ops(flow_get_drv_type(dev, &attr));
+
+	/* Validation should be done before updating. */
+	if (!fops->action_ctx_update) {
+		DRV_LOG(ERR, "port %u %s.", dev->data->port_id, err_msg);
+		rte_flow_error_set(error, ENOTSUP, RTE_FLOW_ERROR_TYPE_ACTION,
+				   NULL, err_msg);
+		return -rte_errno;
+	}
+	return fops->action_ctx_update(dev, action, update, error);
+}
+
+static int
+mlx5_action_ctx_query(struct rte_eth_dev *dev,
+		      const struct rte_flow_action_ctx *action,
+		      void *data,
+		      struct rte_flow_error *error)
+{
+	return mlx5_shared_action_query(dev,
+		(const struct rte_flow_shared_action *)action,
+		data, error);
 }
 
 /**
