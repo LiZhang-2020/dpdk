@@ -11784,6 +11784,9 @@ flow_dv_aso_ct_release(struct rte_eth_dev *dev, uint32_t idx)
 		rte_spinlock_lock(&mng->ct_sl);
 		LIST_INSERT_HEAD(&mng->free_cts, ct, next);
 		rte_spinlock_unlock(&mng->ct_sl);
+		/* Clear the state to free, no need in 1st allocation. */
+		__atomic_store_n(&ct->state, ASO_CONNTRACK_FREE,
+				 __ATOMIC_RELAXED);
 	}
 	return ret;
 }
@@ -14172,6 +14175,12 @@ flow_dv_action_destroy(struct rte_eth_dev *dev,
 			 */
 			DRV_LOG(DEBUG, "Shared age action %" PRIu32 " was"
 				" released with references %d.", idx, ret);
+		return 0;
+	case MLX5_SHARED_ACTION_TYPE_CT:
+		ret = flow_dv_aso_ct_release(dev, idx);
+		if (ret)
+			DRV_LOG(DEBUG, "Connection tracking object %u still "
+				"has references %d.", idx, ret);
 		return 0;
 	default:
 		return rte_flow_error_set(error, ENOTSUP,
