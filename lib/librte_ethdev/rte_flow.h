@@ -559,6 +559,15 @@ enum rte_flow_item_type {
 	 * See struct rte_flow_item_sft.
 	 */
 	RTE_FLOW_ITEM_TYPE_SFT,
+
+	/**
+	 * [META]
+	 *
+	 * Matches packet sanity checks.
+	 *
+	 * See struct rte_flow_item_sanity_checks.
+	 */
+	RTE_FLOW_ITEM_TYPE_SANITY_CHECKS,
 };
 
 /**
@@ -1707,6 +1716,47 @@ struct rte_flow_item_sft {
 	uint8_t user_data_size; /**< user_data buffer size. */
 	uint8_t *user_data; /**< Arbitrary user data. */
 };
+
+/**
+ * @warning
+ * @b EXPERIMENTAL: this structure may change without prior notice
+ *
+ * RTE_FLOW_ITEM_TYPE_SANITY_CHECKS
+ *
+ * Enable matching on packet validity based on HW checks for the L3 and L4
+ * layers.
+ */
+struct rte_flow_item_sanity_checks {
+	uint32_t level;
+	/**< Packet encapsulation level the item should apply to.
+	 * @see rte_flow_action_rss
+	 */
+RTE_STD_C11
+	union {
+		struct {
+			uint32_t l3_ok:1;
+			/**< L3 layer is valid after passing all HW checking. */
+			uint32_t l4_ok:1;
+			/**< L4 layer is valid after passing all HW checking. */
+			uint32_t l3_ok_csum:1;
+			/**< L3 layer checksum is valid. */
+			uint32_t l4_ok_csum:1;
+			/**< L4 layer checksum is valid. */
+			uint32_t reserved:28;
+		};
+		uint32_t  value;
+	};
+};
+
+#ifndef __cplusplus
+static const struct rte_flow_item_sanity_checks
+	rte_flow_item_sanity_checks_mask = {
+	.l3_ok = 1,
+	.l4_ok = 1,
+	.l3_ok_csum = 1,
+	.l4_ok_csum = 1,
+};
+#endif
 
 /**
  * Matching pattern item definition.
