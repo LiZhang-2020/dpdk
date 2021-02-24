@@ -6780,6 +6780,8 @@ flow_dv_validate(struct rte_eth_dev *dev, const struct rte_flow_attr *attr,
 				return ret;
 			last_item = MLX5_FLOW_LAYER_SFT;
 			break;
+		case RTE_FLOW_ITEM_TYPE_SANITY_CHECKS:
+				break;
 		default:
 			return rte_flow_error_set(error, ENOTSUP,
 						  RTE_FLOW_ERROR_TYPE_ITEM,
@@ -9326,6 +9328,44 @@ flow_dv_translate_item_gtp(void *matcher, void *key,
 		 rte_be_to_cpu_32(gtp_m->teid));
 	MLX5_SET(fte_match_set_misc3, misc3_v, gtpu_teid,
 		 rte_be_to_cpu_32(gtp_v->teid & gtp_m->teid));
+}
+
+static void
+flow_dv_translate_item_sanity(void *matcher, void *key,
+			      const struct rte_flow_item *item)
+{
+	const struct rte_flow_item_sanity_checks *sanity_m = item->mask;
+	const struct rte_flow_item_sanity_checks *sanity_v = item->spec;
+	void *headers_m;
+	void *headers_v;
+
+	if (!sanity_v)
+		return;
+	if (!sanity_m)
+		sanity_m = &rte_flow_item_sanity_checks_mask;
+	if (sanity_v->level > 1) {
+		headers_m = MLX5_ADDR_OF(fte_match_param, matcher,
+					 inner_headers);
+		headers_v = MLX5_ADDR_OF(fte_match_param, key, inner_headers);
+	} else {
+		headers_m = MLX5_ADDR_OF(fte_match_param, matcher,
+					 outer_headers);
+		headers_v = MLX5_ADDR_OF(fte_match_param, key, outer_headers);
+	}
+	MLX5_SET(fte_match_set_lyr_2_4, headers_m, l3_ok, sanity_m->l3_ok);
+	MLX5_SET(fte_match_set_lyr_2_4, headers_v, l3_ok,
+		 sanity_m->l3_ok & sanity_v->l3_ok);
+	MLX5_SET(fte_match_set_lyr_2_4, headers_m, l4_ok, sanity_m->l4_ok);
+	MLX5_SET(fte_match_set_lyr_2_4, headers_v, l4_ok,
+		 sanity_m->l4_ok & sanity_v->l4_ok);
+	MLX5_SET(fte_match_set_lyr_2_4, headers_m, ipv4_checksum_ok,
+		 sanity_m->l3_ok_csum);
+	MLX5_SET(fte_match_set_lyr_2_4, headers_v, ipv4_checksum_ok,
+		 sanity_m->l3_ok_csum & sanity_v->l3_ok_csum);
+	MLX5_SET(fte_match_set_lyr_2_4, headers_m, l4_checksum_ok,
+		 sanity_m->l4_ok_csum);
+	MLX5_SET(fte_match_set_lyr_2_4, headers_v, l4_checksum_ok,
+		 sanity_m->l4_ok_csum & sanity_v->l4_ok_csum);
 }
 
 /**
@@ -12594,6 +12634,10 @@ flow_dv_translate(struct rte_eth_dev *dev,
 			if (ret)
 				return -rte_errno;
 			last_item = MLX5_FLOW_LAYER_SFT;
+			break;
+		case RTE_FLOW_ITEM_TYPE_SANITY_CHECKS:
+			flow_dv_translate_item_sanity(match_mask, match_value,
+						      items);
 			break;
 		default:
 			break;
