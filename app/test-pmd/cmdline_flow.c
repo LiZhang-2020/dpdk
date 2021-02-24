@@ -300,6 +300,8 @@ enum index {
 	ITEM_SFT_ZONE_VALID,
 	ITEM_SFT_STATE,
 	ITEM_SFT_USER_DATA,
+	ITEM_SANITY_CHECKS,
+	ITEM_SANITY_CHECKS_VALUE,
 
 	/* Validate/create actions. */
 	ACTIONS,
@@ -996,6 +998,7 @@ static const enum index next_item[] = {
 	ITEM_ECPRI,
 	ITEM_GENEVE_OPT,
 	ITEM_SFT,
+	ITEM_SANITY_CHECKS,
 	END_SET,
 	ZERO,
 };
@@ -1354,6 +1357,17 @@ static const enum index item_sft[] = {
 	ITEM_SFT_ZONE_VALID,
 	ITEM_SFT_STATE,
 	ITEM_SFT_USER_DATA,
+	ITEM_NEXT,
+	ZERO,
+};
+
+static const enum index item_sanity_checks[] = {
+	ITEM_SANITY_CHECKS_VALUE,
+	ZERO,
+};
+
+static const enum index item_sanity_checks_value[] = {
+	ITEM_SANITY_CHECKS_VALUE,
 	ITEM_NEXT,
 	ZERO,
 };
@@ -3544,6 +3558,23 @@ static const struct token token_list[] = {
 			     ARGS_ENTRY_ARB(sizeof(struct rte_flow_item_sft),
 					    ITEM_SFT_USER_DATA_SIZE)),
 	},
+	[ITEM_SANITY_CHECKS] = {
+		.name = "sanity_checks",
+		.help = "match sanity checks",
+		.priv = PRIV_ITEM(SANITY_CHECKS,
+				  sizeof(struct rte_flow_item_sanity_checks)),
+		.next = NEXT(item_sanity_checks),
+		.call = parse_vc,
+	},
+	[ITEM_SANITY_CHECKS_VALUE] = {
+		.name = "value",
+		.help = "value",
+		.next = NEXT(item_sanity_checks_value, NEXT_ENTRY(UNSIGNED),
+			     item_param),
+		.args = ARGS(ARGS_ENTRY(struct rte_flow_item_sanity_checks,
+					value)),
+	},
+
 	/* Validate/create actions. */
 	[ACTIONS] = {
 		.name = "actions",
