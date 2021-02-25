@@ -1552,6 +1552,16 @@ mlx5_devx_cmd_flow_dump(void *fdb_domain __rte_unused,
 	return -ret;
 }
 
+int
+mlx5_devx_cmd_flow_single_dump(void *rule_info __rte_unused,
+			FILE *file __rte_unused)
+{
+	int ret = 0;
+	if (rule_info)
+		ret = mlx5_glue->dr_dump_rule(file, rule_info);
+	return -ret;
+}
+
 /*
  * Create CQ using DevX API.
  *
