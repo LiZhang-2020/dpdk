@@ -6774,6 +6774,18 @@ flow_dv_validate(struct rte_eth_dev *dev, const struct rte_flow_attr *attr,
 			last_item = MLX5_FLOW_LAYER_ECPRI;
 			break;
 		case RTE_FLOW_ITEM_TYPE_SFT:
+			if (!priv->config.sft_en)
+				return rte_flow_error_set
+					(error, ENOTSUP,
+					 RTE_FLOW_ERROR_TYPE_ITEM,
+					 NULL,
+					 "no PMD support for SFT");
+			if (!priv->sft_en)
+				return rte_flow_error_set
+					(error, EINVAL,
+					 RTE_FLOW_ERROR_TYPE_ITEM,
+					 NULL,
+					 "SFT was not initialized");
 			ret = mlx5_flow_validate_item_sft(items, item_flags,
 							  error);
 			if (ret < 0)
@@ -7328,6 +7340,17 @@ flow_dv_validate(struct rte_eth_dev *dev, const struct rte_flow_attr *attr,
 			action_flags |= MLX5_FLOW_ACTION_TUNNEL_SET;
 			break;
 		case RTE_FLOW_ACTION_TYPE_SFT:
+			if (!priv->config.sft_en)
+				return rte_flow_error_set
+					(error, ENOTSUP,
+					 RTE_FLOW_ERROR_TYPE_ACTION, actions,
+					 "no PMD support for SFT");
+			if (!priv->sft_en)
+				return rte_flow_error_set
+					(error, EINVAL,
+					 RTE_FLOW_ERROR_TYPE_ITEM,
+					 NULL,
+					 "SFT was not initialized");
 			ret = flow_dv_validate_action_sft(actions, error);
 			if (ret < 0)
 				return ret;

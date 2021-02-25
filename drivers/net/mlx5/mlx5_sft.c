@@ -143,6 +143,12 @@ static int mlx5_sft_start(struct rte_eth_dev *dev, uint16_t nb_queue,
 		},
 	};
 
+	if (priv->sft_en)
+		return 0;
+	if (!priv->config.sft_en)
+		return rte_sft_error_set(error, ENOTSUP,
+					 RTE_SFT_ERROR_TYPE_UNSPECIFIED, NULL,
+					 "no PMD support for SFT");
 	if (data_len > 1 || nb_queue > MLX5_SFT_QUEUE_MAX)
 		return rte_sft_error_set(error, EINVAL,
 					 RTE_SFT_ERROR_TYPE_UNSPECIFIED,
@@ -151,8 +157,6 @@ static int mlx5_sft_start(struct rte_eth_dev *dev, uint16_t nb_queue,
 	set_state.id = REG_C_1;
 	set_state.data = RTE_SFT_STATE_FLAG_ZONE_VALID <<
 			 MLX5_SFT_FID_ZONE_STAT_SHIFT;
-	/* To prevent the registers from being used by other modules. */
-	priv->sft_en = 1;
 	/*
 	 * Default flow in SFT table:
 	 * Matching all the ETH and set the miss state only with ZONE valid.
@@ -201,6 +205,7 @@ static int mlx5_sft_start(struct rte_eth_dev *dev, uint16_t nb_queue,
 		rxq_ctrl->flow_mark_n++;
 	}
 	sh->nb_sft_queue = nb_queue;
+	priv->sft_en = 1;
 	return 0;
 error_out:
 	if (g_sft_flow != NULL)
@@ -215,7 +220,6 @@ error_out:
 	sh->ipool_sft = NULL;
 	priv->sft_lists = NULL;
 	sh->nb_sft_queue = 0;
-	priv->sft_en = 0;
 	return rte_sft_error_set(error, rte_errno,
 				 RTE_SFT_ERROR_TYPE_UNSPECIFIED,
 				 NULL, NULL);
@@ -229,6 +233,10 @@ static int mlx5_sft_stop(struct rte_eth_dev *dev, struct rte_sft_error *error)
 	uint32_t idx;
 	RTE_SET_USED(error);
 
+	if (!priv->config.sft_en)
+		return rte_sft_error_set(error, ENOTSUP,
+					 RTE_SFT_ERROR_TYPE_UNSPECIFIED, NULL,
+					 "no PMD support for SFT");
 	/* All the SFT entries should be destroyed before stop. */
 	for (i = 0; i < sh->nb_sft_queue; i++) {
 		uint32_t list = priv->sft_lists[i];
@@ -363,6 +371,13 @@ mlx5_sft_entry_create(struct rte_eth_dev *dev, uint32_t fid, uint16_t queue,
 	const struct rte_flow_action *l_actions = actions;
 	const struct rte_flow_action *lm_actions = miss_actions;
 	RTE_SET_USED(miss_conditions);
+
+	if (!priv->config.sft_en) {
+		rte_sft_error_set(error, ENOTSUP,
+				  RTE_SFT_ERROR_TYPE_UNSPECIFIED, NULL,
+				  "no PMD support for SFT");
+		return NULL;
+	}
 
 	if (queue > sh->nb_sft_queue || data_len > 1) {
 		rte_sft_error_set(error, EINVAL,
@@ -559,6 +574,10 @@ static int mlx5_sft_entry_destroy(struct rte_eth_dev *dev,
 	struct mlx5_dev_ctx_shared *sh = priv->sh;
 	RTE_SET_USED(queue);
 
+	if (!priv->config.sft_en)
+		return rte_sft_error_set(error, ENOTSUP,
+					 RTE_SFT_ERROR_TYPE_UNSPECIFIED, NULL,
+					 "no PMD support for SFT");
 	if (entry == NULL || queue > sh->nb_sft_queue)
 		return rte_sft_error_set(error, EINVAL,
 					 RTE_SFT_ERROR_TYPE_UNSPECIFIED,
@@ -586,6 +605,10 @@ static int mlx5_sft_entry_decode(struct rte_eth_dev *dev, uint16_t queue,
 	uint32_t meta;
 	RTE_SET_USED(queue);
 
+	if (!priv->config.sft_en) {
+		info->state = 0;
+		return 0;
+	}
 	if (mbuf == NULL || info == NULL || queue > sh->nb_sft_queue)
 		return rte_sft_error_set(error, EINVAL,
 					 RTE_SFT_ERROR_TYPE_UNSPECIFIED,
@@ -680,6 +703,10 @@ static int mlx5_sft_entry_modify(struct rte_eth_dev *dev, uint16_t queue,
 	struct rte_flow_error flow_error = {0};
 	struct rte_flow *old_flow;
 
+	if (!priv->config.sft_en)
+		return rte_sft_error_set(error, ENOTSUP,
+					 RTE_SFT_ERROR_TYPE_UNSPECIFIED, NULL,
+					 "no PMD support for SFT");
 	if (queue > sh->nb_sft_queue || entry == NULL || data_len > 1)
 		return rte_sft_error_set(error, EINVAL,
 					 RTE_SFT_ERROR_TYPE_UNSPECIFIED,

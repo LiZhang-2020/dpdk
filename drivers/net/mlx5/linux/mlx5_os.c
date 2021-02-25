@@ -2428,6 +2428,7 @@ mlx5_os_pci_probe(struct rte_pci_driver *pci_drv __rte_unused,
 		dev_config.dv_flow_en = 1;
 		dev_config.dv_validate_mod = 0;
 		dev_config.decap_en = 1;
+		dev_config.sft_en = 0;
 		dev_config.log_hp_size = MLX5_ARG_UNSET;
 		dev_config.log_max_mtr_num = 0xFF;
 		dev_config.log_max_flow_per_mtr = 0xFF;
