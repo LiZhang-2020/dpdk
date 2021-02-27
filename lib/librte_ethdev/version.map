@@ -251,6 +251,7 @@ EXPERIMENTAL {
 	rte_sft_flow_get_status;
 	rte_sft_flow_query;
 	rte_sft_flow_set_aging;
+	rte_sft_flow_get_aged_flows;
 	rte_sft_flow_set_client_obj;
 	rte_sft_flow_set_data;
 	rte_sft_flow_set_offload;

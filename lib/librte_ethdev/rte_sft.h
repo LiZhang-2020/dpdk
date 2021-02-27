@@ -425,6 +425,35 @@ struct rte_sft_error {
  * @warning
  * @b EXPERIMENTAL: this API may change without prior notice.
  *
+ * Get the list of SFT aged flows IDs
+ *
+ * @param queue
+ *   The SFT queue number.
+ * @param[in, out] fids
+ *   The address of an array of pointers to the aged-out FIDs.
+ * @param[in] nb_fids
+ *   The length of FIDs array pointers.
+ * @param[out] error
+ *   Perform verbose error reporting if not NULL.
+ *   Initialized in case of error only.
+ *
+ * @return
+ *   if nb_fids is 0, return the number of all aged out SFT flows.
+ *   if nb_fids is not 0 , return the number of aged out flows
+ *   reported in the fids array, otherwise negative errno value.
+ *
+ * @see rte_flow_action_age
+ * @see RTE_ETH_EVENT_SFT_AGED
+ */
+__rte_experimental
+int
+rte_sft_flow_get_aged_flows(uint16_t queue, uint32_t *fids,
+			    uint32_t nb_fids, struct rte_sft_error *error);
+
+/**
+ * @warning
+ * @b EXPERIMENTAL: this API may change without prior notice.
+ *
  * Get SFT flow status, based on the fid.
  *
  * @param queue

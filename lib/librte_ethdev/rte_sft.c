@@ -1310,6 +1310,32 @@ rte_sft_flow_query(uint16_t queue, uint32_t fid,
 }
 
 int
+rte_sft_flow_get_aged_flows(uint16_t queue, uint32_t *fids,
+		    uint32_t nb_fids, struct rte_sft_error *error)
+{
+	struct sft_lib_entry *entry = NULL;
+	int nb_flows = 0;
+
+	if (nb_fids && !fids)
+		return rte_sft_error_set(error, ENOENT,
+					 RTE_SFT_ERROR_TYPE_UNSPECIFIED, NULL,
+					 "empty fids array");
+	rte_spinlock_lock(&(sft_priv->age[queue].entries_sl));
+	TAILQ_FOREACH(entry, &(sft_priv->age[queue].aged_entries), next) {
+		nb_flows++;
+		if (nb_fids) {
+			fids[nb_flows - 1] = entry->fid;
+			if (!(--nb_fids))
+				break;
+			if (sft_priv->age[queue].event_triggered)
+				sft_priv->age[queue].event_triggered = false;
+		}
+	}
+	rte_spinlock_unlock(&(sft_priv->age[queue].entries_sl));
+	return nb_flows;
+}
+
+int
 rte_sft_flow_set_aging(uint16_t queue, uint32_t fid, uint32_t aging,
 		       struct rte_sft_error *error)
 {
