@@ -172,6 +172,16 @@ retry:
 }
 
 static void
+sft_update_stat(struct sft_mbuf *smb, struct sft_lib_entry *entry, uint32_t dir)
+{
+	rte_spinlock_lock(&(sft_priv->age[entry->queue].entries_sl));
+	entry->last_activity_ts = time(NULL);
+	rte_spinlock_unlock(&(sft_priv->age[entry->queue].entries_sl));
+	entry->nb_bytes[dir] += smb->m_in->pkt_len;
+	entry->nb_packets[dir]++;
+}
+
+static void
 sft_track_conn(struct sft_mbuf *smb, struct rte_sft_mbuf_info *mif,
 	       const struct sft_lib_entry *entry,
 	       struct rte_sft_flow_status *status, struct rte_sft_error *error)
@@ -1301,12 +1311,24 @@ rte_sft_flow_query(uint16_t queue, uint32_t fid,
 		   struct rte_sft_query_data *data,
 		   struct rte_sft_error *error)
 {
-	RTE_SET_USED(queue);
-	RTE_SET_USED(fid);
-	RTE_SET_USED(data);
+	struct sft_lib_entry *entry = NULL;
 
-	return rte_sft_error_set(error, ENOENT, RTE_SFT_ERROR_TYPE_UNSPECIFIED,
-				 NULL, "not supported");
+	sft_fid_locate_entry(queue, fid, &entry);
+	if (!entry)
+		return rte_sft_error_set(error, ENOENT,
+					 RTE_SFT_ERROR_TYPE_UNSPECIFIED, NULL,
+					 "invalid fid value");
+	data->nb_bytes[0] = entry->nb_bytes[0];
+	data->nb_bytes[1] = entry->nb_bytes[1];
+	data->nb_bytes_valid = 1;
+	data->nb_packets[0] = entry->nb_packets[0];
+	data->nb_packets[1] = entry->nb_packets[1];
+	data->nb_packets_valid = 1;
+	data->age = time(NULL) - entry->last_activity_ts;
+	data->nb_age_valid = 1;
+	data->aging = entry->action_specs.aging;
+	data->nb_aging_valid = 1;
+	return 0;
 }
 
 int
@@ -1776,9 +1798,7 @@ sft_process_entry(struct sft_mbuf *smb, struct rte_sft_mbuf_info *mif,
 	}
 	if (entry->ct_enable)
 		sft_track_conn(smb, mif, entry, status, error);
-	rte_spinlock_lock(&(sft_priv->age[entry->queue].entries_sl));
-	entry->last_activity_ts = time(NULL);
-	rte_spinlock_unlock(&(sft_priv->age[entry->queue].entries_sl));
+	sft_update_stat(smb, entry, status->initiator);
 }
 
 int

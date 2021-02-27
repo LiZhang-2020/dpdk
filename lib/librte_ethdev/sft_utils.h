@@ -63,6 +63,8 @@ struct sft_lib_entry {
 	struct rte_sft_actions_specs action_specs;
 	/* this is per queue list - no lock required */
 	LIST_HEAD(, client_obj) client_objects_head;
+	uint64_t nb_bytes[2]; /**< Number of bytes passed in the flow. */
+	uint64_t nb_packets[2]; /**< Number of packets passed in the flow. */
 	time_t last_activity_ts; /**< number of seconds since the Epoch */
 	bool aged;
 	bool offload;

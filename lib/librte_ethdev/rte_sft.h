@@ -312,8 +312,14 @@ struct rte_sft_actions_specs {
  * Structure that holds the count data.
  */
 struct rte_sft_query_data {
-	uint64_t nb_bytes; /**< Number of bytes that passed in the flow. */
-	uint64_t nb_packets; /**< Number of packets that passed in the flow. */
+	uint64_t nb_bytes[2];
+	/**< Number of bytes that passed in the flow,
+	 * index 1 is initiator, index 0 is reply.
+	 */
+	uint64_t nb_packets[2];
+	/**< Number of packets that passed in the flow,
+	 * index 1 is initiator, index 0 is reply.
+	 */
 	uint32_t age; /**< Seconds passed since last seen packet. */
 	uint32_t aging;
 	/**< Flow considered aged once this age (seconds) reached. */
