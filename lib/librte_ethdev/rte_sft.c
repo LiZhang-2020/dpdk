@@ -4,6 +4,7 @@
 
 #include <time.h>
 
+#include <rte_alarm.h>
 #include <rte_byteorder.h>
 #include <rte_lhash.h>
 #include <rte_mbuf.h>
@@ -38,6 +39,13 @@ struct ipfrag_ctx {
 	struct rte_ip_frag_death_row dr;
 };
 
+struct sft_age {
+	rte_spinlock_t entries_sl;
+	struct sft_lib_entries armed_entries;
+	struct sft_lib_entries aged_entries;
+	bool event_triggered;
+};
+
 /**
  * sft_priv
  * singleton that concentrates SFT library internal variables
@@ -48,6 +56,7 @@ static struct {
 	struct ipfrag_ctx *ipfrag; /**< per-queue ipfrag contexts */
 	rte_rwlock_t fid_rwlock;
 	struct rte_sft_conf conf;
+	struct sft_age *age; /**<per-queue age lists */
 } *sft_priv = NULL;
 
 #define SFT_DATA_LEN (sft_priv->conf.app_data_len * sizeof(int))
@@ -1018,15 +1027,13 @@ sft_apply_mbuf_actions(struct rte_sft_mbuf_info *mif,
 	if (!is_initiator &&
 	    (action_specs->actions & RTE_SFT_ACTION_REVERSE_NAT))
 		sft_mbuf_apply_nat(mif, action_specs->reverse_nat);
-	if (action_specs->actions & RTE_SFT_ACTION_COUNT)
-		RTE_VERIFY(false);
-	if (action_specs->actions & RTE_SFT_ACTION_AGE)
-		RTE_VERIFY(false);
 }
 
 static void
 sft_destroy_context(void)
 {
+	if (sft_priv->age)
+		rte_free(sft_priv->age);
 	if (sft_priv->fid_ids_pool)
 		sft_id_pool_release(sft_priv->fid_ids_pool);
 	if (sft_priv->hq)
@@ -1040,6 +1047,8 @@ sft_destroy_context(void)
 static int
 sft_init_context(const struct rte_sft_conf *conf, struct rte_sft_error *error)
 {
+	uint16_t i;
+
 	sft_priv = rte_zmalloc("sft context", sizeof(*sft_priv), 0);
 	if (!sft_priv)
 		goto error;
@@ -1057,6 +1066,15 @@ sft_init_context(const struct rte_sft_conf *conf, struct rte_sft_error *error)
 	if (!sft_priv->fid_ids_pool)
 		goto error;
 	rte_rwlock_init(&sft_priv->fid_rwlock);
+
+	sft_priv->age = rte_zmalloc("sft age lists",
+				      conf->nb_queues *
+				      sizeof(sft_priv->age[0]), 0);
+	for (i = 0; i < sft_priv->conf.nb_queues; i++) {
+		rte_spinlock_init(&(sft_priv->age[i].entries_sl));
+		TAILQ_INIT(&(sft_priv->age[i].armed_entries));
+		TAILQ_INIT(&(sft_priv->age[i].aged_entries));
+	}
 
 	return 0;
 
@@ -1223,10 +1241,19 @@ rte_sft_flow_destroy(uint16_t queue, uint32_t fid, struct rte_sft_error *error)
 		return rte_sft_error_set(error, ENOENT,
 				  	 RTE_SFT_ERROR_TYPE_UNSPECIFIED, NULL,
 					 "invalid fid value");
+
 	rte_lhash_del_key(stpl_hash(queue),
 			  (const void *)&entry->stpl[0], 0);
 	rte_lhash_del_key(rstpl_hash(queue),
 			  (const void *)&entry->stpl[1], 0);
+	rte_spinlock_lock(&(sft_priv->age[queue].entries_sl));
+	if (entry->aged)
+		TAILQ_REMOVE(&(sft_priv->age[queue].aged_entries),
+			     entry, next);
+	else
+		TAILQ_REMOVE(&(sft_priv->age[queue].armed_entries),
+			     entry, next);
+	rte_spinlock_unlock(&(sft_priv->age[queue].entries_sl));
 	sft_flow_deactivate(entry, error);
 	if (entry->data)
 		rte_free(entry->data);
@@ -1286,12 +1313,23 @@ int
 rte_sft_flow_set_aging(uint16_t queue, uint32_t fid, uint32_t aging,
 		       struct rte_sft_error *error)
 {
-	RTE_SET_USED(queue);
-	RTE_SET_USED(fid);
-	RTE_SET_USED(aging);
+	struct sft_lib_entry *entry = NULL;
 
-	return rte_sft_error_set(error, ENOENT, RTE_SFT_ERROR_TYPE_UNSPECIFIED,
-				 NULL, "not supported");
+	sft_fid_locate_entry(queue, fid, &entry);
+	if (!entry)
+		return rte_sft_error_set(error, ENOENT,
+					 RTE_SFT_ERROR_TYPE_UNSPECIFIED, NULL,
+					 "invalid fid value");
+	rte_spinlock_lock(&(sft_priv->age[queue].entries_sl));
+	entry->action_specs.aging = aging;
+	if (!(entry->action_specs.actions & RTE_SFT_ACTION_AGE)) {
+		entry->action_specs.actions &= RTE_SFT_ACTION_AGE;
+		TAILQ_INSERT_TAIL(&(sft_priv->age[queue].armed_entries),
+				  entry, next);
+	}
+	rte_spinlock_unlock(&(sft_priv->age[queue].entries_sl));
+	RTE_SFT_LOG(DEBUG, "Set aging for SFT %u to %u\n", fid, aging);
+	return 0;
 }
 
 /**
@@ -1352,8 +1390,15 @@ rte_sft_flow_touch(uint16_t queue, uint32_t fid, struct rte_sft_error *error)
 		return rte_sft_error_set(error, ENOENT,
 				  	 RTE_SFT_ERROR_TYPE_UNSPECIFIED, NULL,
 					 "invalid fid value");
+	rte_spinlock_lock(&(sft_priv->age[queue].entries_sl));
 	entry->last_activity_ts = time(NULL);
-
+	if (entry->aged) {
+		TAILQ_REMOVE(&(sft_priv->age[queue].aged_entries), entry, next);
+		TAILQ_INSERT_TAIL(&(sft_priv->age[queue].armed_entries),
+						  entry, next);
+		entry->aged = false;
+	}
+	rte_spinlock_unlock(&(sft_priv->age[queue].entries_sl));
 	return 0;
 }
 
@@ -1416,6 +1461,65 @@ rte_sft_flow_set_client_obj(uint16_t queue, uint32_t fid, uint8_t id,
 		cobj->obj = obj;
 	}
 
+	return 0;
+}
+
+void
+sft_query_alarm(void *param)
+{
+	struct sft_lib_entry *entry;
+	time_t now = time(NULL);
+	bool trigger_event = false;
+	uint16_t port_id;
+	uint16_t i;
+
+	RTE_SET_USED(param);
+	for (i = 0; i < sft_priv->conf.nb_queues; i++) {
+		rte_spinlock_lock(&(sft_priv->age[i].entries_sl));
+		trigger_event = false;
+		if (TAILQ_EMPTY(&(sft_priv->age[i].aged_entries)))
+			sft_priv->age[i].event_triggered = false;
+		TAILQ_FOREACH(entry, &(sft_priv->age[i].armed_entries), next) {
+			RTE_SFT_LOG(DEBUG,
+				    "%lu: SFT entry %u was last active "
+				    "on queue %u at %" PRIu64 "\n",
+				    now, entry->fid, i,
+				    (uint64_t)entry->last_activity_ts);
+			if ((uint64_t)(now - entry->last_activity_ts) >=
+			    entry->action_specs.aging) {
+				TAILQ_REMOVE(&(sft_priv->age[i].armed_entries),
+					     entry, next);
+				TAILQ_INSERT_TAIL(
+					&(sft_priv->age[i].aged_entries),
+					entry, next);
+				entry->aged = true;
+				RTE_SFT_LOG(DEBUG,
+					    "%lu: SFT entry %u aged out "
+					    "on queue %u since %lu\n",
+					    now, entry->fid, i,
+					    (uint64_t)entry->last_activity_ts);
+				trigger_event = true;
+				port_id = entry->stpl[0].port_id;
+			}
+		}
+		rte_spinlock_unlock(&(sft_priv->age[i].entries_sl));
+		if (trigger_event &&
+			!sft_priv->age[i].event_triggered) {
+			sft_priv->age[i].event_triggered = true;
+			rte_eth_dev_callback_process(&rte_eth_devices[port_id],
+						RTE_ETH_EVENT_SFT_AGED, &i);
+		}
+	}
+	sft_set_alarm();
+}
+
+int
+sft_set_alarm(void)
+{
+	if (rte_eal_alarm_set(RTE_SFT_QUERY_FREQ_US, sft_query_alarm, NULL)) {
+		RTE_SFT_LOG(ERR, "Cannot reinitialize query alarm");
+		return -1;
+	}
 	return 0;
 }
 
@@ -1525,6 +1629,16 @@ rte_sft_flow_activate(uint16_t queue, uint32_t zone, struct rte_mbuf *mbuf_in,
 		sft_track_conn(&smb, &mif, entry, status, error);
 	}
 	sft_flow_activate(entry, error);
+	if (action_specs && action_specs->actions & RTE_SFT_ACTION_AGE) {
+		rte_spinlock_lock(&(sft_priv->age[queue].entries_sl));
+		entry->last_activity_ts = time(NULL);
+		entry->aged = false;
+		TAILQ_INSERT_TAIL(&(sft_priv->age[queue].armed_entries),
+				  entry, next);
+		rte_spinlock_unlock(&(sft_priv->age[queue].entries_sl));
+		RTE_SFT_LOG(DEBUG, "Add SFT entry %u to list %" PRIu64 "\n",
+			    entry->fid, (uint64_t)entry->last_activity_ts);
+	}
 
 end:
 	status->fid = entry->fid;
@@ -1636,6 +1750,9 @@ sft_process_entry(struct sft_mbuf *smb, struct rte_sft_mbuf_info *mif,
 	}
 	if (entry->ct_enable)
 		sft_track_conn(smb, mif, entry, status, error);
+	rte_spinlock_lock(&(sft_priv->age[entry->queue].entries_sl));
+	entry->last_activity_ts = time(NULL);
+	rte_spinlock_unlock(&(sft_priv->age[entry->queue].entries_sl));
 }
 
 int
@@ -1799,9 +1916,14 @@ rte_sft_init(const struct rte_sft_conf *conf, struct rte_sft_error *error)
 	ret = sft_pmd_start(error);
 	if (ret)
 		goto err3;
+	ret = sft_set_alarm();
+	if (ret)
+		goto err4;
 
 	return 0;
 
+err4:
+	sft_pmd_stop(error);
 err3:
 	sft_destroy_ipfrag();
 err2:

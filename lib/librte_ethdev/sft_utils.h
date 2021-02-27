@@ -16,6 +16,8 @@
  * SFT utilities
  */
 
+#define RTE_SFT_QUERY_FREQ_US 1000000
+
 struct sft_mbuf {
 	const struct rte_mbuf *m_in;
 	struct rte_mbuf *m_out;
@@ -37,6 +39,7 @@ struct direction_key {
 } __rte_packed;
 
 struct sft_lib_entry {
+	TAILQ_ENTRY(sft_lib_entry) next;
 	uint32_t fid;
 	/* entry zone is required to find out if mbuf was sent from
 	 * initiator or target connection side
@@ -61,10 +64,13 @@ struct sft_lib_entry {
 	/* this is per queue list - no lock required */
 	LIST_HEAD(, client_obj) client_objects_head;
 	time_t last_activity_ts; /**< number of seconds since the Epoch */
+	bool aged;
 	bool offload;
 	void *ct_obj;
 	struct direction_key direction_key;
 };
+
+TAILQ_HEAD(sft_lib_entries, sft_lib_entry);
 
 /* ID generation structure. */
 struct sft_id_pool {
@@ -80,6 +86,8 @@ struct sft_id_pool *sft_id_pool_alloc(uint32_t max_id);
 void sft_id_pool_release(struct sft_id_pool *pool);
 uint32_t sft_id_get(struct sft_id_pool *pool, uint32_t *id);
 uint32_t sft_id_release(struct sft_id_pool *pool, uint32_t id);
+void sft_query_alarm(void *param);
+int sft_set_alarm(void);
 
 static inline void
 sft_search_hash(const struct rte_lhash *h, const void *key, void **data)

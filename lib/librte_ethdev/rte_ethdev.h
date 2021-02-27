@@ -3467,6 +3467,7 @@ enum rte_eth_event_type {
 	RTE_ETH_EVENT_DESTROY,  /**< port is released */
 	RTE_ETH_EVENT_IPSEC,    /**< IPsec offload related event */
 	RTE_ETH_EVENT_FLOW_AGED,/**< New aged-out flows is detected */
+	RTE_ETH_EVENT_SFT_AGED, /**< New aged-out SFT is detected */
 	RTE_ETH_EVENT_MAX       /**< max value of this enum */
 };
 
