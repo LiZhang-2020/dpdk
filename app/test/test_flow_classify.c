@@ -136,7 +136,7 @@ static struct rte_flow_item_ipv4 ipv4_tcp_spec_1 = {
 };
 
 static struct rte_flow_item_tcp tcp_spec_1 = {
-	{ 16, 17, 0, 0, 0, 0, 0, 0, 0}
+	{ 16, 17, 0, 0, {.data_off = 0}, {.tcp_flags = 0}, 0, 0, 0}
 };
 
 static struct rte_flow_item  ipv4_tcp_item_1 = { RTE_FLOW_ITEM_TYPE_IPV4,
