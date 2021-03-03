@@ -4612,10 +4612,6 @@ set_qmap(portid_t port_id, uint8_t is_rx, uint16_t queue_id, uint8_t map_value)
 void
 set_sft(uint8_t on_off)
 {
-	if (!start_with_sft) {
-		printf("Restart testpmd by adding --with-sft.\n");
-		return;
-	}
 	sft = on_off;
 	init_sft();
 	printf("SFT is %s\n", sft ? "on" : "off");

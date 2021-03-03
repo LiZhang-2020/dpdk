@@ -487,7 +487,6 @@ uint16_t nb_tx_queue_stats_mappings = 0;
 uint16_t nb_rx_queue_stats_mappings = 0;
 
 uint8_t sft;
-uint8_t start_with_sft;
 
 /*
  * Display zero values by default for xstats
@@ -1617,7 +1616,7 @@ init_config(void)
 		}
 	}
 
-	if (start_with_sft) {
+	if (1) {
 		init_sft_pre();
 	}
 }
