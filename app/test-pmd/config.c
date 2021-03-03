@@ -4610,17 +4610,6 @@ set_qmap(portid_t port_id, uint8_t is_rx, uint16_t queue_id, uint8_t map_value)
 }
 
 void
-set_sft(uint8_t on_off)
-{
-	sft = on_off;
-	init_sft();
-	printf("SFT is %s\n", sft ? "on" : "off");
-	if (sft) {
-		start_packet_forwarding(0);
-	}
-}
-
-void
 set_xstats_hide_zero(uint8_t on_off)
 {
 	xstats_hide_zero = on_off;

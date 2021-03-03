@@ -44,7 +44,6 @@
 #include <rte_pci.h>
 #include <rte_ether.h>
 #include <rte_ethdev.h>
-#include <rte_sft.h>
 #include <rte_dev.h>
 #include <rte_string_fns.h>
 #ifdef RTE_NET_IXGBE
@@ -485,8 +484,6 @@ struct queue_stats_mappings *rx_queue_stats_mappings = rx_queue_stats_mappings_a
 
 uint16_t nb_tx_queue_stats_mappings = 0;
 uint16_t nb_rx_queue_stats_mappings = 0;
-
-uint8_t sft;
 
 /*
  * Display zero values by default for xstats
@@ -1413,26 +1410,6 @@ check_nb_hairpinq(queueid_t hairpinq)
 }
 
 static void
-init_sft_pre(void)
-{
-	if (rte_flow_dynf_metadata_register() < 0)
-		rte_exit(EXIT_FAILURE, "failed to register mbuf dynamic flags\n");
-}
-
-void
-init_sft(void)
-{
-	const struct rte_sft_conf sft_conf = {
-		.nb_queues = 1,
-		.nb_max_entries = 128,
-	};
-	struct rte_sft_error sft_error;
-
-	if (rte_sft_init(&sft_conf, &sft_error))
-		rte_exit(EXIT_FAILURE, "%s\n", sft_error.message);
-}
-
-static void
 init_config(void)
 {
 	portid_t pid;
@@ -1614,10 +1591,6 @@ init_config(void)
 			rte_exit(EXIT_FAILURE,
 					"rte_gro_ctx_create() failed\n");
 		}
-	}
-
-	if (1) {
-		init_sft_pre();
 	}
 }
 
@@ -3169,11 +3142,6 @@ pmd_test_exit(void)
 	for (i = 0 ; i < RTE_DIM(mempools) ; i++) {
 		if (mempools[i])
 			rte_mempool_free(mempools[i]);
-	}
-
-	if (sft) {
-		struct rte_sft_error e;
-		rte_sft_fini(&e);
 	}
 
 	printf("\nBye...\n");

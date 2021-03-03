@@ -10,8 +10,6 @@
 #include <unistd.h>
 #include <inttypes.h>
 
-#include <arpa/inet.h>
-
 #include <sys/queue.h>
 #include <sys/stat.h>
 
@@ -36,95 +34,8 @@
 #include <rte_ethdev.h>
 #include <rte_string_fns.h>
 #include <rte_flow.h>
-#include <rte_sft.h>
 
 #include "testpmd.h"
-
-static void
-tsft_print_mbuf_status(const struct rte_mbuf *mbuf,
-		       const struct rte_sft_flow_status *status,
-		       struct rte_sft_error *error)
-{
-	struct rte_sft_7tuple stpl;
-	struct sft_mbuf_info mif = { .m = mbuf, };
-	char l3_src[INET6_ADDRSTRLEN], l3_dst[INET6_ADDRSTRLEN];
-
-	sft_parse_mbuf(&mif, error);
-	rte_sft_mbuf_stpl(&mif, status->zone, &stpl, error);
-	if (!stpl.flow_5tuple.is_ipv6) {
-		inet_ntop(AF_INET, &stpl.flow_5tuple.ipv4.src_addr,
-			  l3_src, sizeof(l3_src));
-		inet_ntop(AF_INET, &stpl.flow_5tuple.ipv4.dst_addr,
-			  l3_dst, sizeof(l3_dst));
-	} else {
-		inet_ntop(AF_INET6, &stpl.flow_5tuple.ipv6.src_addr,
-			  l3_src, sizeof(l3_src));
-		inet_ntop(AF_INET6, &stpl.flow_5tuple.ipv6.dst_addr,
-			  l3_dst, sizeof(l3_dst));
-	}
-	printf("%u: %s.%u > %s.%u %s zone %d fid %d\n", mbuf->port,
-		l3_src, rte_be_to_cpu_16(stpl.flow_5tuple.src_port),
-		l3_dst, rte_be_to_cpu_16(stpl.flow_5tuple.dst_port),
-		stpl.flow_5tuple.proto == IPPROTO_TCP ? "tcp" :
-					  IPPROTO_UDP ? "udp" : "err",
-		status->zone_valid ? status->zone : 0,
-		status->fid);
-}
-
-static void
-reverse_stpl(const struct fwd_stream *fs, struct rte_sft_7tuple *rstpl,
-	     const struct rte_sft_7tuple *stpl)
-{
-	rstpl->flow_5tuple.is_ipv6 = stpl->flow_5tuple.is_ipv6;
-	rstpl->flow_5tuple.proto = stpl->flow_5tuple.proto;
-	rstpl->flow_5tuple.ipv4.src_addr = stpl->flow_5tuple.ipv4.dst_addr;
-	rstpl->flow_5tuple.ipv4.dst_addr = stpl->flow_5tuple.ipv4.src_addr;
-	rstpl->flow_5tuple.src_port = stpl->flow_5tuple.dst_port;
-	rstpl->flow_5tuple.dst_port = stpl->flow_5tuple.src_port;
-	rstpl->zone = stpl->zone;
-	rstpl->port_id = fs->tx_port;
-}
-
-static uint16_t
-sft_process_rx(const struct fwd_stream *fs, uint16_t num, struct rte_mbuf **m_in)
-{
-	int ret;
-	uint16_t i;
-	struct rte_mbuf *m_out = NULL;
-	struct rte_sft_error error;
-
-	for (i = 0; i < num; i++) {
-		struct rte_sft_flow_status sft_status = {0, };
-		struct sft_mbuf_info mif = { .m = m_in[i] };
-		struct rte_sft_7tuple stpl, rstpl;
-
-		sft_parse_mbuf(&mif, &error);
-		ret = rte_sft_process_mbuf(0, m_in[i], &m_out,
-					   &sft_status, &error);
-		tsft_print_mbuf_status(m_out, &sft_status, &error);
-		if (sft_status.fid) {
-			continue;
-		}
-		if (!sft_status.zone_valid) {
-			m_out = NULL;
-			ret = rte_sft_process_mbuf_with_zone
-					(0, m_in[i], 0xcafe, &m_out,
-					 &sft_status, &error);
-			if (ret) exit(-1);
-			tsft_print_mbuf_status(m_out, &sft_status, &error);
-		}
-		if (!sft_status.fid) {
-			rte_sft_mbuf_stpl(&mif, sft_status.zone, &stpl, &error);
-			reverse_stpl(fs, &rstpl, &stpl);
-			rte_sft_flow_activate(0, 0xcafe, m_in[i],
-			&rstpl, 11, NULL, 0, NULL, 0, 0, &m_out,
-			&sft_status, &error);
-			tsft_print_mbuf_status(m_out, &sft_status, &error);
-		}
-	};
-
-	return i;
-}
 
 /*
  * Forwarding of packets in I/O mode.
@@ -152,10 +63,6 @@ pkt_burst_io_forward(struct fwd_stream *fs)
 	if (unlikely(nb_rx == 0))
 		return;
 	fs->rx_packets += nb_rx;
-
-	if (sft) {
-		nb_rx = sft_process_rx(fs, nb_rx, pkts_burst);
-	}
 
 	nb_tx = rte_eth_tx_burst(fs->tx_port, fs->tx_queue,
 			pkts_burst, nb_rx);
