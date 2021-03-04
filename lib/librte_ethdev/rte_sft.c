@@ -1256,14 +1256,16 @@ rte_sft_flow_destroy(uint16_t queue, uint32_t fid, struct rte_sft_error *error)
 			  (const void *)&entry->stpl[0], 0);
 	rte_lhash_del_key(rstpl_hash(queue),
 			  (const void *)&entry->stpl[1], 0);
-	rte_spinlock_lock(&(sft_priv->age[queue].entries_sl));
-	if (entry->aged)
-		TAILQ_REMOVE(&(sft_priv->age[queue].aged_entries),
-			     entry, next);
-	else
-		TAILQ_REMOVE(&(sft_priv->age[queue].armed_entries),
-			     entry, next);
-	rte_spinlock_unlock(&(sft_priv->age[queue].entries_sl));
+	if (entry->action_specs.actions & RTE_SFT_ACTION_AGE) {
+		rte_spinlock_lock(&(sft_priv->age[queue].entries_sl));
+		if (entry->aged)
+			TAILQ_REMOVE(&(sft_priv->age[queue].aged_entries),
+					entry, next);
+		else
+			TAILQ_REMOVE(&(sft_priv->age[queue].armed_entries),
+					entry, next);
+		rte_spinlock_unlock(&(sft_priv->age[queue].entries_sl));
+	}
 	sft_flow_deactivate(entry, error);
 	if (entry->data)
 		rte_free(entry->data);
