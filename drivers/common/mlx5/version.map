@@ -1,6 +1,8 @@
 INTERNAL {
 	global:
 
+	mlx5_auxiliary_get_child_name;
+
 	mlx5_class_driver_register;
 
 	mlx5_common_init;

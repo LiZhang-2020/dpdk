@@ -48,9 +48,12 @@ endif
 sources += files('mlx5_nl.c')
 sources += files('mlx5_common_os.c')
 sources += files('mlx5_common_verbs.c')
+sources += files('mlx5_common_auxiliary.c')
 if not dlopen_ibverbs
 	sources += files('mlx5_glue.c')
 endif
+
+deps += ['bus_auxiliary']
 
 # To maintain the compatibility with the make build system
 # mlx5_autoconf.h file is still generated.

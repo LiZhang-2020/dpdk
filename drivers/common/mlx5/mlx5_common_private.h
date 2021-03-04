@@ -6,6 +6,7 @@
 #define _MLX5_COMMON_PRIVATE_H_
 
 #include <rte_pci.h>
+#include <rte_bus_auxiliary.h>
 
 #include "mlx5_common.h"
 
@@ -35,6 +36,11 @@ void mlx5_common_driver_on_register_pci(struct mlx5_class_driver *driver);
 bool mlx5_dev_pci_match(const struct mlx5_class_driver *drv,
 			const struct rte_device *dev);
 struct ibv_device *mlx5_get_pci_ibv_device(const struct rte_pci_addr *addr);
+
+/* Common auxiliary bus driver: */
+void mlx5_common_auxiliary_init(void);
+struct ibv_device *mlx5_get_aux_ibv_device(
+		const struct rte_auxiliary_device *dev);
 
 #ifdef __cplusplus
 }
