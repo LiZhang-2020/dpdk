@@ -1543,7 +1543,7 @@ sft_query_alarm(void *param)
 				entry->aged = true;
 				RTE_SFT_LOG(DEBUG,
 					    "%lu: SFT entry %u aged out "
-					    "on queue %u since %lu\n",
+					    "on queue %u since %" PRIu64 "\n",
 					    now, entry->fid, i,
 					    (uint64_t)entry->last_activity_ts);
 				trigger_event = true;
