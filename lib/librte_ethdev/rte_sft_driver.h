@@ -135,13 +135,12 @@ typedef int (*sft_stop_t) (struct rte_eth_dev *dev, struct rte_sft_error *error)
  *   is set.
  */
 typedef struct rte_sft_entry *(*sft_entry_create_t)
-	(struct rte_eth_dev *dev, uint32_t fid, uint16_t queue,
-	 const struct rte_flow_item *pattern,
-	 uint64_t miss_conditions,
-	 const struct rte_flow_action *actions,
-	 const struct rte_flow_action *miss_actions,
-	 const uint32_t *data, uint16_t data_len,
-	 uint8_t state, struct rte_sft_error *error);
+	(struct rte_eth_dev *dev, uint32_t fid, uint32_t zone, uint16_t queue,
+	 struct rte_flow_item *pattern, uint64_t miss_conditions,
+	 struct rte_flow_action *actions,
+	 struct rte_flow_action *miss_actions, const uint32_t *data,
+	 uint16_t data_len, uint8_t state, bool initiator,
+	 struct rte_sft_error *error);
 
 /**
  * @internal
@@ -213,7 +212,7 @@ typedef int (*sft_entry_destroy_t)(struct rte_eth_dev *dev,
  *   Negative errno value on error, 0 on success.
  */
 typedef int (*sft_entry_decode_t)(struct rte_eth_dev *dev, uint16_t queue,
-				  struct rte_mbuf *mbuf,
+				  const struct rte_mbuf *mbuf,
 				  struct rte_sft_decode_info *info,
 				  struct rte_sft_error *error);
 

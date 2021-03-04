@@ -491,16 +491,12 @@ sft_mbuf_decode(uint16_t queue, const struct rte_mbuf *mbuf,
 	int ret;
 	struct rte_eth_dev *dev = &rte_eth_devices[mbuf->port];
 	const struct rte_sft_ops *sft_ops = sft_ops_get(dev);
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wcast-qual"
-	struct rte_mbuf *m = (typeof(m))mbuf;
-#pragma GCC diagnostic pop
 
 	if (!sft_ops) {
 		info->state = 0;
 		return 0;
 	}
-	ret = sft_ops->sft_entry_decode(dev, queue, m, info, error);
+	ret = sft_ops->sft_entry_decode(dev, queue, mbuf, info, error);
 	if (ret)
 		return ret;
 	else if (info->state && (info->state & ~RTE_SFT_STATE_MASK))
@@ -882,11 +878,10 @@ sft_create_entry(struct rte_eth_dev *dev[2], const struct rte_sft_ops *ops[2],
 	sft_entry_create_t create_entry = ops[dir]->sft_create_entry;
 	bool initiator = !dir;
 
-	RTE_SET_USED(initiator);
-	se = create_entry(dev[dir], entry->fid, entry->queue,
+	se = create_entry(dev[dir], entry->fid, entry->zone, entry->queue,
 			  hit_pattern[dir], miss_conditions, hit_actions[dir],
 			  miss_actions[dir], entry->data, SFT_DATA_LEN,
-			  entry->app_state, error);
+			  entry->app_state, initiator, error);
 	entry->sft_entry[dir] = se;
 	if (entry->sft_entry[dir]) {
 		ret = 0;

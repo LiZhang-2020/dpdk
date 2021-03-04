@@ -280,13 +280,12 @@ static int mlx5_sft_stop(struct rte_eth_dev *dev, struct rte_sft_error *error)
 }
 
 static struct rte_sft_entry *
-mlx5_sft_entry_create(struct rte_eth_dev *dev, uint32_t fid, uint16_t queue,
-		      const struct rte_flow_item *pattern,
-		      uint64_t miss_conditions,
-		      const struct rte_flow_action *actions,
-		      const struct rte_flow_action *miss_actions,
-		      const uint32_t *data, uint16_t data_len,
-		      uint8_t state, struct rte_sft_error *error)
+mlx5_sft_entry_create(struct rte_eth_dev *dev, uint32_t fid, uint32_t zone,
+		      uint16_t queue, struct rte_flow_item *pattern,
+		      uint64_t miss_conditions, struct rte_flow_action *actions,
+		      struct rte_flow_action *miss_actions,
+		      const uint32_t *data, uint16_t data_len, uint8_t state,
+		      bool initiator, struct rte_sft_error *error)
 {
 	struct mlx5_priv *priv = dev->data->dev_private;
 	struct mlx5_dev_ctx_shared *sh = priv->sh;
@@ -371,6 +370,8 @@ mlx5_sft_entry_create(struct rte_eth_dev *dev, uint32_t fid, uint16_t queue,
 	const struct rte_flow_action *l_actions = actions;
 	const struct rte_flow_action *lm_actions = miss_actions;
 	RTE_SET_USED(miss_conditions);
+	RTE_SET_USED(zone);
+	RTE_SET_USED(initiator);
 
 	if (!priv->config.sft_en) {
 		rte_sft_error_set(error, ENOTSUP,
@@ -595,7 +596,7 @@ static int mlx5_sft_entry_destroy(struct rte_eth_dev *dev,
 }
 
 static int mlx5_sft_entry_decode(struct rte_eth_dev *dev, uint16_t queue,
-				 struct rte_mbuf *mbuf,
+				 const struct rte_mbuf *mbuf,
 				 struct rte_sft_decode_info *info,
 				 struct rte_sft_error *error)
 {
