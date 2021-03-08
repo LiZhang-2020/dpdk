@@ -331,17 +331,19 @@ struct rte_sft_query_data {
 };
 
 /**
- * Connection tracking errors
+ * Connection tracking info
  */
-enum sft_ct_error {
-	SFT_CT_ERROR_NONE = 0,
+enum sft_ct_info {
+	SFT_CT_ERROR_UNSUPPORTED = INT8_MIN,
 	SFT_CT_ERROR_BAD_PROTOCOL,
 	SFT_CT_ERROR_TCP_SYN,
 	SFT_CT_ERROR_TCP_FLAGS,
 	SFT_CT_ERROR_TCP_SEND_SEQ,
 	SFT_CT_ERROR_TCP_ACK_SEQ,
 	SFT_CT_ERROR_TCP_RCV_WND_SIZE,
-	SFT_CT_ERROR_SYS
+	SFT_CT_ERROR_SYS,
+	SFT_CT_ERROR_NONE = 0,
+	SFT_CT_RETRANSMIT,   /**<  */
 };
 
 /**
@@ -350,12 +352,10 @@ enum sft_ct_error {
 enum sft_ct_state {
 	SFT_CT_STATE_NEW = 0,      /**< no FID */
 	SFT_CT_STATE_ESTABLISHING, /**< connection establish in process */
-	SFT_CT_STATE_TRACKING,     /**<  */
-	SFT_CT_STATE_CLOSING,      /**<  */
-	SFT_CT_STATE_ERROR,        /**<  */
-	SFT_CT_STATE_RETRANSMIT,   /**<  */
-	SFT_CT_STATE_PARTIAL_RETRANSMIT,   /**<  */
-	SFT_CT_STATE_OFFLOADED     /**<  */
+	SFT_CT_STATE_TRACKING,     /**< full duplex data exchange */
+	SFT_CT_STATE_CLOSING,      /**< FIN bit was detected */
+	SFT_CT_STATE_OFFLOADED,    /**< offloaded connection */
+	SFT_CT_STATE_ERROR	   /**< error connection state */
 };
 
 /**
@@ -366,7 +366,7 @@ struct rte_sft_flow_status {
 	uint32_t zone; /**< Zone for lookup in SFT */
 	uint8_t state; /**< Application defined bidirectional flow state. */
 	enum sft_ct_state proto_state; /**< The state based on the protocol. */
-	enum sft_ct_error ct_error; /**< Connection tracking error */
+	enum sft_ct_info ct_info; /**< Connection tracking error */
 	uint16_t proto; /**< L4 protocol. */
 	/**< data_offset: mark valid data location in segment
 	 * > 0 prefix shift (retransmit)
@@ -380,16 +380,21 @@ struct rte_sft_flow_status {
 		uint32_t nb_ip_fragments;
 		/**< Number of IP fragments ready for drain */
 	};
-	uint32_t activated: 1; /**< Flow was activated. */
-	uint32_t zone_valid: 1; /**< Zone field is valid. */
 	uint32_t proto_state_change: 1; /**< Protocol state was changed. */
+	uint32_t protocol_error: 1; /**< packet does not fit protocol flow */
+	uint32_t packet_error: 1; /**< Malformed packet */
 	uint32_t fragmented: 1; /**< Last flow mbuf was fragmented. */
 	uint32_t out_of_order: 1; /**< Last flow mbuf was out of order (TCP). */
+	uint32_t activated: 1; /**< Flow was activated. */
+	uint32_t zone_valid: 1; /**< Zone field is valid. */
 	uint32_t offloaded: 1;
 	/**< The connection is offload and no packet should be stored. */
 	uint32_t initiator: 1; /**< marks if the mbuf is from the initiator. */
-	uint32_t reserved: 25;
+	uint32_t reserved: 23;
 	uintptr_t ipfrag_ctx;
+#ifdef SFT_CT_DEBUG
+	uint32_t max_sent_seq;
+#endif
 	uint32_t data[];
 	/**< Application data. The length is defined by the configuration. */
 };
@@ -692,8 +697,6 @@ rte_sft_process_mbuf_with_zone(uint16_t queue, struct rte_mbuf *mbuf_in,
  *   Number of buffers to be drained.
  * @param initiator
  *   true packets that will be drained belongs to the initiator.
- * @param protocol
- *   Packet protocol.
  * @param[out] status
  *   Connection status based on the last mbuf that was drained.
  * @param[out] error
@@ -707,9 +710,8 @@ rte_sft_process_mbuf_with_zone(uint16_t queue, struct rte_mbuf *mbuf_in,
 __rte_experimental
 int
 rte_sft_drain_mbuf(uint16_t queue, uint32_t fid,
-		   const struct rte_mbuf **mbuf_out, uint16_t nb_out,
-		   bool initiator, uint16_t protocol,
-		   struct rte_sft_flow_status *status,
+		   struct rte_mbuf **mbuf_out, uint16_t nb_out,
+		   bool initiator, struct rte_sft_flow_status *status,
 		   struct rte_sft_error *error);
 
 /**

@@ -198,8 +198,8 @@ sft_track_conn(struct sft_mbuf *smb, struct rte_sft_mbuf_info *mif,
 		status->proto_state = SFT_CT_STATE_TRACKING;
 		break;
 	default:
-		status->proto_state = SFT_CT_STATE_ERROR;
-		status->ct_error = SFT_CT_ERROR_BAD_PROTOCOL;
+		status->packet_error = 1;
+		status->ct_info = SFT_CT_ERROR_UNSUPPORTED;
 	}
 }
 
@@ -1874,43 +1874,29 @@ rte_sft_process_mbuf(uint16_t queue, struct rte_mbuf *mbuf_in,
 
 int
 rte_sft_drain_mbuf(uint16_t queue, uint32_t fid,
-		   const struct rte_mbuf **mbuf_out, uint16_t nb_out,
-		   bool initiator, uint16_t protocol,
-		   struct rte_sft_flow_status *status,
+		   struct rte_mbuf **mbuf_out, uint16_t nb_out,
+		   bool initiator, struct rte_sft_flow_status *status,
 		   struct rte_sft_error *error)
 {
 	int ret;
-
 	struct sft_lib_entry *entry;
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wcast-qual"
+	const struct rte_mbuf **m_out = (typeof(m_out))mbuf_out;
+#pragma GCC diagnostic pop
 
 	sft_fid_locate_entry(queue, fid, &entry);
 	if (!entry)
 		return rte_sft_error_set(error, EINVAL,
 					 RTE_SFT_ERROR_TYPE_FLOW_NOT_DEFINED,
 					 NULL, "invalid fid value");
-
-	switch (protocol) {
-	case IPPROTO_TCP:
-		status->initiator = initiator;
-		ret = sft_tcp_drain_mbuf(entry, mbuf_out, nb_out, status);
-		if (ret < 0)
-			ret = rte_sft_error_set(error, EINVAL,
-						RTE_SFT_ERROR_TYPE_UNSPECIFIED,
-						NULL, "failed to drain TCP");
-		break;
-	case RTE_ETHER_TYPE_IPV4:
-	case RTE_ETHER_TYPE_IPV6:
+	status->fid = fid;
+	status->initiator = !!initiator;
+	ret = sft_tcp_drain_mbuf(entry, m_out, nb_out, status);
+	if (ret < 0)
 		ret = rte_sft_error_set(error, EINVAL,
-					RTE_SFT_ERROR_TYPE_UNSPECIFIED, NULL,
-					"de-fragmentation "
-					"not supported");
-		break;
-	default:
-		ret = rte_sft_error_set(error, EINVAL,
-					RTE_SFT_ERROR_TYPE_UNSPECIFIED, NULL,
-					"invalid protocol for drain");
-
-	}
+					RTE_SFT_ERROR_TYPE_UNSPECIFIED,
+					NULL, "failed to drain TCP");
 	return ret;
 }
 
