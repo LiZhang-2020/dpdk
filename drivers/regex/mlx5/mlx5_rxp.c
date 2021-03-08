@@ -451,11 +451,11 @@ rxp_program_rof(struct mlx5_regex_priv *priv, const char *buf, uint32_t len,
 				}
 			}
 			if ((uint8_t *)((uint8_t *)
-					priv->db[id].ptr +
+					priv->db[db_free].ptr +
 					((rules[7].addr <<
 					 MLX5_RXP_INST_OFFSET))) >=
 					((uint8_t *)((uint8_t *)
-					priv->db[id].ptr + MLX5_MAX_DB_SIZE))) {
+					priv->db[db_free].ptr + MLX5_MAX_DB_SIZE))) {
 				DRV_LOG(ERR, "DB exceeded memory!");
 				goto parse_error;
 			}
@@ -471,7 +471,7 @@ rxp_program_rof(struct mlx5_regex_priv *priv, const char *buf, uint32_t len,
 			tmp_write_swap[3] = le64toh(rules[7].value);
 			/* Write only 4 of the 8 instructions. */
 			memcpy((uint8_t *)((uint8_t *)
-				priv->db[id].ptr + rof_rule_addr),
+				priv->db[db_free].ptr + rof_rule_addr),
 				&tmp_write_swap, (sizeof(uint64_t) * 4));
 			/* Write 1st 4 rules of block after last 4. */
 			rof_rule_addr = (rules[4].addr << MLX5_RXP_INST_OFFSET);
@@ -480,7 +480,7 @@ rxp_program_rof(struct mlx5_regex_priv *priv, const char *buf, uint32_t len,
 			tmp_write_swap[2] = le64toh(rules[2].value);
 			tmp_write_swap[3] = le64toh(rules[3].value);
 			memcpy((uint8_t *)((uint8_t *)
-				priv->db[id].ptr + rof_rule_addr),
+				priv->db[db_free].ptr + rof_rule_addr),
 				&tmp_write_swap, (sizeof(uint64_t) * 4));
 			break;
 		default:
