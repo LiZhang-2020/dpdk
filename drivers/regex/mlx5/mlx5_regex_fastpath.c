@@ -284,6 +284,9 @@ prep_regex_umr_wqe_set(struct mlx5_regex_priv *priv, struct mlx5_regex_qp *qp,
 	struct mlx5_klm klm;
 
 	sqid = sq->sqn;
+	while (left_ops--)
+		rte_prefetch0(op[left_ops]);
+	left_ops = nb_ops;
 	/*
 	 * Build the WQE set by reverse. In case the burst may consume
 	 * multiple mkeys, build the WQE set as normal will hard to
@@ -294,7 +297,7 @@ prep_regex_umr_wqe_set(struct mlx5_regex_priv *priv, struct mlx5_regex_qp *qp,
 		struct rte_mbuf *mbuf = op[left_ops]->mbuf;
 		size_t pi = MLX5_REGEX_UMR_SQ_PI_IDX(sq->pi, left_ops);
 
-		if (mbuf->next) {
+		if (mbuf->nb_segs > 1) {
 			size_t scatter_size = 0;
 
 			if (!mkey_klm_available(mkey_klm, klm_num,
