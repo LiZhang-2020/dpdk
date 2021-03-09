@@ -233,8 +233,10 @@ init_port(struct rte_mempool **mbuf_mp, uint32_t nb_jobs, uint32_t nb_segs,
 		printf(":: initializing device: %d done\n", id);
 	}
 
-	*mbuf_mp = rte_pktmbuf_pool_create("mbuf_pool", nb_jobs * nb_segs, 0,
-			0, rte_align32pow2(info.max_payload_size) / nb_segs,
+	*mbuf_mp = rte_pktmbuf_pool_create("mbuf_pool", nb_jobs * nb_segs, 0, 0,
+			nb_segs == 1 ? MBUF_SIZE :
+			(rte_align32pow2(info.max_payload_size) / nb_segs +
+			RTE_PKTMBUF_HEADROOM),
 			rte_socket_id());
 	if (*mbuf_mp == NULL) {
 		printf("Error, can't create memory pool\n");
@@ -279,7 +281,8 @@ regex_create_segmented_mbuf(struct rte_mempool *mbuf_pool, int pkt_len,
 		return NULL;
 	}
 
-	t_len = pkt_len >= nb_segs ? pkt_len / nb_segs : 1;
+	t_len = pkt_len >= nb_segs ?
+			(pkt_len / nb_segs + (!!pkt_len % nb_segs)) : 1;
 	size = pkt_len;
 
 	/* Create chained mbuf_src and fill it with buf data */
@@ -341,8 +344,8 @@ run_regex(struct rte_mempool *mbuf_mp, uint32_t nb_jobs,
 	uint32_t total_dequeue = 0;
 	uint32_t total_matches = 0;
 	int res = 0;
-	time_t start;
-	time_t end;
+	uint64_t start;
+	uint64_t end;
 	double time;
 	struct job_ctx *jobs_ctx;
 
@@ -358,17 +361,6 @@ run_regex(struct rte_mempool *mbuf_mp, uint32_t nb_jobs,
 	if (!jobs_ctx) {
 		printf("Error, can't allocate memory for jobs_ctx.\n");
 		return -ENOMEM;
-	}
-
-	/* Allocate the jobs and assign each job with an mbuf. */
-	for (i = 0; i < nb_jobs; i++) {
-		ops[i] = rte_malloc(NULL, sizeof(*ops[0]) + nb_max_matches *
-				    sizeof(struct rte_regexdev_match), 0);
-		if (!ops[i]) {
-			printf("Error, can't allocate memory for op.\n");
-			res = -ENOMEM;
-			goto end;
-		}
 	}
 
 	buf_len = read_file(data_file, &buf);
@@ -395,6 +387,13 @@ run_regex(struct rte_mempool *mbuf_mp, uint32_t nb_jobs,
 	for (i = 0; (pos < buf_len) && (i < nb_jobs) ; i++) {
 		long act_job_len = RTE_MIN(job_len, buf_len - pos);
 
+		ops[i] = rte_malloc(NULL, sizeof(*ops[0]) + nb_max_matches *
+				    sizeof(struct rte_regexdev_match), 0);
+		if (!ops[i]) {
+			printf("Error, can't allocate memory for op.\n");
+			res = -ENOMEM;
+			goto end;
+		}
 		if (nb_segs > 1) {
 			ops[i]->mbuf = regex_create_segmented_mbuf
 						(mbuf_mp, act_job_len,
@@ -420,7 +419,7 @@ run_regex(struct rte_mempool *mbuf_mp, uint32_t nb_jobs,
 		actual_jobs++;
 	}
 
-	start = clock();
+	start = rte_rdtsc_precise();
 	for (i = 0; i < nb_iterations; i++) {
 		total_enqueue = 0;
 		total_dequeue = 0;
@@ -440,8 +439,8 @@ run_regex(struct rte_mempool *mbuf_mp, uint32_t nb_jobs,
 				 total_enqueue - total_dequeue);
 		}
 	}
-	end = clock();
-	time = ((double)end - start) / CLOCKS_PER_SEC;
+	end = rte_rdtsc_precise();
+	time = ((double)end - start) / rte_get_timer_hz();
 	printf("Job len = %ld Bytes\n",  job_len);
 	printf("Time = %lf sec\n",  time);
 	printf("Perf = %lf Gbps\n",
