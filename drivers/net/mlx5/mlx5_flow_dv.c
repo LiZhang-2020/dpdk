@@ -2642,6 +2642,52 @@ flow_dv_validate_item_ipv6_frag_ext(const struct rte_flow_item *item,
 				  "specified range not supported");
 }
 
+/*
+ * Validate ASO CT item.
+ *
+ * @param[in] dev
+ *   Pointer to the rte_eth_dev structure.
+ * @param[in] item
+ *   Item specification.
+ * @param[in] item_flags
+ *   Pointer to bit-fields that holds the items detected until now.
+ * @param[out] error
+ *   Pointer to error structure.
+ *
+ * @return
+ *   0 on success, a negative errno value otherwise and rte_errno is set.
+ */
+static int
+flow_dv_validate_item_aso_ct(struct rte_eth_dev *dev,
+			     const struct rte_flow_item *item,
+			     uint64_t *item_flags,
+			     struct rte_flow_error *error)
+{
+	const struct rte_flow_item_conntrack *spec = item->spec;
+	const struct rte_flow_item_conntrack *mask = item->mask;
+	RTE_SET_USED(dev);
+	uint32_t flags;
+
+	if (*item_flags & MLX5_FLOW_LAYER_ASO_CT)
+		return rte_flow_error_set(error, EINVAL,
+					  RTE_FLOW_ERROR_TYPE_ITEM, NULL,
+					  "Only one CT is supported");
+	if (mask)
+		flags = spec->flags & mask->flags;
+	else
+		flags = spec->flags;
+	if ((flags & RTE_FLOW_CONNTRACK_FLAG_STATE_VALID) &&
+	    ((flags & RTE_FLOW_CONNTRACK_FLAG_ERROR) ||
+	     (flags & RTE_FLOW_CONNTRACK_FLAG_BAD_PKT) ||
+	     (flags & RTE_FLOW_CONNTRACK_FLAG_DISABLED)))
+		return rte_flow_error_set(error, EINVAL,
+					  RTE_FLOW_ERROR_TYPE_ITEM, NULL,
+					  "Conflict status bits");
+	/* State change also needs to be considered. */
+	*item_flags |= MLX5_FLOW_LAYER_ASO_CT;
+	return 0;
+}
+
 /**
  * Validate the pop VLAN action.
  *
@@ -6857,7 +6903,13 @@ flow_dv_validate(struct rte_eth_dev *dev, const struct rte_flow_attr *attr,
 			last_item = MLX5_FLOW_LAYER_SFT;
 			break;
 		case RTE_FLOW_ITEM_TYPE_SANITY_CHECKS:
-				break;
+			break;
+		case RTE_FLOW_ITEM_TYPE_CONNTRACK:
+			ret = flow_dv_validate_item_aso_ct(dev, items,
+							   &item_flags, error);
+			if (ret < 0)
+				return ret;
+			break;
 		default:
 			return rte_flow_error_set(error, ENOTSUP,
 						  RTE_FLOW_ERROR_TYPE_ITEM,

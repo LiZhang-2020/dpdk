@@ -170,6 +170,9 @@ enum mlx5_feature_name {
 /* Pattern tunnel Layer bits (continued). */
 #define MLX5_FLOW_LAYER_GTP_PSC (UINT64_C(1) << 34)
 
+/* Pattern tunnel Layer bits (continued). */
+#define MLX5_FLOW_LAYER_ASO_CT (UINT64_C(1) << 35)
+
 /* Outer Masks. */
 #define MLX5_FLOW_LAYER_OUTER_L3 \
 	(MLX5_FLOW_LAYER_OUTER_L3_IPV4 | MLX5_FLOW_LAYER_OUTER_L3_IPV6)
