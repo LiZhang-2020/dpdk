@@ -357,7 +357,7 @@ Limitations
   - The E-Switch Sample flow must have the eswitch_manager VPORT destination (PF or ECPF) and no additional actions.
   - For ConnectX-5, the ``RTE_FLOW_ACTION_TYPE_SAMPLE`` is typically used as first action in the E-Switch egress flow if with header modify or encapsulation actions.
   - Supports ``MARK``, ``COUNT``, ``QUEUE``, ``RSS`` as sample actions for NIC Rx sampling/mirroring flow.
-  - Supports ``RAW ENCAP``, ``Port ID`` as sample actions for E-Switch mirroring (sample ratio = 1) flow.
+  - Supports ``RAW ENCAP``, ``Port ID``, ``VXLAN ENCAP``, ``NVGRE ENCAP`` as sample actions for E-Switch mirroring (sample ratio = 1) flow.
 
 - Modify Field flow:
 
