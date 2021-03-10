@@ -100,6 +100,10 @@ The command line options are:
 	Set the number of needed cores to insert/delete rte_flow rules.
 	Default cores count is 1.
 
+*	``--meter-profile-alg``
+	Set the traffic metering algorithm.
+	Example: meter-profile-alg=srtcmp, default algorithm is srtcm_rfc2697
+
 Attributes:
 
 *	``--ingress``
