@@ -3423,6 +3423,57 @@ flow_dv_validate_action_raw_encap_decap
 	return 0;
 }
 
+/*
+ * Validate the ASO CT action.
+ *
+ * @param[in] dev
+ *   Pointer to the rte_eth_dev structure.
+ * @param[in] action_flags
+ *   Holds the actions detected until now.
+ * @param[in] item_flags
+ *   The items found in this flow rule.
+ * @param[in] attr
+ *   Pointer to flow attributes.
+ * @param[out] error
+ *   Pointer to error structure.
+ *
+ * @return
+ *   0 on success, a negative errno value otherwise and rte_errno is set.
+ */
+static int
+flow_dv_validate_action_aso_ct(struct rte_eth_dev *dev,
+			       uint64_t action_flags,
+			       uint64_t item_flags,
+			       const struct rte_flow_attr *attr,
+			       struct rte_flow_error *error)
+{
+	RTE_SET_USED(dev);
+
+	if (attr->group == 0 && !attr->transfer)
+		return rte_flow_error_set(error, ENOTSUP,
+					  RTE_FLOW_ERROR_TYPE_UNSPECIFIED,
+					  NULL,
+					  "Only support non-root table");
+	if (action_flags & MLX5_FLOW_FATE_ACTIONS)
+		return rte_flow_error_set(error, ENOTSUP,
+					  RTE_FLOW_ERROR_TYPE_ACTION, NULL,
+					  "CT cannot follow a fate action");
+	if ((action_flags & MLX5_FLOW_ACTION_METER) ||
+	    (action_flags & MLX5_FLOW_ACTION_AGE))
+		return rte_flow_error_set(error, EINVAL,
+					  RTE_FLOW_ERROR_TYPE_ACTION, NULL,
+					  "Only one ASO action is supported");
+	if (action_flags & MLX5_FLOW_ACTION_ENCAP)
+		return rte_flow_error_set(error, EINVAL,
+					  RTE_FLOW_ERROR_TYPE_ACTION, NULL,
+					  "Encap cannot exist before CT");
+	if (!(item_flags & MLX5_FLOW_LAYER_OUTER_L4_TCP))
+		return rte_flow_error_set(error, EINVAL,
+					  RTE_FLOW_ERROR_TYPE_UNSPECIFIED, NULL,
+					  "Not a outer TCP packet");
+	return 0;
+}
+
 /**
  * Match encap_decap resource.
  *
@@ -7385,6 +7436,14 @@ flow_dv_validate(struct rte_eth_dev *dev, const struct rte_flow_attr *attr,
 				++actions_n;
 			action_flags |= MLX5_FLOW_ACTION_MODIFY_FIELD;
 			rw_act_num += ret;
+			break;
+		case RTE_FLOW_ACTION_TYPE_CONNTRACK:
+			ret = flow_dv_validate_action_aso_ct(dev, action_flags,
+							     item_flags, attr,
+							     error);
+			if (ret < 0)
+				return ret;
+			action_flags |= MLX5_FLOW_ACTION_CT;
 			break;
 		default:
 			return rte_flow_error_set(error, ENOTSUP,
@@ -14434,6 +14493,9 @@ __flow_dv_action_ct_update(struct rte_eth_dev *dev, uint32_t idx,
 					  NULL,
 					  "CT object is inactive");
 	new_prf = &action_conf->new_ct;
+	ret = mlx5_validate_action_ct(dev, new_prf, error);
+	if (ret)
+		return ret;
 	if (action_conf->direction)
 		ct->is_original = !!new_prf->is_original_dir;
 	if (action_conf->state) {
@@ -15446,6 +15508,12 @@ flow_dv_action_validate(struct rte_eth_dev *dev,
 						NULL,
 					     "shared age action not supported");
 		return flow_dv_validate_action_age(0, action, dev, err);
+	case RTE_FLOW_ACTION_TYPE_CONNTRACK:
+		if (!priv->sh->ct_aso_en)
+			return rte_flow_error_set(err, ENOTSUP,
+					RTE_FLOW_ERROR_TYPE_UNSPECIFIED, NULL,
+					"ASO CT is not supported");
+		return mlx5_validate_action_ct(dev, action->conf, err);
 	default:
 		return rte_flow_error_set(err, ENOTSUP,
 					  RTE_FLOW_ERROR_TYPE_ACTION,
