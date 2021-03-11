@@ -593,8 +593,8 @@ device_infos_display(const char *identifier)
 
 	if (rte_devargs_parsef(&da, "%s", identifier)) {
 		printf("cannot parse identifier\n");
-		if (da.data)
-			free(da.data);
+		if (da.args)
+			free(da.args);
 		return;
 	}
 

@@ -121,8 +121,8 @@ static void cmd_dev_attach_parsed(void *parsed_result,
 
 	if (rte_devargs_parsef(&da, "%s", res->devargs)) {
 		cmdline_printf(cl, "cannot parse devargs\n");
-		if (da.data)
-			free(da.data);
+		if (da.args)
+			free(da.args);
 		return;
 	}
 
@@ -168,8 +168,8 @@ static void cmd_dev_detach_parsed(void *parsed_result,
 
 	if (rte_devargs_parsef(&da, "%s", res->devargs)) {
 		cmdline_printf(cl, "cannot parse devargs\n");
-		if (da.data)
-			free(da.data);
+		if (da.args)
+			free(da.args);
 		return;
 	}
 

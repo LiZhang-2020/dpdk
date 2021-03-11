@@ -118,7 +118,8 @@ __handle_secondary_request(void *param)
 		ret = rte_devargs_parse(&da, req->devargs);
 		if (ret != 0)
 			goto finish;
-		free(da.data); /* we don't need those */
+		free(da.args); /* we don't need those */
+		da.args = NULL;
 
 		ret = eal_dev_hotplug_request_to_secondary(&tmp_req);
 		if (ret != 0) {
@@ -282,7 +283,7 @@ static void __handle_primary_request(void *param)
 
 		ret = local_dev_remove(dev);
 quit:
-		free(da->data);
+		free(da->args);
 		free(da);
 		break;
 	default:

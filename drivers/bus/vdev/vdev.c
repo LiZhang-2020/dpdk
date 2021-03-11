@@ -236,10 +236,9 @@ alloc_devargs(const char *name, const char *args)
 
 	devargs->bus = &rte_vdev_bus;
 	if (args)
-		devargs->data = strdup(args);
+		devargs->args = strdup(args);
 	else
-		devargs->data = strdup("");
-	devargs->args = devargs->data;
+		devargs->args = strdup("");
 
 	ret = strlcpy(devargs->name, name, sizeof(devargs->name));
 	if (ret < 0 || ret >= (int)sizeof(devargs->name)) {

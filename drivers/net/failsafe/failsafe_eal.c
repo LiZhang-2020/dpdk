@@ -79,7 +79,7 @@ fs_bus_init(struct rte_eth_dev *dev)
 					rte_eth_devices[pid].device->devargs;
 
 			/* Take control of probed device. */
-			free(da->data);
+			free(da->args);
 			memset(da, 0, sizeof(*da));
 			if (probed_da != NULL)
 				snprintf(devstr, sizeof(devstr), "%s,%s",
