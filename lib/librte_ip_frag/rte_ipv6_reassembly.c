@@ -145,19 +145,19 @@ rte_ipv6_frag_process(struct rte_ip_frag_tbl *tbl,
 	 */
 	ip_len = rte_be_to_cpu_16(ip_hdr->payload_len) - sizeof(*frag_hdr);
 
-	IP_FRAG_LOG(DEBUG,
-		    "%s:%d:\n"
-		    "mbuf: %p, tms: %" PRIu64
-		    ", key: <" IPv6_KEY_BYTES_FMT ", %#x>, "
-		    "ofs: %u, len: %d, flags: %#x\n"
-		    "tbl: %p, max_cycles: %" PRIu64 ", entry_mask: %#x, "
-		    "max_entries: %u, use_entries: %u\n\n",
-		    __func__, __LINE__,
-		    mb, tms, IPv6_KEY_BYTES(key.src_dst), key.id, ip_ofs,
-		    ip_len,
-		    RTE_IPV6_GET_MF(frag_hdr->frag_data),
-		    tbl, tbl->max_cycles, tbl->entry_mask, tbl->max_entries,
-		    tbl->use_entries);
+	RTE_IP_FRAG_LOG
+		(DEBUG, "%s:%d:\n"
+		 "mbuf: %p, tms: %" PRIu64
+		 ", key: <" IPv6_KEY_BYTES_FMT ", %#x>, "
+		 "ofs: %u, len: %d, flags: %#x\n"
+		 "tbl: %p, max_cycles: %" PRIu64 ", entry_mask: %#x, "
+		 "max_entries: %u, use_entries: %u\n\n",
+		 __func__, __LINE__,
+		 mb, tms, IPv6_KEY_BYTES(key.src_dst), key.id, ip_ofs,
+		 ip_len,
+		 RTE_IPV6_GET_MF(frag_hdr->frag_data),
+		 tbl, tbl->max_cycles, tbl->entry_mask, tbl->max_entries,
+		 tbl->use_entries);
 
 	/* check that fragment length is greater then zero. */
 	if (ip_len <= 0) {
@@ -172,17 +172,17 @@ rte_ipv6_frag_process(struct rte_ip_frag_tbl *tbl,
 		return NULL;
 	}
 
-	IP_FRAG_LOG(DEBUG,
-		    "%s:%d:\n"
-		    "tbl: %p, max_entries: %u, use_entries: %u\n"
-		    "ipv6_frag_pkt: %p, key: "
-		    "<" IPv6_KEY_BYTES_FMT ", %#x>, "
-		    "start: %" PRIu64
-		    ", total_size: %u, frag_size: %u, last_idx: %u\n\n",
-		    __func__, __LINE__,
-		    tbl, tbl->max_entries, tbl->use_entries,
-		    fp, IPv6_KEY_BYTES(fp->key.src_dst), fp->key.id, fp->start,
-		    fp->total_size, fp->frag_size, fp->last_idx);
+	RTE_IP_FRAG_LOG
+		(DEBUG, "%s:%d:\n"
+		 "tbl: %p, max_entries: %u, use_entries: %u\n"
+		 "ipv6_frag_pkt: %p, key: "
+		 "<" IPv6_KEY_BYTES_FMT ", %#x>, "
+		 "start: %" PRIu64
+		 ", total_size: %u, frag_size: %u, last_idx: %u\n\n",
+		 __func__, __LINE__,
+		 tbl, tbl->max_entries, tbl->use_entries,
+		 fp, IPv6_KEY_BYTES(fp->key.src_dst), fp->key.id, fp->start,
+		 fp->total_size, fp->frag_size, fp->last_idx);
 
 	/* process the fragmented packet. */
 	return ip_frag_process(tbl, fp, dr, mb, ip_ofs, ip_len,
@@ -220,17 +220,17 @@ rte_ipv6_frag_reassemble_packet(struct rte_ip_frag_tbl *tbl,
 	mb = ip_frag_reasemble(fp, dr);
 	ip_frag_inuse(tbl, fp);
 
-	IP_FRAG_LOG(DEBUG,
-		    "%s:%d:\n"
-		    "mbuf: %p\n"
-		    "tbl: %p, max_entries: %u, use_entries: %u\n"
-		    "ipv6_frag_pkt: %p, key: <" IPv6_KEY_BYTES_FMT ", %#x>, "
-		    "start: %" PRIu64
-		    ", total_size: %u, frag_size: %u, last_idx: %u\n\n",
-		    __func__, __LINE__, mb,
-		    tbl, tbl->max_entries, tbl->use_entries,
-		    fp, IPv6_KEY_BYTES(fp->key.src_dst), fp->key.id, fp->start,
-		    fp->total_size, fp->frag_size, fp->last_idx);
+	RTE_IP_FRAG_LOG
+		(DEBUG, "%s:%d:\n"
+		 "mbuf: %p\n"
+		 "tbl: %p, max_entries: %u, use_entries: %u\n"
+		 "ipv6_frag_pkt: %p, key: <" IPv6_KEY_BYTES_FMT ", %#x>, "
+		 "start: %" PRIu64
+		 ", total_size: %u, frag_size: %u, last_idx: %u\n\n",
+		 __func__, __LINE__, mb,
+		 tbl, tbl->max_entries, tbl->use_entries,
+		 fp, IPv6_KEY_BYTES(fp->key.src_dst), fp->key.id, fp->start,
+		 fp->total_size, fp->frag_size, fp->last_idx);
 
 	return mb;
 }

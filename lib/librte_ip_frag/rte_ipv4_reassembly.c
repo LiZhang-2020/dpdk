@@ -104,15 +104,16 @@ rte_ipv4_frag_process(struct rte_ip_frag_tbl *tbl,
 	ip_ofs *= RTE_IPV4_HDR_OFFSET_UNITS;
 	ip_len = rte_be_to_cpu_16(ip_hdr->total_length) - mb->l3_len;
 
-	IP_FRAG_LOG(DEBUG, "%s:%d:\n"
-			   "mbuf: %p, tms: %" PRIu64
-		", key: <%" PRIx64 ", %#x>, ofs: %u, len: %d, flags: %#x\n"
-				   "tbl: %p, max_cycles: %" PRIu64 ", entry_mask: %#x, "
-								   "max_entries: %u, use_entries: %u\n\n",
-		    __func__, __LINE__,
-		    mb, tms, key.src_dst[0], key.id, ip_ofs, ip_len, ip_flag,
-		    tbl, tbl->max_cycles, tbl->entry_mask, tbl->max_entries,
-		    tbl->use_entries);
+	RTE_IP_FRAG_LOG
+		(DEBUG, "%s:%d:\n"
+		 "mbuf: %p, tms: %" PRIu64
+		 ", key: <%" PRIx64 ", %#x>, ofs: %u, len: %d, flags: %#x\n"
+		 "tbl: %p, max_cycles: %" PRIu64 ", entry_mask: %#x, "
+		 "max_entries: %u, use_entries: %u\n\n",
+		 __func__, __LINE__,
+		 mb, tms, key.src_dst[0], key.id, ip_ofs, ip_len, ip_flag,
+		 tbl, tbl->max_cycles, tbl->entry_mask, tbl->max_entries,
+		 tbl->use_entries);
 
 	/* check that fragment length is greater then zero. */
 	if (ip_len <= 0) {
@@ -126,7 +127,7 @@ rte_ipv4_frag_process(struct rte_ip_frag_tbl *tbl,
 		return NULL;
 	}
 
-	IP_FRAG_LOG
+	RTE_IP_FRAG_LOG
 		(DEBUG, "%s:%d:\n"
 		 "tbl: %p, max_entries: %u, use_entries: %u\n"
 		 "ipv4_frag_pkt: %p, key: <%" PRIx64 ", %#x>, start: %" PRIu64
@@ -171,7 +172,7 @@ rte_ipv4_frag_reassemble_packet(struct rte_ip_frag_tbl *tbl,
 	mb = ip_frag_reasemble(fp, dr);
 	ip_frag_inuse(tbl, fp);
 
-	IP_FRAG_LOG
+	RTE_IP_FRAG_LOG
 		(DEBUG, "%s:%d:\n"
 		 "mbuf: %p\n"
 		 "tbl: %p, max_entries: %u, use_entries: %u\n"

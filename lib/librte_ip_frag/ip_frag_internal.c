@@ -120,7 +120,7 @@ ip_frag_process(struct rte_ip_frag_tbl *tbl, struct ip_frag_pkt *fp,
 
 		/* report an error. */
 		if (fp->key.key_len == IPV4_KEYLEN)
-			IP_FRAG_LOG
+			RTE_IP_FRAG_LOG
 				(DEBUG, "%s:%d invalid fragmented packet:\n"
 				 "ipv4_frag_pkt: %p, key: <%" PRIx64 ", %#x>, "
 				 "total_size: %u, frag_size: %u, last_idx: %u\n"
@@ -134,21 +134,21 @@ ip_frag_process(struct rte_ip_frag_tbl *tbl, struct ip_frag_pkt *fp,
 				 fp->frags[IP_LAST_FRAG_IDX].ofs,
 				 fp->frags[IP_LAST_FRAG_IDX].len);
 		else
-			IP_FRAG_LOG
+			RTE_IP_FRAG_LOG
 				(DEBUG, "%s:%d invalid fragmented packet:\n"
 				 "ipv6_frag_pkt: %p, key: <"
 				 IPv6_KEY_BYTES_FMT ", %#x>, "
 				 "total_size: %u, frag_size: %u, last_idx: %u\n"
 				 "first fragment: ofs: %u, len: %u\n"
 				 "last fragment: ofs: %u, len: %u\n\n",
-				    __func__, __LINE__,
-				    fp, IPv6_KEY_BYTES(fp->key.src_dst),
-				    fp->key.id,
-				    fp->total_size, fp->frag_size, fp->last_idx,
-				    fp->frags[IP_FIRST_FRAG_IDX].ofs,
-				    fp->frags[IP_FIRST_FRAG_IDX].len,
-				    fp->frags[IP_LAST_FRAG_IDX].ofs,
-				    fp->frags[IP_LAST_FRAG_IDX].len);
+				 __func__, __LINE__,
+				 fp, IPv6_KEY_BYTES(fp->key.src_dst),
+				 fp->key.id,
+				 fp->total_size, fp->frag_size, fp->last_idx,
+				 fp->frags[IP_FIRST_FRAG_IDX].ofs,
+				 fp->frags[IP_FIRST_FRAG_IDX].len,
+				 fp->frags[IP_LAST_FRAG_IDX].ofs,
+				 fp->frags[IP_LAST_FRAG_IDX].len);
 
 		/* free all fragments, invalidate the entry. */
 		ip_frag_free(fp, dr);
@@ -184,32 +184,34 @@ ip_frag_reasemble(struct ip_frag_pkt *fp, struct rte_ip_frag_death_row *dr)
 
 		/* report an error. */
 		if (fp->key.key_len == IPV4_KEYLEN)
-			IP_FRAG_LOG(DEBUG, "%s:%d invalid fragmented packet:\n"
-				"ipv4_frag_pkt: %p, key: <%" PRIx64 ", %#x>, "
-				"total_size: %u, frag_size: %u, last_idx: %u\n"
-				"first fragment: ofs: %u, len: %u\n"
-				"last fragment: ofs: %u, len: %u\n\n",
-				__func__, __LINE__,
-				fp, fp->key.src_dst[0], fp->key.id,
-				fp->total_size, fp->frag_size, fp->last_idx,
-				fp->frags[IP_FIRST_FRAG_IDX].ofs,
-				fp->frags[IP_FIRST_FRAG_IDX].len,
-				fp->frags[IP_LAST_FRAG_IDX].ofs,
-				fp->frags[IP_LAST_FRAG_IDX].len);
+			RTE_IP_FRAG_LOG
+				(DEBUG, "%s:%d invalid fragmented packet:\n"
+				 "ipv4_frag_pkt: %p, key: <%" PRIx64 ", %#x>, "
+				 "total_size: %u, frag_size: %u, last_idx: %u\n"
+				 "first fragment: ofs: %u, len: %u\n"
+				 "last fragment: ofs: %u, len: %u\n\n",
+				 __func__, __LINE__,
+				 fp, fp->key.src_dst[0], fp->key.id,
+				 fp->total_size, fp->frag_size, fp->last_idx,
+				 fp->frags[IP_FIRST_FRAG_IDX].ofs,
+				 fp->frags[IP_FIRST_FRAG_IDX].len,
+				 fp->frags[IP_LAST_FRAG_IDX].ofs,
+				 fp->frags[IP_LAST_FRAG_IDX].len);
 		else
-			IP_FRAG_LOG(DEBUG, "%s:%d invalid fragmented packet:\n"
-				"ipv6_frag_pkt: %p, key: <"
-				IPv6_KEY_BYTES_FMT ", %#x>, "
-				"total_size: %u, frag_size: %u, last_idx: %u\n"
-				"first fragment: ofs: %u, len: %u\n"
-				"last fragment: ofs: %u, len: %u\n\n",
-				__func__, __LINE__,
-				fp, IPv6_KEY_BYTES(fp->key.src_dst), fp->key.id,
-				fp->total_size, fp->frag_size, fp->last_idx,
-				fp->frags[IP_FIRST_FRAG_IDX].ofs,
-				fp->frags[IP_FIRST_FRAG_IDX].len,
-				fp->frags[IP_LAST_FRAG_IDX].ofs,
-				fp->frags[IP_LAST_FRAG_IDX].len);
+			RTE_IP_FRAG_LOG
+				(DEBUG, "%s:%d invalid fragmented packet:\n"
+				 "ipv6_frag_pkt: %p, key: <"
+				 IPv6_KEY_BYTES_FMT ", %#x>, "
+				 "total_size: %u, frag_size: %u, last_idx: %u\n"
+				 "first fragment: ofs: %u, len: %u\n"
+				 "last fragment: ofs: %u, len: %u\n\n",
+				 __func__, __LINE__,
+				 fp, IPv6_KEY_BYTES(fp->key.src_dst), fp->key.id,
+				 fp->total_size, fp->frag_size, fp->last_idx,
+				 fp->frags[IP_FIRST_FRAG_IDX].ofs,
+				 fp->frags[IP_FIRST_FRAG_IDX].len,
+				 fp->frags[IP_LAST_FRAG_IDX].ofs,
+				 fp->frags[IP_LAST_FRAG_IDX].len);
 
 		/* free associated resources. */
 		ip_frag_free(fp, dr);
@@ -319,7 +321,7 @@ ip_frag_lookup(struct rte_ip_frag_tbl *tbl,
 
 	for (i = 0; i != assoc; i++) {
 		if (p1->key.key_len == IPV4_KEYLEN)
-			IP_FRAG_LOG
+			RTE_IP_FRAG_LOG
 				(DEBUG, "%s:%d:\n"
 				 "tbl: %p, max_entries: %u, use_entries: %u\n"
 				 "ipv4_frag_pkt line0: %p, index: %u from %u\n"
@@ -331,7 +333,7 @@ ip_frag_lookup(struct rte_ip_frag_tbl *tbl,
 				 p1[i].key.src_dst[0], p1[i].key.id,
 				 p1[i].start);
 		else
-			IP_FRAG_LOG
+			RTE_IP_FRAG_LOG
 				(DEBUG, "%s:%d:\n"
 				 "tbl: %p, max_entries: %u, use_entries: %u\n"
 				 "ipv6_frag_pkt line0: %p, index: %u from %u\n"
@@ -351,7 +353,7 @@ ip_frag_lookup(struct rte_ip_frag_tbl *tbl,
 			old = (old == NULL) ? (p1 + i) : old;
 
 		if (p2->key.key_len == IPV4_KEYLEN)
-			IP_FRAG_LOG
+			RTE_IP_FRAG_LOG
 				(DEBUG, "%s:%d:\n"
 				 "tbl: %p, max_entries: %u, use_entries: %u\n"
 				 "ipv4_frag_pkt line1: %p, index: %u from %u\n"
@@ -363,7 +365,7 @@ ip_frag_lookup(struct rte_ip_frag_tbl *tbl,
 				 p2[i].key.src_dst[0], p2[i].key.id,
 				 p2[i].start);
 		else
-			IP_FRAG_LOG
+			RTE_IP_FRAG_LOG
 				(DEBUG, "%s:%d:\n"
 				 "tbl: %p, max_entries: %u, use_entries: %u\n"
 				 "ipv6_frag_pkt line1: %p, index: %u from %u\n"

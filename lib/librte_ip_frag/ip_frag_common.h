@@ -7,12 +7,9 @@
 
 #include "rte_ip_frag.h"
 
-/* logging macros. */
-#ifdef RTE_LIBRTE_IP_FRAG_DEBUG
-#define	IP_FRAG_LOG(lvl, fmt, args...)	RTE_LOG(lvl, USER1, fmt, ##args)
-#else
-#define	IP_FRAG_LOG(lvl, fmt, args...)	do {} while(0)
-#endif /* IP_FRAG_DEBUG */
+extern int ip_frag_logtype;
+#define RTE_IP_FRAG_LOG(level, ...) \
+	rte_log(RTE_LOG_ ## level, ip_frag_logtype, "" __VA_ARGS__)
 
 #define IPV4_KEYLEN 1
 #define IPV6_KEYLEN 4
@@ -114,10 +111,11 @@ ip_frag_free_immediate(struct ip_frag_pkt *fp)
 
 	for (i = 0; i < fp->last_idx; i++) {
 		if (fp->frags[i].mb != NULL) {
-			IP_FRAG_LOG(DEBUG, "%s:%d\n"
-			    "mbuf: %p, tms: %" PRIu64", key: <%" PRIx64 ", %#x>\n",
-			    __func__, __LINE__, fp->frags[i].mb, fp->start,
-			    fp->key.src_dst[0], fp->key.id);
+			RTE_IP_FRAG_LOG
+				(DEBUG, "%s:%d\n"
+				 "mbuf: %p, tms: %" PRIu64", key: <%" PRIx64 ", %#x>\n",
+				 __func__, __LINE__, fp->frags[i].mb, fp->start,
+				 fp->key.src_dst[0], fp->key.id);
 			rte_pktmbuf_free(fp->frags[i].mb);
 			fp->frags[i].mb = NULL;
 		}
