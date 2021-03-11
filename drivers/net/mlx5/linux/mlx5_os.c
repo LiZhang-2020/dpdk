@@ -785,26 +785,12 @@ mlx5_dev_spawn(struct rte_device *dpdk_dev,
 	if (switch_info->representor && dpdk_dev->devargs) {
 		struct rte_eth_devargs eth_da = { .nb_ports = 0 };
 
-		/* Representer should come from class argument or driver */
-		if (dpdk_dev->devargs->cls_str)
-			err = rte_eth_devargs_parse(dpdk_dev->devargs->cls_str,
-						    &eth_da);
+		err = rte_eth_devargs_parse(dpdk_dev->devargs->args, &eth_da);
 		if (err) {
 			rte_errno = -err;
 			DRV_LOG(ERR, "failed to process device arguments: %s",
-				dpdk_dev->devargs->cls_str);
+				dpdk_dev->devargs->args);
 			return NULL;
-		}
-		if (eth_da.type == RTE_ETH_REPRESENTOR_NONE) {
-			/* Support legacy device argument */
-			err = rte_eth_devargs_parse(dpdk_dev->devargs->args,
-						    &eth_da);
-			if (err) {
-				rte_errno = -err;
-				DRV_LOG(ERR, "failed to process device arguments: %s",
-					dpdk_dev->devargs->args);
-				return NULL;
-			}
 		}
 		switch (eth_da.type) {
 		case RTE_ETH_REPRESENTOR_PF:

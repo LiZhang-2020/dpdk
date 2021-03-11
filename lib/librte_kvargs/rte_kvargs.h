@@ -114,18 +114,6 @@ struct rte_kvargs *rte_kvargs_parse_delim(const char *args,
  */
 void rte_kvargs_free(struct rte_kvargs *kvlist);
 
-/**
- * Lookup key in rte_kvargs structure and return it's value.
- *
- * @param kvlist
- *   The rte_kvargs structure. No error if NULL.
- * @param key
- *   The key to lookup with.
- *
- * @return
- *   - String value of given key.
- *   - NULL on not found.
- */
 __rte_experimental
 const char *rte_kvargs_get(struct rte_kvargs *kvlist, const char *key);
 

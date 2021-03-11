@@ -40,9 +40,6 @@
 #include "mlx5_flow_os.h"
 #include "rte_pmd_mlx5.h"
 
-/* Driver type key for new device global syntax. */
-#define MLX5_DRIVER_KEY "driver"
-
 /* Device parameter to enable RX completion queue compression. */
 #define MLX5_RXQ_CQE_COMP_EN "rxq_cqe_comp_en"
 
@@ -1656,7 +1653,7 @@ mlx5_args_check(const char *key, const char *val, void *opaque)
 	signed long tmp;
 
 	/* No-op, port representors are processed in mlx5_dev_spawn(). */
-	if (!strcmp(MLX5_DRIVER_KEY, key) || !strcmp(MLX5_REPRESENTOR, key))
+	if (!strcmp(MLX5_REPRESENTOR, key))
 		return 0;
 	errno = 0;
 	tmp = strtol(val, NULL, 0);
@@ -1830,7 +1827,6 @@ int
 mlx5_args(struct mlx5_dev_config *config, struct rte_devargs *devargs)
 {
 	const char **params = (const char *[]){
-		MLX5_DRIVER_KEY,
 		MLX5_RXQ_CQE_COMP_EN,
 		MLX5_RXQ_CQE_PAD_EN,
 		MLX5_RXQ_PKT_PAD_EN,
