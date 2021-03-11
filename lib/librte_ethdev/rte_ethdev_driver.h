@@ -1199,20 +1199,8 @@ __rte_internal
 int
 rte_eth_switch_domain_free(uint16_t domain_id);
 
-/** Ethernet device representor type */
-enum rte_eth_representor_type {
-	RTE_ETH_REPRESENTOR_NONE, /* not a representor */
-	RTE_ETH_REPRESENTOR_VF,   /* representor of VF */
-	RTE_ETH_REPRESENTOR_PF,   /* representor of host PF */
-	RTE_ETH_REPRESENTOR_SF,   /* representor of SF */
-	RTE_ETH_REPRESENTOR_MAX,  /**< max value of this enum */
-};
-
 /** Generic Ethernet device arguments  */
 struct rte_eth_devargs {
-	uint16_t controllers[RTE_MAX_ETHCTRLS];
-	/** controller/s number in case of multi-host */
-	uint16_t nb_controllers;
 	uint16_t ports[RTE_MAX_ETHPORTS];
 	/** port/s number to enable on a multi-port single function */
 	uint16_t nb_ports;
@@ -1221,7 +1209,6 @@ struct rte_eth_devargs {
 	/** representor port/s identifier to enable on device */
 	uint16_t nb_representor_ports;
 	/** number of ports in representor port field */
-	enum rte_eth_representor_type type; /* type of representor */
 };
 
 /**
