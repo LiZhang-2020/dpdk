@@ -114,9 +114,6 @@ struct rte_kvargs *rte_kvargs_parse_delim(const char *args,
  */
 void rte_kvargs_free(struct rte_kvargs *kvlist);
 
-__rte_experimental
-const char *rte_kvargs_get(struct rte_kvargs *kvlist, const char *key);
-
 /**
  * Call a handler function for each key/value matching the key
  *
