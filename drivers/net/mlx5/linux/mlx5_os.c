@@ -822,11 +822,7 @@ mlx5_dev_spawn(struct rte_device *dpdk_dev,
 			}
 			break;
 		case RTE_ETH_REPRESENTOR_VF:
-			/* Allows HPF representor index -1 as exception. */
-			if (!(spawn->info.port_name == -1 &&
-			      switch_info->name_type ==
-					MLX5_PHYS_PORT_NAME_TYPE_PFHPF) &&
-			    switch_info->name_type !=
+			if (switch_info->name_type !=
 					MLX5_PHYS_PORT_NAME_TYPE_PFVF) {
 				rte_errno = EBUSY;
 				return NULL;
