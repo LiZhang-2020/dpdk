@@ -13,22 +13,15 @@
 /*
  * Receive a string with a list of arguments following the pattern
  * key=value,key=value,... and insert them into the list.
- * Params string will be copied to be modified.
- * Supported examples:
- *   k1=v1,k2=v2
- *   v1
- *   v1,
- *   ,v1
- *   k1=
- *   =v1
- *   k1=x[a,c-d,e]y[m,n-o,p]z,k2=v2
+ * strtok() is used so the params string will be copied to be modified.
  */
 static int
 rte_kvargs_tokenize(struct rte_kvargs *kvlist, const char *params)
 {
 	unsigned i;
-	char *str, *start;
-	int in_list = 0, end_k = 0, end_v = 0;
+	char *str;
+	char *ctx1 = NULL;
+	char *ctx2 = NULL;
 
 	/* Copy the const char *params to a modifiable string
 	 * to pass to rte_strsplit
@@ -39,59 +32,36 @@ rte_kvargs_tokenize(struct rte_kvargs *kvlist, const char *params)
 
 	/* browse each key/value pair and add it in kvlist */
 	str = kvlist->str;
-	start = str;
-	while (1) {
-		switch (*str) {
-		case RTE_KVARGS_KV_DELIM: /* = */
-			end_k = 1;
-			break;
-		case RTE_KVARGS_PAIRS_DELIM: /* , */
-			/* Skip comma in middle of range */
-			if (!in_list)
-				end_v = 1;
-			break;
-		case '[':
-			in_list++;
-			break;
-		case ']':
-			if (in_list)
-				in_list--;
-			break;
-		case 0: /* end of string */
-			end_v = 1;
-			break;
-		default:
-			break;
-		}
-
-		if (!end_k && !end_v) {
-			str++;
-			continue;
-		}
+	while ((str = strtok_r(str, RTE_KVARGS_PAIRS_DELIM, &ctx1)) != NULL) {
 
 		i = kvlist->count;
 		if (i >= RTE_KVARGS_MAX)
 			return -1;
 
-		if (start == str)
-			start = NULL;
+		kvlist->pairs[i].key = strtok_r(str, RTE_KVARGS_KV_DELIM, &ctx2);
+		kvlist->pairs[i].value = strtok_r(NULL, RTE_KVARGS_KV_DELIM, &ctx2);
+		if (kvlist->pairs[i].key == NULL ||
+		    kvlist->pairs[i].value == NULL)
+			return -1;
 
-		if (end_k) {
-			kvlist->pairs[i].key = start;
-			end_k = 0;
-		} else if (end_v) {
-			if (kvlist->pairs[i].key || start) {
-				kvlist->pairs[i].value = start;
-				kvlist->count++;
+		/* Detect list [a,b] to skip comma delimiter in list. */
+		str = kvlist->pairs[i].value;
+		if (str[0] == '[') {
+			/* Find the end of the list. */
+			while (str[strlen(str) - 1] != ']') {
+				/* Restore the comma erased by strtok_r(). */
+				if (ctx1 == NULL || ctx1[0] == '\0')
+					return -1; /* no closing bracket */
+				str[strlen(str)] = ',';
+				/* Parse until next comma. */
+				str = strtok_r(NULL, RTE_KVARGS_PAIRS_DELIM, &ctx1);
+				if (str == NULL)
+					return -1; /* no closing bracket */
 			}
-			end_v = 0;
 		}
 
-		if (!*str)
-			break; /* End of string. */
-		*str = 0;
-		str++;
-		start = str;
+		kvlist->count++;
+		str = NULL;
 	}
 
 	return 0;

@@ -31,10 +31,10 @@ extern "C" {
 #define RTE_KVARGS_MAX 32
 
 /** separator character used between each pair */
-#define RTE_KVARGS_PAIRS_DELIM	','
+#define RTE_KVARGS_PAIRS_DELIM	","
 
 /** separator character used between key and value */
-#define RTE_KVARGS_KV_DELIM	'='
+#define RTE_KVARGS_KV_DELIM	"="
 
 /** Type of callback function used by rte_kvargs_process() */
 typedef int (*arg_handler_t)(const char *key, const char *value, void *opaque);
