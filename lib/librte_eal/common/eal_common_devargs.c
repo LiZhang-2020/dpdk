@@ -224,14 +224,13 @@ rte_devargs_parse(struct rte_devargs *da, const char *dev)
 	da->bus = bus;
 	/* Parse eventual device arguments */
 	if (devname[i] == ',')
-		da->data = strdup(&devname[i + 1]);
+		da->args = strdup(&devname[i + 1]);
 	else
-		da->data = strdup("");
-	if (da->data == NULL) {
+		da->args = strdup("");
+	if (da->args == NULL) {
 		RTE_LOG(ERR, EAL, "not enough memory to parse arguments\n");
 		return -ENOMEM;
 	}
-	da->args = da->data;
 	return 0;
 }
 
