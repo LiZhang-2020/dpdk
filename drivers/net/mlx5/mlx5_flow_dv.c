@@ -12806,6 +12806,8 @@ flow_dv_translate(struct rte_eth_dev *dev,
 			else
 				dev_flow->dv.actions[actions_n] =
 							ct->dr_action_rply;
+			flow->ctx_type = MLX5_SHARED_ACTION_TYPE_CT;
+			flow->ct = ct_idx;
 			__atomic_fetch_add(&ct->refcnt, 1, __ATOMIC_RELAXED);
 			actions_n++;
 			action_flags |= MLX5_FLOW_ACTION_CT;
@@ -13944,7 +13946,10 @@ flow_dv_destroy(struct rte_eth_dev *dev, struct rte_flow *flow)
 			mlx5_flow_meter_detach(priv, fm);
 		flow->meter = 0;
 	}
-	if (flow->age)
+	/* Keep the current age handling by default. */
+	if (flow->ctx_type == MLX5_SHARED_ACTION_TYPE_CT && flow->ct)
+		flow_dv_aso_ct_release(dev, flow->ct);
+	else if (flow->age)
 		flow_dv_aso_age_release(dev, flow->age);
 	if (flow->geneve_tlv_option) {
 		flow_dv_geneve_tlv_option_resource_release(dev);

@@ -1010,11 +1010,15 @@ struct rte_flow {
 	uint32_t drv_type:2; /**< Driver type. */
 	uint32_t tunnel:1;
 	uint32_t meter:24; /**< Holds flow meter id. */
+	uint32_t ctx_type:2; /**< Shared action (context type). */
 	uint32_t rix_mreg_copy;
 	/**< Index to metadata register copy table resource. */
 	uint32_t counter; /**< Holds flow counter. */
 	uint32_t tunnel_id;  /**< Tunnel id */
-	uint32_t age; /**< Holds ASO age bit index. */
+	union {
+		uint32_t age; /**< Holds ASO age bit index. */
+		uint32_t ct; /**< Holds ASO CT index. */
+	};
 	uint32_t geneve_tlv_option; /**< Holds Geneve TLV option id. > */
 } __rte_packed;
 
