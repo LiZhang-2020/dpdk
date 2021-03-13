@@ -192,8 +192,10 @@ send_doorbell(struct mlx5_regex_priv *priv, struct mlx5_regex_sq *sq)
 }
 
 static inline int
-get_free(struct mlx5_regex_sq *sq) {
-	return (sq_size_get(sq) - (uint16_t)(sq->pi - sq->ci));
+get_free(struct mlx5_regex_sq *sq, uint8_t has_umr) {
+	return (sq_size_get(sq) - ((sq->pi - sq->ci) &
+			(has_umr ? (MLX5_REGEX_MAX_WQE_INDEX >> 2) :
+			MLX5_REGEX_MAX_WQE_INDEX)));
 }
 
 static inline uint32_t
@@ -385,7 +387,7 @@ mlx5_regexdev_enqueue_gga(struct rte_regexdev *dev, uint16_t qp_id,
 	while ((sqid = ffs(queue->free_sqs))) {
 		sqid--; /* ffs returns 1 for bit 0 */
 		sq = &queue->sqs[sqid];
-		nb_desc = get_free(sq);
+		nb_desc = get_free(sq, priv->has_umr);
 		if (nb_desc) {
 			/* The ops be handled can't exceed nb_ops. */
 			if (nb_desc > nb_left)
@@ -418,7 +420,7 @@ mlx5_regexdev_enqueue(struct rte_regexdev *dev, uint16_t qp_id,
 	while ((sqid = ffs(queue->free_sqs))) {
 		sqid--; /* ffs returns 1 for bit 0 */
 		sq = &queue->sqs[sqid];
-		while (get_free(sq)) {
+		while (get_free(sq, priv->has_umr)) {
 			job_id = job_id_get(sqid, sq_size_get(sq), sq->pi);
 			prep_one(priv, queue, sq, ops[i], &queue->jobs[job_id]);
 			i++;
