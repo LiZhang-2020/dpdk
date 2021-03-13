@@ -964,6 +964,7 @@ struct mlx5_aso_ct_action {
 	void *dr_action_rply; /* General action object for reply dir. */
 	uint32_t refcnt; /* Action used count in device flows. */
 	uint16_t offset; /* Offset of ASO CT in DevX objects bulk. */
+	uint16_t peer; /* The only peer port index could also use this CT. */
 	uint8_t state; /* ASO CT state. */
 	bool is_original; /* The direction of the DR action to be used. */
 };
