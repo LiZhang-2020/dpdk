@@ -42,6 +42,7 @@ struct mlx5_compress_priv {
 	void *uar;
 	uint32_t pdn; /* Protection Domain number. */
 	uint8_t min_block_size;
+	uint8_t sq_ts_format; /* Whether SQ supports timestamp formats. */
 	/* Minimum huffman block size supported by the device. */
 	struct ibv_pd *pd;
 	struct rte_compressdev_config dev_config;
@@ -244,6 +245,7 @@ mlx5_compress_qp_setup(struct rte_compressdev *dev, uint16_t qp_id,
 		goto err;
 	}
 	sq_attr.cqn = qp->cq.cq->id;
+	sq_attr.ts_format = mlx5_ts_format_conv(priv->sq_ts_format);
 	ret = mlx5_devx_sq_create(priv->ctx, &qp->sq, log_ops_n, &sq_attr,
 				  socket_id);
 	if (ret != 0) {
@@ -762,6 +764,7 @@ mlx5_compress_dev_probe(struct rte_device *dev)
 	priv->ctx = ctx;
 	priv->cdev = cdev;
 	priv->min_block_size = att.compress_min_block_size;
+	priv->sq_ts_format = att.sq_ts_format;
 	if (mlx5_compress_hw_global_prepare(priv) != 0) {
 		rte_compressdev_pmd_destroy(priv->cdev);
 		claim_zero(mlx5_glue->close_device(priv->ctx));
