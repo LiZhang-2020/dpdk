@@ -1385,6 +1385,7 @@ mlx5_txq_create_devx_sq_resources(struct rte_eth_dev *dev, uint16_t idx,
 	sq_attr.wq_attr.wq_umem_valid = 1;
 	sq_attr.wq_attr.wq_umem_id = mlx5_os_get_umem_id(txq_obj->sq_umem);
 	sq_attr.wq_attr.wq_umem_offset = (uintptr_t)txq_obj->sq_buf % page_size;
+	sq_attr.ts_format = mlx5_ts_format_conv(priv->sh->sq_ts_format),
 	/* Create Send Queue object with DevX. */
 	txq_obj->sq_devx = mlx5_devx_cmd_create_sq(priv->sh->ctx, &sq_attr);
 	if (!txq_obj->sq_devx) {

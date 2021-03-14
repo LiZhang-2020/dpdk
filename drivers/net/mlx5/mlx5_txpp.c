@@ -339,6 +339,7 @@ mlx5_txpp_create_rearm_queue(struct mlx5_dev_ctx_shared *sh)
 	sq_attr.wq_attr.wq_umem_valid = 1;
 	sq_attr.wq_attr.wq_umem_id = mlx5_os_get_umem_id(wq->sq_umem);
 	sq_attr.wq_attr.wq_umem_offset = 0;
+	sq_attr.ts_format = mlx5_ts_format_conv(sh->sq_ts_format),
 	wq->sq = mlx5_devx_cmd_create_sq(sh->ctx, &sq_attr);
 	if (!wq->sq) {
 		rte_errno = errno;
@@ -590,6 +591,7 @@ mlx5_txpp_create_clock_queue(struct mlx5_dev_ctx_shared *sh)
 	sq_attr.wq_attr.wq_umem_id = mlx5_os_get_umem_id(wq->sq_umem);
 	/* umem_offset must be zero for static_sq_wq queue. */
 	sq_attr.wq_attr.wq_umem_offset = 0;
+	sq_attr.ts_format = mlx5_ts_format_conv(sh->sq_ts_format);
 	wq->sq = mlx5_devx_cmd_create_sq(sh->ctx, &sq_attr);
 	if (!wq->sq) {
 		rte_errno = errno;
