@@ -723,9 +723,7 @@ sft_tcp_drain_mbuf(struct sft_lib_entry *entry,
 				ct->conn_ctx : ct->conn_ctx + 1;
 
 	i = tcp_unstash_mbuf(sender, mbuf_out, nb_out);
-	status->nb_in_order_mbufs -= i;
-
-	return 0;
+	return i;
 }
 
 void
