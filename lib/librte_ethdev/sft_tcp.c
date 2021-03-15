@@ -515,8 +515,11 @@ tcp_unstash_mbuf(struct ct_ctx *sender, const struct rte_mbuf **mbuf,
 	uint32_t next_seq = sender->max_sent_seq + 1;
 	struct tcp_stash *stash = sender->stash;
 	typeof(stash->stash) *head = &stash->stash;
-	uint32_t first_seq = CIRCLEQ_FIRST(head)->seg.head;
+	uint32_t first_seq;
 
+	if (CIRCLEQ_EMPTY(head))
+		return 0;
+	first_seq = CIRCLEQ_FIRST(head)->seg.head;
 	do {
 		struct tcp_stashed_segment *var = CIRCLEQ_FIRST(head);
 		if (!tcp_inside_sequence(&var->seg, next_seq))
