@@ -27,19 +27,19 @@ struct tcp_segment {
 	uint32_t tail; /**< tail sequence */
 };
 
-__rte_always_inline static inline bool
+static __rte_always_inline bool
 no_wrap(const struct tcp_segment *s)
 {
 	return s->tail > s->head;
 }
 
-__rte_always_inline static inline bool
+static __rte_always_inline bool
 tcp_seg_match(const struct tcp_segment *a, const struct tcp_segment *b)
 {
 	return a->head == b->head && a->tail == b->tail;
 }
 
-__rte_always_inline static inline uint32_t
+static __rte_always_inline uint32_t
 tcp_seg_len(const struct tcp_segment *s)
 {
 	return s->tail - s->head + 1;
@@ -53,7 +53,7 @@ tcp_seg_len(const struct tcp_segment *s)
  *  - if @seq belongs to @seg return distance from @seg beginning
  *  - UINT32_MAX if @seq in not part if @seg
  */
-__rte_always_inline static inline uint32_t
+static __rte_always_inline uint32_t
 tcp_sequence_offset(const struct tcp_segment *seg, uint32_t seq)
 {
 	const struct tcp_segment aux = { .head = seg->head, .tail = seq };
@@ -62,7 +62,7 @@ tcp_sequence_offset(const struct tcp_segment *seg, uint32_t seq)
 	return len <= tcp_seg_len(seg) ? len : UINT32_MAX;
 }
 
-__rte_always_inline static inline bool
+static __rte_always_inline bool
 tcp_inside_sequence(const struct tcp_segment *seg, uint32_t seq)
 {
 	return tcp_sequence_offset(seg, seq) != UINT32_MAX;
@@ -93,7 +93,7 @@ tcp_sequence_cmp(const struct tcp_segment *rcv_wnd, uint32_t a, uint32_t b)
  *
  * 32bit wraparound OK
  */
-__rte_always_inline static inline bool
+static __rte_always_inline bool
 tcp_seg_follows(const struct tcp_segment *prev, const struct tcp_segment *next)
 {
 	return next->head == prev->tail + 1 || next->head == prev->tail;
@@ -106,7 +106,7 @@ tcp_seg_follows(const struct tcp_segment *prev, const struct tcp_segment *next)
  * 32bit wraparound OK
  */
 
-__rte_always_inline static inline bool
+static __rte_always_inline bool
 __seg_contained(const struct tcp_segment *data, const struct tcp_segment *s)
 {
 	return data->head >= s->head && data->tail <= s->tail;
@@ -185,7 +185,7 @@ struct sft_tcp_ct {
 	enum sft_ct_state conn_state;
 };
 
-__rte_always_inline static inline uint32_t
+static __rte_always_inline uint32_t
 tcp_wnd_size(const struct rte_tcp_hdr *tcp, struct ct_ctx *sender)
 {
 	return (rte_be_to_cpu_16(tcp->rx_win) << sender->wnd_scale);
@@ -312,14 +312,7 @@ tcp_reset_ct_window(struct ct_ctx *sender, struct ct_ctx *peer,
 	peer->rcv_wnd.tail = peer->ack_seq + 1 + wlen;
 }
 
-__rte_always_inline static inline uint32_t
-tcp_max_sent_seq(struct ct_ctx *sender, uint32_t seq)
-{
-	return tcp_sequence_cmp(&sender->rcv_wnd, seq, sender->max_sent_seq) ?
-	       seq : sender->max_sent_seq;
-}
-
-__rte_always_inline static inline bool
+static __rte_always_inline bool
 repeated_ack(uint32_t ack_seq, struct ct_ctx *peer)
 {
 	const struct tcp_segment lim = {
@@ -328,13 +321,13 @@ repeated_ack(uint32_t ack_seq, struct ct_ctx *peer)
 	return tcp_inside_sequence(&lim, ack_seq);
 }
 
-__rte_always_inline static inline bool
+static __rte_always_inline bool
 expected_ctrl_ack(uint32_t ack_seq, const struct ct_ctx *peer)
 {
 	return peer->max_sent_seq + 1 == ack_seq;
 }
 
-__rte_always_inline static inline bool
+static __rte_always_inline bool
 expected_ack(uint32_t ack_seq, const struct ct_ctx *peer)
 {
 	const struct tcp_segment lim = {
