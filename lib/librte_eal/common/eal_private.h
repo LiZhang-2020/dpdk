@@ -446,6 +446,14 @@ int rte_eal_hugepage_attach(void);
 struct rte_bus *rte_bus_find_by_device_name(const char *str);
 
 /**
+ * Update all buses scan mode if not set, used by EAL parameter parsing.
+ *
+ * @param mode
+ *   Bus scan mode to be set.
+ */
+void rte_bus_scan_mode_update(enum rte_bus_scan_mode mode);
+
+/**
  * Create the unix channel for primary/secondary communication.
  *
  * @return
