@@ -181,14 +181,14 @@ has_sym_args = [
 	[ 'HAVE_MLX5_DR_CREATE_ACTION_DEST_ARRAY', 'infiniband/mlx5dv.h',
 	'mlx5dv_dr_action_create_dest_array'],
 	[ 'HAVE_DEVLINK', 'linux/devlink.h', 'DEVLINK_GENL_NAME' ],
-        [ 'HAVE_MLX5_DR_CREATE_ACTION_ASO', 'infiniband/mlx5dv.h',
-        'mlx5dv_dr_action_create_aso' ],
-        [ 'HAVE_MLX5_UMR_IMKEY', 'infiniband/mlx5dv.h',
-        'MLX5_WQE_UMR_CTRL_FLAG_INLINE' ],
-        [ 'HAVE_MLX5_DR_FLOW_DUMP_RULE', 'infiniband/mlx5dv.h',
-        'mlx5dv_dump_dr_rule' ],
-        [ 'HAVE_MLX5_DR_ACTION_ASO_CT', 'infiniband/mlx5dv.h',
-        'mlx5dv_dr_action_aso_ct_flags' ],
+	[ 'HAVE_MLX5_DR_CREATE_ACTION_ASO', 'infiniband/mlx5dv.h',
+	'mlx5dv_dr_action_create_aso' ],
+	[ 'HAVE_MLX5_UMR_IMKEY', 'infiniband/mlx5dv.h',
+	'MLX5_WQE_UMR_CTRL_FLAG_INLINE' ],
+	[ 'HAVE_MLX5_DR_FLOW_DUMP_RULE', 'infiniband/mlx5dv.h',
+	'mlx5dv_dump_dr_rule' ],
+	[ 'HAVE_MLX5_DR_ACTION_ASO_CT', 'infiniband/mlx5dv.h',
+	'MLX5DV_DR_ACTION_FLAGS_ASO_CT_DIRECTION_INITIATOR' ],
 ]
 config = configuration_data()
 foreach arg:has_sym_args
