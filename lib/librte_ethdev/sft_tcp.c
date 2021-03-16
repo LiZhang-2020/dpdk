@@ -337,8 +337,9 @@ expected_ack(uint32_t ack_seq, const struct ct_ctx *peer)
 }
 
 static void
-sft_tcp_handle_ack(const struct rte_tcp_hdr *tcp, struct ct_ctx *sender,
-		   struct ct_ctx *peer, struct rte_sft_flow_status *status)
+sft_tcp_handle_ack(struct sft_tcp_ct *ct, const struct rte_tcp_hdr *tcp,
+		   struct ct_ctx *sender, struct ct_ctx *peer,
+		   struct rte_sft_flow_status *status)
 {
 	uint32_t ack_seq = rte_be_to_cpu_32(tcp->recv_ack);
 
@@ -360,6 +361,8 @@ sft_tcp_handle_ack(const struct rte_tcp_hdr *tcp, struct ct_ctx *sender,
 	case RTE_TCP_SYN_SENT:
 		if (expected_ctrl_ack(ack_seq, peer)) {
 			sender->sock_state = RTE_TCP_ESTABLISHED;
+			if (peer->sock_state == RTE_TCP_ESTABLISHED)
+				ct->conn_state = SFT_CT_STATE_TRACKING;
 			peer->ack_seq = ack_seq;
 			sender->max_sent_seq++;
 		} else {
@@ -369,6 +372,8 @@ sft_tcp_handle_ack(const struct rte_tcp_hdr *tcp, struct ct_ctx *sender,
 	case RTE_TCP_SYN_RECV:
 		if (expected_ctrl_ack(ack_seq, peer)) {
 			sender->sock_state = RTE_TCP_ESTABLISHED;
+			if (peer->sock_state == RTE_TCP_ESTABLISHED)
+				ct->conn_state = SFT_CT_STATE_TRACKING;
 			peer->ack_seq = ack_seq;
 		} else {
 			goto err;
@@ -766,7 +771,7 @@ sft_tcp_track_conn(struct sft_mbuf *smb, struct rte_sft_mbuf_info *mif,
 	 * reversed data flow could continue
 	 */
 	if (tcp->ack) {
-		sft_tcp_handle_ack(tcp, sender, peer, status);
+		sft_tcp_handle_ack(ct, tcp, sender, peer, status);
 		SFT_TCP_LOG(DEBUG, "    ACK:%u max_sent %u\n", peer->ack_seq,
 			    peer->max_sent_seq);
 	}
