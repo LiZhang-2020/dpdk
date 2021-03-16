@@ -198,7 +198,7 @@ sft_track_conn(struct sft_mbuf *smb, struct rte_sft_mbuf_info *mif,
 		status->proto_state = SFT_CT_STATE_TRACKING;
 		break;
 	default:
-		status->packet_error = 1;
+		status->protocol_error = 1;
 		status->ct_info = SFT_CT_ERROR_UNSUPPORTED;
 	}
 }
@@ -213,9 +213,7 @@ sft_start_conn_track(struct sft_lib_entry *entry, struct rte_sft_error *error)
 		break;
 	}
 
-	return rte_sft_error_set(error, EINVAL,
-				 RTE_SFT_ERROR_CONN_TRACK, NULL,
-				 "cannot track protocol");
+	return 0;
 }
 
 static const struct rte_sft_ops *
@@ -1674,7 +1672,8 @@ rte_sft_flow_activate(uint16_t queue, uint32_t zone, struct rte_mbuf *mbuf_in,
 		goto err4;
 	}
 	if (entry->ct_enable) {
-		if (sft_start_conn_track(entry, error))
+		ret = sft_start_conn_track(entry, error);
+		if (ret)
 			goto err5;
 		sft_track_conn(&smb, &mif, entry, status, error);
 	}
