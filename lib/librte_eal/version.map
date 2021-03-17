@@ -200,12 +200,6 @@ DPDK_21 {
 	rte_uuid_parse;
 	rte_uuid_unparse;
 	rte_version;
-	rte_version_minor;
-	rte_version_month;
-	rte_version_prefix;
-	rte_version_release;
-	rte_version_suffix;
-	rte_version_year;
 	rte_vfio_clear_group;
 	rte_vfio_container_create;
 	rte_vfio_container_destroy;
@@ -410,6 +404,14 @@ EXPERIMENTAL {
 	rte_service_lcore_may_be_active;
 	rte_vect_get_max_simd_bitwidth;
 	rte_vect_set_max_simd_bitwidth;
+
+	# added in 21.05
+	rte_version_minor;
+	rte_version_month;
+	rte_version_prefix;
+	rte_version_release;
+	rte_version_suffix;
+	rte_version_year;
 };
 
 INTERNAL {
