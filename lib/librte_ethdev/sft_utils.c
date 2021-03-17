@@ -103,8 +103,8 @@ const char *
 sft_ct_state_name(enum sft_ct_state state)
 {
 	static const char * const ct_names[] = {
-		"NEW", "ESTABLISHING", "TRACKING", "CLOSING",
-		"PACKET_ERROR", "PROTOCOL_ERROR", "RETRANSMIT", "OFFLOADED"
+		"NEW", "ESTABLISHING", "TRACKING", "HALF_DUPLEX", "CLOSING",
+		"CLOSED", "OFFLOADED", "ERROR"
 	};
 
 	return state > SFT_CT_STATE_OFFLOADED ? "UNKNOWN" : ct_names[state];

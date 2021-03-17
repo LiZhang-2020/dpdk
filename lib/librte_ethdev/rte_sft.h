@@ -343,7 +343,8 @@ enum sft_ct_info {
 	SFT_CT_ERROR_TCP_RCV_WND_SIZE,
 	SFT_CT_ERROR_SYS,
 	SFT_CT_ERROR_NONE = 0,
-	SFT_CT_RETRANSMIT,   /**<  */
+	SFT_CT_RETRANSMIT,
+	SFT_CT_RESET,
 };
 
 /**
@@ -353,7 +354,9 @@ enum sft_ct_state {
 	SFT_CT_STATE_NEW = 0,      /**< no FID */
 	SFT_CT_STATE_ESTABLISHING, /**< connection establish in process */
 	SFT_CT_STATE_TRACKING,     /**< full duplex data exchange */
-	SFT_CT_STATE_CLOSING,      /**< FIN bit was detected */
+	SFT_CT_STATE_HALF_DUPLEX,  /**< data flows in one direction only */
+	SFT_CT_STATE_CLOSING,      /**< no data in any direction */
+	SFT_CT_STATE_CLOSED,	   /**< confirmed termination from 2 peers */
 	SFT_CT_STATE_OFFLOADED,    /**< offloaded connection */
 	SFT_CT_STATE_ERROR	   /**< error connection state */
 };

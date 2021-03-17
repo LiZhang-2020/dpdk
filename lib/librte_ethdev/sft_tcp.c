@@ -246,25 +246,17 @@ out:
 	return ret;
 }
 
-static enum sft_ct_info
+static void
 sft_tcp_handle_syn(struct sft_tcp_ct *ct, const struct rte_tcp_hdr *tcp,
-		   struct ct_ctx *sender, struct ct_ctx *peer)
+		   struct ct_ctx *sender, struct ct_ctx *peer,
+		   struct rte_sft_flow_status *status)
 {
-	switch (peer->sock_state) {
-	case RTE_TCP_CLOSE:
-	case RTE_TCP_SYN_SENT:
-		break;
-	default:
-		goto err;
-	}
 	switch (sender->sock_state) {
 	case RTE_TCP_CLOSE:
 	case RTE_TCP_SYN_SENT:
-	case RTE_TCP_SYN_RECV:
 		sender->max_sent_seq = rte_be_to_cpu_32(tcp->sent_seq);
 		sender->ack_seq = sender->max_sent_seq;
-		sender->sock_state =
-			tcp->ack ? RTE_TCP_SYN_RECV : RTE_TCP_SYN_SENT;
+		sender->sock_state = RTE_TCP_SYN_SENT;
 		break;
 	default:
 		goto err;
@@ -273,34 +265,62 @@ sft_tcp_handle_syn(struct sft_tcp_ct *ct, const struct rte_tcp_hdr *tcp,
 		if (tcp_parse_options(tcp, sender))
 			goto err;
 	ct->conn_state = SFT_CT_STATE_ESTABLISHING;
-	return SFT_CT_ERROR_NONE;
+	return;
 err:
-	return SFT_CT_ERROR_TCP_SYN;
-}
+	status->protocol_error = 1;
+	status->ct_info = SFT_CT_ERROR_TCP_FLAGS;
 
-static enum sft_ct_info
-sft_tcp_handle_fin(struct sft_tcp_ct *ct, const struct rte_tcp_hdr *tcp,
-		   struct ct_ctx *sender, struct ct_ctx *peer)
-{
-	RTE_SET_USED(ct);
-	RTE_SET_USED(tcp);
-	sender->sock_state = RTE_TCP_CLOSING;
-	if (peer->sock_state == RTE_TCP_CLOSING)
-		ct->conn_state = SFT_CT_STATE_CLOSING;
-	sender->max_sent_seq++;
-	return SFT_CT_ERROR_NONE;
-}
-
-static enum sft_ct_info
-sft_tcp_handle_rst(struct sft_tcp_ct *ct, const struct rte_tcp_hdr *tcp,
-		   struct ct_ctx *sender, struct ct_ctx *peer)
-{
-	RTE_SET_USED(tcp);
 	RTE_SET_USED(peer);
-	sender->sock_state = RTE_TCP_CLOSE;
-	ct->conn_state = SFT_CT_STATE_CLOSING;
+}
+
+static void
+sft_tcp_handle_fin(struct sft_tcp_ct *ct, const struct rte_tcp_hdr *tcp,
+		   struct ct_ctx *sender, struct ct_ctx *peer,
+		   struct rte_sft_flow_status *status)
+{
+	RTE_SET_USED(peer);
+
 	sender->max_sent_seq++;
-	return SFT_CT_ERROR_NONE;
+	switch (sender->sock_state) {
+	case RTE_TCP_ESTABLISHED:
+		sender->sock_state = RTE_TCP_CLOSING;
+		if (ct->conn_state == SFT_CT_STATE_TRACKING) {
+			ct->conn_state = SFT_CT_STATE_HALF_DUPLEX;
+		} else if (ct->conn_state == SFT_CT_STATE_HALF_DUPLEX) {
+			ct->conn_state = SFT_CT_STATE_CLOSING;
+		} else {
+			SFT_TCP_LOG(WARNING, "invalid FIN\n");
+			goto err;
+		}
+
+		break;
+	case RTE_TCP_CLOSING:
+		break;
+	default:
+		goto err;
+	}
+
+	return;
+
+err:
+	status->packet_error = 1;
+	status->ct_info = SFT_CT_ERROR_TCP_FLAGS;
+
+	RTE_SET_USED(tcp);
+}
+
+static void
+sft_tcp_handle_rst(struct sft_tcp_ct *ct, const struct rte_tcp_hdr *tcp,
+		   struct ct_ctx *sender, struct ct_ctx *peer,
+		   struct rte_sft_flow_status *status)
+{
+	RTE_SET_USED(tcp);
+
+	sender->max_sent_seq++;
+	sender->sock_state = RTE_TCP_CLOSE;
+	peer->sock_state = RTE_TCP_CLOSE;
+	ct->conn_state = SFT_CT_STATE_CLOSED;
+	status->ct_info = SFT_CT_RESET;
 }
 
 static inline void
@@ -347,49 +367,47 @@ sft_tcp_handle_ack(struct sft_tcp_ct *ct, const struct rte_tcp_hdr *tcp,
 	 * If sender posts several segments in a burst,
 	 * received ACK can be less than the last transmitted sequence.
 	 */
-	switch (sender->sock_state) {
+	switch (peer->sock_state) {
 	case RTE_TCP_ESTABLISHED:
-	case RTE_TCP_CLOSING:
 		if (likely(expected_ack(ack_seq, peer))) {
 			peer->ack_seq = ack_seq;
+			tcp_reset_ct_window(sender, peer, tcp);
 		} else if (repeated_ack(ack_seq, peer)) {
-			status->ct_info = SFT_CT_RETRANSMIT;
+			/* nothing to do */
 		} else {
 			goto err;
 		}
 		break;
 	case RTE_TCP_SYN_SENT:
 		if (expected_ctrl_ack(ack_seq, peer)) {
-			sender->sock_state = RTE_TCP_ESTABLISHED;
-			if (peer->sock_state == RTE_TCP_ESTABLISHED)
+			peer->sock_state = RTE_TCP_ESTABLISHED;
+			if (sender->sock_state == RTE_TCP_ESTABLISHED)
 				ct->conn_state = SFT_CT_STATE_TRACKING;
 			peer->ack_seq = ack_seq;
-			sender->max_sent_seq++;
 		} else {
 			goto err;
 		}
 		break;
-	case RTE_TCP_SYN_RECV:
+	case RTE_TCP_CLOSING:
 		if (expected_ctrl_ack(ack_seq, peer)) {
-			sender->sock_state = RTE_TCP_ESTABLISHED;
-			if (peer->sock_state == RTE_TCP_ESTABLISHED)
-				ct->conn_state = SFT_CT_STATE_TRACKING;
 			peer->ack_seq = ack_seq;
-		} else {
+			peer->sock_state = RTE_TCP_CLOSE;
+			if (sender->sock_state == RTE_TCP_CLOSE)
+				ct->conn_state = SFT_CT_STATE_CLOSED;
+		} else if (!expected_ack(ack_seq, peer) &&
+			   !repeated_ack(ack_seq, peer)) {
 			goto err;
 		}
 		break;
 	case RTE_TCP_CLOSE:
-		if (tcp->rst && expected_ctrl_ack(ack_seq, peer)) {
-			peer->ack_seq = ack_seq;
-		} else {
+		if (!expected_ctrl_ack(ack_seq, peer) &&
+		    !repeated_ack(ack_seq, peer)) {
 			goto err;
 		}
 		break;
 	default:
 		goto err;
 	}
-	tcp_reset_ct_window(sender, peer, tcp);
 	return;
 err:
 	status->packet_error = 1;
@@ -568,6 +586,11 @@ sft_tcp_handle_data(struct sft_mbuf *smb, struct rte_sft_mbuf_info *mif,
 		.head = tcp_seq, .tail = tcp_seq + mif->data_len - 1,
 	};
 
+	/* sender posts new data in ESTABLISHED state only.
+	 * FIN can follow TCP data in the same packet.
+	 * therefore, repeated data sequences can arrive while SFT sender
+	 * is in CLOSING state.
+	 */
 	if (!tcp_seg_contained(&segment, &sender->rcv_wnd)) {
 		ct_error = SFT_CT_ERROR_TCP_RCV_WND_SIZE;
 		goto out;
@@ -577,6 +600,11 @@ sft_tcp_handle_data(struct sft_mbuf *smb, struct rte_sft_mbuf_info *mif,
 			     segment.tail) >= 0) {
 		ct_error = SFT_CT_RETRANSMIT;
 		goto out; /* repeated sequences */
+	}
+	if (sender->sock_state != RTE_TCP_ESTABLISHED) {
+		status->protocol_error = 1;
+		ct_error = SFT_CT_ERROR_BAD_PROTOCOL;
+		goto out;
 	}
 	if (likely(!sender->stash)) {
 		const struct tcp_segment topmost = {
@@ -756,15 +784,6 @@ sft_tcp_track_conn(struct sft_mbuf *smb, struct rte_sft_mbuf_info *mif,
 		SFT_TCP_LOG(DEBUG, "    FAILED TCP validation\n");
 		goto ct_err;
 	}
-	if (tcp->syn) {
-		status->ct_info = sft_tcp_handle_syn(ct, tcp, sender, peer);
-		SFT_TCP_LOG(DEBUG, "    SYN max_sent:%u\n",
-			    sender->max_sent_seq);
-		if (status->ct_info < 0) {
-			status->protocol_error = 1;
-			goto ct_err;
-		}
-	}
 	/*
 	 * check ACK flag before data.
 	 * if packet will be stashed due to out-of-order condition
@@ -785,15 +804,20 @@ sft_tcp_track_conn(struct sft_mbuf *smb, struct rte_sft_mbuf_info *mif,
 			goto ct_err;
 		}
 	}
-	/* FIN & RST both add a sequence to sender::max_sent_seq.
-	 * Keep these handlers AFTER data processing for better accounting
-	 */
-	if (tcp->fin) {
-		status->ct_info = sft_tcp_handle_fin(ct, tcp, sender, peer);
+	if (tcp->syn) {
+		sft_tcp_handle_syn(ct, tcp, sender, peer, status);
+		SFT_TCP_LOG(DEBUG, "    SYN max_sent:%u\n",
+			    sender->max_sent_seq);
+		if (status->ct_info < 0) {
+			status->protocol_error = 1;
+			goto ct_err;
+		}
+	} else if (tcp->fin) {
+		sft_tcp_handle_fin(ct, tcp, sender, peer, status);
 		SFT_TCP_LOG(DEBUG, "    FIN max_sent:%u\n",
 			    sender->max_sent_seq);
 	} else if (tcp->rst) {
-		status->ct_info = sft_tcp_handle_rst(ct, tcp, sender, peer);
+		sft_tcp_handle_rst(ct, tcp, sender, peer, status);
 		SFT_TCP_LOG(DEBUG, "    RST max_sent:%u\n",
 			    sender->max_sent_seq);
 	}
@@ -817,6 +841,11 @@ ct_err:
 		    sft_ct_state_name(ct->conn_state),
 		    rte_tcp_state_name(ct->conn_ctx[0].sock_state),
 		    rte_tcp_state_name(ct->conn_ctx[1].sock_state));
+	if (status->packet_error)
+		SFT_TCP_LOG(DEBUG, "    packet ERROR\n");
+	if (status->protocol_error)
+		SFT_TCP_LOG(DEBUG, "    protocol ERROR\n");
+
 	return;
 	RTE_SET_USED(error);
 }
