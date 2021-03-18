@@ -1,6 +1,8 @@
 INTERNAL {
 	global:
 
+	mlx5_class_driver_register;
+
 	mlx5_common_init;
 
 	mlx5_common_verbs_reg_mr;
@@ -8,6 +10,7 @@ INTERNAL {
 
 	mlx5_create_mr_ext;
 
+	mlx5_dev_is_pci;
 	mlx5_dev_to_pci_addr;
 
 	mlx5_devx_cmd_create_cq;
@@ -51,6 +54,7 @@ INTERNAL {
 
 	mlx5_get_ifname_sysfs;
 	mlx5_get_dbr;
+	mlx5_get_ibv_device; # WINDOWS_NO_EXPORT
 
 	mlx5_mp_init_primary;
 	mlx5_mp_uninit_primary;

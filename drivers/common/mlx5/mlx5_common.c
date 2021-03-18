@@ -8,6 +8,7 @@
 
 #include <rte_errno.h>
 #include <rte_mempool.h>
+#include <rte_class.h>
 #include <rte_malloc.h>
 
 #include "mlx5_common.h"
@@ -15,6 +16,7 @@
 #include "mlx5_common_utils.h"
 #include "mlx5_malloc.h"
 #include "mlx5_common_pci.h"
+#include "mlx5_common_private.h"
 
 int mlx5_common_logtype;
 
@@ -50,6 +52,320 @@ RTE_INIT_PRIO(mlx5_log_init, LOG)
 		rte_log_set_level(mlx5_common_logtype, RTE_LOG_NOTICE);
 }
 
+/* Head of list of drivers. */
+static TAILQ_HEAD(mlx5_drivers, mlx5_class_driver) drivers_list =
+				TAILQ_HEAD_INITIALIZER(drivers_list);
+
+/* Head of devices. */
+static TAILQ_HEAD(mlx5_devices, mlx5_common_device) devices_list =
+				TAILQ_HEAD_INITIALIZER(devices_list);
+
+static const struct {
+	const char *name;
+	unsigned int drv_class;
+} mlx5_classes[] = {
+	{ .name = "vdpa", .drv_class = MLX5_CLASS_VDPA },
+	{ .name = "net", .drv_class = MLX5_CLASS_NET },
+	{ .name = "regex", .drv_class = MLX5_CLASS_REGEX },
+};
+
+static int
+class_name_to_value(const char *class_name)
+{
+	unsigned int i;
+
+	for (i = 0; i < RTE_DIM(mlx5_classes); i++) {
+		if (strcmp(class_name, mlx5_classes[i].name) == 0)
+			return mlx5_classes[i].drv_class;
+	}
+	return -EINVAL;
+}
+
+static struct mlx5_class_driver *
+driver_get(uint32_t class)
+{
+	struct mlx5_class_driver *driver;
+
+	TAILQ_FOREACH(driver, &drivers_list, next) {
+		if ((uint32_t)driver->drv_class == class)
+			return driver;
+	}
+	return NULL;
+}
+
+static int
+parse_class_option(const struct rte_devargs *devargs)
+{
+	const char *cls;
+	struct rte_kvargs *kvlist = NULL;
+	int ret = 0;
+
+	if (devargs == NULL)
+		return 0;
+	if (devargs->cls != NULL) {
+		/* Global syntax. */
+		cls = devargs->cls->name;
+	} else {
+		/* Legacy syntax. */
+		kvlist = rte_kvargs_parse(devargs->args, NULL);
+		if (kvlist == NULL)
+			return -EINVAL;
+		cls = rte_kvargs_get(kvlist, RTE_DEVARGS_KEY_CLASS);
+	}
+	if (cls != NULL)
+		ret = class_name_to_value(cls);
+	if (kvlist != NULL)
+		rte_kvargs_free(kvlist);
+	return ret;
+}
+
+static const unsigned int mlx5_class_invalid_combinations[] = {
+	MLX5_CLASS_NET | MLX5_CLASS_VDPA,
+	/* New class combination should be added here. */
+};
+
+static int
+is_valid_class_combination(uint32_t user_classes)
+{
+	unsigned int i;
+
+	/* Verify if user specified unsupported combination. */
+	for (i = 0; i < RTE_DIM(mlx5_class_invalid_combinations); i++) {
+		if ((mlx5_class_invalid_combinations[i] & user_classes) ==
+		    mlx5_class_invalid_combinations[i])
+			return -EINVAL;
+	}
+	/* Not found any invalid class combination. */
+	return 0;
+}
+
+static bool
+device_class_enabled(const struct mlx5_common_device *device, uint32_t class)
+{
+	return (device->classes_loaded & class) > 0;
+}
+
+static bool
+mlx5_bus_match(const struct mlx5_class_driver *drv,
+	       const struct rte_device *dev)
+{
+	if (mlx5_dev_is_pci(dev))
+		return mlx5_dev_pci_match(drv, dev);
+	return true;
+}
+
+static struct mlx5_common_device *
+to_mlx5_device(const struct rte_device *rte_dev)
+{
+	struct mlx5_common_device *dev;
+
+	TAILQ_FOREACH(dev, &devices_list, next) {
+		if (rte_dev == dev->dev)
+			return dev;
+	}
+	return NULL;
+}
+
+static void
+dev_release(struct mlx5_common_device *dev)
+{
+	TAILQ_REMOVE(&devices_list, dev, next);
+	rte_free(dev);
+}
+
+static int
+drivers_remove(struct mlx5_common_device *dev, uint32_t enabled_classes)
+{
+	struct mlx5_class_driver *driver;
+	int local_ret = -ENODEV;
+	unsigned int i = 0;
+	int ret = 0;
+
+	enabled_classes &= dev->classes_loaded;
+	while (enabled_classes) {
+		driver = driver_get(RTE_BIT64(i));
+		if (driver != NULL) {
+			local_ret = driver->remove(dev->dev);
+			if (local_ret == 0)
+				dev->classes_loaded &= ~RTE_BIT64(i);
+			else if (ret == 0)
+				ret = local_ret;
+		}
+		enabled_classes &= ~RTE_BIT64(i);
+		i++;
+	}
+	if (local_ret != 0 && ret == 0)
+		ret = local_ret;
+	return ret;
+}
+
+static int
+drivers_probe(struct mlx5_common_device *dev, uint32_t user_classes)
+{
+	struct mlx5_class_driver *driver;
+	uint32_t enabled_classes = 0;
+	bool already_loaded;
+	int ret;
+
+	TAILQ_FOREACH(driver, &drivers_list, next) {
+		if ((driver->drv_class & user_classes) == 0)
+			continue;
+		if (!mlx5_bus_match(driver, dev->dev))
+			continue;
+		already_loaded = dev->classes_loaded & driver->drv_class;
+		if (already_loaded && driver->probe_again == 0) {
+			DRV_LOG(ERR, "Device %s is already probed",
+				dev->dev->name);
+			ret = -EEXIST;
+			goto probe_err;
+		}
+		ret = driver->probe(dev->dev);
+		if (ret < 0) {
+			DRV_LOG(ERR, "Failed to load driver %s",
+				driver->name);
+			goto probe_err;
+		}
+		enabled_classes |= driver->drv_class;
+	}
+	dev->classes_loaded |= enabled_classes;
+	return 0;
+probe_err:
+	/* Only unload drivers which are enabled which were enabled
+	 * in this probe instance.
+	 */
+	drivers_remove(dev, enabled_classes);
+	return ret;
+}
+
+int
+mlx5_common_dev_probe(struct rte_device *eal_dev)
+{
+	struct mlx5_common_device *dev;
+	uint32_t user_class = 0;
+	bool new_device = false;
+	int ret;
+
+	DRV_LOG(INFO, "probe device \"%s\".", eal_dev->name);
+	ret = parse_class_option(eal_dev->devargs);
+	if (ret < 0)
+		return ret;
+	user_class = ret;
+	if (user_class == 0)
+		/* Default to net class. */
+		user_class = MLX5_CLASS_NET;
+	dev = to_mlx5_device(eal_dev);
+	if (!dev) {
+		dev = rte_zmalloc("mlx5_common_device", sizeof(*dev), 0);
+		if (!dev)
+			return -ENOMEM;
+		dev->dev = eal_dev;
+		TAILQ_INSERT_HEAD(&devices_list, dev, next);
+		new_device = true;
+	} else {
+		/* Validate combination here. */
+		ret = is_valid_class_combination(user_class |
+						 dev->classes_loaded);
+		if (ret != 0) {
+			DRV_LOG(ERR, "Unsupported mlx5 classes supplied.");
+			return ret;
+		}
+	}
+	ret = drivers_probe(dev, user_class);
+	if (ret)
+		goto class_err;
+	return 0;
+class_err:
+	if (new_device)
+		dev_release(dev);
+	return ret;
+}
+
+int
+mlx5_common_dev_remove(struct rte_device *eal_dev)
+{
+	struct mlx5_common_device *dev;
+	int ret;
+
+	dev = to_mlx5_device(eal_dev);
+	if (!dev)
+		return -ENODEV;
+	/* Matching device found, cleanup and unload drivers. */
+	ret = drivers_remove(dev, dev->classes_loaded);
+	if (ret != 0)
+		dev_release(dev);
+	return ret;
+}
+
+int
+mlx5_common_dev_dma_map(struct rte_device *dev, void *addr, uint64_t iova,
+			size_t len)
+{
+	struct mlx5_class_driver *driver = NULL;
+	struct mlx5_class_driver *temp;
+	struct mlx5_common_device *mdev;
+	int ret = -EINVAL;
+
+	mdev = to_mlx5_device(dev);
+	if (!mdev)
+		return -ENODEV;
+	TAILQ_FOREACH(driver, &drivers_list, next) {
+		if (!device_class_enabled(mdev, driver->drv_class) ||
+		    driver->dma_map == NULL)
+			continue;
+		ret = driver->dma_map(dev, addr, iova, len);
+		if (ret)
+			goto map_err;
+	}
+	return ret;
+map_err:
+	TAILQ_FOREACH(temp, &drivers_list, next) {
+		if (temp == driver)
+			break;
+		if (device_class_enabled(mdev, temp->drv_class) &&
+		    temp->dma_map && temp->dma_unmap)
+			temp->dma_unmap(dev, addr, iova, len);
+	}
+	return ret;
+}
+
+int
+mlx5_common_dev_dma_unmap(struct rte_device *dev, void *addr, uint64_t iova,
+			  size_t len)
+{
+	struct mlx5_class_driver *driver;
+	struct mlx5_common_device *mdev;
+	int local_ret = -EINVAL;
+	int ret = 0;
+
+	mdev = to_mlx5_device(dev);
+	if (!mdev)
+		return -ENODEV;
+	/* There is no unmap error recovery in current implementation. */
+	TAILQ_FOREACH_REVERSE(driver, &drivers_list, mlx5_drivers, next) {
+		if (!device_class_enabled(mdev, driver->drv_class) ||
+		    driver->dma_unmap == NULL)
+			continue;
+		local_ret = driver->dma_unmap(dev, addr, iova, len);
+		if (local_ret && (ret == 0))
+			ret = local_ret;
+	}
+	if (local_ret)
+		ret = local_ret;
+	return ret;
+}
+
+void
+mlx5_class_driver_register(struct mlx5_class_driver *driver)
+{
+	mlx5_common_driver_on_register_pci(driver);
+	TAILQ_INSERT_TAIL(&drivers_list, driver, next);
+}
+
+static void mlx5_common_driver_init(void)
+{
+	mlx5_common_pci_init();
+}
+
 static bool mlx5_common_initialized;
 
 /**
@@ -64,7 +380,7 @@ mlx5_common_init(void)
 		return;
 
 	mlx5_glue_constructor();
-	mlx5_common_pci_init();
+	mlx5_common_driver_init();
 	mlx5_common_initialized = true;
 }
 
@@ -343,3 +659,5 @@ mlx5_devx_alloc_uar(void *ctx, int mapping)
 exit:
 	return uar;
 }
+
+RTE_PMD_EXPORT_NAME(mlx5_class_driver, __COUNTER__);
