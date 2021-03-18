@@ -291,6 +291,8 @@ mlx5_aso_ct_init_sq(struct mlx5_aso_sq *sq)
 			 (BYTEWISE_64BYTE << ASO_CSEG_DATA_MASK_MODE_OFFSET));
 		/* Data mask may be different for each modification. */
 		/* wqe->aso_cseg.data_mask = RTE_BE64(UINT64_MAX); */
+		wqe->general_cseg.flags = RTE_BE32(MLX5_COMP_ALWAYS <<
+						   MLX5_COMP_MODE_OFFSET);
 	}
 }
 
