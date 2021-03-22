@@ -14579,6 +14579,10 @@ flow_dv_action_query(struct rte_eth_dev *dev,
 					RTE_FLOW_ERROR_TYPE_UNSPECIFIED,
 					NULL,
 					"CT object is inactive");
+		((struct rte_flow_action_conntrack *)data)->peer_port =
+							ct->peer;
+		((struct rte_flow_action_conntrack *)data)->is_original_dir =
+							ct->is_original;
 		return mlx5_aso_ct_query_by_wqe(priv->sh, ct, data);
 	default:
 		return rte_flow_error_set(error, ENOTSUP,
