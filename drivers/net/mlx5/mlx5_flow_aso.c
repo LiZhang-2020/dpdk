@@ -283,14 +283,14 @@ mlx5_aso_ct_init_sq(struct mlx5_aso_sq *sq)
 		addr = (uint64_t)((uintptr_t)sq->mr.buf + i * 64);
 		wqe->aso_cseg.va_h = rte_cpu_to_be_32((uint32_t)(addr >> 32));
 		wqe->aso_cseg.va_l_r = rte_cpu_to_be_32((uint32_t)addr | 1u);
-		wqe->aso_cseg.operand_masks = rte_cpu_to_be_32
-			(0u |
-			 (ASO_OPER_LOGICAL_OR << ASO_CSEG_COND_OPER_OFFSET) |
-			 (ASO_OP_ALWAYS_TRUE << ASO_CSEG_COND_1_OPER_OFFSET) |
-			 (ASO_OP_ALWAYS_TRUE << ASO_CSEG_COND_0_OPER_OFFSET) |
-			 (BYTEWISE_64BYTE << ASO_CSEG_DATA_MASK_MODE_OFFSET));
-		/* Data mask may be different for each modification. */
-		/* wqe->aso_cseg.data_mask = RTE_BE64(UINT64_MAX); */
+		/*
+		 * The values of operand_masks are different for modify
+		 * and query.
+		 * And data_mask may be different for each modification. In
+		 * query, it could be zero and ignored.
+		 * CQE generation is always needed, in order to decide when
+		 * it is available to create the flow or read the data.
+		 */
 		wqe->general_cseg.flags = RTE_BE32(MLX5_COMP_ALWAYS <<
 						   MLX5_COMP_MODE_OFFSET);
 	}
@@ -1196,11 +1196,14 @@ mlx5_aso_ct_sq_query_single(struct mlx5_aso_ct_pools_mng *mng,
 	/*
 	 * There is no write request is required.
 	 * ASO_OPER_LOGICAL_AND and ASO_OP_ALWAYS_FALSE are both 0.
+	 * "BYTEWISE_64BYTE" is needed for a whole context.
 	 * Set to 0 directly to reduce an endian swap. (Modify should rewrite.)
 	 * "data_mask" is ignored.
 	 * Buffer address was already filled during initialization.
 	 */
-	wqe->aso_cseg.operand_masks = 0;
+	wqe->aso_cseg.operand_masks = rte_cpu_to_be_32(BYTEWISE_64BYTE <<
+			ASO_CSEG_DATA_MASK_MODE_OFFSET);
+	wqe->aso_cseg.data_mask = 0;
 	sq->head++;
 	/*
 	 * Each WQE contains 2 WQEBB's, even though
