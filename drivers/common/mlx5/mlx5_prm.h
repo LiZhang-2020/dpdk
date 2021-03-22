@@ -739,7 +739,8 @@ struct mlx5_ifc_fte_match_set_lyr_2_4_bits {
 	u8 tcp_flags[0x9];
 	u8 tcp_sport[0x10];
 	u8 tcp_dport[0x10];
-	u8 reserved_at_c0[0x14];
+	u8 reserved_at_c0[0x10];
+	u8 ipv4_ihl[0x4];
 	u8 l3_ok[0x1];
 	u8 l4_ok[0x1];
 	u8 ipv4_checksum_ok[0x1];

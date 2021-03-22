@@ -8091,6 +8091,9 @@ flow_dv_translate_item_ipv4(void *matcher, void *key,
 	*(uint32_t *)l24_m = ipv4_m->hdr.src_addr;
 	*(uint32_t *)l24_v = ipv4_m->hdr.src_addr & ipv4_v->hdr.src_addr;
 	tos = ipv4_m->hdr.type_of_service & ipv4_v->hdr.type_of_service;
+	MLX5_SET(fte_match_set_lyr_2_4, headers_m, ipv4_ihl, ipv4_m->hdr.ihl);
+	MLX5_SET(fte_match_set_lyr_2_4, headers_v, ipv4_ihl,
+		 ipv4_v->hdr.ihl & ipv4_m->hdr.ihl);
 	MLX5_SET(fte_match_set_lyr_2_4, headers_m, ip_ecn,
 		 ipv4_m->hdr.type_of_service);
 	MLX5_SET(fte_match_set_lyr_2_4, headers_v, ip_ecn, tos);
