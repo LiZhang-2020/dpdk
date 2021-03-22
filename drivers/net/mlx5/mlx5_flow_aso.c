@@ -435,8 +435,11 @@ mlx5_aso_queue_init(struct mlx5_dev_ctx_shared *sh,
 			&sh->ct_mng->aso_sq.mr, 0, sh->pdn))
 			return -1;
 		if (mlx5_aso_sq_create(sh->ctx, &sh->ct_mng->aso_sq, 0,
-			sh->tx_uar, sh->pdn, sh->eqn, MLX5_ASO_QUEUE_LOG_DESC))
+			sh->tx_uar, sh->pdn, sh->eqn,
+			MLX5_ASO_QUEUE_LOG_DESC)) {
+			mlx5_aso_devx_dereg_mr(&sh->ct_mng->aso_sq.mr);
 			return -1;
+		}
 		mlx5_aso_ct_init_sq(&sh->ct_mng->aso_sq);
 		break;
 	default:
