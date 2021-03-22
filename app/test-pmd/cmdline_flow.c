@@ -169,6 +169,7 @@ enum index {
 	ITEM_VLAN_INNER_TYPE,
 	ITEM_VLAN_HAS_MORE_VLAN,
 	ITEM_IPV4,
+	ITEM_IPV4_VER_IHL,
 	ITEM_IPV4_TOS,
 	ITEM_IPV4_FRAGMENT_OFFSET,
 	ITEM_IPV4_TTL,
@@ -1072,6 +1073,7 @@ static const enum index item_vlan[] = {
 };
 
 static const enum index item_ipv4[] = {
+	ITEM_IPV4_VER_IHL,
 	ITEM_IPV4_TOS,
 	ITEM_IPV4_FRAGMENT_OFFSET,
 	ITEM_IPV4_TTL,
@@ -2591,6 +2593,13 @@ static const struct token token_list[] = {
 		.priv = PRIV_ITEM(IPV4, sizeof(struct rte_flow_item_ipv4)),
 		.next = NEXT(item_ipv4),
 		.call = parse_vc,
+	},
+	[ITEM_IPV4_VER_IHL] = {
+		.name = "version_ihl",
+		.help = "match header length",
+		.next = NEXT(item_ipv4, NEXT_ENTRY(UNSIGNED), item_param),
+		.args = ARGS(ARGS_ENTRY(struct rte_flow_item_ipv4,
+				     hdr.version_ihl)),
 	},
 	[ITEM_IPV4_TOS] = {
 		.name = "tos",
@@ -8087,7 +8096,12 @@ update_fields(uint8_t *buf, struct rte_flow_item *item, uint16_t next_proto)
 		break;
 	case RTE_FLOW_ITEM_TYPE_IPV4:
 		ipv4 = (struct rte_ipv4_hdr *)buf;
-		ipv4->version_ihl = 0x45;
+		if (!ipv4->version_ihl)
+			/* Current implementation cannot set 4 IPV4 ihl bits.
+			 * If flow rule matches on IPv4::ihl testpmd will assign
+			 * both version & ihl bits together.
+			 */
+			ipv4->version_ihl = RTE_IPV4_VHL_DEF;
 		if (next_proto && ipv4->next_proto_id == 0)
 			ipv4->next_proto_id = (uint8_t)next_proto;
 		break;
