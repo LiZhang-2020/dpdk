@@ -30,8 +30,22 @@ extern "C" {
 /**
  * IPv4 Header
  */
+__extension__
 struct rte_ipv4_hdr {
-	uint8_t  version_ihl;		/**< version and header length */
+	union {
+		uint8_t version_ihl;    /**< version and header length */
+		struct {
+#if RTE_BYTE_ORDER == RTE_LITTLE_ENDIAN
+			uint8_t ihl:4;
+			uint8_t version:4;
+#elif RTE_BYTE_ORDER == RTE_BIG_ENDIAN
+			uint8_t version:4;
+			uint8_t ihl:4;
+#else
+#error "setup endian definition"
+#endif
+		};
+	};
 	uint8_t  type_of_service;	/**< type of service */
 	rte_be16_t total_length;	/**< length of packet */
 	rte_be16_t packet_id;		/**< packet ID */
