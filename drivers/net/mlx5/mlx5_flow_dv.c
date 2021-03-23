@@ -2428,19 +2428,19 @@ flow_dv_validate_item_gtp_psc(const struct rte_flow_item *item,
  *   0 on success, a negative errno value otherwise and rte_errno is set.
  */
 static int
-flow_dv_validate_item_ipv4(const struct rte_flow_item *item,
-			   uint64_t item_flags,
-			   uint64_t last_item,
-			   uint16_t ether_type,
-			   struct rte_flow_error *error)
+flow_dv_validate_item_ipv4(struct rte_eth_dev *dev,
+			   const struct rte_flow_item *item,
+			   uint64_t item_flags, uint64_t last_item,
+			   uint16_t ether_type, struct rte_flow_error *error)
 {
 	int ret;
+	struct mlx5_priv *priv = dev->data->dev_private;
 	const struct rte_flow_item_ipv4 *spec = item->spec;
 	const struct rte_flow_item_ipv4 *last = item->last;
 	const struct rte_flow_item_ipv4 *mask = item->mask;
 	rte_be16_t fragment_offset_spec = 0;
 	rte_be16_t fragment_offset_last = 0;
-	const struct rte_flow_item_ipv4 nic_ipv4_mask = {
+	struct rte_flow_item_ipv4 nic_ipv4_mask = {
 		.hdr = {
 			.src_addr = RTE_BE32(0xffffffff),
 			.dst_addr = RTE_BE32(0xffffffff),
@@ -2451,6 +2451,17 @@ flow_dv_validate_item_ipv4(const struct rte_flow_item *item,
 		},
 	};
 
+	if (mask && mask->hdr.ihl) {
+		int tunnel = !!(item_flags & MLX5_FLOW_LAYER_TUNNEL);
+		bool ihl_cap = !tunnel ? priv->config.hca_attr.outer_ipv4_ihl :
+			       priv->config.hca_attr.inner_ipv4_ihl;
+		if (!ihl_cap)
+			return rte_flow_error_set(error, ENOTSUP,
+						  RTE_FLOW_ERROR_TYPE_ITEM,
+						  item,
+						  "IPV4 ihl offload not supported");
+		nic_ipv4_mask.hdr.version_ihl = mask->hdr.version_ihl;
+	}
 	ret = mlx5_flow_validate_item_ipv4(item, item_flags, last_item,
 					   ether_type, &nic_ipv4_mask,
 					   MLX5_ITEM_RANGE_ACCEPTED, error);
@@ -6678,7 +6689,7 @@ flow_dv_validate(struct rte_eth_dev *dev, const struct rte_flow_attr *attr,
 		case RTE_FLOW_ITEM_TYPE_IPV4:
 			mlx5_flow_tunnel_ip_check(items, next_protocol,
 						  &item_flags, &tunnel);
-			ret = flow_dv_validate_item_ipv4(items, item_flags,
+			ret = flow_dv_validate_item_ipv4(dev, items, item_flags,
 							 last_item, ether_type,
 							 error);
 			if (ret < 0)
