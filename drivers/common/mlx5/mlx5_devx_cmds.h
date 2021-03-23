@@ -128,6 +128,8 @@ struct mlx5_hca_attr {
 	uint32_t ct_offload:1; /* General obj type ASO CT offload supported. */
 	uint32_t regexp_num_of_engines;
 	uint32_t log_max_ft_sampler_num:8;
+	uint32_t inner_ipv4_ihl:1;
+	uint32_t outer_ipv4_ihl:1;
 	uint32_t umr_modify_entity_size_disabled:1;
 	uint32_t umr_indirect_mkey_disabled:1;
 	uint32_t geneve_tlv_opt;

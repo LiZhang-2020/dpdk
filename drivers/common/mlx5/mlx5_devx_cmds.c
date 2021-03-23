@@ -807,9 +807,15 @@ mlx5_devx_cmd_query_hca_attr(void *ctx,
 		return -1;
 	}
 	hcattr = MLX5_ADDR_OF(query_hca_cap_out, out, capability);
-	attr->log_max_ft_sampler_num =
-			MLX5_GET(flow_table_nic_cap,
-			hcattr, flow_table_properties.log_max_ft_sampler_num);
+	attr->log_max_ft_sampler_num = MLX5_GET
+		(flow_table_nic_cap, hcattr,
+		 flow_table_properties_nic_receive.log_max_ft_sampler_num);
+	attr->inner_ipv4_ihl = MLX5_GET
+		(flow_table_nic_cap, hcattr,
+		 ft_field_support_2_nic_receive.inner_ipv4_ihl);
+	attr->outer_ipv4_ihl = MLX5_GET
+		(flow_table_nic_cap, hcattr,
+		 ft_field_support_2_nic_receive.outer_ipv4_ihl);
 
 	/* Query HCA offloads for Ethernet protocol. */
 	memset(in, 0, sizeof(in));

@@ -1569,9 +1569,34 @@ struct mlx5_ifc_flow_table_prop_layout_bits {
 	u8 reserved_at_c0[0x140];
 };
 
+/*
+ * Table 1872 - Flow Table Fields Supported 2 Format
+ */
+struct mlx5_ifc_ft_fields_support_2_bits {
+	u8 reserved_at_0[0x14];
+	u8 inner_ipv4_ihl[0x1];
+	u8 outer_ipv4_ihl[0x1];
+	u8 inner_l3_ok[0x1];
+	u8 inner_l4_ok[0x1];
+	u8 outer_l3_ok[0x1];
+	u8 outer_l4_ok[0x1];
+	u8 psp_header[0x1];
+	u8 inner_ipv4_checksum_ok[0x1];
+	u8 inner_l4_checksum_ok[0x1];
+	u8 outer_ipv4_checksum_ok[0x1];
+	u8 outer_l4_checksum_ok[0x1];
+};
+
 struct mlx5_ifc_flow_table_nic_cap_bits {
 	u8	   reserved_at_0[0x200];
-	struct mlx5_ifc_flow_table_prop_layout_bits flow_table_properties;
+	struct mlx5_ifc_flow_table_prop_layout_bits
+		flow_table_properties_nic_receive;
+	struct mlx5_ifc_flow_table_prop_layout_bits
+		flow_table_properties_unused[5];
+	u8         reserved_at_1C0[0x200];
+	u8         header_modify_nic_receive[0x400];
+	struct mlx5_ifc_ft_fields_support_2_bits
+		ft_field_support_2_nic_receive;
 };
 
 struct mlx5_ifc_cmd_hca_cap_2_bits {
