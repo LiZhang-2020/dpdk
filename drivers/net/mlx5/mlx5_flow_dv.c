@@ -4815,7 +4815,8 @@ mlx5_flow_item_field_width(enum rte_flow_field_id field)
 
 /**
  * Validate the generic modify field actions.
- *
+ * @param[in] dev
+ *   Pointer to the rte_eth_dev structure.
  * @param[in] action_flags
  *   Holds the actions detected until now.
  * @param[in] action
@@ -4830,11 +4831,14 @@ mlx5_flow_item_field_width(enum rte_flow_field_id field)
  *   a negative errno value otherwise and rte_errno is set.
  */
 static int
-flow_dv_validate_action_modify_field(const uint64_t action_flags,
+flow_dv_validate_action_modify_field(struct rte_eth_dev *dev,
+				   const uint64_t action_flags,
 				   const struct rte_flow_action *action,
 				   struct rte_flow_error *error)
 {
 	int ret = 0;
+	struct mlx5_priv *priv = dev->data->dev_private;
+	struct mlx5_dev_config *config = &priv->config;
 	const struct rte_flow_action_modify_field *action_modify_field =
 		action->conf;
 	uint32_t dst_width =
@@ -4913,6 +4917,15 @@ flow_dv_validate_action_modify_field(const uint64_t action_flags,
 				NULL,
 				"modifications of an arbitrary"
 				" place in a packet is not supported");
+	if (action_modify_field->dst.field == RTE_FLOW_FIELD_MARK ||
+	    action_modify_field->src.field == RTE_FLOW_FIELD_MARK) {
+		if (config->dv_xmeta_en == MLX5_XMETA_MODE_LEGACY ||
+		    !mlx5_flow_ext_mreg_supported(dev))
+			return rte_flow_error_set(error, ENOTSUP,
+					RTE_FLOW_ERROR_TYPE_ACTION, action,
+					"cannot modify mark without extended"
+					" metadata register support");
+	}
 	if (action_modify_field->operation != RTE_FLOW_MODIFY_SET)
 		return rte_flow_error_set(error, EINVAL,
 				RTE_FLOW_ERROR_TYPE_ACTION,
@@ -7500,9 +7513,10 @@ flow_dv_validate(struct rte_eth_dev *dev, const struct rte_flow_attr *attr,
 						RTE_FLOW_ERROR_TYPE_ACTION,
 						NULL, "modify field action "
 						"is not supported for group 0");
-			ret = flow_dv_validate_action_modify_field(action_flags,
-								 actions,
-								 error);
+			ret = flow_dv_validate_action_modify_field(dev,
+								   action_flags,
+								   actions,
+								   error);
 			if (ret < 0)
 				return ret;
 			if (action_flags & MLX5_FLOW_ACTION_SAMPLE)
