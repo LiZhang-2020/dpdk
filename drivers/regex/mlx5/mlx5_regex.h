@@ -128,6 +128,8 @@ int mlx5_devx_regex_database_stop(void *ctx, uint8_t engine);
 int mlx5_devx_regex_database_resume(void *ctx, uint8_t engine);
 int mlx5_devx_regex_database_program(void *ctx, uint8_t engine,
 				     uint32_t umem_id, uint64_t umem_offset);
+int mlx5_devx_regex_database_disconnect(void *ctx, uint8_t engine,
+					uint32_t umem_id);
 
 /* mlx5_regex_control.c */
 int mlx5_regex_qp_setup(struct rte_regexdev *dev, uint16_t qp_ind,

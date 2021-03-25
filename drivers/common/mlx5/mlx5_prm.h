@@ -3154,7 +3154,8 @@ struct regexp_params_field_select_bits {
 };
 
 struct mlx5_ifc_regexp_params_bits {
-	u8 reserved_at_0[0x1f];
+	u8 db_umem_free[0x1];
+	u8 reserved_at_0[0x1e];
 	u8 stop_engine[0x1];
 	u8 db_umem_id[0x20];
 	u8 db_umem_offset[0x40];
