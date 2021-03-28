@@ -218,6 +218,28 @@ typedef int (*sft_entry_decode_t)(struct rte_eth_dev *dev, uint16_t queue,
 
 /**
  *  @internal
+ *  Query sft entry hw counters.
+ * @param dev
+ *   ethdev handle of port.
+ * @param queue
+ *   The sft working queue.
+ * @param entry
+ *   The entry to query.
+ * @param data[out]
+ *   The output statistic.
+ * @param error[out]
+ *   Verbose of the error.
+ *
+ * @return
+ *   Negative errno value on error, 0 on success.
+ */
+typedef int
+(*sft_query_t)(const struct rte_eth_dev *dev, uint16_t queue,
+		struct rte_sft_entry *entry, struct rte_flow_query_count *data,
+		struct rte_sft_error *error);
+
+/**
+ *  @internal
  *  Debug PMD sft
  */
 typedef void
@@ -241,6 +263,7 @@ struct rte_sft_ops {
 	sft_entry_modify_t sft_entry_modify;
 	sft_entry_destroy_t sft_entry_destroy;
 	sft_entry_decode_t sft_entry_decode;
+	sft_query_t sft_query;
 	sft_debug_t sft_debug;
 };
 

@@ -62,6 +62,9 @@ static struct {
 #define SFT_DATA_LEN (sft_priv->conf.app_data_len * sizeof(int))
 #define SFT_IPFRAG_BUCKETS_NUM 128
 
+#define SFT_OFFLOAD_QUERY_REPL_ERROR (1ul << 0)
+#define SFT_OFFLOAD_QUERY_INIT_ERROR (1ul << 1)
+
 static inline uint64_t
 sft_calc_max_ipfrag_cycles(void)
 {
@@ -174,11 +177,18 @@ retry:
 static void
 sft_update_stat(struct sft_mbuf *smb, struct sft_lib_entry *entry, uint32_t dir)
 {
-	rte_spinlock_lock(&(sft_priv->age[entry->queue].entries_sl));
-	entry->last_activity_ts = time(NULL);
-	rte_spinlock_unlock(&(sft_priv->age[entry->queue].entries_sl));
-	entry->nb_bytes[dir] += smb->m_in->pkt_len;
-	entry->nb_packets[dir]++;
+	if (entry->action_specs.actions & RTE_SFT_ACTION_COUNT) {
+		if (!entry->sft_entry[dir]) {
+			/* update only if not counted in hardware already */
+			entry->nb_bytes_sw[dir] += smb->m_in->pkt_len;
+			entry->nb_packets_sw[dir]++;
+		}
+	}
+	if (entry->action_specs.actions & RTE_SFT_ACTION_AGE) {
+		rte_spinlock_lock(&(sft_priv->age[entry->queue].entries_sl));
+		entry->last_activity_ts = time(NULL);
+		rte_spinlock_unlock(&(sft_priv->age[entry->queue].entries_sl));
+	}
 }
 
 static void
@@ -765,21 +775,14 @@ sft_hit_actions(const struct sft_lib_entry *entry,
 				     &entry->stpl[1].flow_5tuple,
 				     entry->action_specs.reverse_nat,
 				     &ctx[1][rx]);
-	if (entry->action_specs.actions & RTE_SFT_ACTION_COUNT) {
+	if (entry->action_specs.actions & RTE_SFT_ACTION_COUNT ||
+	    entry->action_specs.actions & RTE_SFT_ACTION_AGE) {
 		actions[0][fx].type = RTE_FLOW_ACTION_TYPE_COUNT;
 		actions[0][fx].conf = &ctx[0][fx];
 		actions[1][rx].type = RTE_FLOW_ACTION_TYPE_COUNT;
 		actions[1][rx].conf = &ctx[1][rx];
 		fx++;
 		rx++;
-	}
-	if (entry->action_specs.actions & RTE_SFT_ACTION_AGE) {
-		actions[0][fx].type = RTE_FLOW_ACTION_TYPE_AGE;
-		actions[0][fx].conf = &ctx[0][fx];
-		actions[1][rx].type = RTE_FLOW_ACTION_TYPE_AGE;
-		actions[1][rx].conf = &ctx[1][rx];
-		ctx[0][fx++].age.timeout = entry->action_specs.aging;
-		ctx[1][rx++].age.timeout = entry->action_specs.aging;
 	}
 	RTE_VERIFY(fx < SFT_ACTIONS_NUM);
 	RTE_VERIFY(rx < SFT_ACTIONS_NUM);
@@ -1331,28 +1334,86 @@ rte_sft_flow_get_status(const uint16_t queue, const uint32_t fid,
 	return 0;
 }
 
+static int
+sft_flow_query(struct sft_lib_entry *entry,
+	       struct rte_flow_query_count *reply_data,
+		   struct rte_flow_query_count *init_data,
+	       struct rte_sft_error *error)
+{
+	int ret = 0, reply_ret = 0, init_ret = 0;
+	struct rte_eth_dev *dev[2];
+	const struct rte_sft_ops *ops[2];
+
+	dev[0] = &rte_eth_devices[entry->stpl[0].port_id];
+	dev[1] = &rte_eth_devices[entry->stpl[1].port_id];
+	sft_get_dev_ops(dev, entry, ops);
+	if (ops[0] && entry->sft_entry[0]) {
+		reply_ret = ops[0]->sft_query(dev[0], entry->queue,
+					      entry->sft_entry[0],
+					      reply_data, error);
+		if (reply_ret)
+			ret |= SFT_OFFLOAD_QUERY_REPL_ERROR;
+	}
+	if (ops[1] && entry->sft_entry[1]) {
+		init_ret = ops[1]->sft_query(dev[1], entry->queue,
+					     entry->sft_entry[1],
+					     init_data, error);
+		if (init_ret)
+			ret |= SFT_OFFLOAD_QUERY_INIT_ERROR;
+	}
+	return ret;
+}
+
 int
 rte_sft_flow_query(uint16_t queue, uint32_t fid,
 		   struct rte_sft_query_data *data,
 		   struct rte_sft_error *error)
 {
 	struct sft_lib_entry *entry = NULL;
+	struct rte_flow_query_count repl_cnt, init_cnt;
+	int ret = 0;
 
 	sft_fid_locate_entry(queue, fid, &entry);
 	if (!entry)
 		return rte_sft_error_set(error, ENOENT,
-					 RTE_SFT_ERROR_TYPE_UNSPECIFIED, NULL,
-					 "invalid fid value");
-	data->nb_bytes[0] = entry->nb_bytes[0];
-	data->nb_bytes[1] = entry->nb_bytes[1];
-	data->nb_bytes_valid = 1;
-	data->nb_packets[0] = entry->nb_packets[0];
-	data->nb_packets[1] = entry->nb_packets[1];
-	data->nb_packets_valid = 1;
-	data->age = time(NULL) - entry->last_activity_ts;
-	data->nb_age_valid = 1;
-	data->aging = entry->action_specs.aging;
-	data->nb_aging_valid = 1;
+					 RTE_SFT_ERROR_TYPE_FLOW_NOT_DEFINED,
+					 NULL, "invalid fid value");
+	if (!(entry->action_specs.actions & RTE_SFT_ACTION_COUNT) &&
+	    !(entry->action_specs.actions & RTE_SFT_ACTION_AGE))
+		return rte_sft_error_set(error, ENOENT,
+					 RTE_SFT_ERROR_TYPE_UNSPECIFIED,
+					 NULL, "action not configured");
+	memset(&repl_cnt, 0, sizeof(repl_cnt));
+	memset(&init_cnt, 0, sizeof(init_cnt));
+	ret = sft_flow_query(entry, &repl_cnt, &init_cnt, error);
+	if (entry->action_specs.actions & RTE_SFT_ACTION_COUNT) {
+		if (!(ret & SFT_OFFLOAD_QUERY_REPL_ERROR)) {
+			entry->nb_bytes_hw[0] = repl_cnt.bytes;
+			entry->nb_packets_hw[0] = repl_cnt.hits;
+		}
+		data->nb_bytes[0] =
+			entry->nb_bytes_sw[0] + entry->nb_bytes_hw[0];
+		data->nb_packets[0] =
+			entry->nb_packets_sw[0] + entry->nb_packets_hw[0];
+		if (!(ret & SFT_OFFLOAD_QUERY_INIT_ERROR)) {
+			entry->nb_bytes_hw[1] += init_cnt.bytes;
+			entry->nb_packets_hw[1] = init_cnt.hits;
+		}
+		data->nb_bytes[1] =
+			entry->nb_bytes_sw[1] + entry->nb_bytes_hw[1];
+		data->nb_bytes_valid = 1;
+		data->nb_packets[1] =
+			entry->nb_packets_sw[1] + entry->nb_packets_hw[1];
+		data->nb_packets_valid = 1;
+	}
+	if (entry->action_specs.actions & RTE_SFT_ACTION_AGE) {
+		data->age = RTE_MIN((uint32_t)difftime(time(NULL),
+						       entry->last_activity_ts),
+				    entry->action_specs.aging);
+		data->nb_age_valid = 1;
+		data->aging = entry->action_specs.aging;
+		data->nb_aging_valid = 1;
+	}
 	return 0;
 }
 
@@ -1545,9 +1606,11 @@ void
 sft_query_alarm(void *param)
 {
 	struct sft_lib_entry *entry;
+	struct rte_flow_query_count repl_cnt, init_cnt;
 	time_t now = time(NULL);
 	bool trigger_event = false;
-	uint16_t port_id;
+	uint16_t port_id = 0;
+	int ret = 0;
 	uint16_t i;
 
 	RTE_SET_USED(param);
@@ -1557,12 +1620,22 @@ sft_query_alarm(void *param)
 		if (TAILQ_EMPTY(&(sft_priv->age[i].aged_entries)))
 			sft_priv->age[i].event_triggered = false;
 		TAILQ_FOREACH(entry, &(sft_priv->age[i].armed_entries), next) {
-			RTE_SFT_LOG(DEBUG,
-				    "%lu: SFT entry %u was last active "
-				    "on queue %u at %" PRIu64 "\n",
-				    now, entry->fid, i,
-				    (uint64_t)entry->last_activity_ts);
-			if ((uint64_t)(now - entry->last_activity_ts) >=
+			memset(&repl_cnt, 0, sizeof(repl_cnt));
+			memset(&init_cnt, 0, sizeof(init_cnt));
+			ret = sft_flow_query(entry, &repl_cnt, &init_cnt, NULL);
+			if (!(ret & SFT_OFFLOAD_QUERY_REPL_ERROR) &&
+			    entry->nb_packets_hw[0] != repl_cnt.hits)
+				entry->last_activity_ts =
+					RTE_MIN((time_t)difftime(time(NULL),
+						entry->last_activity_ts),
+						entry->last_activity_ts);
+			if (!(ret & SFT_OFFLOAD_QUERY_INIT_ERROR) &&
+			    entry->nb_packets_hw[1] != init_cnt.hits)
+				entry->last_activity_ts =
+					RTE_MIN((time_t)difftime(time(NULL),
+						entry->last_activity_ts),
+						entry->last_activity_ts);
+			if ((uint64_t)difftime(now, entry->last_activity_ts) >=
 			    entry->action_specs.aging) {
 				TAILQ_REMOVE(&(sft_priv->age[i].armed_entries),
 					     entry, next);
@@ -1571,17 +1644,16 @@ sft_query_alarm(void *param)
 					entry, next);
 				entry->aged = true;
 				RTE_SFT_LOG(DEBUG,
-					    "%lu: SFT entry %u aged out "
-					    "on queue %u since %" PRIu64 "\n",
-					    now, entry->fid, i,
+					    "%" PRIu64 ": SFT entry %u aged out"
+					    " on queue %u since %" PRIu64,
+					    (uint64_t)now, entry->fid, i,
 					    (uint64_t)entry->last_activity_ts);
 				trigger_event = true;
 				port_id = entry->stpl[0].port_id;
 			}
 		}
 		rte_spinlock_unlock(&(sft_priv->age[i].entries_sl));
-		if (trigger_event &&
-			!sft_priv->age[i].event_triggered) {
+		if (trigger_event && !sft_priv->age[i].event_triggered) {
 			sft_priv->age[i].event_triggered = true;
 			rte_eth_dev_callback_process(&rte_eth_devices[port_id],
 						RTE_ETH_EVENT_SFT_AGED, &i);
