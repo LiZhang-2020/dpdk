@@ -1143,6 +1143,22 @@ mlx5_sft_debug(const struct rte_eth_dev *dev, struct rte_sft_entry *entry[2],
 	}
 }
 
+static int
+mlx5_sft_query(const struct rte_eth_dev *dev, uint16_t queue,
+	       struct rte_sft_entry *entry, struct rte_flow_query_count *data,
+		   struct rte_sft_error *error)
+{
+	struct rte_flow_action query_action[] = {
+		[0] = { .type = RTE_FLOW_ACTION_TYPE_COUNT },
+		[1] = { .type = RTE_FLOW_ACTION_TYPE_END },
+	};
+	RTE_SET_USED(queue);
+	RTE_SET_USED(error);
+
+	return rte_flow_query(dev->data->port_id, entry->sft_l0_flow,
+			      query_action, data, NULL);
+}
+
 static const struct rte_sft_ops mlx5_sft_ops = {
 	.sft_start = mlx5_sft_start,
 	.sft_stop = mlx5_sft_stop,
@@ -1150,6 +1166,7 @@ static const struct rte_sft_ops mlx5_sft_ops = {
 	.sft_entry_modify = mlx5_sft_entry_modify,
 	.sft_entry_destroy = mlx5_sft_entry_destroy,
 	.sft_entry_decode = mlx5_sft_entry_decode,
+	.sft_query = mlx5_sft_query,
 	.sft_debug = mlx5_sft_debug,
 };
 
