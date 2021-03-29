@@ -679,11 +679,11 @@ vhost_destroy_device_notify(struct virtio_net *dev)
 	struct rte_vdpa_device *vdpa_dev;
 
 	if (dev->flags & VIRTIO_DEV_RUNNING) {
+		dev->flags &= ~VIRTIO_DEV_RUNNING;
+		dev->notify_ops->destroy_device(dev->vid);
 		vdpa_dev = dev->vdpa_dev;
 		if (vdpa_dev)
 			vdpa_dev->ops->dev_close(dev->vid);
-		dev->flags &= ~VIRTIO_DEV_RUNNING;
-		dev->notify_ops->destroy_device(dev->vid);
 	}
 }
 
