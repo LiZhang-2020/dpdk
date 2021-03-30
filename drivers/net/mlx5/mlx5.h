@@ -317,6 +317,13 @@ struct mlx5_drop {
 	struct mlx5_rxq_obj *rxq; /* Rx queue object. */
 };
 
+/* Loopback dummy queue necessary due to Verbs API. */
+struct mlx5_lb_ctx {
+	struct ibv_qp *qp; /* QP object. */
+	void *ibv_cq; /* Completion Queue. */
+	uint16_t refcnt; /* Reference count for representors. */
+};
+
 #define MLX5_COUNTERS_PER_POOL 512
 #define MLX5_MAX_PENDING_QUERIES 4
 #define MLX5_CNT_CONTAINER_RESIZE 64
@@ -1069,6 +1076,7 @@ struct mlx5_dev_ctx_shared {
 	/* Meter pools management structure. */
 	struct mlx5_aso_ct_pools_mng *ct_mng;
 	/* Management data for ASO connection tracking. */
+	struct mlx5_lb_ctx self_lb; /* QP to enable self loopback for Devx. */
 	struct mlx5_dev_shared_port port[]; /* per device port data array. */
 };
 
@@ -1260,6 +1268,7 @@ struct mlx5_priv {
 	/* Whether meter_id in first REG_C(color REG_C). */
 	unsigned int mtr_flow_id_reg_in_first:1;
 	/* Whether meter flow_id in first REG_C(color REG_C). */
+	unsigned int lb_used:1; /* Loopback queue is referred to. */
 	uint16_t domain_id; /* Switch domain identifier. */
 	uint16_t vport_id; /* Associated VF vport index (if any). */
 	uint32_t vport_meta_tag; /* Used for vport index match ove VF LAG. */

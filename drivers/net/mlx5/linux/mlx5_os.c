@@ -1759,7 +1759,6 @@ err_secondary:
 		priv->obj_ops.txq_obj_new = mlx5_os_txq_obj_new;
 		priv->obj_ops.txq_obj_release = mlx5_os_txq_obj_release;
 		mlx5_queue_counter_id_prepare(eth_dev);
-
 	} else {
 		priv->obj_ops = ibv_obj_ops;
 	}
