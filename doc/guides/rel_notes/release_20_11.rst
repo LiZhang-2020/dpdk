@@ -691,6 +691,9 @@ API Changes
 * mempool: Added ``MEMPOOL_F_NON_IO`` flag to give a hint to DPDK components
   that objects from this pool will not be used for device IO (e.g. DMA).
 
+* cryptodev: The experimental raw data path API for dequeue
+  ``rte_cryptodev_raw_dequeue_burst`` got a new parameter
+  ``max_nb_to_dequeue`` to provide flexible control on dequeue.
 
 ABI Changes
 -----------
