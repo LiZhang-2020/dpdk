@@ -1670,7 +1670,7 @@ flow_verbs_translate(struct rte_eth_dev *dev,
 
 	MLX5_ASSERT(wks);
 	rss_desc = &wks->rss_desc;
-	if (priority == MLX5_FLOW_PRIO_RSVD)
+	if (priority == MLX5_FLOW_LOWEST_PRIO_INDICATOR)
 		priority = priv->sh->flow_max_priority - 1;
 	for (; actions->type != RTE_FLOW_ACTION_TYPE_END; actions++) {
 		int ret;

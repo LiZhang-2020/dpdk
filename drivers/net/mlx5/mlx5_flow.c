@@ -968,6 +968,58 @@ mlx5_flow_ext_mreg_supported(struct rte_eth_dev *dev)
 }
 
 /**
+ * Get the lowest priority.
+ *
+ * @param[in] dev
+ *   Pointer to the Ethernet device structure.
+ * @param[in] attributes
+ *   Pointer to device flow rule attributes.
+ *
+ * @return
+ *   The value of lowest priority of flow.
+ */
+uint32_t
+mlx5_get_lowest_priority(struct rte_eth_dev *dev,
+			  const struct rte_flow_attr *attr)
+{
+	struct mlx5_priv *priv = dev->data->dev_private;
+
+	if (!attr->group && !attr->transfer)
+		return priv->sh->flow_max_priority - 2;
+	return MLX5_NON_ROOT_FLOW_MAX_PRIO - 1;
+}
+
+/**
+ * Calculate matcher priority of the flow.
+ *
+ * @param[in] dev
+ *   Pointer to the Ethernet device structure.
+ * @param[in] attr
+ *   Pointer to device flow rule attributes.
+ * @param[in] subpriority
+ *   The priority based on the items.
+ * @return
+ *   The matcher priority of the flow.
+ */
+uint16_t
+mlx5_get_matcher_priority(struct rte_eth_dev *dev,
+			  const struct rte_flow_attr *attr,
+			  uint32_t subpriority)
+{
+	uint16_t priority = (uint16_t)attr->priority;
+	struct mlx5_priv *priv = dev->data->dev_private;
+
+	if (!attr->group && !attr->transfer) {
+		if (attr->priority == MLX5_FLOW_LOWEST_PRIO_INDICATOR)
+			priority = priv->sh->flow_max_priority - 1;
+		return mlx5_flow_adjust_priority(dev, priority, subpriority);
+	}
+	if (attr->priority == MLX5_FLOW_LOWEST_PRIO_INDICATOR)
+		priority = MLX5_NON_ROOT_FLOW_MAX_PRIO;
+	return priority * 3 + subpriority;
+}
+
+/**
  * Verify the @p item specifications (spec, last, mask) are compatible with the
  * NIC capabilities.
  *
@@ -1860,7 +1912,7 @@ mlx5_flow_validate_attributes(struct rte_eth_dev *dev,
 		return rte_flow_error_set(error, ENOTSUP,
 					  RTE_FLOW_ERROR_TYPE_ATTR_GROUP,
 					  NULL, "groups is not supported");
-	if (attributes->priority != MLX5_FLOW_PRIO_RSVD &&
+	if (attributes->priority != MLX5_FLOW_LOWEST_PRIO_INDICATOR &&
 	    attributes->priority >= priority_max)
 		return rte_flow_error_set(error, ENOTSUP,
 					  RTE_FLOW_ERROR_TYPE_ATTR_PRIORITY,
@@ -4269,7 +4321,7 @@ flow_dv_mreg_create_cb(void *tool_ctx, void *cb_ctx)
 		};
 	} else {
 		/* Default rule, wildcard match. */
-		attr.priority = MLX5_FLOW_PRIO_RSVD;
+		attr.priority = MLX5_FLOW_LOWEST_PRIO_INDICATOR;
 		items[0] = (struct rte_flow_item){
 			.type = RTE_FLOW_ITEM_TYPE_END,
 		};
@@ -6574,7 +6626,7 @@ flow_list_create(struct rte_eth_dev *dev, enum mlx5_flow_type type,
 	 */
 	if (external || dev->data->dev_started ||
 	    (attr->group == MLX5_FLOW_MREG_CP_TABLE_GROUP &&
-	     attr->priority == MLX5_FLOW_PRIO_RSVD)) {
+	     attr->priority == MLX5_FLOW_LOWEST_PRIO_INDICATOR)) {
 		ret = flow_drv_apply(dev, flow, error);
 		if (ret < 0)
 			goto error;
@@ -7233,7 +7285,7 @@ mlx5_ctrl_flow_vlan(struct rte_eth_dev *dev,
 	struct mlx5_priv *priv = dev->data->dev_private;
 	const struct rte_flow_attr attr = {
 		.ingress = 1,
-		.priority = MLX5_FLOW_PRIO_RSVD,
+		.priority = MLX5_FLOW_LOWEST_PRIO_INDICATOR,
 	};
 	struct rte_flow_item items[] = {
 		{
@@ -8309,7 +8361,7 @@ mlx5_flow_discover_mreg_c(struct rte_eth_dev *dev)
 	for (idx = REG_C_2; idx <= REG_C_7; ++idx) {
 		struct rte_flow_attr attr = {
 			.group = MLX5_FLOW_MREG_CP_TABLE_GROUP,
-			.priority = MLX5_FLOW_PRIO_RSVD,
+			.priority = MLX5_FLOW_LOWEST_PRIO_INDICATOR,
 			.ingress = 1,
 		};
 		struct rte_flow_item items[] = {
@@ -9897,8 +9949,11 @@ mlx5_flow_discover_priorities(struct rte_eth_dev *dev)
 			dev->data->port_id, ret);
 		return -rte_errno;
 	}
-	DRV_LOG(INFO, "port %u flow maximum priority: %d",
-		dev->data->port_id, ret);
+	DRV_LOG(INFO, "port %u supported flow priorities:"
+		" 0-%d for ingress or egress root table,"
+		" 0-%d for non-root table or transfer root table.",
+		dev->data->port_id, ret - 2,
+		MLX5_NON_ROOT_FLOW_MAX_PRIO - 1);
 	return ret;
 }
 
