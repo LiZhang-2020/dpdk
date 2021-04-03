@@ -527,7 +527,7 @@ mlx5_flow_meter_validate(struct mlx5_priv *priv, uint32_t meter_id,
 			 struct rte_mtr_error *error)
 {
 	/* Meter must use global drop action. */
-	if (!priv->sh->esw_drop_action)
+	if (!priv->sh->dr_drop_action)
 		return -rte_mtr_error_set(error, ENOTSUP,
 					  RTE_MTR_ERROR_TYPE_MTR_PARAMS,
 					  NULL,
