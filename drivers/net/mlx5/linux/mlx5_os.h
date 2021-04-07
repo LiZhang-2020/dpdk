@@ -21,4 +21,6 @@ enum {
 /* mlx5_ethdev_os.c */
 
 int mlx5_get_ifname(const struct rte_eth_dev *dev, char (*ifname)[IF_NAMESIZE]);
+int mlx5_auxiliary_get_ifindex(const char *sf_name);
+
 #endif /* RTE_PMD_MLX5_OS_H_ */
