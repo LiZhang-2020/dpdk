@@ -24,6 +24,7 @@
 #include "mlx5.h"
 #include "mlx5_utils.h"
 #include "mlx5_rxtx.h"
+#include "mlx5_rx.h"
 
 /* TX burst subroutines return codes. */
 enum mlx5_txcmp_code {

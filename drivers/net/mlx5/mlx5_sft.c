@@ -10,6 +10,7 @@
 #include "mlx5_flow.h"
 #include "mlx5_malloc.h"
 #include "mlx5_rxtx.h"
+#include "mlx5_rx.h"
 #include "mlx5_sft.h"
 
 #define MLX5_SFT_TABLE_FRAGMENT_FLOW_PRIORITY 0
