@@ -61,10 +61,15 @@ enum mlx5_txcmp_code {
 
 #define MLX5_TXOFF_CONFIG(mask) (olx & MLX5_TXOFF_CONFIG_##mask)
 
+#define MLX5_TXOFF_PRE_DECL(func) \
+uint16_t mlx5_tx_burst_##func(void *txq, \
+			      struct rte_mbuf **pkts, \
+			      uint16_t pkts_n)
+
 #define MLX5_TXOFF_DECL(func, olx) \
-static uint16_t mlx5_tx_burst_##func(void *txq, \
-				     struct rte_mbuf **pkts, \
-				    uint16_t pkts_n) \
+uint16_t mlx5_tx_burst_##func(void *txq, \
+			      struct rte_mbuf **pkts, \
+			      uint16_t pkts_n) \
 { \
 	return mlx5_tx_burst_tmpl((struct mlx5_txq_data *)txq, \
 		    pkts, pkts_n, (olx)); \
@@ -227,6 +232,54 @@ void mlx5_txq_info_get(struct rte_eth_dev *dev, uint16_t queue_id,
 		       struct rte_eth_txq_info *qinfo);
 int mlx5_tx_burst_mode_get(struct rte_eth_dev *dev, uint16_t tx_queue_id,
 			   struct rte_eth_burst_mode *mode);
+
+/* mlx5_rxtx.c */
+
+MLX5_TXOFF_PRE_DECL(full_empw);
+MLX5_TXOFF_PRE_DECL(none_empw);
+MLX5_TXOFF_PRE_DECL(md_empw);
+MLX5_TXOFF_PRE_DECL(mt_empw);
+MLX5_TXOFF_PRE_DECL(mtsc_empw);
+MLX5_TXOFF_PRE_DECL(mti_empw);
+MLX5_TXOFF_PRE_DECL(mtv_empw);
+MLX5_TXOFF_PRE_DECL(mtiv_empw);
+MLX5_TXOFF_PRE_DECL(sc_empw);
+MLX5_TXOFF_PRE_DECL(sci_empw);
+MLX5_TXOFF_PRE_DECL(scv_empw);
+MLX5_TXOFF_PRE_DECL(sciv_empw);
+MLX5_TXOFF_PRE_DECL(i_empw);
+MLX5_TXOFF_PRE_DECL(v_empw);
+MLX5_TXOFF_PRE_DECL(iv_empw);
+
+MLX5_TXOFF_PRE_DECL(full);
+MLX5_TXOFF_PRE_DECL(none);
+MLX5_TXOFF_PRE_DECL(md);
+MLX5_TXOFF_PRE_DECL(mt);
+MLX5_TXOFF_PRE_DECL(mtsc);
+MLX5_TXOFF_PRE_DECL(mti);
+MLX5_TXOFF_PRE_DECL(mtv);
+MLX5_TXOFF_PRE_DECL(mtiv);
+MLX5_TXOFF_PRE_DECL(sc);
+MLX5_TXOFF_PRE_DECL(sci);
+MLX5_TXOFF_PRE_DECL(scv);
+MLX5_TXOFF_PRE_DECL(sciv);
+MLX5_TXOFF_PRE_DECL(i);
+MLX5_TXOFF_PRE_DECL(v);
+MLX5_TXOFF_PRE_DECL(iv);
+
+MLX5_TXOFF_PRE_DECL(full_ts_nompw);
+MLX5_TXOFF_PRE_DECL(full_ts_nompwi);
+MLX5_TXOFF_PRE_DECL(full_ts);
+MLX5_TXOFF_PRE_DECL(full_ts_noi);
+MLX5_TXOFF_PRE_DECL(none_ts);
+MLX5_TXOFF_PRE_DECL(mdi_ts);
+MLX5_TXOFF_PRE_DECL(mti_ts);
+MLX5_TXOFF_PRE_DECL(mtiv_ts);
+
+MLX5_TXOFF_PRE_DECL(none_mpw);
+MLX5_TXOFF_PRE_DECL(mci_mpw);
+MLX5_TXOFF_PRE_DECL(mc_mpw);
+MLX5_TXOFF_PRE_DECL(i_mpw);
 
 
 static __rte_always_inline struct mlx5_uar_data *
