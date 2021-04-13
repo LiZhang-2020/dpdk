@@ -168,7 +168,7 @@ get_out:
 	if (ret != 0) {
 		if (allocated_data) {
 			/* Free duplicated data. */
-			free((char *)(uintptr_t)devargs->data);
+			free(devargs->data);
 			devargs->data = NULL;
 		}
 		rte_errno = -ret;
