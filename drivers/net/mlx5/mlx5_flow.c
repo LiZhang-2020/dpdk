@@ -5955,8 +5955,8 @@ mlx5_flow_list_create(struct rte_eth_dev *dev, uint32_t *list,
 		rte_spinlock_unlock(&priv->flow_list_lock);
 	}
 	flow_rxq_flags_set(dev, flow);
-	mlx5_free(translated_actions);
 	tunnel = flow_tunnel_from_rule(dev, attr, items, actions);
+	mlx5_free(translated_actions);
 	if (tunnel) {
 		flow->tunnel = 1;
 		flow->tunnel_id = tunnel->tunnel_id;
