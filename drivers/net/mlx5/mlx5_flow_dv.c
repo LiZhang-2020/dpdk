@@ -14726,7 +14726,7 @@ __flow_dv_action_ct_update(struct rte_eth_dev *dev, uint32_t idx,
 	const struct rte_flow_action_conntrack *new_prf;
 	int ret = 0;
 	uint16_t owner = (uint16_t)MLX5_ACTION_CTX_CT_GET_OWNER(idx);
-	uint16_t dev_idx;
+	uint32_t dev_idx;
 
 	if (PORT_ID(priv) != owner)
 		return rte_flow_error_set(error, EACCES,
