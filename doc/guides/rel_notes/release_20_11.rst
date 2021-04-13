@@ -454,6 +454,10 @@ New Features
 
 * **Updated mlx5 compress PMD.**
   * Added devarg to allow manual setting of Huffman block size.
+* **Added a cryptodev feature flag to support cipher wrapped keys.**
+
+  A new feature flag has been added to allow application to provide
+  cipher wrapped keys in session xforms.
 
 Removed Items
 -------------
