@@ -446,6 +446,11 @@ New Features
   Added a new compress PMD driver for Bluefield 2 adapters.
 
   See the :doc:`../compressdevs/mlx5` for more details.
+* **Added support of multiple data-units in cryptodev API.**
+
+  The cryptodev library has been enhanced to allow operations on multiple
+  data-units for AES-XTS algorithm, the data-unit length should be set in the
+  transformation. A capability for it was added too.
 
 * **Updated mlx5 compress PMD.**
   * Added devarg to allow manual setting of Huffman block size.
