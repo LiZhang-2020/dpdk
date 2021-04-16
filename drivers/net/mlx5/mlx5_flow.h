@@ -1351,7 +1351,9 @@ flow_aso_ct_get_by_dev_idx(struct rte_eth_dev *dev, uint32_t idx)
 	idx--;
 	MLX5_ASSERT((idx / MLX5_ASO_CT_ACTIONS_PER_POOL) < mng->n);
 	/* Bit operation AND could be used. */
+	rte_rwlock_read_lock(&mng->resize_rwl);
 	pool = mng->pools[idx / MLX5_ASO_CT_ACTIONS_PER_POOL];
+	rte_rwlock_read_unlock(&mng->resize_rwl);
 	return &pool->actions[idx % MLX5_ASO_CT_ACTIONS_PER_POOL];
 }
 

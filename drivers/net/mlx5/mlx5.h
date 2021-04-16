@@ -993,6 +993,7 @@ struct mlx5_aso_ct_pools_mng {
 	uint16_t n; /* Total number of pools. */
 	uint16_t next; /* Number of pools in use, index of next free pool. */
 	rte_spinlock_t ct_sl; /* The ASO CT free list lock. */
+	rte_rwlock_t resize_rwl; /* The ASO CT pool resize lock. */
 	struct aso_ct_list free_cts; /* Free ASO CT objects list. */
 	struct mlx5_aso_sq aso_sq; /* ASO queue objects. */
 };

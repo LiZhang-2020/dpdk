@@ -691,6 +691,7 @@ mlx5_flow_aso_ct_mng_init(struct mlx5_dev_ctx_shared *sh)
 		return -rte_errno;
 	}
 	rte_spinlock_init(&sh->ct_mng->ct_sl);
+	rte_rwlock_init(&sh->ct_mng->resize_rwl);
 	LIST_INIT(&sh->ct_mng->free_cts);
 	return 0;
 }

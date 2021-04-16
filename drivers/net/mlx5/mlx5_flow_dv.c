@@ -12037,6 +12037,7 @@ flow_dv_aso_ct_pools_resize(struct rte_eth_dev *dev)
 		rte_errno = ENOMEM;
 		return -rte_errno;
 	}
+	rte_rwlock_write_lock(&mng->resize_rwl);
 	/* ASO SQ/QP was already initialized in the startup. */
 	if (old_pools) {
 		/* Realloc could be an alternative choice. */
@@ -12046,6 +12047,7 @@ flow_dv_aso_ct_pools_resize(struct rte_eth_dev *dev)
 	}
 	mng->n = resize;
 	mng->pools = pools;
+	rte_rwlock_write_unlock(&mng->resize_rwl);
 	return 0;
 }
 
