@@ -342,6 +342,7 @@ socket_listener(void *socket)
 {
 	while (1) {
 		pthread_t th;
+		int rc;
 		struct socket *s = (struct socket *)socket;
 		int s_accepted = accept(s->sock, NULL, NULL);
 		if (s_accepted < 0) {
@@ -360,7 +361,19 @@ socket_listener(void *socket)
 			__atomic_add_fetch(s->num_clients, 1,
 					__ATOMIC_RELAXED);
 		}
-		pthread_create(&th, NULL, s->fn, (void *)(uintptr_t)s_accepted);
+		rc = pthread_create(&th, NULL, s->fn,
+				    (void *)(uintptr_t)s_accepted);
+		if (rc != 0) {
+			snprintf(telemetry_log_error,
+				sizeof(telemetry_log_error),
+				"Error with create client thread: %s\n",
+				 strerror(rc));
+			close(s_accepted);
+			if (s->num_clients != NULL)
+				__atomic_sub_fetch(s->num_clients, 1,
+						   __ATOMIC_RELAXED);
+			continue;
+		}
 		pthread_detach(th);
 	}
 	return NULL;
@@ -425,6 +438,7 @@ static int
 telemetry_legacy_init(const char *runtime_dir, rte_cpuset_t *cpuset)
 {
 	pthread_t t_old;
+	int rc;
 
 	if (num_legacy_callbacks == 1) {
 		snprintf(telemetry_log_error, sizeof(telemetry_log_error),
@@ -443,9 +457,18 @@ telemetry_legacy_init(const char *runtime_dir, rte_cpuset_t *cpuset)
 	v1_socket.sock = create_socket(v1_socket.path);
 	if (v1_socket.sock < 0)
 		return -1;
-	pthread_create(&t_old, NULL, socket_listener, &v1_socket);
+	rc = pthread_create(&t_old, NULL, socket_listener, &v1_socket);
+	if (rc != 0) {
+		snprintf(telemetry_log_error, sizeof(telemetry_log_error),
+				"Error with create legcay socket thread: %s\n",
+			 	strerror(rc));
+		close(v1_socket.sock);
+		v1_socket.sock = -1;
+		unlink(v1_socket.path);
+		v1_socket.path[0] = '\0';
+		return -1;
+	}
 	pthread_setaffinity_np(t_old, sizeof(*cpuset), cpuset);
-
 	return 0;
 }
 
@@ -453,6 +476,7 @@ static int
 telemetry_v2_init(const char *runtime_dir, rte_cpuset_t *cpuset)
 {
 	pthread_t t_new;
+	int rc;
 
 	v2_socket.num_clients = &v2_clients;
 	rte_telemetry_register_cmd("/", list_commands,
@@ -472,7 +496,17 @@ telemetry_v2_init(const char *runtime_dir, rte_cpuset_t *cpuset)
 	v2_socket.sock = create_socket(v2_socket.path);
 	if (v2_socket.sock < 0)
 		return -1;
-	pthread_create(&t_new, NULL, socket_listener, &v2_socket);
+	rc = pthread_create(&t_new, NULL, socket_listener, &v2_socket);
+	if (rc != 0) {
+		snprintf(telemetry_log_error, sizeof(telemetry_log_error),
+				"Error with create socket thread: %s\n",
+			 	strerror(rc));
+		close(v2_socket.sock);
+		v2_socket.sock = -1;
+		unlink(v2_socket.path);
+		v2_socket.path[0] = '\0';
+		return -1;
+	}
 	pthread_setaffinity_np(t_new, sizeof(*cpuset), cpuset);
 	atexit(unlink_sockets);
 
