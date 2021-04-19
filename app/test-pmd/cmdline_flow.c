@@ -305,11 +305,12 @@ enum index {
 	ITEM_SFT_ZONE_VALID,
 	ITEM_SFT_STATE,
 	ITEM_SFT_USER_DATA,
-	ITEM_SANITY_CHECKS,
-	ITEM_SANITY_CHECKS_VALUE,
 	ITEM_POL_PORT,
 	ITEM_POL_METER,
 	ITEM_POL_POLICY,
+	ITEM_INTEGRITY,
+	ITEM_INTEGRITY_LEVEL,
+	ITEM_INTEGRITY_VALUE,
 
 	/* Validate/create actions. */
 	ACTIONS,
@@ -1014,7 +1015,7 @@ static const enum index next_item[] = {
 	ITEM_ECPRI,
 	ITEM_GENEVE_OPT,
 	ITEM_SFT,
-	ITEM_SANITY_CHECKS,
+	ITEM_INTEGRITY,
 	END_SET,
 	ZERO,
 };
@@ -1378,13 +1379,15 @@ static const enum index item_sft[] = {
 	ZERO,
 };
 
-static const enum index item_sanity_checks[] = {
-	ITEM_SANITY_CHECKS_VALUE,
+static const enum index item_integrity[] = {
+	ITEM_INTEGRITY_LEVEL,
+	ITEM_INTEGRITY_VALUE,
 	ZERO,
 };
 
-static const enum index item_sanity_checks_value[] = {
-	ITEM_SANITY_CHECKS_VALUE,
+static const enum index item_integrity_lv[] = {
+	ITEM_INTEGRITY_LEVEL,
+	ITEM_INTEGRITY_VALUE,
 	ITEM_NEXT,
 	ZERO,
 };
@@ -3594,23 +3597,28 @@ static const struct token token_list[] = {
 			     ARGS_ENTRY_ARB(sizeof(struct rte_flow_item_sft),
 					    ITEM_SFT_USER_DATA_SIZE)),
 	},
-	[ITEM_SANITY_CHECKS] = {
-		.name = "sanity_checks",
-		.help = "match sanity checks",
-		.priv = PRIV_ITEM(SANITY_CHECKS,
-				  sizeof(struct rte_flow_item_sanity_checks)),
-		.next = NEXT(item_sanity_checks),
+	[ITEM_INTEGRITY] = {
+		.name = "integrity",
+		.help = "match packet integrity",
+		.priv = PRIV_ITEM(INTEGRITY,
+				  sizeof(struct rte_flow_item_integrity)),
+		.next = NEXT(item_integrity),
 		.call = parse_vc,
 	},
-	[ITEM_SANITY_CHECKS_VALUE] = {
-		.name = "value",
-		.help = "value",
-		.next = NEXT(item_sanity_checks_value, NEXT_ENTRY(UNSIGNED),
+	[ITEM_INTEGRITY_LEVEL] = {
+		.name = "level",
+		.help = "integrity level",
+		.next = NEXT(item_integrity_lv, NEXT_ENTRY(UNSIGNED),
 			     item_param),
-		.args = ARGS(ARGS_ENTRY(struct rte_flow_item_sanity_checks,
-					value)),
+		.args = ARGS(ARGS_ENTRY(struct rte_flow_item_integrity, level)),
 	},
-
+	[ITEM_INTEGRITY_VALUE] = {
+		.name = "value",
+		.help = "integrity value",
+		.next = NEXT(item_integrity_lv, NEXT_ENTRY(UNSIGNED),
+			     item_param),
+		.args = ARGS(ARGS_ENTRY(struct rte_flow_item_integrity, value)),
+	},
 	/* Validate/create actions. */
 	[ACTIONS] = {
 		.name = "actions",
