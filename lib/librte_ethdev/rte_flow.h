@@ -562,13 +562,13 @@ enum rte_flow_item_type {
 	RTE_FLOW_ITEM_TYPE_SFT,
 
 	/**
-	 * [META]
+	 * Matches on packet integrity.
+	 * For some devices application needs to enable integration checks in HW
+	 * before using this item.
 	 *
-	 * Matches packet sanity checks.
-	 *
-	 * See struct rte_flow_item_sanity_checks.
+	 * @see struct rte_flow_item_integrity.
 	 */
-	RTE_FLOW_ITEM_TYPE_SANITY_CHECKS,
+	RTE_FLOW_ITEM_TYPE_INTEGRITY,
 
 	/**
 	 * [META]
@@ -1762,44 +1762,42 @@ static const struct rte_flow_item_conntrack rte_flow_item_conntrack_mask = {
 };
 #endif
 
-/**
- * @warning
- * @b EXPERIMENTAL: this structure may change without prior notice
- *
- * RTE_FLOW_ITEM_TYPE_SANITY_CHECKS
- *
- * Enable matching on packet validity based on HW checks for the L3 and L4
- * layers.
- */
-struct rte_flow_item_sanity_checks {
-	uint32_t level;
-	/**< Packet encapsulation level the item should apply to.
+struct rte_flow_item_integrity {
+	/**< Tunnel encapsulation level the item should apply to.
 	 * @see rte_flow_action_rss
 	 */
-RTE_STD_C11
+	uint32_t level;
+	RTE_STD_C11
 	union {
+		__extension__
 		struct {
-			uint32_t l3_ok:1;
-			/**< L3 layer is valid after passing all HW checking. */
-			uint32_t l4_ok:1;
-			/**< L4 layer is valid after passing all HW checking. */
-			uint32_t l3_ok_csum:1;
-			/**< L3 layer checksum is valid. */
-			uint32_t l4_ok_csum:1;
+			/**< The packet is valid after passing all HW checks. */
+			uint64_t packet_ok:1;
+			/**< L2 layer is valid after passing all HW checks. */
+			uint64_t l2_ok:1;
+			/**< L3 layer is valid after passing all HW checks. */
+			uint64_t l3_ok:1;
+			/**< L4 layer is valid after passing all HW checks. */
+			uint64_t l4_ok:1;
+			/**< L2 layer CRC is valid. */
+			uint64_t l2_crc_ok:1;
+			/**< IPv4 layer checksum is valid. */
+			uint64_t ipv4_csum_ok:1;
 			/**< L4 layer checksum is valid. */
-			uint32_t reserved:28;
+			uint64_t l4_csum_ok:1;
+			/**< The l3 length is smaller than the frame length. */
+			uint64_t l3_len_ok:1;
+			uint64_t reserved:56;
 		};
-		uint32_t  value;
+		uint64_t value;
 	};
 };
 
 #ifndef __cplusplus
-static const struct rte_flow_item_sanity_checks
-	rte_flow_item_sanity_checks_mask = {
-	.l3_ok = 1,
-	.l4_ok = 1,
-	.l3_ok_csum = 1,
-	.l4_ok_csum = 1,
+static const struct rte_flow_item_integrity
+rte_flow_item_integrity_mask = {
+	.level = 0,
+	.value = 0,
 };
 #endif
 
