@@ -114,6 +114,16 @@ struct mlx5_dev_spawn_data {
 	struct mlx5_bond_info *bond_info;
 };
 
+/** Data associated with socket messages. */
+struct mlx5_flow_dump_req  {
+	uint32_t port_id;
+	uint64_t flow_id;
+} __rte_packed;
+
+struct mlx5_flow_dump_ack {
+	int rc; /**< Return code. */
+};
+
 /** Key string for IPC. */
 #define MLX5_MP_NAME "net_mlx5_mp"
 
@@ -1593,11 +1603,8 @@ uint32_t mlx5_counter_alloc(struct rte_eth_dev *dev);
 void mlx5_counter_free(struct rte_eth_dev *dev, uint32_t cnt);
 int mlx5_counter_query(struct rte_eth_dev *dev, uint32_t cnt,
 		       bool clear, uint64_t *pkts, uint64_t *bytes);
-int mlx5_flow_dev_dump(struct rte_eth_dev *dev, FILE *file,
-		       struct rte_flow_error *error);
-int mlx5_flow_dump_rule(struct rte_eth_dev *dev, struct rte_flow *flow,
-			FILE *file,
-			struct rte_flow_error *error);
+int mlx5_flow_dev_dump(struct rte_eth_dev *dev, struct rte_flow *flow,
+			FILE *file, struct rte_flow_error *error);
 void mlx5_flow_rxq_dynf_metadata_set(struct rte_eth_dev *dev);
 int mlx5_flow_get_aged_flows(struct rte_eth_dev *dev, void **contexts,
 			uint32_t nb_contexts, struct rte_flow_error *error);

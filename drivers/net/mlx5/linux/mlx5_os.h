@@ -14,6 +14,9 @@ enum {
 	DEV_SYSFS_PATH_MAX = IBV_SYSFS_PATH_MAX + 1
 };
 
+/* Maximal data of sendmsg message(in bytes). */
+#define MLX5_SENDMSG_MAX 64
+
 #define PCI_DRV_FLAGS  (RTE_PCI_DRV_INTR_LSC | \
 			RTE_PCI_DRV_INTR_RMV | \
 			RTE_PCI_DRV_PROBE_AGAIN)

@@ -650,7 +650,6 @@ static const struct rte_flow_ops mlx5_flow_ops = {
 	.isolate = mlx5_flow_isolate,
 	.query = mlx5_flow_query,
 	.dev_dump = mlx5_flow_dev_dump,
-	.dev_single_dump = mlx5_flow_dump_rule,
 	.get_aged_flows = mlx5_flow_get_aged_flows,
 	.shared_action_create = mlx5_shared_action_create,
 	.shared_action_destroy = mlx5_shared_action_destroy,
@@ -7637,6 +7636,8 @@ mlx5_flow_discover_mreg_c(struct rte_eth_dev *dev)
  *
  * @param[in] dev
  *    The pointer to Ethernet device.
+ * @param[in] flow_idx
+ *    The pointer to flow rule.
  * @param[in] file
  *   A pointer to a file for output.
  * @param[out] error
@@ -7646,33 +7647,16 @@ mlx5_flow_discover_mreg_c(struct rte_eth_dev *dev)
  *   0 on success, a nagative value otherwise.
  */
 int
-mlx5_flow_dev_dump(struct rte_eth_dev *dev,
-		   FILE *file,
-		   struct rte_flow_error *error __rte_unused)
-{
-	struct mlx5_priv *priv = dev->data->dev_private;
-	struct mlx5_dev_ctx_shared *sh = priv->sh;
-
-	if (!priv->config.dv_flow_en) {
-		if (fputs("device dv flow disabled\n", file) <= 0)
-			return -errno;
-		return -ENOTSUP;
-	}
-	return mlx5_devx_cmd_flow_dump(sh->fdb_domain, sh->rx_domain,
-				       sh->tx_domain, file);
-}
-
-int
-mlx5_flow_dump_rule(struct rte_eth_dev *dev, struct rte_flow *flow_idx,
+mlx5_flow_dev_dump(struct rte_eth_dev *dev, struct rte_flow *flow_idx,
 			FILE *file,
 			struct rte_flow_error *error __rte_unused)
 {
 	struct mlx5_priv *priv = dev->data->dev_private;
+	struct mlx5_dev_ctx_shared *sh = priv->sh;
 	uint32_t handle_idx;
 	int ret;
 	struct mlx5_flow_handle *dh;
-	struct rte_flow *flow = mlx5_ipool_get(priv->sh->ipool
-			[MLX5_IPOOL_RTE_FLOW], (uintptr_t)(void *)flow_idx);
+	struct rte_flow *flow;
 
 	if (!priv->config.dv_flow_en) {
 		if (fputs("device dv flow disabled\n", file) <= 0)
@@ -7680,8 +7664,17 @@ mlx5_flow_dump_rule(struct rte_eth_dev *dev, struct rte_flow *flow_idx,
 		return -ENOTSUP;
 	}
 
+	/* dump all */
+	if (!flow_idx)
+		return mlx5_devx_cmd_flow_dump(sh->fdb_domain,
+					sh->rx_domain,
+					sh->tx_domain, file);
+	/* dump one */
+	flow = mlx5_ipool_get(priv->sh->ipool
+		    [MLX5_IPOOL_RTE_FLOW], (uintptr_t)(void *)flow_idx);
 	if (!flow)
 		return -ENOENT;
+
 	handle_idx = flow->dev_handles;
 	while (handle_idx) {
 		dh = mlx5_ipool_get(priv->sh->ipool[MLX5_IPOOL_MLX5_FLOW],
