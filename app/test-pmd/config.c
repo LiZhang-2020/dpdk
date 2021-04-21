@@ -2320,9 +2320,9 @@ port_flow_dump(portid_t port_id, bool dump_all, uint32_t rule_id,
 		}
 	}
 	if (!dump_all)
-		ret = rte_flow_dump(port_id, tmpFlow, file, &error);
+		ret = rte_flow_dev_dump(port_id, tmpFlow, file, &error);
 	else
-		ret = rte_flow_dev_dump(port_id, file, &error);
+		ret = rte_flow_dev_dump(port_id, NULL, file, &error);
 
 	if (ret) {
 		port_flow_complain(&error);
