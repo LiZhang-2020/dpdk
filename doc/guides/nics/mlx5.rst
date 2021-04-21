@@ -1825,10 +1825,7 @@ all flows with assistance of external tools.
 
    .. code-block:: console
 
-       To dump all flows:
-       rte_flow_dev_dump(port, file, NULL);
-       and dump one flow:
-       rte_flow_dump(port, flow, file, NULL);
+       rte_flow_dev_dump(port, flow,file, NULL);
 
 #. Dump human-readable flows from raw file:
 

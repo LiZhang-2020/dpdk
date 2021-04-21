@@ -100,11 +100,6 @@ struct rte_flow_ops {
 	/** See rte_flow_dev_dump(). */
 	int (*dev_dump)
 		(struct rte_eth_dev *dev,
-		 FILE *file,
-		 struct rte_flow_error *error);
-	/** See rte_flow_dump(). */
-	int (*dev_single_dump)
-		(struct rte_eth_dev *dev,
 		 struct rte_flow *flow,
 		 FILE *file,
 		 struct rte_flow_error *error);

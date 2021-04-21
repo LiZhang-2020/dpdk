@@ -236,7 +236,6 @@ EXPERIMENTAL {
 	rte_flow_action_ctx_destroy;
 	rte_flow_action_ctx_query;
 	rte_flow_action_ctx_update;
-	rte_flow_dump;
 	rte_flow_shared_action_create;
 	rte_flow_shared_action_destroy;
 	rte_flow_shared_action_query;

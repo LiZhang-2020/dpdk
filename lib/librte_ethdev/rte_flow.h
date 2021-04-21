@@ -3569,29 +3569,8 @@ enum rte_flow_conv_op {
  *
  * @param[in] port_id
  *    The port identifier of the Ethernet device.
- * @param[in] file
- *   A pointer to a file for output.
- * @param[out] error
- *   Perform verbose error reporting if not NULL. PMDs initialize this
- *   structure in case of error only.
- * @return
- *   0 on success, a nagative value otherwise.
- */
-__rte_experimental
-int
-rte_flow_dev_dump(uint16_t port_id, FILE *file, struct rte_flow_error *error);
-
-/**
- * @warning
- * @b EXPERIMENTAL: this API may change without prior notice.
- *
- * Dump hardware internal representation information of
- * one rte flow to file.
- *
- * @param[in] port_id
- *   The port identifier of the Ethernet device.
  * @param[in] flow
- *   The pointer of rte flow.
+ *   The pointer of flow rule to dump. Dump all rules if NULL.
  * @param[in] file
  *   A pointer to a file for output.
  * @param[out] error
@@ -3602,7 +3581,7 @@ rte_flow_dev_dump(uint16_t port_id, FILE *file, struct rte_flow_error *error);
  */
 __rte_experimental
 int
-rte_flow_dump(uint16_t port_id, struct rte_flow *flow,
+rte_flow_dev_dump(uint16_t port_id, struct rte_flow *flow,
 			FILE *file, struct rte_flow_error *error);
 
 /**
