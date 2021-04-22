@@ -15,7 +15,6 @@
 #include "mlx5_common_os.h"
 #include "mlx5_common_utils.h"
 #include "mlx5_malloc.h"
-#include "mlx5_common_pci.h"
 #include "mlx5_common_private.h"
 
 int mlx5_common_logtype;
