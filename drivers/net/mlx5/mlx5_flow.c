@@ -99,6 +99,8 @@ struct mlx5_flow_expand_node {
 	 * RSS types bit-field associated with this node
 	 * (see ETH_RSS_* definitions).
 	 */
+	uint8_t optional;
+	/**< optional expand field. Default 0 to expand, 1 not go deeper. */
 };
 
 /** Object returned by mlx5_flow_expand_rss(). */
@@ -242,7 +244,7 @@ mlx5_flow_expand_rss(struct mlx5_flow_expand_rss *buf, size_t size,
 		     const struct mlx5_flow_expand_node graph[],
 		     int graph_root_index)
 {
-	const int elt_n = 8;
+	const int elt_n = 16;
 	const struct rte_flow_item *item;
 	const struct mlx5_flow_expand_node *node = &graph[graph_root_index];
 	const int *next_node;
@@ -365,7 +367,7 @@ mlx5_flow_expand_rss(struct mlx5_flow_expand_rss *buf, size_t size,
 			}
 		}
 		/* Go deeper. */
-		if (node->next) {
+		if (!node->optional && node->next) {
 			next_node = node->next;
 			if (stack_pos++ == elt_n) {
 				rte_errno = E2BIG;
@@ -404,6 +406,7 @@ enum mlx5_expansion {
 	MLX5_EXPANSION_VXLAN,
 	MLX5_EXPANSION_VXLAN_GPE,
 	MLX5_EXPANSION_GRE,
+	MLX5_EXPANSION_GRE_KEY,
 	MLX5_EXPANSION_MPLS,
 	MLX5_EXPANSION_ETH,
 	MLX5_EXPANSION_ETH_VLAN,
@@ -512,8 +515,15 @@ static const struct mlx5_flow_expand_node mlx5_support_expansion[] = {
 	},
 	[MLX5_EXPANSION_GRE] = {
 		.next = MLX5_FLOW_EXPAND_RSS_NEXT(MLX5_EXPANSION_IPV4,
-						  MLX5_EXPANSION_IPV6),
+						  MLX5_EXPANSION_IPV6,
+						  MLX5_EXPANSION_GRE_KEY),
 		.type = RTE_FLOW_ITEM_TYPE_GRE,
+	},
+	[MLX5_EXPANSION_GRE_KEY] = {
+		.next = MLX5_FLOW_EXPAND_RSS_NEXT(MLX5_EXPANSION_IPV4,
+						  MLX5_EXPANSION_IPV6),
+		.type = RTE_FLOW_ITEM_TYPE_GRE_KEY,
+		.optional = 1,
 	},
 	[MLX5_EXPANSION_MPLS] = {
 		.next = MLX5_FLOW_EXPAND_RSS_NEXT(MLX5_EXPANSION_IPV4,
