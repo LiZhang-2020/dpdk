@@ -1418,7 +1418,7 @@ err_secondary:
 				err = -err;
 				goto error;
 			}
-			DRV_LOG(WARNING, "CT ASO is supported.");
+			DRV_LOG(DEBUG, "CT ASO is supported.");
 			sh->ct_aso_en = 1;
 		}
 #endif /* HAVE_MLX5_DR_CREATE_ACTION_ASO */
