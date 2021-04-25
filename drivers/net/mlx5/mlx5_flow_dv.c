@@ -14714,8 +14714,9 @@ flow_dv_action_query(struct rte_eth_dev *dev,
 					"CT object owned by another port");
 		dev_idx = MLX5_ACTION_CTX_CT_GET_IDX(idx);
 		ct = flow_aso_ct_get_by_dev_idx(dev, dev_idx);
+		MLX5_ASSERT(ct);
 		if (!ct->refcnt)
-			return rte_flow_error_set(error, ENOMEM,
+			return rte_flow_error_set(error, EFAULT,
 					RTE_FLOW_ERROR_TYPE_UNSPECIFIED,
 					NULL,
 					"CT object is inactive");
@@ -14723,7 +14724,12 @@ flow_dv_action_query(struct rte_eth_dev *dev,
 							ct->peer;
 		((struct rte_flow_action_conntrack *)data)->is_original_dir =
 							ct->is_original;
-		return mlx5_aso_ct_query_by_wqe(priv->sh, ct, data);
+		if (mlx5_aso_ct_query_by_wqe(priv->sh, ct, data))
+			return rte_flow_error_set(error, EIO,
+					RTE_FLOW_ERROR_TYPE_UNSPECIFIED,
+					NULL,
+					"Failed to query CT context");
+		return 0;
 	default:
 		return rte_flow_error_set(error, ENOTSUP,
 					  RTE_FLOW_ERROR_TYPE_ACTION,
