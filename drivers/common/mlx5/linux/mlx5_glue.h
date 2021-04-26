@@ -261,6 +261,7 @@ struct mlx5_glue {
 		(struct ibv_context *context,
 		 struct mlx5dv_flow_matcher_attr *matcher_attr,
 		 void *tbl);
+	int (*dv_set_matcher_size)(void *matcher, uint32_t hint);
 	void *(*dv_create_flow)(void *matcher, void *match_value,
 			  size_t num_actions, void *actions[]);
 	void *(*dv_create_flow_action_counter)(void *obj, uint32_t  offset);

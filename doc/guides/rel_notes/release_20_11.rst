@@ -223,6 +223,7 @@ New Features
   * Allow unknown link speed.
   * Added support for metering policy actions of yellow color.
   * Added support for metering trTCM RFC2698 and RFC4115.
+  * Added "hint_num_of_rules_log" attribute to hint rdma-core.
 
   Updated Mellanox mlx5 vDPA driver:
 

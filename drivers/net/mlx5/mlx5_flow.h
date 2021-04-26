@@ -501,6 +501,8 @@ struct mlx5_flow_dv_matcher {
 	uint16_t crc; /**< CRC of key. */
 	uint16_t priority; /**< Priority of matcher. */
 	struct mlx5_flow_dv_match_params mask; /**< Matcher mask. */
+	uint32_t hint_num_of_rules_log;
+	/**< Hint number of rules of the matcher. */
 };
 
 #define MLX5_ENCAP_MAX_LEN 132

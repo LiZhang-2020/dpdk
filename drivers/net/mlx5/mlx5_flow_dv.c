@@ -11213,6 +11213,15 @@ flow_dv_matcher_create_cb(void *tool_ctx, void *cb_ctx)
 				   "cannot create matcher");
 		return NULL;
 	}
+	/*
+	 * Matcher size is not supported in old version.
+	 * Just ignore the error and continue if the matcher is created
+	 * successfully. Reduce the log prints.
+	 */
+	if (ref->hint_num_of_rules_log != 0)
+		if (mlx5_glue->dv_set_matcher_size(resource->matcher_object,
+						ref->hint_num_of_rules_log))
+			DRV_LOG(DEBUG, "Failed to set hint_num_of_rules_log.");
 	return &resource->entry;
 }
 
@@ -14434,6 +14443,7 @@ flow_dv_translate(struct rte_eth_dev *dev,
 	tbl_key.is_egress = attr->egress;
 	tbl_key.level = dev_flow->dv.group;
 	tbl_key.id = dev_flow->dv.table_id;
+	matcher.hint_num_of_rules_log = attr->hint_num_of_rules_log;
 	if (flow_dv_matcher_register(dev, &matcher, &tbl_key, dev_flow,
 				     tunnel, attr->group, error))
 		return -rte_errno;
@@ -17399,6 +17409,7 @@ flow_dv_create_mtr_tbls(struct rte_eth_dev *dev,
 		.mask = {
 			.size = sizeof(matcher.mask.buf),
 		},
+		.hint_num_of_rules_log = 0,
 	};
 	struct mlx5_flow_dv_matcher *drop_matcher;
 	struct mlx5_flow_cb_ctx ctx = {

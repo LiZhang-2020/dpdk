@@ -589,6 +589,24 @@ mlx5_glue_dv_create_flow_matcher(struct ibv_context *context,
 #endif
 }
 
+static int
+mlx5_glue_dv_set_matcher_size(void *matcher, uint32_t hint)
+{
+#if defined(HAVE_MLX5DV_DR) && defined(HAVE_MLX5_DR_MATCHER_LAYOUT)
+	struct mlx5dv_dr_matcher_layout ml = {
+		.flags = MLX5DV_DR_MATCHER_LAYOUT_NUM_RULE,
+		.log_num_of_rules_hint = hint,
+	};
+
+	return mlx5dv_dr_matcher_set_layout(matcher, &ml);
+#else
+	(void)matcher;
+	(void)hint;
+	errno = ENOTSUP;
+	return errno;
+#endif
+}
+
 static void *
 mlx5_glue_dv_create_flow(void *matcher,
 			 void *match_value,
@@ -1448,6 +1466,7 @@ const struct mlx5_glue *mlx5_glue = &(const struct mlx5_glue) {
 	.dv_init_obj = mlx5_glue_dv_init_obj,
 	.dv_create_qp = mlx5_glue_dv_create_qp,
 	.dv_create_flow_matcher = mlx5_glue_dv_create_flow_matcher,
+	.dv_set_matcher_size = mlx5_glue_dv_set_matcher_size,
 	.dv_create_flow = mlx5_glue_dv_create_flow,
 	.dv_create_flow_action_counter =
 		mlx5_glue_dv_create_flow_action_counter,

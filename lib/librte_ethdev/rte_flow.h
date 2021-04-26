@@ -100,6 +100,11 @@ struct rte_flow_attr {
 	 */
 	uint32_t transfer:1;
 	uint32_t reserved:29; /**< Reserved, must be zero. */
+	/**
+	 * Expected number of flow rules, log base 2.
+	 * 0 means this attribute is ignored.
+	 */
+	uint32_t hint_num_of_rules_log;
 };
 
 /**

@@ -220,6 +220,19 @@ Limitations
 - The pdu_type field in the gtp_psc item includes all fields in first byte:
   PDU type, QMP, SNP, Spare.
 
+- Rules with the same pattern items types and masks reuse a unique matcher
+  of the steering. The ``hint_num_of_rules_log`` attribute in rte_flow_attr is
+  used per matcher. A matcher will be created when inserting the first flow
+  rule with new pattern items types and masks in a group. The log hint size
+  will be set only when it is non-zero after the matcher creation.
+  For the subsequent rules that using the same matcher, the
+  ``hint_num_of_rules_log`` will be ignored even if specified.
+  The default value of ``hint_num_of_rules_log`` is 0 which means the
+  behavior will be decided by the dirver, e.g., the size and table
+  resizing mechanism.
+  The current flow rules insertion may be slower when setting the log hint
+  size to the driver.
+
 - No Tx metadata go to the E-Switch steering domain for the Flow group 0.
   The flows within group 0 and set metadata action are rejected by hardware.
 

@@ -199,6 +199,8 @@ has_sym_args = [
 	'MLX5DV_DR_ACTION_FLAGS_ASO_CT_DIRECTION_INITIATOR' ],
 	[ 'HAVE_MLX5_DR_ALLOW_DUPLICATE', 'infiniband/mlx5dv.h',
 	'mlx5dv_dr_domain_allow_duplicate_rules' ],
+	[ 'HAVE_MLX5_DR_MATCHER_LAYOUT', 'infiniband/mlx5dv.h',
+	'mlx5dv_dr_matcher_set_layout'],
 ]
 config = configuration_data()
 foreach arg:has_sym_args
