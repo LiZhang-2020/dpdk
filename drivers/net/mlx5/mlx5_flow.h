@@ -272,18 +272,19 @@ enum mlx5_feature_name {
 #define MLX5_FLOW_ACTION_TUNNEL_SET (1ull << 37)
 #define MLX5_FLOW_ACTION_TUNNEL_MATCH (1ull << 38)
 #define MLX5_FLOW_ACTION_MODIFY_FIELD (1ull << 39)
-#define MLX5_FLOW_ACTION_SFT (1ull << 40)
-#define MLX5_FLOW_ACTION_CT (1ull << 41)
+#define MLX5_FLOW_ACTION_METER_WITH_TERMINATED_POLICY (1ull << 40)
+#define MLX5_FLOW_ACTION_SFT (1ull << 41)
+#define MLX5_FLOW_ACTION_CT (1ull << 42)
 
 #define MLX5_FLOW_FATE_ACTIONS \
 	(MLX5_FLOW_ACTION_DROP | MLX5_FLOW_ACTION_QUEUE | \
 	 MLX5_FLOW_ACTION_RSS | MLX5_FLOW_ACTION_JUMP | \
-	 MLX5_FLOW_ACTION_DEFAULT_MISS)
+	 MLX5_FLOW_ACTION_DEFAULT_MISS | \
+	 MLX5_FLOW_ACTION_METER_WITH_TERMINATED_POLICY)
 
 #define MLX5_FLOW_FATE_ESWITCH_ACTIONS \
 	(MLX5_FLOW_ACTION_DROP | MLX5_FLOW_ACTION_PORT_ID | \
-	 MLX5_FLOW_ACTION_JUMP)
-
+	 MLX5_FLOW_ACTION_JUMP | MLX5_FLOW_ACTION_METER_WITH_TERMINATED_POLICY)
 
 #define MLX5_FLOW_MODIFY_HDR_ACTIONS (MLX5_FLOW_ACTION_SET_IPV4_SRC | \
 				      MLX5_FLOW_ACTION_SET_IPV4_DST | \
@@ -900,9 +901,8 @@ struct mlx5_legacy_flow_meter {
 	/* Must be the first in struct. */
 	TAILQ_ENTRY(mlx5_legacy_flow_meter) next;
 	/**< Pointer to the next flow meter structure. */
-	uint32_t meter_id;
-	/**< Meter id. */
-	uint32_t idx; /* Index to meter object. */
+	uint32_t idx;
+	/* Index to meter object. */
 };
 
 #define MLX5_MAX_TUNNELS 256
@@ -1175,10 +1175,12 @@ typedef int (*mlx5_flow_query_t)(struct rte_eth_dev *dev,
 				 const struct rte_flow_action *actions,
 				 void *data,
 				 struct rte_flow_error *error);
-typedef struct mlx5_meter_domains_infos *(*mlx5_flow_create_mtr_tbls_t)
-					    (struct rte_eth_dev *dev);
-typedef int (*mlx5_flow_destroy_mtr_tbls_t)(struct rte_eth_dev *dev,
-					struct mlx5_meter_domains_infos *tbls);
+typedef int (*mlx5_flow_create_mtr_tbls_t)(struct rte_eth_dev *dev,
+					struct mlx5_flow_meter_info *fm,
+					uint32_t mtr_idx,
+					uint8_t domain_bitmap);
+typedef void (*mlx5_flow_destroy_mtr_tbls_t)(struct rte_eth_dev *dev,
+				struct mlx5_flow_meter_info *fm);
 typedef void (*mlx5_flow_destroy_mtr_drop_tbls_t)(struct rte_eth_dev *dev);
 typedef uint32_t (*mlx5_flow_mtr_alloc_t)
 					    (struct rte_eth_dev *dev);
@@ -1569,10 +1571,12 @@ uint32_t mlx5_flow_add_post_sft_rule(struct rte_eth_dev *dev,
 				     int jump_group, uint8_t transfer,
 				     struct rte_flow_error *error);
 void mlx5_flow_remove_post_sft_rule(struct rte_eth_dev *dev, uint32_t flow_idx);
-struct mlx5_meter_domains_infos *mlx5_flow_create_mtr_tbls
-					(struct rte_eth_dev *dev);
-int mlx5_flow_destroy_mtr_tbls(struct rte_eth_dev *dev,
-			       struct mlx5_meter_domains_infos *tbl);
+int mlx5_flow_create_mtr_tbls(struct rte_eth_dev *dev,
+			      struct mlx5_flow_meter_info *fm,
+			      uint32_t mtr_idx,
+			      uint8_t domain_bitmap);
+void mlx5_flow_destroy_mtr_tbls(struct rte_eth_dev *dev,
+			       struct mlx5_flow_meter_info *fm);
 void mlx5_flow_destroy_mtr_drop_tbls(struct rte_eth_dev *dev);
 int mlx5_flow_dv_discover_counter_offset_support(struct rte_eth_dev *dev);
 int mlx5_shared_action_flush(struct rte_eth_dev *dev);
