@@ -791,17 +791,7 @@ mlx5_flow_get_reg_id(struct rte_eth_dev *dev,
 		 * If meter color and meter id share one register, flow match
 		 * should use the meter color register for match.
 		 */
-		if (priv->mtr_id_reg_in_first)
-			return priv->mtr_color_reg;
-		else
-			return priv->mtr_color_reg != REG_C_2 ? REG_C_2 :
-			       REG_C_3;
-	case MLX5_MTR_FLOW_ID:
-		/*
-		 * If meter color and meter flow id share one register,
-		 * flow match should use the meter color register for match.
-		 */
-		if (priv->mtr_flow_id_reg_in_first)
+		if (priv->mtr_reg_share)
 			return priv->mtr_color_reg;
 		else
 			return priv->mtr_color_reg != REG_C_2 ? REG_C_2 :
@@ -826,15 +816,8 @@ mlx5_flow_get_reg_id(struct rte_eth_dev *dev,
 		 * match.
 		 * If meter is disable, free to use all available registers.
 		 */
-		if (priv->mtr_color_reg == REG_C_2)
-			start_reg = priv->mtr_flow_id_reg_in_first ?
-				    REG_C_3 : REG_C_4;
-		else if (priv->mtr_color_reg == REG_C_3)
-			start_reg = priv->mtr_flow_id_reg_in_first ?
-				    REG_C_2 : REG_C_4;
-		else
-			start_reg = priv->mtr_flow_id_reg_in_first ?
-				    REG_C_2 : REG_C_3;
+		start_reg = priv->mtr_color_reg != REG_C_2 ? REG_C_2 :
+			    (priv->mtr_reg_share ? REG_C_3 : REG_C_4);
 		skip_mtr_reg = !!(priv->mtr_en && start_reg == REG_C_2);
 		if (id > (REG_C_7 - start_reg))
 			return rte_flow_error_set(error, EINVAL,
@@ -4445,8 +4428,6 @@ flow_create_split_inner(struct rte_eth_dev *dev,
 	return flow_drv_translate(dev, dev_flow, attr, items, actions, error);
 }
 
-#define MLX5_MTR_PRE_TAG_NUM 2
-
 /**
  * Split the meter flow.
  *
@@ -4505,17 +4486,26 @@ flow_meter_split_prep(struct rte_eth_dev *dev,
 	struct mlx5_rte_flow_item_tag *tag_item_mask;
 	uint32_t tag_id = 0;
 	bool copy_vlan = false;
-	uint32_t max_tag_id = UINT32_T(1) << priv->config.log_max_flow_per_mtr;
-	uint8_t mtr_id_offset;
 	struct rte_flow_action *hw_mtr_action;
 	struct rte_flow_action_jump *jump_data;
-	/* For ASO meter, meter must be before tag in TX direction. */
+	struct rte_flow_action *action_pre_head = NULL;
 	bool mtr_first = priv->sh->meter_aso_en &&
 			 (attr->egress ||
 			  (attr->transfer && priv->representor_id != -1));
-	struct rte_flow_action *action_pre_head =
-					mtr_first ? actions_pre++ : NULL;
+	uint8_t mtr_id_offset = priv->mtr_reg_share ? MLX5_MTR_COLOR_BITS : 0;
+	uint8_t mtr_reg_bits = priv->mtr_reg_share ?
+				MLX5_MTR_IDLE_BITS_IN_COLOR_REG : MLX5_REG_BITS;
+	uint32_t flow_id = 0;
+	uint32_t flow_id_reversed = 0;
+	uint8_t flow_id_bits = 0;
+	int shift;
 
+	/* For ASO meter, meter must be before tag in TX direction. */
+	if (mtr_first) {
+		action_pre_head = actions_pre++;
+		/* Leave space for tag action. */
+		tag_action = actions_pre++;
+	}
 	/* Prepare the actions for prefix and suffix flow. */
 	for (; actions->type != RTE_FLOW_ACTION_TYPE_END; actions++) {
 		struct rte_flow_action *action_cur = NULL;
@@ -4524,13 +4514,9 @@ flow_meter_split_prep(struct rte_eth_dev *dev,
 		case RTE_FLOW_ACTION_TYPE_METER:
 			if (mtr_first) {
 				action_cur = action_pre_head;
-				tag_action = actions_pre;
-				/* Leave space for tag action(s). */
-				actions_pre += MLX5_MTR_PRE_TAG_NUM;
 			} else {
-				tag_action = actions_pre;
-				/* Leave space for tag action(s). */
-				actions_pre += MLX5_MTR_PRE_TAG_NUM;
+				/* Leave space for tag action. */
+				tag_action = actions_pre++;
 				action_cur = actions_pre++;
 			}
 			break;
@@ -4562,8 +4548,9 @@ flow_meter_split_prep(struct rte_eth_dev *dev,
 	/* Add end action to the actions. */
 	actions_sfx->type = RTE_FLOW_ACTION_TYPE_END;
 	if (priv->sh->meter_aso_en) {
-		/** For ASO meter, need to add an extra jump action explicitly,
-		 *  to jump from meter to policer table.
+		/**
+		 * For ASO meter, need to add an extra jump action explicitly,
+		 * to jump from meter to policer table.
 		 */
 		hw_mtr_action = actions_pre;
 		hw_mtr_action->type = RTE_FLOW_ACTION_TYPE_JUMP;
@@ -4580,24 +4567,27 @@ flow_meter_split_prep(struct rte_eth_dev *dev,
 		actions_pre->type = RTE_FLOW_ACTION_TYPE_END;
 		actions_pre++;
 	}
-	/* Generate meter flow_id only if support multiple flows per meter. */
 	mlx5_ipool_malloc(fm->flow_ipool, &tag_id);
-	if (tag_id > max_tag_id ||
-		tag_id >= (UINT32_T(1) << MLX5_MTR_LOG_MAX_FLOW_PER_MTR)) {
-		mlx5_ipool_free(fm->flow_ipool, tag_id);
-		rte_flow_error_set(error, EINVAL,
-				RTE_FLOW_ERROR_TYPE_UNSPECIFIED, NULL,
-				"Meter flow id exceeds max limit.");
-		return 0;
-	} else if (!tag_id) {
+	if (!tag_id) {
 		rte_flow_error_set(error, ENOMEM,
 				RTE_FLOW_ERROR_TYPE_UNSPECIFIED, NULL,
 				"Failed to allocate meter flow id.");
 		return 0;
 	}
-	tag_item = sfx_items;
-	/* Leave space for 2 tag items. */
-	sfx_items += MLX5_MTR_PRE_TAG_NUM;
+	flow_id = tag_id - 1;
+	flow_id_bits = MLX5_REG_BITS - __builtin_clz(flow_id);
+	flow_id_bits = flow_id_bits ? flow_id_bits : 1;
+	if ((flow_id_bits + priv->max_mtr_bits) > mtr_reg_bits) {
+		mlx5_ipool_free(fm->flow_ipool, tag_id);
+		rte_flow_error_set(error, EINVAL,
+				RTE_FLOW_ERROR_TYPE_UNSPECIFIED, NULL,
+				"Meter flow id exceeds max limit.");
+		return 0;
+	}
+	if (flow_id_bits > priv->max_mtr_flow_bits)
+		priv->max_mtr_flow_bits = flow_id_bits;
+	/* Prepare the suffix subflow items. */
+	tag_item = sfx_items++;
 	for (; items->type != RTE_FLOW_ITEM_TYPE_END; items++) {
 		int item_type = items->type;
 
@@ -4629,73 +4619,33 @@ flow_meter_split_prep(struct rte_eth_dev *dev,
 	set_tag = (struct mlx5_rte_flow_action_set_tag *)actions_pre;
 	tag_item_spec = (struct mlx5_rte_flow_item_tag *)sfx_items;
 	tag_item_mask = tag_item_spec + 1;
-	mtr_id_offset = priv->mtr_id_reg_in_first ? MLX5_MTR_COLOR_BITS : 0;
-	if (priv->mtr_id_reg_in_first == priv->mtr_flow_id_reg_in_first) {
-		/* Both flow_id and meter_id share the same register. */
-		*set_tag = (struct mlx5_rte_flow_action_set_tag) {
-			.id = mlx5_flow_get_reg_id(dev, MLX5_MTR_ID, 0, error),
-			.offset = mtr_id_offset,
-			.length = MLX5_REG_BITS - mtr_id_offset,
-			.data = (flow->meter - 1) |
-				((tag_id - 1) << priv->config.log_max_mtr_num),
-		};
-		tag_item_spec->id = set_tag->id;
-		tag_item_spec->data = set_tag->data << mtr_id_offset;
-		tag_item_mask->data = UINT32_MAX << mtr_id_offset;
-		tag_action->type = (enum rte_flow_action_type)
-				   MLX5_RTE_FLOW_ACTION_TYPE_TAG;
-		tag_action->conf = set_tag;
-		tag_action++;
-		tag_item->type = (enum rte_flow_item_type)
-				 MLX5_RTE_FLOW_ITEM_TYPE_TAG;
-		tag_item->spec = tag_item_spec;
-		tag_item->last = NULL;
-		tag_item->mask = tag_item_mask;
-		tag_item++;
-		/* No need to use the 2nd tag. */
-		tag_action->type = RTE_FLOW_ACTION_TYPE_VOID;
-		tag_item->type = RTE_FLOW_ITEM_TYPE_VOID;
-	} else {
-		/* Set meter_id tag. */
-		*set_tag = (struct mlx5_rte_flow_action_set_tag) {
-			.id = mlx5_flow_get_reg_id(dev, MLX5_MTR_ID, 0, error),
-			.offset = mtr_id_offset,
-			.length = MLX5_REG_BITS - mtr_id_offset,
-			.data = (flow->meter - 1),
-		};
-		tag_item_spec->id = set_tag->id;
-		tag_item_spec->data = set_tag->data << mtr_id_offset;
-		tag_item_mask->data = UINT32_MAX << mtr_id_offset;
-		tag_action->type = (enum rte_flow_action_type)
-				   MLX5_RTE_FLOW_ACTION_TYPE_TAG;
-		tag_action->conf = set_tag++;
-		tag_action++;
-		tag_item->type = (enum rte_flow_item_type)
-				 MLX5_RTE_FLOW_ITEM_TYPE_TAG;
-		tag_item->spec = tag_item_spec;
-		tag_item->last = NULL;
-		tag_item->mask = tag_item_mask;
-		tag_item_spec += 2;
-		tag_item_mask = tag_item_spec + 1;
-		tag_item++;
-		/* Set meter flow_id tag. */
-		*set_tag = (struct mlx5_rte_flow_action_set_tag) {
-			.id = mlx5_flow_get_reg_id(dev, MLX5_MTR_FLOW_ID,
-						   0, error),
-			.data = tag_id - 1,
-		};
-		tag_item_spec->id = set_tag->id;
-		tag_item_spec->data = set_tag->data;
-		tag_item_mask->data = UINT32_MAX;
-		tag_action->type = (enum rte_flow_action_type)
-				   MLX5_RTE_FLOW_ACTION_TYPE_TAG;
-		tag_action->conf = set_tag;
-		tag_item->type = (enum rte_flow_item_type)
-				 MLX5_RTE_FLOW_ITEM_TYPE_TAG;
-		tag_item->spec = tag_item_spec;
-		tag_item->last = NULL;
-		tag_item->mask = tag_item_mask;
-	}
+	/* Both flow_id and meter_id share the same register. */
+	*set_tag = (struct mlx5_rte_flow_action_set_tag) {
+		.id = (enum modify_reg)mlx5_flow_get_reg_id(dev, MLX5_MTR_ID,
+							    0, error),
+		.offset = mtr_id_offset,
+		.length = mtr_reg_bits,
+		.data = flow->meter,
+	};
+	/*
+	 * The color Reg bits used by flow_id are growing from
+	 * msb to lsb, so must do bit reverse for flow_id val in RegC.
+	 */
+	for (shift = 0; shift < flow_id_bits; shift++)
+		flow_id_reversed = (flow_id_reversed << 1) |
+				   ((flow_id >> shift) & 0x1);
+	set_tag->data |= flow_id_reversed << (mtr_reg_bits - flow_id_bits);
+	tag_item_spec->id = set_tag->id;
+	tag_item_spec->data = set_tag->data << mtr_id_offset;
+	tag_item_mask->data = UINT32_MAX << mtr_id_offset;
+	tag_action->type = (enum rte_flow_action_type)
+				MLX5_RTE_FLOW_ACTION_TYPE_TAG;
+	tag_action->conf = set_tag;
+	tag_item->type = (enum rte_flow_item_type)
+			 MLX5_RTE_FLOW_ITEM_TYPE_TAG;
+	tag_item->spec = tag_item_spec;
+	tag_item->last = NULL;
+	tag_item->mask = tag_item_mask;
 	return tag_id;
 }
 
@@ -5445,13 +5395,14 @@ flow_create_split_meter(struct rte_eth_dev *dev,
 			flow->meter = mtr_idx;
 		}
 		wks->fm = fm;
-		/* Prefix actions: meter, decap, encap, 2 tags, jump, end. */
-		act_size = sizeof(struct rte_flow_action) * (actions_n + 7) +
-			   sizeof(struct mlx5_rte_flow_action_set_tag) * 2;
-		/* Suffix items: 2 tags, vlan, port id, end. */
+		/* Prefix actions: meter, decap, encap, tag, jump, end. */
+		act_size = sizeof(struct rte_flow_action) * (actions_n + 6) +
+			   sizeof(struct mlx5_rte_flow_action_set_tag) +
+			   sizeof(struct rte_flow_action_jump);
+		/* Suffix items: tag, vlan, port id, end. */
 #define METER_SUFFIX_ITEM 5
 		item_size = sizeof(struct rte_flow_item) * METER_SUFFIX_ITEM +
-			    sizeof(struct mlx5_rte_flow_item_tag) * 4;
+			    sizeof(struct mlx5_rte_flow_item_tag) * 2;
 		sfx_actions = mlx5_malloc(MLX5_MEM_ZERO, (act_size + item_size),
 					  0, SOCKET_ID_ANY);
 		if (!sfx_actions)

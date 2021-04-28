@@ -1334,6 +1334,8 @@ err_secondary:
 					priv->mtr_color_reg = ffs(reg_c_mask)
 							      - 1 + REG_C_0;
 				priv->mtr_en = 1;
+				priv->mtr_reg_share =
+				      config->hca_attr.qos.flow_meter_reg_share;
 				DRV_LOG(DEBUG, "The REG_C meter uses is %d",
 					priv->mtr_color_reg);
 			}
@@ -1394,55 +1396,6 @@ err_secondary:
 				DRV_LOG(DEBUG, "DV flow is not supported!\n");
 		}
 #endif
-	}
-	if (priv->mtr_en) {
-		bool mtr_reg_share =
-				!!config->hca_attr.qos.flow_meter_reg_share;
-		uint32_t mtr_num_max = sh->meter_aso_en ?
-					MLX5_MTR_LOG_MAX_ASO_MTR :
-					MLX5_MTR_LOG_MAX_LEGACY_MTR;
-		uint32_t flow_per_mtr_max;
-
-		if (config->log_max_mtr_num == 0xFF)
-			config->log_max_mtr_num = mtr_num_max;
-		if (config->log_max_flow_per_mtr == 0xFF)
-			config->log_max_flow_per_mtr =
-				sh->meter_aso_en ? 0 :
-					(MLX5_MTR_IDLE_BITS_IN_COLOR_REG -
-					 mtr_num_max -
-					 MLX5_MTR_RSVD_RSS_FLOW_ID_BITS);
-		if (config->log_max_mtr_num > mtr_num_max) {
-			DRV_LOG(ERR, "mtr_log_max_num cannot exceed %d.",
-				mtr_num_max);
-			err = EINVAL;
-			goto error;
-		}
-		flow_per_mtr_max =
-			mtr_reg_share ?
-				MLX5_MTR_LOG_MAX_FLOW_PER_MTR :
-				RTE_MIN((MLX5_REG_BITS -
-					 config->log_max_mtr_num),
-					MLX5_MTR_LOG_MAX_FLOW_PER_MTR);
-		if (config->log_max_flow_per_mtr > flow_per_mtr_max) {
-			DRV_LOG(ERR, "log_max_flow_per_mtr cannot exceed %d.",
-				flow_per_mtr_max);
-			err = EINVAL;
-			goto error;
-		}
-		/* Reserve flow id space for RSS usage */
-		config->log_max_flow_per_mtr += MLX5_MTR_RSVD_RSS_FLOW_ID_BITS;
-		if (mtr_reg_share) {
-			/* The meter_id is in first reg. */
-			priv->mtr_id_reg_in_first = 1;
-			priv->mtr_flow_id_reg_in_first =
-				((config->log_max_mtr_num +
-				  config->log_max_flow_per_mtr) <=
-				 MLX5_MTR_IDLE_BITS_IN_COLOR_REG) ? 1 : 0;
-		} else {
-			/* Both meter_id and flow_id are in second register. */
-			priv->mtr_id_reg_in_first = 0;
-			priv->mtr_flow_id_reg_in_first = 0;
-		}
 	}
 	if (config->tx_pp) {
 		DRV_LOG(DEBUG, "Timestamp counter frequency %u kHz",
@@ -2435,8 +2388,6 @@ mlx5_os_pci_probe_pf(struct rte_pci_device *pci_dev,
 		dev_config.sft_en = 1;
 		dev_config.sft_dbg = 0;
 		dev_config.log_hp_size = MLX5_ARG_UNSET;
-		dev_config.log_max_mtr_num = 0xFF;
-		dev_config.log_max_flow_per_mtr = 0xFF;
 		list[i].eth_dev = mlx5_dev_spawn(&pci_dev->device,
 						 &list[i],
 						 &dev_config,

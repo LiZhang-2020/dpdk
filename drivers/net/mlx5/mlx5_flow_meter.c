@@ -725,6 +725,9 @@ mlx5_flow_meter_create(struct rte_eth_dev *dev, uint32_t meter_id,
 	union mlx5_l3t_data data;
 	uint32_t mtr_idx;
 	int ret;
+	uint8_t mtr_id_bits;
+	uint8_t mtr_reg_bits = priv->mtr_reg_share ?
+				MLX5_MTR_IDLE_BITS_IN_COLOR_REG : MLX5_REG_BITS;
 
 	if (!priv->mtr_en)
 		return -rte_mtr_error_set(error, ENOTSUP,
@@ -759,11 +762,13 @@ mlx5_flow_meter_create(struct rte_eth_dev *dev, uint32_t meter_id,
 		legacy_fm->idx = mtr_idx;
 		fm = &legacy_fm->fm;
 	}
-	/* Meter number cannot exceed max limit. */
-	if (mtr_idx > (UINT32_T(1) << priv->config.log_max_mtr_num)) {
+	mtr_id_bits = MLX5_REG_BITS - __builtin_clz(mtr_idx);
+	if ((mtr_id_bits + priv->max_mtr_flow_bits) > mtr_reg_bits) {
 		DRV_LOG(ERR, "Meter number exceeds max limit.");
 		goto error;
 	}
+	if (mtr_id_bits > priv->max_mtr_bits)
+		priv->max_mtr_bits = mtr_id_bits;
 	/* Fill the flow meter parameters. */
 	fm->meter_id = meter_id;
 	fm->profile = fmp;
@@ -1444,7 +1449,6 @@ mlx5_flow_meter_attach(struct mlx5_priv *priv,
 		       const struct rte_flow_attr *attr,
 		       struct rte_flow_error *error)
 {
-	uint32_t max_flows = UINT32_T(1) << priv->config.log_max_flow_per_mtr;
 	int ret = 0;
 
 	if (priv->sh->meter_aso_en) {
@@ -1459,15 +1463,7 @@ mlx5_flow_meter_attach(struct mlx5_priv *priv,
 		}
 		rte_spinlock_lock(&fm->sl);
 		if (fm->shared || !fm->ref_cnt) {
-			if (fm->ref_cnt >= max_flows) {
-				rte_flow_error_set(error, EINVAL,
-					RTE_FLOW_ERROR_TYPE_UNSPECIFIED, NULL,
-					"Flow number per Meter "
-					"exceeds max limit.");
-				ret = -1;
-			} else {
-				fm->ref_cnt++;
-			}
+			fm->ref_cnt++;
 		} else {
 			rte_flow_error_set(error, EINVAL,
 				   RTE_FLOW_ERROR_TYPE_UNSPECIFIED, NULL,
@@ -1482,15 +1478,7 @@ mlx5_flow_meter_attach(struct mlx5_priv *priv,
 			    attr->transfer == fm->transfer &&
 			    attr->ingress == fm->ingress &&
 			    attr->egress == fm->egress) {
-				if (fm->ref_cnt >= max_flows) {
-					rte_flow_error_set(error, EINVAL,
-						RTE_FLOW_ERROR_TYPE_UNSPECIFIED,
-						NULL, "Flow number per Meter "
-						"exceeds max limit.");
-					ret = -1;
-				} else {
-					fm->ref_cnt++;
-				}
+				fm->ref_cnt++;
 			} else {
 				rte_flow_error_set(error, EINVAL,
 					RTE_FLOW_ERROR_TYPE_UNSPECIFIED, NULL,

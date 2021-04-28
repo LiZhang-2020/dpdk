@@ -15231,13 +15231,14 @@ flow_dv_prepare_mtr_matchers(struct rte_eth_dev *dev,
 		.error = error,
 		.data = &matcher,
 	};
+	uint32_t color_mask = (UINT32_C(1) << MLX5_MTR_COLOR_BITS) - 1;
 
 	tbl_data = container_of(dtb->tbl, struct mlx5_flow_tbl_data_entry, tbl);
 	if (!dtb->drop_matcher) {
 		/* Create matchers for Drop. */
 		flow_dv_match_meta_reg(matcher.mask.buf, value.buf,
 				       mtr_id_reg_c_idx, 0, mtr_id_mask);
-		matcher.priority = 1;
+		matcher.priority = MLX5_REG_BITS * 2 - priv->max_mtr_bits;
 		matcher.crc = rte_raw_cksum((const void *)matcher.mask.buf,
 					matcher.mask.size);
 		entry = mlx5_cache_register(&tbl_data->matchers, &ctx);
@@ -15250,19 +15251,17 @@ flow_dv_prepare_mtr_matchers(struct rte_eth_dev *dev,
 	}
 	if (!dtb->color_matcher) {
 		/* Create matchers for Color + meter_id. */
-		if (priv->mtr_id_reg_in_first) {
+		if (priv->mtr_reg_share) {
 			flow_dv_match_meta_reg(matcher.mask.buf, value.buf,
 					color_reg_c_idx, 0,
-					(mtr_id_mask |
-					 LS32_MASK(MLX5_MTR_COLOR_BITS)));
+					(mtr_id_mask | color_mask));
 		} else {
 			flow_dv_match_meta_reg(matcher.mask.buf, value.buf,
-					color_reg_c_idx, 0,
-					LS32_MASK(MLX5_MTR_COLOR_BITS));
+					color_reg_c_idx, 0, color_mask);
 			flow_dv_match_meta_reg(matcher.mask.buf, value.buf,
 					mtr_id_reg_c_idx, 0, mtr_id_mask);
 		}
-		matcher.priority = 0;
+		matcher.priority = MLX5_REG_BITS - priv->max_mtr_bits;
 		matcher.crc = rte_raw_cksum((const void *)matcher.mask.buf,
 					matcher.mask.size);
 		entry = mlx5_cache_register(&tbl_data->matchers, &ctx);
@@ -15376,10 +15375,9 @@ flow_dv_create_policer_forward_rule(struct rte_eth_dev *dev,
 						    0, &error);
 	uint32_t mtr_id_reg_c = mlx5_flow_get_reg_id(dev, MLX5_MTR_ID,
 						     0, &error);
-	uint8_t mtr_id_offset = priv->mtr_id_reg_in_first ?
-				MLX5_MTR_COLOR_BITS : 0;
-	uint32_t mtr_id_mask = LS32_MASK(priv->config.log_max_mtr_num) <<
-			       mtr_id_offset;
+	uint8_t mtr_id_offset = priv->mtr_reg_share ? MLX5_MTR_COLOR_BITS : 0;
+	uint32_t mtr_id_mask =
+		((UINT32_C(1) << priv->max_mtr_bits) - 1) << mtr_id_offset;
 	void *actions[METER_ACTIONS];
 	int i;
 	int ret = 0;
@@ -15405,7 +15403,7 @@ flow_dv_create_policer_forward_rule(struct rte_eth_dev *dev,
 	/* Create Drop flow, matching meter_id only. */
 	i = 0;
 	flow_dv_match_meta_reg(matcher.buf, value.buf, mtr_id_reg_c,
-			       ((mtr_idx - 1) << mtr_id_offset), UINT32_MAX);
+			       (mtr_idx << mtr_id_offset), UINT32_MAX);
 	if (mtb->drop_count)
 		actions[i++] = mtb->drop_count;
 	actions[i++] = priv->sh->dr_drop_action;
@@ -15417,9 +15415,9 @@ flow_dv_create_policer_forward_rule(struct rte_eth_dev *dev,
 	}
 	/* Create flow matching Green color + meter_id. */
 	i = 0;
-	if (priv->mtr_id_reg_in_first) {
+	if (priv->mtr_reg_share) {
 		flow_dv_match_meta_reg(matcher.buf, value.buf, color_reg_c,
-				       (((mtr_idx - 1) << mtr_id_offset) |
+				       ((mtr_idx << mtr_id_offset) |
 					rte_col_2_mlx5_col(RTE_COLOR_GREEN)),
 				       UINT32_MAX);
 	} else {
@@ -15427,7 +15425,7 @@ flow_dv_create_policer_forward_rule(struct rte_eth_dev *dev,
 				       rte_col_2_mlx5_col(RTE_COLOR_GREEN),
 				       UINT32_MAX);
 		flow_dv_match_meta_reg(matcher.buf, value.buf, mtr_id_reg_c,
-				       (mtr_idx - 1), UINT32_MAX);
+				       mtr_idx, UINT32_MAX);
 	}
 	if (mtb->green_count)
 		actions[i++] = mtb->green_count;

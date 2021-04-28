@@ -1020,28 +1020,6 @@ Driver options
 
   By default, the PMD will set this value to 1.
 
-- ``mtr_log_max_num`` parameter [int]
-
-  Log 2 of maximal number of flow meters can be created.
-  The maximal value for this parameter is 24 when ASO is supported, and 12
-  when ASO is not supported.
-  There will be better performance if the sum of ``mtr_log_max_num`` and
-  ``log_max_flow_per_mtr`` is less or equal to 20.
-
-  By default, the PMD will set this value to 24 when ASO is supported, and 12
-  when ASO is not supported.
-
-- ``log_max_flow_per_mtr`` parameter [int]
-
-  One flow meter can be used by multiple flows. This parameter defines log 2
-  of maximal number of flows can be supported by one flow meter, and its
-  maximal value is 23 when device supports.
-  There will be better performance if the sum of ``mtr_log_max_num`` and
-  ``log_max_flow_per_mtr`` is less or equal to 20.
-
-  By default, the PMD will set this value to 0 when ASO is supported, and 8
-  when ASO is not supported.
-
 - ``isolated_mode`` parameter [int]
 
   A nonzero value configures the port to initialize in :ref:`flow_isolated_mode`.
