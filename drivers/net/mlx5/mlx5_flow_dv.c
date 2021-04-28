@@ -12854,12 +12854,16 @@ flow_dv_translate(struct rte_eth_dev *dev,
 		case RTE_FLOW_ACTION_TYPE_CONNTRACK:
 			owner_idx = (uint32_t)(uintptr_t)action->conf;
 			ct = flow_aso_ct_get_by_idx(dev, owner_idx);
-			if (!ct) {
-				rte_errno = EINVAL;
-				return -rte_errno;
-			}
+			if (!ct)
+				return rte_flow_error_set(error, EINVAL,
+						RTE_FLOW_ERROR_TYPE_ACTION,
+						NULL,
+						"Failed to get CT object.");
 			if (mlx5_aso_ct_available(priv->sh, ct))
-				return -rte_errno;
+				return rte_flow_error_set(error, rte_errno,
+						RTE_FLOW_ERROR_TYPE_ACTION,
+						NULL,
+						"CT is unavailable.");
 			if (ct->is_original)
 				dev_flow->dv.actions[actions_n] =
 							ct->dr_action_orig;
