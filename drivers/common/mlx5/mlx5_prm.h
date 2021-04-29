@@ -1613,15 +1613,15 @@ struct mlx5_ifc_roce_caps_bits {
 };
 
 struct mlx5_ifc_flow_table_nic_cap_bits {
-	u8	   reserved_at_0[0x200];
+	u8 reserved_at_0[0x200];
 	struct mlx5_ifc_flow_table_prop_layout_bits
-		flow_table_properties_nic_receive;
+	       flow_table_properties_nic_receive;
 	struct mlx5_ifc_flow_table_prop_layout_bits
-		flow_table_properties_unused[5];
-	u8         reserved_at_1C0[0x200];
-	u8         header_modify_nic_receive[0x400];
+	       flow_table_properties_unused[5];
+	u8 reserved_at_1C0[0x200];
+	u8 header_modify_nic_receive[0x400];
 	struct mlx5_ifc_ft_fields_support_2_bits
-		ft_field_support_2_nic_receive;
+	       ft_field_support_2_nic_receive;
 };
 
 struct mlx5_ifc_cmd_hca_cap_2_bits {

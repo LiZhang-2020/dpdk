@@ -137,6 +137,7 @@ struct mlx5_hca_attr {
 	uint32_t umr_modify_entity_size_disabled:1;
 	uint32_t umr_indirect_mkey_disabled:1;
 	uint32_t geneve_tlv_opt;
+	uint32_t pkt_integrity_match:1; /* 1 if HW supports integrity item */
 	struct mlx5_hca_qos_attr qos;
 	struct mlx5_hca_vdpa_attr vdpa;
 };
