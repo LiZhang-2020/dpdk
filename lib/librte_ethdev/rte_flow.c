@@ -99,7 +99,8 @@ static const struct rte_flow_desc_data rte_flow_desc_item[] = {
 	MK_FLOW_ITEM(ECPRI, sizeof(struct rte_flow_item_ecpri)),
 	MK_FLOW_ITEM(GENEVE_OPT, sizeof(struct rte_flow_item_geneve_opt)),
 	MK_FLOW_ITEM(SFT, sizeof(struct rte_flow_item_sft)),
-	MK_FLOW_ITEM(SANITY_CHECKS, sizeof(struct rte_flow_item_sanity_checks)),
+	MK_FLOW_ITEM(INTEGRITY, sizeof(struct rte_flow_item_integrity)),
+	MK_FLOW_ITEM(CONNTRACK, sizeof(uint32_t)),
 };
 
 /** Generate flow_action[] entry. */
