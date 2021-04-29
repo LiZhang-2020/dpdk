@@ -193,7 +193,7 @@
 #define MLX5_HAIRPIN_JUMBO_LOG_SIZE (14 + 2)
 
 /* Maximum number of indirect actions supported by rte_flow */
-#define MLX5_MAX_INDIRECT_ACTIONS 2
+#define MLX5_MAX_INDIRECT_ACTIONS 4
 
 /* Definition of static_assert found in /usr/include/assert.h */
 #ifndef HAVE_STATIC_ASSERT

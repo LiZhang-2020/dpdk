@@ -3277,12 +3277,32 @@ flow_dv_validate_action_set_tag(struct rte_eth_dev *dev,
 }
 
 /**
+ * Check if action counter is shared by either old or new mechanism.
+ *
+ * @param[in] action
+ *   Pointer to the action structure.
+ *
+ * @return
+ *   True when counter is shared, false otherwise.
+ */
+static inline bool
+is_shared_action_count(const struct rte_flow_action *action)
+{
+	const struct rte_flow_action_count *count =
+			(const struct rte_flow_action_count *)action->conf;
+
+	if ((int)action->type == MLX5_RTE_FLOW_ACTION_TYPE_COUNT)
+		return true;
+	return !!(count && count->shared);
+}
+
+/**
  * Validate count action.
  *
  * @param[in] dev
  *   Pointer to rte_eth_dev structure.
- * @param[in] action
- *   Pointer to the action structure.
+ * @param[in] shared
+ *   Indicator if action is shared.
  * @param[in] action_flags
  *   Holds the actions detected until now.
  * @param[out] error
@@ -3292,13 +3312,11 @@ flow_dv_validate_action_set_tag(struct rte_eth_dev *dev,
  *   0 on success, a negative errno value otherwise and rte_errno is set.
  */
 static int
-flow_dv_validate_action_count(struct rte_eth_dev *dev,
-			      const struct rte_flow_action *action,
+flow_dv_validate_action_count(struct rte_eth_dev *dev, bool shared,
 			      uint64_t action_flags,
 			      struct rte_flow_error *error)
 {
 	struct mlx5_priv *priv = dev->data->dev_private;
-	const struct rte_flow_action_count *count;
 
 	if (!priv->config.devx)
 		goto notsup_err;
@@ -3306,8 +3324,7 @@ flow_dv_validate_action_count(struct rte_eth_dev *dev,
 		return rte_flow_error_set(error, EINVAL,
 					  RTE_FLOW_ERROR_TYPE_ACTION, NULL,
 					  "duplicate count actions set");
-	count = (const struct rte_flow_action_count *)action->conf;
-	if (count && count->shared && (action_flags & MLX5_FLOW_ACTION_AGE) &&
+	if (shared && (action_flags & MLX5_FLOW_ACTION_AGE) &&
 	    !priv->sh->flow_hit_aso_en)
 		return rte_flow_error_set(error, EINVAL,
 					  RTE_FLOW_ERROR_TYPE_ACTION, NULL,
@@ -5536,7 +5553,7 @@ flow_dv_validate_action_sample(uint64_t *action_flags,
 			break;
 		case RTE_FLOW_ACTION_TYPE_COUNT:
 			ret = flow_dv_validate_action_count
-				(dev, act,
+				(dev, is_shared_action_count(act),
 				 *action_flags | sub_action_flags,
 				 error);
 			if (ret < 0)
@@ -5742,7 +5759,7 @@ flow_dv_modify_hdr_resource_register
  * @param[in] idx
  *   mlx5 flow counter index in the container.
  * @param[out] ppool
- *   mlx5 flow counter pool in the container,
+ *   mlx5 flow counter pool in the container.
  *
  * @return
  *   Pointer to the counter, NULL otherwise.
@@ -5872,7 +5889,7 @@ flow_dv_container_resize(struct rte_eth_dev *dev)
  *
  * @param[in] dev
  *   Pointer to the Ethernet device structure.
- * @param[in] cnt
+ * @param[in] counter
  *   Index to the flow counter.
  * @param[out] pkts
  *   The statistics value of packets.
@@ -6113,6 +6130,13 @@ flow_dv_counter_alloc(struct rte_eth_dev *dev, uint32_t age)
 	if (!fallback && !priv->sh->cmng.query_thread_on)
 		/* Start the asynchronous batch query by the host thread. */
 		mlx5_set_query_alarm(priv->sh);
+	/*
+	 * When the count action isn't shared (by ID), shared_info field is
+	 * used for indirect action API's refcnt.
+	 * When the counter action is not shared neither by ID nor by indirect
+	 * action API, shared info must be 1.
+	 */
+	cnt_free->shared_info.refcnt = 1;
 	return cnt_idx;
 err:
 	if (cnt_free) {
@@ -6259,8 +6283,25 @@ flow_dv_counter_free(struct rte_eth_dev *dev, uint32_t counter)
 		return;
 	cnt = flow_dv_counter_get_by_idx(dev, counter, &pool);
 	MLX5_ASSERT(pool);
-	if (IS_SHARED_CNT(counter) &&
+	/*
+	 * If the counter action is shared by ID, the l3t_clear_entry function
+	 * reduces its references counter. If after the reduction the action is
+	 * still referenced, the function returns here and does not release it.
+	 */
+	if (IS_LEGACY_SHARED_CNT(counter) &&
 	    mlx5_l3t_clear_entry(priv->sh->cnt_id_tbl, cnt->shared_info.id))
+		return;
+	/*
+	 * If the counter action is shared by indirect action API, the atomic
+	 * function reduces its references counter. If after the reduction the
+	 * action is still referenced, the function returns here and does not
+	 * release it.
+	 * When the counter action is not shared neither by ID nor by indirect
+	 * action API, shared info is 1 before the reduction, so this condition
+	 * is failed and function doesn't return here.
+	 */
+	if (!IS_LEGACY_SHARED_CNT(counter) &&
+	    __atomic_sub_fetch(&cnt->shared_info.refcnt, 1, __ATOMIC_RELAXED))
 		return;
 	if (pool->is_aged)
 		flow_dv_counter_remove_from_age(dev, counter, cnt);
@@ -6273,7 +6314,6 @@ flow_dv_counter_free(struct rte_eth_dev *dev, uint32_t counter)
 	 * container counter list. The list changes while query starts. In
 	 * this case, lock will not be needed as query callback and release
 	 * function both operate with the different list.
-	 *
 	 */
 	if (!priv->sh->cmng.counter_fallback) {
 		rte_spinlock_lock(&pool->csl);
@@ -6592,7 +6632,6 @@ flow_dv_validate(struct rte_eth_dev *dev, const struct rte_flow_attr *attr,
 	const struct rte_flow_action_raw_encap *encap;
 	const struct rte_flow_action_rss *rss = NULL;
 	const struct rte_flow_action_rss *sample_rss = NULL;
-	const struct rte_flow_action_count *count = NULL;
 	const struct rte_flow_action_count *sample_count = NULL;
 	const struct rte_flow_item_tcp nic_tcp_mask = {
 		.hdr = {
@@ -6997,6 +7036,7 @@ flow_dv_validate(struct rte_eth_dev *dev, const struct rte_flow_attr *attr,
 	}
 	for (; actions->type != RTE_FLOW_ACTION_TYPE_END; actions++) {
 		int type = actions->type;
+		bool shared_count = false;
 
 		if (!mlx5_flow_os_action_supported(type))
 			return rte_flow_error_set(error, ENOTSUP,
@@ -7146,13 +7186,14 @@ flow_dv_validate(struct rte_eth_dev *dev, const struct rte_flow_attr *attr,
 			action_flags |= MLX5_FLOW_ACTION_DEFAULT_MISS;
 			++actions_n;
 			break;
+		case MLX5_RTE_FLOW_ACTION_TYPE_COUNT:
 		case RTE_FLOW_ACTION_TYPE_COUNT:
-			ret = flow_dv_validate_action_count(dev, actions,
+			shared_count = is_shared_action_count(actions);
+			ret = flow_dv_validate_action_count(dev, shared_count,
 							    action_flags,
 							    error);
 			if (ret < 0)
 				return ret;
-			count = actions->conf;
 			action_flags |= MLX5_FLOW_ACTION_COUNT;
 			++actions_n;
 			break;
@@ -7481,7 +7522,7 @@ flow_dv_validate(struct rte_eth_dev *dev, const struct rte_flow_attr *attr,
 			 * mutual exclusion with share counter actions.
 			 */
 			if (!priv->sh->flow_hit_aso_en) {
-				if (count && count->shared)
+				if (shared_count)
 					return rte_flow_error_set
 						(error, EINVAL,
 						RTE_FLOW_ERROR_TYPE_ACTION,
@@ -10754,6 +10795,8 @@ flow_dv_translate_action_port_id(struct rte_eth_dev *dev,
  *
  * @param[in] dev
  *   Pointer to rte_eth_dev structure.
+ * @param[in] dev_flow
+ *   Pointer to the mlx5_flow.
  * @param[out] count
  *   Pointer to the counter action configuration.
  * @param[in] age
@@ -10777,7 +10820,7 @@ flow_dv_translate_create_counter(struct rte_eth_dev *dev,
 		counter = flow_dv_counter_alloc(dev, !!age);
 	if (!counter || age == NULL)
 		return counter;
-	age_param  = flow_dv_counter_idx_get_age(dev, counter);
+	age_param = flow_dv_counter_idx_get_age(dev, counter);
 	age_param->context = age->context ? age->context :
 		(void *)(uintptr_t)(dev_flow->flow_idx);
 	age_param->timeout = age->timeout;
@@ -12487,6 +12530,7 @@ flow_dv_translate(struct rte_eth_dev *dev,
 		const uint8_t *rss_key;
 		struct mlx5_flow_tbl_resource *tbl;
 		struct mlx5_aso_age_action *age_act;
+		struct mlx5_flow_counter *cnt_act;
 		uint32_t port_id = 0;
 		struct mlx5_flow_dv_port_id_action_resource port_id_resource;
 		int action_type = actions->type;
@@ -12494,7 +12538,6 @@ flow_dv_translate(struct rte_eth_dev *dev,
 		uint32_t jump_group = 0;
 		uint32_t owner_idx;
 		struct mlx5_aso_ct_action *ct;
-		struct mlx5_flow_counter *cnt;
 
 		if (!mlx5_flow_os_action_supported(action_type))
 			return rte_flow_error_set(error, ENOTSUP,
@@ -12632,6 +12675,15 @@ flow_dv_translate(struct rte_eth_dev *dev,
 			dev_flow->dv.actions[actions_n++] = age_act->dr_action;
 			action_flags |= MLX5_FLOW_ACTION_AGE;
 			break;
+		case MLX5_RTE_FLOW_ACTION_TYPE_COUNT:
+			flow->counter = (uint32_t)(uintptr_t)(action->conf);
+			cnt_act = flow_dv_counter_get_by_idx(dev, flow->counter,
+							     NULL);
+			__atomic_fetch_add(&cnt_act->shared_info.refcnt, 1,
+					   __ATOMIC_RELAXED);
+			/* Save information first, will apply later. */
+			action_flags |= MLX5_FLOW_ACTION_COUNT;
+			break;
 		case RTE_FLOW_ACTION_TYPE_AGE:
 			if (priv->sh->flow_hit_aso_en && attr->group) {
 				/*
@@ -12671,12 +12723,6 @@ flow_dv_translate(struct rte_eth_dev *dev,
 			else
 				age = action->conf;
 			action_flags |= MLX5_FLOW_ACTION_COUNT;
-			break;
-		case MLX5_RTE_FLOW_ACTION_TYPE_COUNT:
-			cnt = flow_dv_counter_get_by_idx(dev,
-				(uint32_t)(uintptr_t)action->conf, NULL);
-			MLX5_ASSERT(cnt != NULL);
-			dev_flow->dv.actions[actions_n++] = cnt->action;
 			break;
 		case RTE_FLOW_ACTION_TYPE_OF_POP_VLAN:
 			dev_flow->dv.actions[actions_n++] =
@@ -14656,6 +14702,11 @@ flow_dv_action_create(struct rte_eth_dev *dev,
 							 err);
 		idx = MLX5_ACTION_CTX_CT_GEN_IDX(PORT_ID(priv), ret);
 		break;
+	case RTE_FLOW_ACTION_TYPE_COUNT:
+		ret = flow_dv_translate_create_counter(dev, NULL, NULL, NULL);
+		idx = (MLX5_INDIRECT_ACTION_TYPE_COUNT <<
+		       MLX5_INDIRECT_ACTION_TYPE_OFFSET) | ret;
+		break;
 	default:
 		rte_flow_error_set(err, ENOTSUP, RTE_FLOW_ERROR_TYPE_ACTION,
 				   NULL, "action type not supported");
@@ -14689,11 +14740,25 @@ flow_dv_action_destroy(struct rte_eth_dev *dev,
 	uint32_t act_idx = (uint32_t)(uintptr_t)handle;
 	uint32_t type = act_idx >> MLX5_INDIRECT_ACTION_TYPE_OFFSET;
 	uint32_t idx = act_idx & ((1u << MLX5_INDIRECT_ACTION_TYPE_OFFSET) - 1);
+	struct mlx5_flow_counter *cnt;
+	uint32_t no_flow_refcnt = 1;
 	int ret;
 
 	switch (type) {
 	case MLX5_INDIRECT_ACTION_TYPE_RSS:
 		return __flow_dv_action_rss_release(dev, idx, error);
+	case MLX5_INDIRECT_ACTION_TYPE_COUNT:
+		cnt = flow_dv_counter_get_by_idx(dev, idx, NULL);
+		if (!__atomic_compare_exchange_n(&cnt->shared_info.refcnt,
+						 &no_flow_refcnt, 1, false,
+						 __ATOMIC_ACQUIRE,
+						 __ATOMIC_RELAXED))
+			return rte_flow_error_set(error, EBUSY,
+						  RTE_FLOW_ERROR_TYPE_ACTION,
+						  NULL,
+						  "Indirect count action has references");
+		flow_dv_counter_free(dev, idx);
+		return 0;
 	case MLX5_INDIRECT_ACTION_TYPE_AGE:
 		ret = flow_dv_aso_age_release(dev, idx);
 		if (ret)
@@ -14828,66 +14893,6 @@ flow_dv_action_update(struct rte_eth_dev *dev,
 					  RTE_FLOW_ERROR_TYPE_ACTION,
 					  NULL,
 					  "action type update not supported");
-	}
-}
-
-static int
-flow_dv_action_query(struct rte_eth_dev *dev,
-		     const struct rte_flow_action_handle *handle, void *data,
-		     struct rte_flow_error *error)
-{
-	struct mlx5_priv *priv = dev->data->dev_private;
-	struct mlx5_age_param *age_param;
-	struct rte_flow_query_age *resp;
-	uint32_t act_idx = (uint32_t)(uintptr_t)handle;
-	uint32_t type = act_idx >> MLX5_INDIRECT_ACTION_TYPE_OFFSET;
-	uint32_t idx = act_idx & ((1u << MLX5_INDIRECT_ACTION_TYPE_OFFSET) - 1);
-	struct mlx5_aso_ct_action *ct;
-	uint16_t owner;
-	uint32_t dev_idx;
-
-	switch (type) {
-	case MLX5_INDIRECT_ACTION_TYPE_AGE:
-		age_param = &flow_aso_age_get_by_idx(dev, idx)->age_params;
-		resp = data;
-		resp->aged = __atomic_load_n(&age_param->state,
-					      __ATOMIC_RELAXED) == AGE_TMOUT ?
-									  1 : 0;
-		resp->sec_since_last_hit_valid = !resp->aged;
-		if (resp->sec_since_last_hit_valid)
-			resp->sec_since_last_hit = __atomic_load_n
-			     (&age_param->sec_since_last_hit, __ATOMIC_RELAXED);
-		return 0;
-	case MLX5_INDIRECT_ACTION_TYPE_CT:
-		owner = (uint16_t)MLX5_ACTION_CTX_CT_GET_OWNER(idx);
-		if (owner != PORT_ID(priv))
-			return rte_flow_error_set(error, EACCES,
-					RTE_FLOW_ERROR_TYPE_UNSPECIFIED,
-					NULL,
-					"CT object owned by another port");
-		dev_idx = MLX5_ACTION_CTX_CT_GET_IDX(idx);
-		ct = flow_aso_ct_get_by_dev_idx(dev, dev_idx);
-		MLX5_ASSERT(ct);
-		if (!ct->refcnt)
-			return rte_flow_error_set(error, EFAULT,
-					RTE_FLOW_ERROR_TYPE_UNSPECIFIED,
-					NULL,
-					"CT object is inactive");
-		((struct rte_flow_action_conntrack *)data)->peer_port =
-							ct->peer;
-		((struct rte_flow_action_conntrack *)data)->is_original_dir =
-							ct->is_original;
-		if (mlx5_aso_ct_query_by_wqe(priv->sh, ct, data))
-			return rte_flow_error_set(error, EIO,
-					RTE_FLOW_ERROR_TYPE_UNSPECIFIED,
-					NULL,
-					"Failed to query CT context");
-		return 0;
-	default:
-		return rte_flow_error_set(error, ENOTSUP,
-					  RTE_FLOW_ERROR_TYPE_ACTION,
-					  NULL,
-					  "action type query not supported");
 	}
 }
 
@@ -15458,14 +15463,14 @@ flow_dv_create_mtr_policy_acts(struct rte_eth_dev *dev,
 }
 
 /**
- * Query a dv flow  rule for its statistics via devx.
+ * Query a DV flow rule for its statistics via DevX.
  *
  * @param[in] dev
  *   Pointer to Ethernet device.
- * @param[in] flow
- *   Pointer to the sub flow.
+ * @param[in] cnt_idx
+ *   Index to the flow counter.
  * @param[out] data
- *   data retrieved by the query.
+ *   Data retrieved by the query.
  * @param[out] error
  *   Perform verbose error reporting if not NULL.
  *
@@ -15473,8 +15478,8 @@ flow_dv_create_mtr_policy_acts(struct rte_eth_dev *dev,
  *   0 on success, a negative errno value otherwise and rte_errno is set.
  */
 static int
-flow_dv_query_count(struct rte_eth_dev *dev, struct rte_flow *flow,
-		    void *data, struct rte_flow_error *error)
+flow_dv_query_count(struct rte_eth_dev *dev, uint32_t cnt_idx, void *data,
+		    struct rte_flow_error *error)
 {
 	struct mlx5_priv *priv = dev->data->dev_private;
 	struct rte_flow_query_count *qc = data;
@@ -15484,19 +15489,16 @@ flow_dv_query_count(struct rte_eth_dev *dev, struct rte_flow *flow,
 					  RTE_FLOW_ERROR_TYPE_UNSPECIFIED,
 					  NULL,
 					  "counters are not supported");
-	if (flow->counter) {
+	if (cnt_idx) {
 		uint64_t pkts, bytes;
 		struct mlx5_flow_counter *cnt;
-
-		cnt = flow_dv_counter_get_by_idx(dev, flow->counter,
-						 NULL);
-		int err = _flow_dv_query_count(dev, flow->counter, &pkts,
-					       &bytes);
+		int err = _flow_dv_query_count(dev, cnt_idx, &pkts, &bytes);
 
 		if (err)
 			return rte_flow_error_set(error, -err,
 					RTE_FLOW_ERROR_TYPE_UNSPECIFIED,
 					NULL, "cannot read counters");
+		cnt = flow_dv_counter_get_by_idx(dev, cnt_idx, NULL);
 		qc->hits_set = 1;
 		qc->bytes_set = 1;
 		qc->hits = pkts - cnt->hits;
@@ -15511,6 +15513,67 @@ flow_dv_query_count(struct rte_eth_dev *dev, struct rte_flow *flow,
 				  RTE_FLOW_ERROR_TYPE_UNSPECIFIED,
 				  NULL,
 				  "counters are not available");
+}
+
+static int
+flow_dv_action_query(struct rte_eth_dev *dev,
+		     const struct rte_flow_action_handle *handle, void *data,
+		     struct rte_flow_error *error)
+{
+	struct mlx5_priv *priv = dev->data->dev_private;
+	struct mlx5_age_param *age_param;
+	struct rte_flow_query_age *resp;
+	uint32_t act_idx = (uint32_t)(uintptr_t)handle;
+	uint32_t type = act_idx >> MLX5_INDIRECT_ACTION_TYPE_OFFSET;
+	uint32_t idx = act_idx & ((1u << MLX5_INDIRECT_ACTION_TYPE_OFFSET) - 1);
+	struct mlx5_aso_ct_action *ct;
+	uint16_t owner;
+	uint32_t dev_idx;
+
+	switch (type) {
+	case MLX5_INDIRECT_ACTION_TYPE_AGE:
+		age_param = &flow_aso_age_get_by_idx(dev, idx)->age_params;
+		resp = data;
+		resp->aged = __atomic_load_n(&age_param->state,
+					      __ATOMIC_RELAXED) == AGE_TMOUT ?
+									  1 : 0;
+		resp->sec_since_last_hit_valid = !resp->aged;
+		if (resp->sec_since_last_hit_valid)
+			resp->sec_since_last_hit = __atomic_load_n
+			     (&age_param->sec_since_last_hit, __ATOMIC_RELAXED);
+		return 0;
+	case MLX5_INDIRECT_ACTION_TYPE_CT:
+		owner = (uint16_t)MLX5_ACTION_CTX_CT_GET_OWNER(idx);
+		if (owner != PORT_ID(priv))
+			return rte_flow_error_set(error, EACCES,
+					RTE_FLOW_ERROR_TYPE_UNSPECIFIED,
+					NULL,
+					"CT object owned by another port");
+		dev_idx = MLX5_ACTION_CTX_CT_GET_IDX(idx);
+		ct = flow_aso_ct_get_by_dev_idx(dev, dev_idx);
+		MLX5_ASSERT(ct);
+		if (!ct->refcnt)
+			return rte_flow_error_set(error, EFAULT,
+					RTE_FLOW_ERROR_TYPE_UNSPECIFIED,
+					NULL,
+					"CT object is inactive");
+		((struct rte_flow_action_conntrack *)data)->peer_port =
+							ct->peer;
+		((struct rte_flow_action_conntrack *)data)->is_original_dir =
+							ct->is_original;
+		if (mlx5_aso_ct_query_by_wqe(priv->sh, ct, data))
+			return rte_flow_error_set(error, EIO,
+					RTE_FLOW_ERROR_TYPE_UNSPECIFIED,
+					NULL,
+					"Failed to query CT context");
+		return 0;
+	case MLX5_INDIRECT_ACTION_TYPE_COUNT:
+		return flow_dv_query_count(dev, idx, data, error);
+	default:
+		return rte_flow_error_set(error, ENOTSUP,
+					  RTE_FLOW_ERROR_TYPE_ACTION, NULL,
+					  "action type query not supported");
+	}
 }
 
 /**
@@ -15582,7 +15645,8 @@ flow_dv_query(struct rte_eth_dev *dev,
 		case RTE_FLOW_ACTION_TYPE_VOID:
 			break;
 		case RTE_FLOW_ACTION_TYPE_COUNT:
-			ret = flow_dv_query_count(dev, flow, data, error);
+			ret = flow_dv_query_count(dev, flow->counter, data,
+						  error);
 			break;
 		case RTE_FLOW_ACTION_TYPE_AGE:
 			ret = flow_dv_query_age(dev, flow, data, error);
@@ -16717,20 +16781,20 @@ flow_dv_action_validate(struct rte_eth_dev *dev,
 		 * sufficient, it is set to devx_obj_ops.
 		 * Otherwise, it is set to ibv_obj_ops.
 		 * ibv_obj_ops doesn't support ind_table_modify operation.
-		 * In this case the shared RSS action can't be used.
+		 * In this case the indirect RSS action can't be used.
 		 */
 		if (priv->obj_ops.ind_table_modify == NULL)
 			return rte_flow_error_set(err, ENOTSUP,
 						  RTE_FLOW_ERROR_TYPE_ACTION,
-						  NULL, "shared RSS action "
-						  "not supported");
+						  NULL,
+						  "Indirect RSS action not supported");
 		return mlx5_validate_action_rss(dev, action, err);
 	case RTE_FLOW_ACTION_TYPE_AGE:
 		if (!priv->sh->aso_age_mng)
 			return rte_flow_error_set(err, ENOTSUP,
 						RTE_FLOW_ERROR_TYPE_UNSPECIFIED,
 						NULL,
-					     "shared age action not supported");
+						"Indirect age action not supported");
 		return flow_dv_validate_action_age(0, action, dev, err);
 	case RTE_FLOW_ACTION_TYPE_CONNTRACK:
 		if (!priv->sh->ct_aso_en)
@@ -16738,6 +16802,20 @@ flow_dv_action_validate(struct rte_eth_dev *dev,
 					RTE_FLOW_ERROR_TYPE_UNSPECIFIED, NULL,
 					"ASO CT is not supported");
 		return mlx5_validate_action_ct(dev, action->conf, err);
+	case RTE_FLOW_ACTION_TYPE_COUNT:
+		/*
+		 * There are two mechanisms to share the action count.
+		 * The old mechanism uses the shared field to share, while the
+		 * new mechanism uses the indirect action API.
+		 * This validation comes to make sure that the two mechanisms
+		 * are not combined.
+		 */
+		if (is_shared_action_count(action))
+			return rte_flow_error_set(err, ENOTSUP,
+						  RTE_FLOW_ERROR_TYPE_ACTION,
+						  NULL,
+						  "Mix shared and indirect counter is not supported");
+		return flow_dv_validate_action_count(dev, true, 0, err);
 	default:
 		return rte_flow_error_set(err, ENOTSUP,
 					  RTE_FLOW_ERROR_TYPE_ACTION,

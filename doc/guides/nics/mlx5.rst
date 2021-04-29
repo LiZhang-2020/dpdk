@@ -1673,6 +1673,11 @@ Supported hardware offloads
    |                       | |  rdma-core 32 | | rdma-core 32  |
    |                       | |  ConnectX-6 Dx| | ConnectX-6 Dx |
    +-----------------------+-----------------+-----------------+
+   | Count shared action   | | DPDK 21.05    | | DPDK 21.05    |
+   |                       | | OFED 4.6      | | OFED 4.6      |
+   |                       | | rdma-core 24  | | rdma-core 23  |
+   |                       | | ConnectX-5    | | ConnectX-5    |
+   +-----------------------+-----------------+-----------------+
    | Encapsulation         | | DPDK 21.02    | | DPDK 21.02    |
    | GENEVE TLV option     | | OFED 5.2      | | OFED 5.2      |
    |                       | | rdma-core 34  | | rdma-core 34  |
