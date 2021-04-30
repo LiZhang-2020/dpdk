@@ -1780,6 +1780,9 @@ rte_sft_flow_activate(uint16_t queue, uint32_t zone, struct rte_mbuf *mbuf_in,
 	}
 	sft_flow_activate(entry, error);
 	if (action_specs && action_specs->actions & RTE_SFT_ACTION_AGE) {
+		if (!action_specs->aging)
+			entry->action_specs.aging =
+					sft_priv->conf.default_aging;
 		rte_spinlock_lock(&(sft_priv->age[queue].entries_sl));
 		entry->last_activity_ts = time(NULL);
 		entry->aged = false;
