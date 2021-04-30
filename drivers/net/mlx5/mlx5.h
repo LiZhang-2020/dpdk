@@ -743,13 +743,8 @@ struct mlx5_flow_meter_info {
 	/**< Flow meter action. */
 };
 
-/* PPS(packets per second) map to BPS(Bytes per second).
- * HW treat packet as 128bytes in PPS mode
- */
-#define MLX5_MTRS_PPS_MAP_BPS_SHIFT 7
-
-/* RFC2697/PPS parameter structure. */
-struct mlx5_flow_meter_srtcm_prm {
+/* RFC2697 parameter structure. */
+struct mlx5_flow_meter_srtcm_rfc2697_prm {
 	rte_be32_t cbs_cir;
 	/*
 	 * bit 24-28: cbs_exponent, bit 16-23 cbs_mantissa,
@@ -769,7 +764,7 @@ struct mlx5_flow_meter_profile {
 	uint32_t id; /**< Profile id. */
 	struct rte_mtr_meter_profile profile; /**< Profile detail. */
 	union {
-		struct mlx5_flow_meter_srtcm_prm srtcm_prm;
+		struct mlx5_flow_meter_srtcm_rfc2697_prm srtcm_prm;
 		/**< srtcm_rfc2697/srtcm_pps struct. */
 	};
 	uint32_t ref_cnt; /**< Use count. */
@@ -826,10 +821,12 @@ struct mlx5_aso_mtr_pools_mng {
 union mlx5_flow_tbl_key {
 	struct {
 		/* Table ID should be at the lowest address. */
-		uint32_t table_id;	/**< ID of the table. */
-		uint16_t dummy;		/**< Dummy table for DV API. */
-		uint8_t domain;		/**< 1 - FDB, 0 - NIC TX/RX. */
-		uint8_t direction;	/**< 1 - egress, 0 - ingress. */
+		uint32_t level;	/**< Level of the table. */
+		uint32_t id:22;	/**< ID of the table. */
+		uint32_t dummy:1;	/**< Dummy table for DV API. */
+		uint32_t is_fdb:1;	/**< 1 - FDB, 0 - NIC TX/RX. */
+		uint32_t is_egress:1;	/**< 1 - egress, 0 - ingress. */
+		uint32_t reserved:7;	/**< must be zero for comparison. */
 	};
 	uint64_t v64;			/**< full 64bits value of key */
 };

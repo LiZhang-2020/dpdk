@@ -6365,6 +6365,7 @@ flow_dv_aso_mtr_release_to_pool(struct rte_eth_dev *dev, uint32_t mtr_idx)
 
 	MLX5_ASSERT(aso_mtr);
 	rte_spinlock_lock(&mtrmng->mtrsl);
+	memset(&aso_mtr->fm, 0, sizeof(struct mlx5_flow_meter_info));
 	aso_mtr->state = ASO_METER_FREE;
 	aso_mtr->fm.meter_id = UINT32_MAX;
 	LIST_INSERT_HEAD(&mtrmng->meters, aso_mtr, next);
@@ -6387,8 +6388,6 @@ flow_dv_mtr_alloc(struct rte_eth_dev *dev)
 	struct mlx5_aso_mtr *mtr_free = NULL;
 	struct mlx5_aso_mtr_pools_mng *mtrmng = priv->sh->mtrmng;
 	struct mlx5_aso_mtr_pool *pool;
-	struct rte_flow_error error;
-	uint8_t reg_id;
 	uint32_t mtr_idx = 0;
 
 	if (!priv->config.devx) {
@@ -6412,6 +6411,10 @@ flow_dv_mtr_alloc(struct rte_eth_dev *dev)
 					mtrs[mtr_free->offset]);
 	mtr_idx = MLX5_MAKE_MTR_IDX(pool->index, mtr_free->offset);
 	if (!mtr_free->fm.meter_action) {
+#ifdef HAVE_MLX5_DR_CREATE_ACTION_ASO
+		struct rte_flow_error error;
+		uint8_t reg_id;
+
 		reg_id = mlx5_flow_get_reg_id(dev, MLX5_MTR_COLOR, 0, &error);
 		mtr_free->fm.meter_action =
 			mlx5_glue->dv_create_flow_action_aso
@@ -6420,6 +6423,7 @@ flow_dv_mtr_alloc(struct rte_eth_dev *dev)
 						 mtr_free->offset,
 						 (1 << MLX5_FLOW_COLOR_GREEN),
 						 reg_id - REG_C_0);
+#endif /* HAVE_MLX5_DR_CREATE_ACTION_ASO */
 		if (!mtr_free->fm.meter_action) {
 			flow_dv_aso_mtr_release_to_pool(dev, mtr_idx);
 			return 0;
@@ -9965,20 +9969,21 @@ flow_dv_tbl_create_cb(struct mlx5_hlist *list, uint64_t key64, void *cb_ctx)
 	tbl_data->group_id = tt_prm->group_id;
 	tbl_data->external = !!tt_prm->external;
 	tbl_data->tunnel_offload = is_tunnel_offload_active(dev);
-	tbl_data->is_egress = !!key.direction;
-	tbl_data->is_transfer = !!key.domain;
+	tbl_data->is_egress = !!key.is_egress;
+	tbl_data->is_transfer = !!key.is_fdb;
 	tbl_data->dummy = !!key.dummy;
-	tbl_data->table_id = key.table_id;
+	tbl_data->level = key.level;
+	tbl_data->id = key.id;
 	tbl = &tbl_data->tbl;
 	if (key.dummy)
 		return &tbl_data->entry;
-	if (key.domain)
+	if (key.is_fdb)
 		domain = sh->fdb_domain;
-	else if (key.direction)
+	else if (key.is_egress)
 		domain = sh->tx_domain;
 	else
 		domain = sh->rx_domain;
-	ret = mlx5_flow_os_create_flow_tbl(domain, key.table_id, &tbl->obj);
+	ret = mlx5_flow_os_create_flow_tbl(domain, key.level, &tbl->obj);
 	if (ret) {
 		rte_flow_error_set(error, ENOMEM,
 				   RTE_FLOW_ERROR_TYPE_UNSPECIFIED,
@@ -9986,7 +9991,7 @@ flow_dv_tbl_create_cb(struct mlx5_hlist *list, uint64_t key64, void *cb_ctx)
 		mlx5_ipool_free(sh->ipool[MLX5_IPOOL_JUMP], idx);
 		return NULL;
 	}
-	if (key.table_id) {
+	if (key.level != 0) {
 		ret = mlx5_flow_os_create_flow_action_dest_flow_tbl
 					(tbl->obj, &tbl_data->jump.action);
 		if (ret) {
@@ -9999,9 +10004,9 @@ flow_dv_tbl_create_cb(struct mlx5_hlist *list, uint64_t key64, void *cb_ctx)
 			return NULL;
 		}
 	}
-	MKSTR(matcher_name, "%s_%s_%u_matcher_cache",
-	      key.domain ? "FDB" : "NIC", key.direction ? "egress" : "ingress",
-	      key.table_id);
+	MKSTR(matcher_name, "%s_%s_%u_%u_matcher_cache",
+	      key.is_fdb ? "FDB" : "NIC", key.is_egress ? "egress" : "ingress",
+	      key.level, key.id);
 	mlx5_cache_list_init(&tbl_data->matchers, matcher_name, 0, sh,
 			     flow_dv_matcher_create_cb,
 			     flow_dv_matcher_match_cb,
@@ -10018,10 +10023,11 @@ flow_dv_tbl_match_cb(struct mlx5_hlist *list __rte_unused,
 		container_of(entry, struct mlx5_flow_tbl_data_entry, entry);
 	union mlx5_flow_tbl_key key = { .v64 = key64 };
 
-	return tbl_data->table_id != key.table_id ||
+	return tbl_data->level != key.level ||
+	       tbl_data->id != key.id ||
 	       tbl_data->dummy != key.dummy ||
-	       tbl_data->is_transfer != key.domain ||
-	       tbl_data->is_egress != key.direction;
+	       tbl_data->is_transfer != !!key.is_fdb ||
+	       tbl_data->is_egress != !!key.is_egress;
 }
 
 /**
@@ -10029,14 +10035,16 @@ flow_dv_tbl_match_cb(struct mlx5_hlist *list __rte_unused,
  *
  * @param[in, out] dev
  *   Pointer to rte_eth_dev structure.
- * @param[in] table_id
- *   Table id to use.
+ * @param[in] table_level
+ *   Table level to use.
  * @param[in] egress
  *   Direction of the table.
  * @param[in] transfer
  *   E-Switch or NIC flow.
  * @param[in] dummy
  *   Dummy entry for dv API.
+ * @param[in] table_id
+ *   Table id to use.
  * @param[out] error
  *   pointer to error structure.
  *
@@ -10045,20 +10053,23 @@ flow_dv_tbl_match_cb(struct mlx5_hlist *list __rte_unused,
  */
 struct mlx5_flow_tbl_resource *
 flow_dv_tbl_resource_get(struct rte_eth_dev *dev,
-			 uint32_t table_id, uint8_t egress,
+			 uint32_t table_level, uint8_t egress,
 			 uint8_t transfer,
 			 bool external,
 			 const struct mlx5_flow_tunnel *tunnel,
 			 uint32_t group_id, uint8_t dummy,
+			 uint32_t table_id,
 			 struct rte_flow_error *error)
 {
 	struct mlx5_priv *priv = dev->data->dev_private;
 	union mlx5_flow_tbl_key table_key = {
 		{
-			.table_id = table_id,
-			.dummy = dummy,
-			.domain = !!transfer,
-			.direction = !!egress,
+			.level = table_level,
+			.id = table_id,
+			.reserved = 0,
+			.dummy = !!dummy,
+			.is_fdb = !!transfer,
+			.is_egress = !!egress,
 		}
 	};
 	struct mlx5_flow_tbl_tunnel_prm tt_prm = {
@@ -10081,8 +10092,10 @@ flow_dv_tbl_resource_get(struct rte_eth_dev *dev,
 				   "cannot get table");
 		return NULL;
 	}
-	DRV_LOG(DEBUG, "Table_id %u tunnel %u group %u registered.",
-		table_id, tunnel ? tunnel->tunnel_id : 0, group_id);
+	DRV_LOG(DEBUG, "table_level %u table_id %u "
+		"tunnel %u group %u registered.",
+		table_level, table_id,
+		tunnel ? tunnel->tunnel_id : 0, group_id);
 	tbl_data = container_of(entry, struct mlx5_flow_tbl_data_entry, entry);
 	return &tbl_data->tbl;
 }
@@ -10109,7 +10122,7 @@ flow_dv_tbl_remove_cb(struct mlx5_hlist *list,
 					tbl_data->tunnel->tunnel_id : 0,
 			.group = tbl_data->group_id
 		};
-		uint32_t table_id = tbl_data->table_id;
+		uint32_t table_level = tbl_data->level;
 
 		tunnel_grp_hash = tbl_data->tunnel ?
 					tbl_data->tunnel->groups :
@@ -10118,8 +10131,9 @@ flow_dv_tbl_remove_cb(struct mlx5_hlist *list,
 		if (he)
 			mlx5_hlist_unregister(tunnel_grp_hash, he);
 		DRV_LOG(DEBUG,
-			"Table_id %u tunnel %u group %u released.",
-			table_id,
+			"table_level %u id %u tunnel %u group %u released.",
+			table_level,
+			tbl_data->id,
 			tbl_data->tunnel ?
 			tbl_data->tunnel->tunnel_id : 0,
 			tbl_data->group_id);
@@ -10467,10 +10481,10 @@ flow_dv_matcher_register(struct rte_eth_dev *dev,
 	 * tunnel offload API requires this registration for cases when
 	 * tunnel match rule was inserted before tunnel set rule.
 	 */
-	tbl = flow_dv_tbl_resource_get(dev, key->table_id,
-				       key->direction, key->domain,
+	tbl = flow_dv_tbl_resource_get(dev, key->level,
+				       key->is_egress, key->is_fdb,
 				       dev_flow->external, tunnel,
-				       group_id, 0, error);
+				       group_id, 0, key->id, error);
 	if (!tbl)
 		return -rte_errno;	/* No need to refill the error info */
 	tbl_data = container_of(tbl, struct mlx5_flow_tbl_data_entry, tbl);
@@ -10949,7 +10963,7 @@ flow_dv_sample_create_cb(struct mlx5_cache_list *list __rte_unused,
 		is_egress = 1;
 	tbl = flow_dv_tbl_resource_get(dev, next_ft_id,
 					is_egress, is_transfer,
-					true, NULL, 0, 0, error);
+					true, NULL, 0, 0, 0, error);
 	if (!tbl) {
 		rte_flow_error_set(error, ENOMEM,
 					  RTE_FLOW_ERROR_TYPE_UNSPECIFIED,
@@ -12702,7 +12716,7 @@ flow_dv_translate(struct rte_eth_dev *dev,
 						       attr->transfer,
 						       !!dev_flow->external,
 						       tunnel, jump_group, 0,
-						       error);
+						       0, error);
 			if (!tbl)
 				return rte_flow_error_set
 						(error, errno,
@@ -13301,9 +13315,10 @@ flow_dv_translate(struct rte_eth_dev *dev,
 	matcher.priority = mlx5_flow_adjust_priority(dev, priority,
 						     matcher.priority);
 	/* reserved field no needs to be set to 0 here. */
-	tbl_key.domain = attr->transfer;
-	tbl_key.direction = attr->egress;
-	tbl_key.table_id = dev_flow->dv.group;
+	tbl_key.is_fdb = attr->transfer;
+	tbl_key.is_egress = attr->egress;
+	tbl_key.level = dev_flow->dv.group;
+	tbl_key.id = dev_flow->dv.table_id;
 	if (flow_dv_matcher_register(dev, &matcher, &tbl_key, dev_flow,
 				     tunnel, attr->group, error))
 		return -rte_errno;
@@ -15081,7 +15096,7 @@ flow_dv_prepare_mtr_tables(struct rte_eth_dev *dev,
 	/* Create the meter table with METER level. */
 	dtb->tbl = flow_dv_tbl_resource_get(dev, MLX5_FLOW_TABLE_LEVEL_METER,
 					    egress, transfer, false, NULL, 0,
-					    0, &error);
+					    0, 0, &error);
 	if (!dtb->tbl) {
 		DRV_LOG(ERR, "Failed to create meter policer table.");
 		return -1;
@@ -15090,7 +15105,7 @@ flow_dv_prepare_mtr_tables(struct rte_eth_dev *dev,
 	dtb->sfx_tbl = flow_dv_tbl_resource_get(dev,
 					    MLX5_FLOW_TABLE_LEVEL_SUFFIX,
 					    egress, transfer, false, NULL, 0,
-					    0, &error);
+					    0, 0, &error);
 	if (!dtb->sfx_tbl) {
 		DRV_LOG(ERR, "Failed to create meter suffix table.");
 		return -1;
@@ -15613,7 +15628,8 @@ mlx5_flow_dv_discover_counter_offset_support(struct rte_eth_dev *dev)
 	void *flow = NULL;
 	int ret = -1;
 
-	tbl = flow_dv_tbl_resource_get(dev, 0, 0, 0, false, NULL, 0, 0, NULL);
+	tbl = flow_dv_tbl_resource_get(dev, 0, 0, 0, false, NULL,
+					0, 0, 0, NULL);
 	if (!tbl)
 		goto err;
 	dcs = mlx5_devx_cmd_flow_counter_alloc(priv->sh->ctx, 0x4);

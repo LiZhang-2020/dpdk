@@ -628,21 +628,25 @@ static void
 mlx5_aso_flow_mtrs_mng_close(struct mlx5_dev_ctx_shared *sh)
 {
 	struct mlx5_aso_mtr_pool *mtr_pool;
-	struct mlx5_aso_mtr *aso_mtr;
 	struct mlx5_aso_mtr_pools_mng *mtrmng = sh->mtrmng;
 	uint32_t idx;
+#ifdef HAVE_MLX5_DR_CREATE_ACTION_ASO
+	struct mlx5_aso_mtr *aso_mtr;
 	int i;
+#endif /* HAVE_MLX5_DR_CREATE_ACTION_ASO */
 
 	mlx5_aso_queue_uninit(sh, ASO_OPC_MOD_POLICER);
 	idx = mtrmng->n_valid;
 	while (idx--) {
 		mtr_pool = mtrmng->pools[idx];
+#ifdef HAVE_MLX5_DR_CREATE_ACTION_ASO
 		for (i = 0; i < MLX5_ASO_MTRS_PER_POOL; i++) {
 			aso_mtr = &mtr_pool->mtrs[i];
 			if (aso_mtr->fm.meter_action)
 				claim_zero(mlx5_glue->destroy_flow_action
 						(aso_mtr->fm.meter_action));
 		}
+#endif /* HAVE_MLX5_DR_CREATE_ACTION_ASO */
 		claim_zero(mlx5_devx_cmd_destroy
 						(mtr_pool->devx_obj));
 		mtrmng->n_valid--;
@@ -1378,9 +1382,12 @@ mlx5_alloc_table_hash_list(struct mlx5_priv *priv __rte_unused)
 	 * because DV expect to see them even if they cannot be created by
 	 * RDMA-CORE.
 	 */
-	if (!flow_dv_tbl_resource_get(dev, 0, 0, 0, 0, NULL, 0, 1, &error) ||
-	    !flow_dv_tbl_resource_get(dev, 0, 1, 0, 0, NULL, 0, 1, &error) ||
-	    !flow_dv_tbl_resource_get(dev, 0, 0, 1, 0, NULL, 0, 1, &error)) {
+	if (!flow_dv_tbl_resource_get(dev, 0, 0, 0, 0,
+		NULL, 0, 1, 0, &error) ||
+	    !flow_dv_tbl_resource_get(dev, 0, 1, 0, 0,
+		NULL, 0, 1, 0, &error) ||
+	    !flow_dv_tbl_resource_get(dev, 0, 0, 1, 0,
+		NULL, 0, 1, 0, &error)) {
 		err = ENOMEM;
 		goto error;
 	}

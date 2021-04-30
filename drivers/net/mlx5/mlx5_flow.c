@@ -4425,6 +4425,9 @@ flow_create_split_inner(struct rte_eth_dev *dev,
 		dev_flow->handle->mark = 1;
 	if (sub_flow)
 		*sub_flow = dev_flow;
+#ifdef HAVE_IBV_FLOW_DV_SUPPORT
+	dev_flow->dv.table_id = flow_split_info->table_id;
+#endif
 	return flow_drv_translate(dev, dev_flow, attr, items, actions, error);
 }
 
@@ -4490,8 +4493,8 @@ flow_meter_split_prep(struct rte_eth_dev *dev,
 	struct rte_flow_action_jump *jump_data;
 	struct rte_flow_action *action_pre_head = NULL;
 	bool mtr_first = priv->sh->meter_aso_en &&
-			 (attr->egress ||
-			  (attr->transfer && priv->representor_id != -1));
+			(attr->egress ||
+			(attr->transfer && priv->representor_id != UINT16_MAX));
 	uint8_t mtr_id_offset = priv->mtr_reg_share ? MLX5_MTR_COLOR_BITS : 0;
 	uint8_t mtr_reg_bits = priv->mtr_reg_share ?
 				MLX5_MTR_IDLE_BITS_IN_COLOR_REG : MLX5_REG_BITS;
@@ -4567,22 +4570,20 @@ flow_meter_split_prep(struct rte_eth_dev *dev,
 		actions_pre->type = RTE_FLOW_ACTION_TYPE_END;
 		actions_pre++;
 	}
+	/* Generate meter flow_id only if support multiple flows per meter. */
 	mlx5_ipool_malloc(fm->flow_ipool, &tag_id);
-	if (!tag_id) {
-		rte_flow_error_set(error, ENOMEM,
+	if (!tag_id)
+		return rte_flow_error_set(error, ENOMEM,
 				RTE_FLOW_ERROR_TYPE_UNSPECIFIED, NULL,
 				"Failed to allocate meter flow id.");
-		return 0;
-	}
 	flow_id = tag_id - 1;
 	flow_id_bits = MLX5_REG_BITS - __builtin_clz(flow_id);
 	flow_id_bits = flow_id_bits ? flow_id_bits : 1;
 	if ((flow_id_bits + priv->max_mtr_bits) > mtr_reg_bits) {
 		mlx5_ipool_free(fm->flow_ipool, tag_id);
-		rte_flow_error_set(error, EINVAL,
+		return rte_flow_error_set(error, EINVAL,
 				RTE_FLOW_ERROR_TYPE_UNSPECIFIED, NULL,
 				"Meter flow id exceeds max limit.");
-		return 0;
 	}
 	if (flow_id_bits > priv->max_mtr_flow_bits)
 		priv->max_mtr_flow_bits = flow_id_bits;
@@ -4633,7 +4634,7 @@ flow_meter_split_prep(struct rte_eth_dev *dev,
 	 */
 	for (shift = 0; shift < flow_id_bits; shift++)
 		flow_id_reversed = (flow_id_reversed << 1) |
-				   ((flow_id >> shift) & 0x1);
+			      ((flow_id >> shift) & 0x1);
 	set_tag->data |= flow_id_reversed << (mtr_reg_bits - flow_id_bits);
 	tag_item_spec->id = set_tag->id;
 	tag_item_spec->data = set_tag->data << mtr_id_offset;
@@ -4642,7 +4643,7 @@ flow_meter_split_prep(struct rte_eth_dev *dev,
 				MLX5_RTE_FLOW_ACTION_TYPE_TAG;
 	tag_action->conf = set_tag;
 	tag_item->type = (enum rte_flow_item_type)
-			 MLX5_RTE_FLOW_ITEM_TYPE_TAG;
+				MLX5_RTE_FLOW_ITEM_TYPE_TAG;
 	tag_item->spec = tag_item_spec;
 	tag_item->last = NULL;
 	tag_item->mask = tag_item_mask;
@@ -5400,7 +5401,7 @@ flow_create_split_meter(struct rte_eth_dev *dev,
 			   sizeof(struct mlx5_rte_flow_action_set_tag) +
 			   sizeof(struct rte_flow_action_jump);
 		/* Suffix items: tag, vlan, port id, end. */
-#define METER_SUFFIX_ITEM 5
+#define METER_SUFFIX_ITEM 4
 		item_size = sizeof(struct rte_flow_item) * METER_SUFFIX_ITEM +
 			    sizeof(struct mlx5_rte_flow_item_tag) * 2;
 		sfx_actions = mlx5_malloc(MLX5_MEM_ZERO, (act_size + item_size),
@@ -5583,8 +5584,7 @@ flow_create_split_sample(struct rte_eth_dev *dev,
 						struct mlx5_flow_tbl_data_entry,
 						tbl);
 			sfx_attr.group = sfx_attr.transfer ?
-						(sfx_tbl_data->table_id - 1) :
-						sfx_tbl_data->table_id;
+			(sfx_tbl_data->level - 1) : sfx_tbl_data->level;
 		} else {
 			MLX5_ASSERT(attr->transfer);
 			sfx_attr.group = jump_table;
@@ -5786,7 +5786,8 @@ mlx5_flow_list_create(struct rte_eth_dev *dev, uint32_t *list,
 		.skip_scale = 0,
 		.flow_idx = 0,
 		.prefix_mark = 0,
-		.prefix_layers = 0
+		.prefix_layers = 0,
+		.table_id = 0
 	};
 	int ret;
 
@@ -8149,10 +8150,12 @@ tunnel_mark_decode(struct rte_eth_dev *dev, uint32_t mark)
 	union tunnel_offload_mark mbits = { .val = mark };
 	union mlx5_flow_tbl_key table_key = {
 		{
-			.table_id = tunnel_id_to_flow_tbl(mbits.table_id),
+			.level = tunnel_id_to_flow_tbl(mbits.table_id),
+			.id = 0,
+			.reserved = 0,
 			.dummy = 0,
-			.domain = !!mbits.transfer,
-			.direction = 0,
+			.is_fdb = !!mbits.transfer,
+			.is_egress = 0,
 		}
 	};
 	he = mlx5_hlist_lookup(sh->flow_tbls, table_key.v64, NULL);
