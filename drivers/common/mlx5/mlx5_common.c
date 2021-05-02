@@ -165,6 +165,20 @@ to_mlx5_device(const struct rte_device *rte_dev)
 	return NULL;
 }
 
+int
+mlx5_dev_to_pci_str(const struct rte_device *dev, char *addr, size_t size)
+{
+	if (mlx5_dev_is_pci(dev))
+		return rte_strscpy(addr, dev->name, size);
+#ifdef RTE_EXEC_ENV_LINUX
+	return mlx5_auxiliary_get_pci_str(RTE_DEV_TO_AUXILIARY_CONST(dev),
+			addr, size);
+#else
+	rte_errno = ENODEV;
+	return -rte_errno;
+#endif
+}
+
 static void
 dev_release(struct mlx5_common_device *dev)
 {

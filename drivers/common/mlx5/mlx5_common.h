@@ -214,6 +214,16 @@ check_cqe(volatile struct mlx5_cqe *cqe, const uint16_t cqes_n,
 }
 
 /*
+ * Get PCI address string from EAL device.
+ *
+ * @return
+ *   - Copied string length on success.
+ *   - Negative value and rte_errno is set otherwise.
+ */
+__rte_internal
+int mlx5_dev_to_pci_str(const struct rte_device *dev, char *addr, size_t size);
+
+/*
  * Get PCI address from sysfs of a PCI-related device.
  *
  * @param[in] dev_path
@@ -227,7 +237,7 @@ check_cqe(volatile struct mlx5_cqe *cqe, const uint16_t cqes_n,
  *   - Negative value and rte_errno is set otherwise.
  */
 __rte_internal
-int mlx5_dev_to_pci_addr(const char *dev_path, struct rte_pci_addr *pci_addr);
+int mlx5_get_pci_addr(const char *dev_path, struct rte_pci_addr *pci_addr);
 
 /*
  * Get kernel network interface name from sysfs IB device path.

@@ -13,7 +13,7 @@ INTERNAL {
 	mlx5_create_mr_ext;
 
 	mlx5_dev_is_pci;
-	mlx5_dev_to_pci_addr;
+	mlx5_dev_to_pci_str;
 
 	mlx5_devx_cmd_create_cq;
 	mlx5_devx_cmd_create_flex_parser;
@@ -57,6 +57,7 @@ INTERNAL {
 	mlx5_get_ifname_sysfs;
 	mlx5_get_dbr;
 	mlx5_get_ibv_device; # WINDOWS_NO_EXPORT
+	mlx5_get_pci_addr; # WINDOWS_NO_EXPORT
 
 	mlx5_mp_init_primary;
 	mlx5_mp_uninit_primary;

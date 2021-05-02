@@ -4,6 +4,8 @@
 
 #include <stdlib.h>
 #include <dirent.h>
+#include <libgen.h>
+
 #include <rte_malloc.h>
 #include <rte_errno.h>
 #include <rte_bus_auxiliary.h>
@@ -62,6 +64,23 @@ mlx5_auxiliary_get_pci_path(const struct rte_auxiliary_device *dev,
 		return -rte_errno;
 	}
 	if (rte_strscpy(sysfs_pci, dir, size) < 0)
+		return -rte_errno;
+	return 0;
+}
+
+int
+mlx5_auxiliary_get_pci_str(const struct rte_auxiliary_device *dev,
+			   char *addr, size_t size)
+{
+	char sysfs_pci[PATH_MAX];
+	char *base;
+
+	if (mlx5_auxiliary_get_pci_path(dev, sysfs_pci, sizeof(sysfs_pci)) != 0)
+		return -ENODEV;
+	base = basename(sysfs_pci);
+	if (base == NULL)
+		return -errno;
+	if (rte_strscpy(addr, base, size) < 0)
 		return -rte_errno;
 	return 0;
 }

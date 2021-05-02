@@ -23,8 +23,7 @@ const struct mlx5_glue *mlx5_glue;
 #endif
 
 int
-mlx5_dev_to_pci_addr(const char *dev_path,
-		     struct rte_pci_addr *pci_addr)
+mlx5_get_pci_addr(const char *dev_path, struct rte_pci_addr *pci_addr)
 {
 	FILE *file;
 	char line[32];
