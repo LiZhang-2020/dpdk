@@ -760,7 +760,6 @@ mlx5_sft_add_l0_rules(struct sft_entry_ctx *ctx, struct rte_sft_entry *entry,
 		.priority = MLX5_SFT_TABLE_APP_RULE_FLOW_PRIORITY,
 		.group = MLX5_FLOW_TABLE_SFT_L0,
 	};
-
 	zone_fid_reg = mlx5_flow_get_reg_id(ctx->dev, MLX5_SFT_ZONE, 0,
 					    &rte_err);
 	state_reg = mlx5_flow_get_reg_id(ctx->dev, MLX5_SFT_APP_STATE, 0,

@@ -9735,15 +9735,17 @@ flow_dv_translate_item_ecpri(struct rte_eth_dev *dev, void *matcher,
 }
 
 static void
-sft_translate_item(struct rte_eth_dev *dev, int reg, uint32_t data,
-		   void *match_mask, void *match_value)
+flow_dv_translate_sft_item_data(struct rte_eth_dev *dev, int reg,
+				uint32_t data_val,
+				uint32_t data_mask, void *match_mask,
+				void *match_value)
 {
 	const struct mlx5_rte_flow_item_tag tag_v = {
 		.id = reg,
-		.data = data,
+		.data = data_val,
 	};
 	const struct mlx5_rte_flow_item_tag tag_m = {
-		.data = UINT32_MAX,
+		.data = data_mask,
 	};
 	const struct rte_flow_item tag_item = {
 		.type = (enum rte_flow_item_type)MLX5_RTE_FLOW_ITEM_TYPE_TAG,
@@ -9772,56 +9774,34 @@ flow_dv_translate_item_sft(struct rte_eth_dev *dev, void *match_mask,
 			   void *match_value, const struct rte_flow_item *item,
 			   struct rte_flow_error *error)
 {
-	uint32_t data;
-	int reg;
-	union sft_mark mark = { .val = 0 };
-	union sft_mark mask = { .val = 0 };
+	int fid_zone_reg = mlx5_flow_get_reg_id(dev, MLX5_SFT_FID, 0, error);
+	int app_state_reg = mlx5_flow_get_reg_id(dev, MLX5_SFT_APP_STATE, 0,
+						 error);
+	int app_data_reg = mlx5_flow_get_reg_id(dev, MLX5_SFT_APP_DATA, 0,
+						error);
+	union sft_mark mark_value = { .val = 0 };
+	union sft_mark mark_mask = { .val = 0 };
 	const struct rte_flow_item_sft *sft_m = item->mask;
 	const struct rte_flow_item_sft *sft_v = item->spec;
 
-	DRV_LOG(DEBUG, "Value: fid=%u zone=%u f_valid=%u z_valid=%u reserved=%u state=%u user_data_size=%u user_data=%p",
-	sft_v->fid, sft_v->zone, sft_v->fid_valid, sft_v->zone_valid,
-	sft_v->reserved, sft_v->state, sft_v->user_data_size,
-	(void *)sft_v->user_data);
-	DRV_LOG(DEBUG, "Mask: fid=%u zone=%u f_valid=%u z_valid=%u reserved=%u state=%u user_data_size=%u user_data=%p",
-	sft_m->fid, sft_m->zone, sft_m->fid_valid, sft_m->zone_valid,
-	sft_m->reserved, sft_m->state, sft_m->user_data_size,
-	(void *)sft_m->user_data);
-
-	if (!(sft_v->fid_valid ^ sft_v->zone_valid)) {
-		return rte_flow_error_set(error, EINVAL,
-				   RTE_FLOW_ERROR_TYPE_UNSPECIFIED,
-				   NULL, "invalid fid/zone");
-	} else if (sft_v->fid_valid) {
-		reg = mlx5_flow_get_reg_id(dev, MLX5_SFT_FID, 0, error);
-		if (reg < 0)
-			return rte_flow_error_set(error, EINVAL,
-				   RTE_FLOW_ERROR_TYPE_UNSPECIFIED,
-				   NULL, "cannot get register for sft fid");
-		mark.fid_valid = 1;
-		mask.fid_valid = 1;
-		data = sft_v->fid & sft_m->fid;
-	} else {
-		reg = mlx5_flow_get_reg_id(dev, MLX5_SFT_ZONE, 0, error);
-		if (reg < 0)
-			return rte_flow_error_set(error, EINVAL,
-				   RTE_FLOW_ERROR_TYPE_UNSPECIFIED,
-				   NULL, "cannot get register for sft zone");
-		mark.zone_valid = 1;
-		mask.zone_valid = 1;
-		data = sft_v->zone & sft_m->zone;
-	}
-	if (sft_m->user_data) {
-		reg = mlx5_flow_get_reg_id(dev, MLX5_SFT_APP_DATA, 0, error);
-		data = *(uint32_t *)sft_v->user_data;
-		sft_translate_item(dev, reg, data, match_mask, match_value);
-	}
-	if (sft_m->state) {
-		/* By default, the application state will be zero if not set. */
-		mark.app_state = sft_v->state & sft_m->state;
-		mask.app_state = sft_m->state;
-	}
-	if (mark.val) {
+	DRV_LOG(DEBUG,
+		"Value: fid=%u zone=%u f_valid=%u z_valid=%u reserved=%u state=%u user_data_size=%u user_data=%p",
+		sft_v->fid, sft_v->zone, sft_v->fid_valid, sft_v->zone_valid,
+		sft_v->reserved, sft_v->state, sft_v->user_data_size,
+		(void *)sft_v->user_data);
+	DRV_LOG(DEBUG,
+		"Mask: fid=%u zone=%u f_valid=%u z_valid=%u reserved=%u state=%u user_data_size=%u user_data=%p",
+		sft_m->fid, sft_m->zone, sft_m->fid_valid, sft_m->zone_valid,
+		sft_m->reserved, sft_m->state, sft_m->user_data_size,
+		(void *)sft_m->user_data);
+	/* application state will be zero if not set. */
+	mark_mask.app_state = sft_m->state;
+	mark_value.app_state = sft_v->state & sft_m->state;
+	mark_mask.fid_valid = sft_m->fid_valid;
+	mark_value.fid_valid = sft_m->fid_valid & sft_v->fid_valid;
+	mark_mask.zone_valid = sft_m->zone_valid;
+	mark_value.zone_valid = sft_m->zone_valid & sft_v->zone_valid;
+	if (mark_value.val) {
 		/*
 		 * The RTE_FLOW_ITEM_TYPE_MARK can be used for matching only
 		 * when XMETA feature is enabled and not with legacy mode.
@@ -9830,22 +9810,30 @@ flow_dv_translate_item_sft(struct rte_eth_dev *dev, void *match_mask,
 		 * and checking application state, while REG_C_1 will be used
 		 * for matching.
 		 */
-		const struct mlx5_rte_flow_item_tag tag_v = {
-			.id = REG_C_1,
-			.data = mark.val,
-		};
-		const struct mlx5_rte_flow_item_tag tag_m = {
-			.data = mask.val,
-		};
-                const struct rte_flow_item tag_item = {
-                        .type = (enum rte_flow_item_type)
-				MLX5_RTE_FLOW_ITEM_TYPE_TAG,
-                        .spec = &tag_v,
-                        .mask = &tag_m,
-                        .last = NULL,
-                };
-		flow_dv_translate_mlx5_item_tag(dev, match_mask,
-						match_value, &tag_item);
+		flow_dv_translate_sft_item_data(dev, app_state_reg,
+						mark_value.val, mark_mask.val,
+						match_mask, match_value);
+	}
+	/* PMD can match FID or zone
+	 * flow validate must check that only one parameter exists in a rule
+	 */
+	if (sft_m->fid)
+		flow_dv_translate_sft_item_data(dev, fid_zone_reg,
+						sft_m->fid & sft_v->fid,
+						sft_m->fid,
+						match_mask, match_value);
+	else if (sft_m->zone)
+		flow_dv_translate_sft_item_data(dev, fid_zone_reg,
+						sft_m->zone & sft_v->zone,
+						sft_m->zone,
+						match_mask, match_value);
+	if (sft_m->user_data && sft_v->user_data) {
+		uint32_t data_mask = *(uint32_t *)sft_m->user_data;
+		uint32_t data_val = *(uint32_t *)sft_m->user_data &
+				    *(uint32_t *)sft_v->user_data;
+		flow_dv_translate_sft_item_data(dev, app_data_reg, data_val,
+						data_mask, match_mask,
+						match_value);
 	}
 	return 0;
 }
@@ -10140,9 +10128,20 @@ flow_dv_tbl_remove_cb(struct mlx5_hlist *list,
 	mlx5_ipool_free(sh->ipool[MLX5_IPOOL_JUMP], tbl_data->idx);
 }
 
+__extension__
+union sft_action_match_key {
+	uint64_t val;
+	struct {
+		uint64_t jump_group:32;
+		uint64_t port_id:16;
+		uint64_t reserved:16;
+	};
+};
+
 struct mlx5_hlist_entry *
 flow_dv_sft_create_cb(struct mlx5_hlist *list, uint64_t key64, void *cb_ctx)
 {
+	union sft_action_match_key sft_key = { .val = key64 };
 	struct mlx5_flow_cb_ctx *ctx = cb_ctx;
 	struct rte_eth_dev *dev = ctx->dev;
 	struct mlx5_dev_ctx_shared *sh = MLX5_SH(dev);
@@ -10166,7 +10165,8 @@ flow_dv_sft_create_cb(struct mlx5_hlist *list, uint64_t key64, void *cb_ctx)
 		return NULL;
 	}
 	sft_data->idx = idx;
-	sft_data->jump_group = key64;
+	sft_data->jump_group = sft_key.jump_group;
+	sft_data->port_id = sft_key.port_id;
 	/* Create an SFT flow */
 	sft_data->sft_flow_idx =
 		mlx5_flow_add_post_sft_rule(dev,
@@ -10182,15 +10182,20 @@ error:
 	return NULL;
 }
 
+/*
+ * @return 0 on successful match
+ */
 int
 flow_dv_sft_match_cb(struct mlx5_hlist *list __rte_unused,
 		     struct mlx5_hlist_entry *entry, uint64_t key,
 		     void *cb_ctx __rte_unused)
 {
+	union sft_action_match_key sft_key = { .val = key };
+
 	struct mlx5_flow_sft_data_entry *sft_data =
 		container_of(entry, struct mlx5_flow_sft_data_entry, entry);
-
-	return key != sft_data->jump_group;
+	return !(sft_key.jump_group == sft_data->jump_group &&
+		 sft_key.port_id == sft_data->port_id);
 }
 
 void
@@ -10211,6 +10216,7 @@ flow_dv_sft_remove_cb(struct mlx5_hlist *list,
 /* Post SFT call parameters */
 struct post_sft_cb_params {
 	uint32_t group_id;
+	uint16_t port_id;
 	struct mlx5_flow *dev_flow;
 };
 
@@ -10229,24 +10235,26 @@ struct post_sft_cb_params {
  */
 struct mlx5_flow_sft_data_entry *
 flow_dv_sft_resource_get(struct rte_eth_dev *dev,
-			 uint32_t jump_group,
+			 uint64_t key64,
 			 struct rte_flow_error *error)
 {
 	struct mlx5_priv *priv = dev->data->dev_private;
 	struct mlx5_hlist_entry *entry;
 	struct mlx5_flow_sft_data_entry *sft_data;
+	union sft_action_match_key sft_key = { .val = key64 };
 
 	struct mlx5_flow_cb_ctx ctx = {
 		.dev = dev,
 	};
-	entry = mlx5_hlist_register(priv->sh->flow_sfts, jump_group, &ctx);
+	entry = mlx5_hlist_register(priv->sh->flow_sfts, sft_key.val, &ctx);
 	if (!entry) {
 		rte_flow_error_set(error, ENOMEM,
 				   RTE_FLOW_ERROR_TYPE_UNSPECIFIED, NULL,
 				   "cannot get sft");
 		return NULL;
 	}
-	DRV_LOG(DEBUG, "SFT group %u registered.", jump_group);
+	DRV_LOG(DEBUG, "port %u SFT group %u registered.", sft_key.port_id,
+		sft_key.jump_group);
 	sft_data = container_of(entry, struct mlx5_flow_sft_data_entry, entry);
 	return sft_data;
 }
@@ -10326,9 +10334,13 @@ mlx5_post_sft_create_callback(struct rte_eth_dev *dev, void *param,
 			      struct rte_flow_error *error)
 {
 	struct post_sft_cb_params *params = param;
+	union sft_action_match_key key = {
+		.jump_group = params->group_id,
+		.port_id = params->port_id,
+	};
 
 	struct mlx5_flow_sft_data_entry *sft_data =
-		flow_dv_sft_resource_get(dev, params->group_id, error);
+		flow_dv_sft_resource_get(dev, key.val, error);
 	if (!sft_data)
 		return -1;
 	flow_dv_sft_resource_register(dev, sft_data, params->dev_flow, error);
@@ -11858,6 +11870,8 @@ flow_dv_sft_action_set_reg(struct rte_eth_dev *dev, uint32_t data, enum mlx5_fea
 	const struct mlx5_rte_flow_action_set_tag set_action = {
 		.id = reg,
 		.data = data,
+		.offset = 0,
+		.length = MLX5_REG_BITS
 	};
 	const struct rte_flow_action action = {
 		.conf = &set_action,
@@ -11930,10 +11944,18 @@ flow_dv_convert_action_sft(struct rte_eth_dev *dev,
 
 	/* Add sft_zone reg action */
 	sft_zone = ((const struct rte_flow_action_sft *)action->conf)->zone;
-	/* metadata values in RX mbuf are in Little Endian format */
-	sft_zone = rte_cpu_to_be_32(sft_zone);
+	/*
+	 * zone value is set in META register to fall through SFT L0 miss rule
+	 * and REG_C_5 is used for match operations in RX mode
+	 */
 	ret = flow_dv_sft_action_set_reg(dev, sft_zone,
-			MLX5_SFT_ZONE, mhdr_res, error);
+					 MLX5_SFT_ZONE, mhdr_res, error);
+	if (ret)
+		return ret;
+	/* metadata values in RX mbuf are in Little Endian format */
+	/* set zone to meta register for miss in the SFT table */
+	ret = flow_dv_sft_action_set_reg(dev, rte_cpu_to_be_32(sft_zone),
+					 MLX5_METADATA_RX, mhdr_res, error);
 	if (ret)
 		return ret;
 	/* Add jump_group reg action */
@@ -11954,6 +11976,7 @@ flow_dv_convert_action_sft(struct rte_eth_dev *dev,
 			 NULL, "cannot allocate sft cb param");
 	*sft_cb_param = (struct post_sft_cb_params){
 		.group_id = jump_group,
+		.port_id = dev->data->port_id,
 		.dev_flow = dev_flow,
 	};
 	wks->cb_param = sft_cb_param;

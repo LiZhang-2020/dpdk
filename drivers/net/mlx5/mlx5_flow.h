@@ -120,6 +120,7 @@ enum mlx5_feature_name {
 	MLX5_MTR_FLOW_ID,
 	MLX5_ASO_FLOW_HIT,
 	MLX5_ASO_CONNTRACK,
+	/* keep SFT features together */
 	MLX5_SFT_FID,
 	MLX5_SFT_ZONE,
 	MLX5_SFT_APP_DATA,
@@ -1577,8 +1578,7 @@ int flow_dv_sft_match_cb(struct mlx5_hlist *list,
 void flow_dv_sft_remove_cb(struct mlx5_hlist *list,
 			   struct mlx5_hlist_entry *entry);
 struct mlx5_flow_sft_data_entry *
-flow_dv_sft_resource_get(struct rte_eth_dev *dev,
-			 uint32_t jump_group,
+flow_dv_sft_resource_get(struct rte_eth_dev *dev, uint64_t key64,
 			 struct rte_flow_error *error);
 struct mlx5_hlist_entry *flow_dv_tag_create_cb(struct mlx5_hlist *list,
 					       uint64_t key, void *cb_ctx);

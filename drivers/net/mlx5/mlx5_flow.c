@@ -3082,14 +3082,29 @@ mlx5_flow_validate_item_sft(const struct rte_flow_item *item,
 			    struct rte_flow_error *error)
 {
 	const struct rte_flow_item_sft *mask = item->mask;
-	if (!mask)
-		return rte_flow_error_set(error, EINVAL,
-					  RTE_FLOW_ERROR_TYPE_ITEM, item,
-					  "SFT mask is missing.");
+	const struct rte_flow_item_sft *spec = item->spec;
+
 	if (item_flags & MLX5_FLOW_LAYER_SFT)
 		return rte_flow_error_set(error, ENOTSUP,
 					  RTE_FLOW_ERROR_TYPE_ITEM, item,
 					  "multiple SFT items are not supported.");
+	if (!mask)
+		return rte_flow_error_set(error, EINVAL,
+					  RTE_FLOW_ERROR_TYPE_ITEM, item,
+					  "SFT mask is missing.");
+	if (!spec)
+		return rte_flow_error_set(error, EINVAL,
+					  RTE_FLOW_ERROR_TYPE_ITEM, item,
+					  "SFT spec is missing.");
+	/* PMD cannot match both FID & zone.
+	 * FID values assigned by SFT lib and starts from 1.
+	 * Zone value is selected by application.
+	 * 0 is valid zone value.
+	 */
+	if (mask->fid && mask->zone)
+		return rte_flow_error_set(error, EINVAL,
+					  RTE_FLOW_ERROR_TYPE_ITEM, item,
+					  "SFT cannot match fid and zone.");
 	return 0;
 }
 
