@@ -2395,6 +2395,35 @@ mlx5_hrxq_create_cb(struct mlx5_list *list,
 	return hrxq ? &hrxq->entry : NULL;
 }
 
+struct mlx5_list_entry *
+mlx5_hrxq_clone_cb(struct mlx5_list *list,
+		    struct mlx5_list_entry *entry,
+		    void *cb_ctx __rte_unused)
+{
+	struct rte_eth_dev *dev = list->ctx;
+	struct mlx5_priv *priv = dev->data->dev_private;
+	struct mlx5_hrxq *hrxq;
+	uint32_t hrxq_idx = 0;
+
+	hrxq = mlx5_ipool_zmalloc(priv->sh->ipool[MLX5_IPOOL_HRXQ], &hrxq_idx);
+	if (!hrxq)
+		return NULL;
+	memcpy(hrxq, entry, sizeof(*hrxq) + MLX5_RSS_HASH_KEY_LEN);
+	hrxq->idx = hrxq_idx;
+	return &hrxq->entry;
+}
+
+void
+mlx5_hrxq_clone_free_cb(struct mlx5_list *list,
+		    struct mlx5_list_entry *entry)
+{
+	struct rte_eth_dev *dev = list->ctx;
+	struct mlx5_priv *priv = dev->data->dev_private;
+	struct mlx5_hrxq *hrxq = container_of(entry, typeof(*hrxq), entry);
+
+	mlx5_ipool_free(priv->sh->ipool[MLX5_IPOOL_HRXQ], hrxq->idx);
+}
+
 /**
  * Get an Rx Hash queue.
  *

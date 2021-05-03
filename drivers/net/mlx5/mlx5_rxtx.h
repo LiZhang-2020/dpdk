@@ -361,12 +361,16 @@ int mlx5_ind_table_obj_modify(struct rte_eth_dev *dev,
 			      uint16_t *queues, const uint32_t queues_n,
 			      bool standalone);
 struct mlx5_list_entry *mlx5_hrxq_create_cb(struct mlx5_list *list,
-		struct mlx5_list_entry *entry __rte_unused, void *cb_ctx);
-int mlx5_hrxq_match_cb(struct mlx5_list *list,
-		       struct mlx5_list_entry *entry,
+				     struct mlx5_list_entry *entry __rte_unused,
+				     void *cb_ctx);
+int mlx5_hrxq_match_cb(struct mlx5_list *list, struct mlx5_list_entry *entry,
 		       void *cb_ctx);
-void mlx5_hrxq_remove_cb(struct mlx5_list *list,
-			 struct mlx5_list_entry *entry);
+void mlx5_hrxq_remove_cb(struct mlx5_list *list, struct mlx5_list_entry *entry);
+struct mlx5_list_entry *mlx5_hrxq_clone_cb(struct mlx5_list *list,
+					   struct mlx5_list_entry *entry,
+					   void *cb_ctx __rte_unused);
+void mlx5_hrxq_clone_free_cb(struct mlx5_list *list __rte_unused,
+			     struct mlx5_list_entry *entry);
 uint32_t mlx5_hrxq_get(struct rte_eth_dev *dev,
 		       struct mlx5_flow_rss_desc *rss_desc);
 int mlx5_hrxq_release(struct rte_eth_dev *dev, uint32_t hxrq_idx);
