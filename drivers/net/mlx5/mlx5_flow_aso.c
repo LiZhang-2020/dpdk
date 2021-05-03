@@ -409,6 +409,7 @@ int
 mlx5_aso_queue_init(struct mlx5_dev_ctx_shared *sh,
 			enum mlx5_access_aso_opc_mod aso_opc_mod)
 {
+	uint32_t i;
 	uint32_t sq_desc_n = 1 << MLX5_ASO_QUEUE_LOG_DESC;
 
 	switch (aso_opc_mod) {
@@ -436,23 +437,31 @@ mlx5_aso_queue_init(struct mlx5_dev_ctx_shared *sh,
 		break;
 	case ASO_OPC_MOD_CONNECTION_TRACKING:
 		/* 64B per object for query. */
-		if (mlx5_aso_devx_reg_mr(sh->ctx, 64 * sq_desc_n,
-			&sh->ct_mng->aso_sq.mr, 0, sh->pdn))
-			return -1;
-		if (mlx5_aso_sq_create(sh->ctx, &sh->ct_mng->aso_sq, 0,
-			sh->tx_uar, sh->pdn, sh->eqn,
-			MLX5_ASO_QUEUE_LOG_DESC,
-			mlx5_ts_format_conv(sh->sq_ts_format))) {
-			mlx5_aso_devx_dereg_mr(&sh->ct_mng->aso_sq.mr);
-			return -1;
+		for (i = 0; i < MLX5_ASO_CT_SQ_NUM; i++) {
+			if (mlx5_aso_devx_reg_mr(sh->ctx, 64 * sq_desc_n,
+				&sh->ct_mng->aso_sqs[i].mr, 0, sh->pdn))
+				goto error;
+			if (mlx5_aso_sq_create(sh->ctx, &sh->ct_mng->aso_sqs[i],
+				0, sh->tx_uar, sh->pdn, sh->eqn,
+				MLX5_ASO_QUEUE_LOG_DESC,
+				mlx5_ts_format_conv(sh->sq_ts_format)))
+				goto error;
+			mlx5_aso_ct_init_sq(&sh->ct_mng->aso_sqs[i]);
 		}
-		mlx5_aso_ct_init_sq(&sh->ct_mng->aso_sq);
 		break;
 	default:
 		DRV_LOG(ERR, "Unknown ASO operation mode");
 		return -1;
 	}
 	return 0;
+error:
+	do {
+		if (&sh->ct_mng->aso_sqs[i])
+			mlx5_aso_destroy_sq(&sh->ct_mng->aso_sqs[i]);
+		if (sh->ct_mng->aso_sqs[i].mr.buf)
+			mlx5_aso_devx_dereg_mr(&sh->ct_mng->aso_sqs[i].mr);
+	} while (i--);
+	return -1;
 }
 
 /**
@@ -466,24 +475,29 @@ mlx5_aso_queue_uninit(struct mlx5_dev_ctx_shared *sh,
 				enum mlx5_access_aso_opc_mod aso_opc_mod)
 {
 	struct mlx5_aso_sq *sq;
+	uint32_t i;
 
 	switch (aso_opc_mod) {
 	case ASO_OPC_MOD_FLOW_HIT:
 		mlx5_aso_devx_dereg_mr(&sh->aso_age_mng->aso_sq.mr);
 		sq = &sh->aso_age_mng->aso_sq;
+		mlx5_aso_destroy_sq(sq);
 		break;
 	case ASO_OPC_MOD_POLICER:
 		sq = &sh->mtrmng->pools_mng.sq;
+		mlx5_aso_destroy_sq(sq);
 		break;
 	case ASO_OPC_MOD_CONNECTION_TRACKING:
-		mlx5_aso_devx_dereg_mr(&sh->ct_mng->aso_sq.mr);
-		sq = &sh->ct_mng->aso_sq;
+		for (i = 0; i < MLX5_ASO_CT_SQ_NUM; i++) {
+			mlx5_aso_devx_dereg_mr(&sh->ct_mng->aso_sqs[i].mr);
+			sq = &sh->ct_mng->aso_sqs[i];
+			mlx5_aso_destroy_sq(sq);
+		}
 		break;
 	default:
 		DRV_LOG(ERR, "Unknown ASO operation mode");
 		return;
 	}
-	mlx5_aso_destroy_sq(sq);
 }
 
 /**
@@ -1014,7 +1028,8 @@ mlx5_aso_ct_sq_enqueue_single(struct mlx5_aso_ct_pools_mng *mng,
 			      const struct rte_flow_action_conntrack *profile)
 {
 	volatile struct mlx5_aso_wqe *wqe = NULL;
-	struct mlx5_aso_sq *sq = &mng->aso_sq;
+	uint32_t sq_idx = ct->offset & (MLX5_ASO_CT_SQ_NUM - 1);
+	struct mlx5_aso_sq *sq = &mng->aso_sqs[sq_idx];
 	uint16_t size = 1 << sq->log_desc_n;
 	uint16_t mask = size - 1;
 	uint16_t res;
@@ -1165,7 +1180,8 @@ mlx5_aso_ct_sq_query_single(struct mlx5_aso_ct_pools_mng *mng,
 			    struct mlx5_aso_ct_action *ct, char *data)
 {
 	volatile struct mlx5_aso_wqe *wqe = NULL;
-	struct mlx5_aso_sq *sq = &mng->aso_sq;
+	uint32_t sq_idx = ct->offset & (MLX5_ASO_CT_SQ_NUM - 1);
+	struct mlx5_aso_sq *sq = &mng->aso_sqs[sq_idx];
 	uint16_t size = 1 << sq->log_desc_n;
 	uint16_t mask = size - 1;
 	uint16_t res;
@@ -1230,9 +1246,11 @@ mlx5_aso_ct_sq_query_single(struct mlx5_aso_ct_pools_mng *mng,
 
 /* TODO: 3 ASO functions could be combined */
 static void
-mlx5_aso_ct_completion_handle(struct mlx5_aso_ct_pools_mng *mng)
+mlx5_aso_ct_completion_handle(struct mlx5_aso_ct_pools_mng *mng,
+			      struct mlx5_aso_ct_action *ct)
 {
-	struct mlx5_aso_sq *sq = &mng->aso_sq;
+	uint32_t sq_idx = ct->offset & (MLX5_ASO_CT_SQ_NUM - 1);
+	struct mlx5_aso_sq *sq = &mng->aso_sqs[sq_idx];
 	struct mlx5_aso_cq *cq = &sq->cq;
 	volatile struct mlx5_cqe *restrict cqe;
 	const uint32_t cq_size = 1 << cq->log_desc_n;
@@ -1303,7 +1321,7 @@ mlx5_aso_ct_update_by_wqe(struct mlx5_dev_ctx_shared *sh,
 
 	/* Assertion here. */
 	do {
-		mlx5_aso_ct_completion_handle(mng);
+		mlx5_aso_ct_completion_handle(mng, ct);
 		if (mlx5_aso_ct_sq_enqueue_single(mng, ct, profile))
 			return 0;
 		/* Waiting for wqe resource. */
@@ -1338,7 +1356,7 @@ mlx5_aso_ct_wait_ready(struct mlx5_dev_ctx_shared *sh,
 	    ASO_CONNTRACK_READY)
 		return 0;
 	do {
-		mlx5_aso_ct_completion_handle(mng);
+		mlx5_aso_ct_completion_handle(mng, ct);
 		if (__atomic_load_n(&ct->state, __ATOMIC_RELAXED) ==
 		    ASO_CONNTRACK_READY)
 			return 0;
@@ -1444,7 +1462,7 @@ mlx5_aso_ct_query_by_wqe(struct mlx5_dev_ctx_shared *sh,
 
 	/* Assertion here. */
 	do {
-		mlx5_aso_ct_completion_handle(mng);
+		mlx5_aso_ct_completion_handle(mng, ct);
 		ret = mlx5_aso_ct_sq_query_single(mng, ct, out_data);
 		if (ret < 0)
 			return ret;
@@ -1479,7 +1497,7 @@ mlx5_aso_ct_available(struct mlx5_dev_ctx_shared *sh,
 	} else if (state == ASO_CONNTRACK_READY || state == ASO_CONNTRACK_QUERY)
 		return 0;
 	do {
-		mlx5_aso_ct_completion_handle(mng);
+		mlx5_aso_ct_completion_handle(mng, ct);
 		state = __atomic_load_n(&ct->state, __ATOMIC_RELAXED);
 		if (state == ASO_CONNTRACK_READY ||
 		    state == ASO_CONNTRACK_QUERY)

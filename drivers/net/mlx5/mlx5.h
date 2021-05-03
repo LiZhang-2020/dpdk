@@ -1143,6 +1143,8 @@ struct mlx5_aso_ct_pool {
 
 LIST_HEAD(aso_ct_list, mlx5_aso_ct_action);
 
+#define MLX5_ASO_CT_SQ_NUM	16
+
 /* Pools management structure for ASO connection tracking pools. */
 struct mlx5_aso_ct_pools_mng {
 	struct mlx5_aso_ct_pool **pools;
@@ -1151,7 +1153,7 @@ struct mlx5_aso_ct_pools_mng {
 	rte_spinlock_t ct_sl; /* The ASO CT free list lock. */
 	rte_rwlock_t resize_rwl; /* The ASO CT pool resize lock. */
 	struct aso_ct_list free_cts; /* Free ASO CT objects list. */
-	struct mlx5_aso_sq aso_sq; /* ASO queue objects. */
+	struct mlx5_aso_sq aso_sqs[MLX5_ASO_CT_SQ_NUM]; /* ASO queue objects. */
 };
 
 /*
