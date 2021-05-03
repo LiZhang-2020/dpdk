@@ -2160,7 +2160,7 @@ error:
  * Match an Rx Hash queue.
  *
  * @param list
- *   Cache list pointer.
+ *   mlx5 list pointer.
  * @param entry
  *   Hash queue entry pointer.
  * @param cb_ctx
@@ -2170,8 +2170,8 @@ error:
  *   0 if match, none zero if not match.
  */
 int
-mlx5_hrxq_match_cb(struct mlx5_cache_list *list,
-		   struct mlx5_cache_entry *entry,
+mlx5_hrxq_match_cb(struct mlx5_list *list,
+		   struct mlx5_list_entry *entry,
 		   void *cb_ctx)
 {
 	struct rte_eth_dev *dev = list->ctx;
@@ -2309,13 +2309,13 @@ __mlx5_hrxq_remove(struct rte_eth_dev *dev, struct mlx5_hrxq *hrxq)
  *   Index to Hash Rx queue to release.
  *
  * @param list
- *   Cache list pointer.
+ *   mlx5 list pointer.
  * @param entry
  *   Hash queue entry pointer.
  */
 void
-mlx5_hrxq_remove_cb(struct mlx5_cache_list *list,
-		    struct mlx5_cache_entry *entry)
+mlx5_hrxq_remove_cb(struct mlx5_list *list,
+		    struct mlx5_list_entry *entry)
 {
 	struct rte_eth_dev *dev = list->ctx;
 	struct mlx5_hrxq *hrxq = container_of(entry, typeof(*hrxq), entry);
@@ -2372,7 +2372,7 @@ error:
  * Create an Rx Hash queue.
  *
  * @param list
- *   Cache list pointer.
+ *   mlx5 list pointer.
  * @param entry
  *   Hash queue entry pointer.
  * @param cb_ctx
@@ -2381,9 +2381,9 @@ error:
  * @return
  *   queue entry on success, NULL otherwise.
  */
-struct mlx5_cache_entry *
-mlx5_hrxq_create_cb(struct mlx5_cache_list *list,
-		    struct mlx5_cache_entry *entry __rte_unused,
+struct mlx5_list_entry *
+mlx5_hrxq_create_cb(struct mlx5_list *list,
+		    struct mlx5_list_entry *entry __rte_unused,
 		    void *cb_ctx)
 {
 	struct rte_eth_dev *dev = list->ctx;
@@ -2411,7 +2411,7 @@ uint32_t mlx5_hrxq_get(struct rte_eth_dev *dev,
 {
 	struct mlx5_priv *priv = dev->data->dev_private;
 	struct mlx5_hrxq *hrxq;
-	struct mlx5_cache_entry *entry;
+	struct mlx5_list_entry *entry;
 	struct mlx5_flow_cb_ctx ctx = {
 		.data = rss_desc,
 	};
@@ -2419,7 +2419,7 @@ uint32_t mlx5_hrxq_get(struct rte_eth_dev *dev,
 	if (rss_desc->shared_rss) {
 		hrxq = __mlx5_hrxq_create(dev, rss_desc);
 	} else {
-		entry = mlx5_cache_register(&priv->hrxqs, &ctx);
+		entry = mlx5_list_register(&priv->hrxqs, &ctx);
 		if (!entry)
 			return 0;
 		hrxq = container_of(entry, typeof(*hrxq), entry);
@@ -2449,7 +2449,7 @@ int mlx5_hrxq_release(struct rte_eth_dev *dev, uint32_t hrxq_idx)
 	if (!hrxq)
 		return 0;
 	if (!hrxq->standalone)
-		return mlx5_cache_unregister(&priv->hrxqs, &hrxq->entry);
+		return mlx5_list_unregister(&priv->hrxqs, &hrxq->entry);
 	__mlx5_hrxq_remove(dev, hrxq);
 	return 0;
 }
@@ -2537,7 +2537,7 @@ mlx5_hrxq_verify(struct rte_eth_dev *dev)
 {
 	struct mlx5_priv *priv = dev->data->dev_private;
 
-	return mlx5_cache_list_get_entry_num(&priv->hrxqs);
+	return mlx5_list_get_entry_num(&priv->hrxqs);
 }
 
 /**

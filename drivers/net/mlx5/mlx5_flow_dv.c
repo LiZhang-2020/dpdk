@@ -3645,18 +3645,17 @@ flow_dv_encap_decap_match_cb(struct mlx5_hlist *list __rte_unused,
 			     uint64_t key __rte_unused, void *cb_ctx)
 {
 	struct mlx5_flow_cb_ctx *ctx = cb_ctx;
-	struct mlx5_flow_dv_encap_decap_resource *resource = ctx->data;
-	struct mlx5_flow_dv_encap_decap_resource *cache_resource;
+	struct mlx5_flow_dv_encap_decap_resource *ctx_resource = ctx->data;
+	struct mlx5_flow_dv_encap_decap_resource *resource;
 
-	cache_resource = container_of(entry,
-				      struct mlx5_flow_dv_encap_decap_resource,
-				      entry);
-	if (resource->reformat_type == cache_resource->reformat_type &&
-	    resource->ft_type == cache_resource->ft_type &&
-	    resource->flags == cache_resource->flags &&
-	    resource->size == cache_resource->size &&
+	resource = container_of(entry, struct mlx5_flow_dv_encap_decap_resource,
+				entry);
+	if (resource->reformat_type == ctx_resource->reformat_type &&
+	    resource->ft_type == ctx_resource->ft_type &&
+	    resource->flags == ctx_resource->flags &&
+	    resource->size == ctx_resource->size &&
 	    !memcmp((const void *)resource->buf,
-		    (const void *)cache_resource->buf,
+		    (const void *)ctx_resource->buf,
 		    resource->size))
 		return 0;
 	return -1;
@@ -3683,31 +3682,30 @@ flow_dv_encap_decap_create_cb(struct mlx5_hlist *list,
 	struct mlx5_dev_ctx_shared *sh = list->ctx;
 	struct mlx5_flow_cb_ctx *ctx = cb_ctx;
 	struct mlx5dv_dr_domain *domain;
-	struct mlx5_flow_dv_encap_decap_resource *resource = ctx->data;
-	struct mlx5_flow_dv_encap_decap_resource *cache_resource;
+	struct mlx5_flow_dv_encap_decap_resource *ctx_resource = ctx->data;
+	struct mlx5_flow_dv_encap_decap_resource *resource;
 	uint32_t idx;
 	int ret;
 
-	if (resource->ft_type == MLX5DV_FLOW_TABLE_TYPE_FDB)
+	if (ctx_resource->ft_type == MLX5DV_FLOW_TABLE_TYPE_FDB)
 		domain = sh->fdb_domain;
-	else if (resource->ft_type == MLX5DV_FLOW_TABLE_TYPE_NIC_RX)
+	else if (ctx_resource->ft_type == MLX5DV_FLOW_TABLE_TYPE_NIC_RX)
 		domain = sh->rx_domain;
 	else
 		domain = sh->tx_domain;
 	/* Register new encap/decap resource. */
-	cache_resource = mlx5_ipool_zmalloc(sh->ipool[MLX5_IPOOL_DECAP_ENCAP],
-				       &idx);
-	if (!cache_resource) {
+	resource = mlx5_ipool_zmalloc(sh->ipool[MLX5_IPOOL_DECAP_ENCAP], &idx);
+	if (!resource) {
 		rte_flow_error_set(ctx->error, ENOMEM,
 				   RTE_FLOW_ERROR_TYPE_UNSPECIFIED, NULL,
 				   "cannot allocate resource memory");
 		return NULL;
 	}
-	*cache_resource = *resource;
-	cache_resource->idx = idx;
-	ret = mlx5_flow_os_create_flow_action_packet_reformat
-					(sh->ctx, domain, cache_resource,
-					 &cache_resource->action);
+	*resource = *ctx_resource;
+	resource->idx = idx;
+	ret = mlx5_flow_os_create_flow_action_packet_reformat(sh->ctx, domain,
+							      resource,
+							     &resource->action);
 	if (ret) {
 		mlx5_ipool_free(sh->ipool[MLX5_IPOOL_DECAP_ENCAP], idx);
 		rte_flow_error_set(ctx->error, ENOMEM,
@@ -3716,7 +3714,7 @@ flow_dv_encap_decap_create_cb(struct mlx5_hlist *list,
 		return NULL;
 	}
 
-	return &cache_resource->entry;
+	return &resource->entry;
 }
 
 /**
@@ -3820,8 +3818,8 @@ flow_dv_jump_tbl_resource_register
 }
 
 int
-flow_dv_port_id_match_cb(struct mlx5_cache_list *list __rte_unused,
-			 struct mlx5_cache_entry *entry, void *cb_ctx)
+flow_dv_port_id_match_cb(struct mlx5_list *list __rte_unused,
+			 struct mlx5_list_entry *entry, void *cb_ctx)
 {
 	struct mlx5_flow_cb_ctx *ctx = cb_ctx;
 	struct mlx5_flow_dv_port_id_action_resource *ref = ctx->data;
@@ -3831,30 +3829,30 @@ flow_dv_port_id_match_cb(struct mlx5_cache_list *list __rte_unused,
 	return ref->port_id != res->port_id;
 }
 
-struct mlx5_cache_entry *
-flow_dv_port_id_create_cb(struct mlx5_cache_list *list,
-			  struct mlx5_cache_entry *entry __rte_unused,
+struct mlx5_list_entry *
+flow_dv_port_id_create_cb(struct mlx5_list *list,
+			  struct mlx5_list_entry *entry __rte_unused,
 			  void *cb_ctx)
 {
 	struct mlx5_dev_ctx_shared *sh = list->ctx;
 	struct mlx5_flow_cb_ctx *ctx = cb_ctx;
 	struct mlx5_flow_dv_port_id_action_resource *ref = ctx->data;
-	struct mlx5_flow_dv_port_id_action_resource *cache;
+	struct mlx5_flow_dv_port_id_action_resource *resource;
 	uint32_t idx;
 	int ret;
 
 	/* Register new port id action resource. */
-	cache = mlx5_ipool_zmalloc(sh->ipool[MLX5_IPOOL_PORT_ID], &idx);
-	if (!cache) {
+	resource = mlx5_ipool_zmalloc(sh->ipool[MLX5_IPOOL_PORT_ID], &idx);
+	if (!resource) {
 		rte_flow_error_set(ctx->error, ENOMEM,
 				   RTE_FLOW_ERROR_TYPE_UNSPECIFIED, NULL,
-				   "cannot allocate port_id action cache memory");
+				   "cannot allocate port_id action memory");
 		return NULL;
 	}
-	*cache = *ref;
+	*resource = *ref;
 	ret = mlx5_flow_os_create_flow_action_dest_port(sh->fdb_domain,
 							ref->port_id,
-							&cache->action);
+							&resource->action);
 	if (ret) {
 		mlx5_ipool_free(sh->ipool[MLX5_IPOOL_PORT_ID], idx);
 		rte_flow_error_set(ctx->error, ENOMEM,
@@ -3862,8 +3860,8 @@ flow_dv_port_id_create_cb(struct mlx5_cache_list *list,
 				   "cannot create action");
 		return NULL;
 	}
-	cache->idx = idx;
-	return &cache->entry;
+	resource->idx = idx;
+	return &resource->entry;
 }
 
 /**
@@ -3871,8 +3869,8 @@ flow_dv_port_id_create_cb(struct mlx5_cache_list *list,
  *
  * @param[in, out] dev
  *   Pointer to rte_eth_dev structure.
- * @param[in, out] resource
- *   Pointer to port ID action resource.
+ * @param[in, out] ref
+ *   Pointer to port ID action resource reference.
  * @parm[in, out] dev_flow
  *   Pointer to the dev_flow.
  * @param[out] error
@@ -3884,30 +3882,30 @@ flow_dv_port_id_create_cb(struct mlx5_cache_list *list,
 static int
 flow_dv_port_id_action_resource_register
 			(struct rte_eth_dev *dev,
-			 struct mlx5_flow_dv_port_id_action_resource *resource,
+			 struct mlx5_flow_dv_port_id_action_resource *ref,
 			 struct mlx5_flow *dev_flow,
 			 struct rte_flow_error *error)
 {
 	struct mlx5_priv *priv = dev->data->dev_private;
-	struct mlx5_cache_entry *entry;
-	struct mlx5_flow_dv_port_id_action_resource *cache;
+	struct mlx5_list_entry *entry;
+	struct mlx5_flow_dv_port_id_action_resource *resource;
 	struct mlx5_flow_cb_ctx ctx = {
 		.error = error,
-		.data = resource,
+		.data = ref,
 	};
 
-	entry = mlx5_cache_register(&priv->sh->port_id_action_list, &ctx);
+	entry = mlx5_list_register(&priv->sh->port_id_action_list, &ctx);
 	if (!entry)
 		return -rte_errno;
-	cache = container_of(entry, typeof(*cache), entry);
-	dev_flow->dv.port_id_action = cache;
-	dev_flow->handle->rix_port_id_action = cache->idx;
+	resource = container_of(entry, typeof(*resource), entry);
+	dev_flow->dv.port_id_action = resource;
+	dev_flow->handle->rix_port_id_action = resource->idx;
 	return 0;
 }
 
 int
-flow_dv_push_vlan_match_cb(struct mlx5_cache_list *list __rte_unused,
-			 struct mlx5_cache_entry *entry, void *cb_ctx)
+flow_dv_push_vlan_match_cb(struct mlx5_list *list __rte_unused,
+			 struct mlx5_list_entry *entry, void *cb_ctx)
 {
 	struct mlx5_flow_cb_ctx *ctx = cb_ctx;
 	struct mlx5_flow_dv_push_vlan_action_resource *ref = ctx->data;
@@ -3917,28 +3915,28 @@ flow_dv_push_vlan_match_cb(struct mlx5_cache_list *list __rte_unused,
 	return ref->vlan_tag != res->vlan_tag || ref->ft_type != res->ft_type;
 }
 
-struct mlx5_cache_entry *
-flow_dv_push_vlan_create_cb(struct mlx5_cache_list *list,
-			  struct mlx5_cache_entry *entry __rte_unused,
+struct mlx5_list_entry *
+flow_dv_push_vlan_create_cb(struct mlx5_list *list,
+			  struct mlx5_list_entry *entry __rte_unused,
 			  void *cb_ctx)
 {
 	struct mlx5_dev_ctx_shared *sh = list->ctx;
 	struct mlx5_flow_cb_ctx *ctx = cb_ctx;
 	struct mlx5_flow_dv_push_vlan_action_resource *ref = ctx->data;
-	struct mlx5_flow_dv_push_vlan_action_resource *cache;
+	struct mlx5_flow_dv_push_vlan_action_resource *resource;
 	struct mlx5dv_dr_domain *domain;
 	uint32_t idx;
 	int ret;
 
 	/* Register new port id action resource. */
-	cache = mlx5_ipool_zmalloc(sh->ipool[MLX5_IPOOL_PUSH_VLAN], &idx);
-	if (!cache) {
+	resource = mlx5_ipool_zmalloc(sh->ipool[MLX5_IPOOL_PUSH_VLAN], &idx);
+	if (!resource) {
 		rte_flow_error_set(ctx->error, ENOMEM,
 				   RTE_FLOW_ERROR_TYPE_UNSPECIFIED, NULL,
-				   "cannot allocate push_vlan action cache memory");
+				   "cannot allocate push_vlan action memory");
 		return NULL;
 	}
-	*cache = *ref;
+	*resource = *ref;
 	if (ref->ft_type == MLX5DV_FLOW_TABLE_TYPE_FDB)
 		domain = sh->fdb_domain;
 	else if (ref->ft_type == MLX5DV_FLOW_TABLE_TYPE_NIC_RX)
@@ -3946,7 +3944,7 @@ flow_dv_push_vlan_create_cb(struct mlx5_cache_list *list,
 	else
 		domain = sh->tx_domain;
 	ret = mlx5_flow_os_create_flow_action_push_vlan(domain, ref->vlan_tag,
-							&cache->action);
+							&resource->action);
 	if (ret) {
 		mlx5_ipool_free(sh->ipool[MLX5_IPOOL_PUSH_VLAN], idx);
 		rte_flow_error_set(ctx->error, ENOMEM,
@@ -3954,8 +3952,8 @@ flow_dv_push_vlan_create_cb(struct mlx5_cache_list *list,
 				   "cannot create push vlan action");
 		return NULL;
 	}
-	cache->idx = idx;
-	return &cache->entry;
+	resource->idx = idx;
+	return &resource->entry;
 }
 
 /**
@@ -3963,8 +3961,8 @@ flow_dv_push_vlan_create_cb(struct mlx5_cache_list *list,
  *
  * @param [in, out] dev
  *   Pointer to rte_eth_dev structure.
- * @param[in, out] resource
- *   Pointer to port ID action resource.
+ * @param[in, out] ref
+ *   Pointer to port ID action resource reference.
  * @parm[in, out] dev_flow
  *   Pointer to the dev_flow.
  * @param[out] error
@@ -3976,25 +3974,25 @@ flow_dv_push_vlan_create_cb(struct mlx5_cache_list *list,
 static int
 flow_dv_push_vlan_action_resource_register
 		       (struct rte_eth_dev *dev,
-			struct mlx5_flow_dv_push_vlan_action_resource *resource,
+			struct mlx5_flow_dv_push_vlan_action_resource *ref,
 			struct mlx5_flow *dev_flow,
 			struct rte_flow_error *error)
 {
 	struct mlx5_priv *priv = dev->data->dev_private;
-	struct mlx5_flow_dv_push_vlan_action_resource *cache;
-	struct mlx5_cache_entry *entry;
+	struct mlx5_flow_dv_push_vlan_action_resource *resource;
+	struct mlx5_list_entry *entry;
 	struct mlx5_flow_cb_ctx ctx = {
 		.error = error,
-		.data = resource,
+		.data = ref,
 	};
 
-	entry = mlx5_cache_register(&priv->sh->push_vlan_action_list, &ctx);
+	entry = mlx5_list_register(&priv->sh->push_vlan_action_list, &ctx);
 	if (!entry)
 		return -rte_errno;
-	cache = container_of(entry, typeof(*cache), entry);
+	resource = container_of(entry, typeof(*resource), entry);
 
-	dev_flow->handle->dvh.rix_push_vlan = cache->idx;
-	dev_flow->dv.push_vlan_res = cache;
+	dev_flow->handle->dvh.rix_push_vlan = resource->idx;
+	dev_flow->dv.push_vlan_res = resource;
 	return 0;
 }
 
@@ -10389,13 +10387,13 @@ flow_dv_tbl_create_cb(struct mlx5_hlist *list, uint64_t key64, void *cb_ctx)
 			return NULL;
 		}
 	}
-	MKSTR(matcher_name, "%s_%s_%u_%u_matcher_cache",
+	MKSTR(matcher_name, "%s_%s_%u_%u_matcher_list",
 	      key.is_fdb ? "FDB" : "NIC", key.is_egress ? "egress" : "ingress",
 	      key.level, key.id);
-	mlx5_cache_list_init(&tbl_data->matchers, matcher_name, 0, sh,
-			     flow_dv_matcher_create_cb,
-			     flow_dv_matcher_match_cb,
-			     flow_dv_matcher_remove_cb);
+	mlx5_list_create(&tbl_data->matchers, matcher_name, 0, sh,
+			 flow_dv_matcher_create_cb,
+			 flow_dv_matcher_match_cb,
+			 flow_dv_matcher_remove_cb);
 	return &tbl_data->entry;
 }
 
@@ -10523,7 +10521,7 @@ flow_dv_tbl_remove_cb(struct mlx5_hlist *list,
 			tbl_data->tunnel->tunnel_id : 0,
 			tbl_data->group_id);
 	}
-	mlx5_cache_list_destroy(&tbl_data->matchers);
+	mlx5_list_destroy(&tbl_data->matchers);
 	mlx5_ipool_free(sh->ipool[MLX5_IPOOL_JUMP], tbl_data->idx);
 }
 
@@ -10772,8 +10770,8 @@ flow_dv_tbl_resource_release(struct mlx5_dev_ctx_shared *sh,
 }
 
 int
-flow_dv_matcher_match_cb(struct mlx5_cache_list *list __rte_unused,
-			 struct mlx5_cache_entry *entry, void *cb_ctx)
+flow_dv_matcher_match_cb(struct mlx5_list *list __rte_unused,
+			 struct mlx5_list_entry *entry, void *cb_ctx)
 {
 	struct mlx5_flow_cb_ctx *ctx = cb_ctx;
 	struct mlx5_flow_dv_matcher *ref = ctx->data;
@@ -10786,15 +10784,15 @@ flow_dv_matcher_match_cb(struct mlx5_cache_list *list __rte_unused,
 		      (const void *)ref->mask.buf, ref->mask.size);
 }
 
-struct mlx5_cache_entry *
-flow_dv_matcher_create_cb(struct mlx5_cache_list *list,
-			  struct mlx5_cache_entry *entry __rte_unused,
+struct mlx5_list_entry *
+flow_dv_matcher_create_cb(struct mlx5_list *list,
+			  struct mlx5_list_entry *entry __rte_unused,
 			  void *cb_ctx)
 {
 	struct mlx5_dev_ctx_shared *sh = list->ctx;
 	struct mlx5_flow_cb_ctx *ctx = cb_ctx;
 	struct mlx5_flow_dv_matcher *ref = ctx->data;
-	struct mlx5_flow_dv_matcher *cache;
+	struct mlx5_flow_dv_matcher *resource;
 	struct mlx5dv_flow_matcher_attr dv_attr = {
 		.type = IBV_FLOW_ATTR_NORMAL,
 		.match_mask = (void *)&ref->mask,
@@ -10803,31 +10801,32 @@ flow_dv_matcher_create_cb(struct mlx5_cache_list *list,
 							    typeof(*tbl), tbl);
 	int ret;
 
-	cache = mlx5_malloc(MLX5_MEM_ZERO, sizeof(*cache), 0, SOCKET_ID_ANY);
-	if (!cache) {
+	resource = mlx5_malloc(MLX5_MEM_ZERO, sizeof(*resource), 0,
+			       SOCKET_ID_ANY);
+	if (!resource) {
 		rte_flow_error_set(ctx->error, ENOMEM,
 				   RTE_FLOW_ERROR_TYPE_UNSPECIFIED, NULL,
 				   "cannot create matcher");
 		return NULL;
 	}
-	*cache = *ref;
-	dv_attr.match_criteria_enable =
-		flow_dv_matcher_enable(cache->mask.buf);
+	*resource = *ref;
+	dv_attr.match_criteria_enable = flow_dv_matcher_enable
+							   (resource->mask.buf);
 	__flow_dv_adjust_buf_size(&ref->mask.size,
 				  dv_attr.match_criteria_enable);
 	dv_attr.priority = ref->priority;
 	if (tbl->is_egress)
 		dv_attr.flags |= IBV_FLOW_ATTR_FLAGS_EGRESS;
 	ret = mlx5_flow_os_create_flow_matcher(sh->ctx, &dv_attr, tbl->tbl.obj,
-					       &cache->matcher_object);
+					       &resource->matcher_object);
 	if (ret) {
-		mlx5_free(cache);
+		mlx5_free(resource);
 		rte_flow_error_set(ctx->error, ENOMEM,
 				   RTE_FLOW_ERROR_TYPE_UNSPECIFIED, NULL,
 				   "cannot create matcher");
 		return NULL;
 	}
-	return &cache->entry;
+	return &resource->entry;
 }
 
 /**
@@ -10856,8 +10855,8 @@ flow_dv_matcher_register(struct rte_eth_dev *dev,
 			 uint32_t group_id,
 			 struct rte_flow_error *error)
 {
-	struct mlx5_cache_entry *entry;
-	struct mlx5_flow_dv_matcher *cache;
+	struct mlx5_list_entry *entry;
+	struct mlx5_flow_dv_matcher *resource;
 	struct mlx5_flow_tbl_resource *tbl;
 	struct mlx5_flow_tbl_data_entry *tbl_data;
 	struct mlx5_flow_cb_ctx ctx = {
@@ -10876,15 +10875,15 @@ flow_dv_matcher_register(struct rte_eth_dev *dev,
 		return -rte_errno;	/* No need to refill the error info */
 	tbl_data = container_of(tbl, struct mlx5_flow_tbl_data_entry, tbl);
 	ref->tbl = tbl;
-	entry = mlx5_cache_register(&tbl_data->matchers, &ctx);
+	entry = mlx5_list_register(&tbl_data->matchers, &ctx);
 	if (!entry) {
 		flow_dv_tbl_resource_release(MLX5_SH(dev), tbl);
 		return rte_flow_error_set(error, ENOMEM,
 					  RTE_FLOW_ERROR_TYPE_UNSPECIFIED, NULL,
 					  "cannot allocate ref memory");
 	}
-	cache = container_of(entry, typeof(*cache), entry);
-	dev_flow->handle->dvh.matcher = cache;
+	resource = container_of(entry, typeof(*resource), entry);
+	dev_flow->handle->dvh.matcher = resource;
 	return 0;
 }
 
@@ -10952,15 +10951,15 @@ flow_dv_tag_resource_register
 			 struct rte_flow_error *error)
 {
 	struct mlx5_priv *priv = dev->data->dev_private;
-	struct mlx5_flow_dv_tag_resource *cache_resource;
+	struct mlx5_flow_dv_tag_resource *resource;
 	struct mlx5_hlist_entry *entry;
 
 	entry = mlx5_hlist_register(priv->sh->tag_table, tag_be24, error);
 	if (entry) {
-		cache_resource = container_of
-			(entry, struct mlx5_flow_dv_tag_resource, entry);
-		dev_flow->handle->dvh.rix_tag = cache_resource->idx;
-		dev_flow->dv.tag_resource = cache_resource;
+		resource = container_of(entry, struct mlx5_flow_dv_tag_resource,
+					entry);
+		dev_flow->handle->dvh.rix_tag = resource->idx;
+		dev_flow->dv.tag_resource = resource;
 		return 0;
 	}
 	return -rte_errno;
@@ -11287,68 +11286,69 @@ flow_dv_sample_sub_actions_release(struct rte_eth_dev *dev,
 }
 
 int
-flow_dv_sample_match_cb(struct mlx5_cache_list *list __rte_unused,
-			struct mlx5_cache_entry *entry, void *cb_ctx)
+flow_dv_sample_match_cb(struct mlx5_list *list __rte_unused,
+			struct mlx5_list_entry *entry, void *cb_ctx)
 {
 	struct mlx5_flow_cb_ctx *ctx = cb_ctx;
 	struct rte_eth_dev *dev = ctx->dev;
-	struct mlx5_flow_dv_sample_resource *resource = ctx->data;
-	struct mlx5_flow_dv_sample_resource *cache_resource =
-			container_of(entry, typeof(*cache_resource), entry);
+	struct mlx5_flow_dv_sample_resource *ctx_resource = ctx->data;
+	struct mlx5_flow_dv_sample_resource *resource = container_of(entry,
+							      typeof(*resource),
+							      entry);
 
-	if (resource->ratio == cache_resource->ratio &&
-	    resource->ft_type == cache_resource->ft_type &&
-	    resource->ft_id == cache_resource->ft_id &&
-	    resource->set_action == cache_resource->set_action &&
-	    !memcmp((void *)&resource->sample_act,
-		    (void *)&cache_resource->sample_act,
+	if (ctx_resource->ratio == resource->ratio &&
+	    ctx_resource->ft_type == resource->ft_type &&
+	    ctx_resource->ft_id == resource->ft_id &&
+	    ctx_resource->set_action == resource->set_action &&
+	    !memcmp((void *)&ctx_resource->sample_act,
+		    (void *)&resource->sample_act,
 		    sizeof(struct mlx5_flow_sub_actions_list))) {
 		/*
 		 * Existing sample action should release the prepared
 		 * sub-actions reference counter.
 		 */
 		flow_dv_sample_sub_actions_release(dev,
-						&resource->sample_idx);
+						   &ctx_resource->sample_idx);
 		return 0;
 	}
 	return 1;
 }
 
-struct mlx5_cache_entry *
-flow_dv_sample_create_cb(struct mlx5_cache_list *list __rte_unused,
-			 struct mlx5_cache_entry *entry __rte_unused,
+struct mlx5_list_entry *
+flow_dv_sample_create_cb(struct mlx5_list *list __rte_unused,
+			 struct mlx5_list_entry *entry __rte_unused,
 			 void *cb_ctx)
 {
 	struct mlx5_flow_cb_ctx *ctx = cb_ctx;
 	struct rte_eth_dev *dev = ctx->dev;
-	struct mlx5_flow_dv_sample_resource *resource = ctx->data;
-	void **sample_dv_actions = resource->sub_actions;
-	struct mlx5_flow_dv_sample_resource *cache_resource;
+	struct mlx5_flow_dv_sample_resource *ctx_resource = ctx->data;
+	void **sample_dv_actions = ctx_resource->sub_actions;
+	struct mlx5_flow_dv_sample_resource *resource;
 	struct mlx5dv_dr_flow_sampler_attr sampler_attr;
 	struct mlx5_priv *priv = dev->data->dev_private;
 	struct mlx5_dev_ctx_shared *sh = priv->sh;
 	struct mlx5_flow_tbl_resource *tbl;
 	uint32_t idx = 0;
 	const uint32_t next_ft_step = 1;
-	uint32_t next_ft_id = resource->ft_id +	next_ft_step;
+	uint32_t next_ft_id = ctx_resource->ft_id + next_ft_step;
 	uint8_t is_egress = 0;
 	uint8_t is_transfer = 0;
 	struct rte_flow_error *error = ctx->error;
 
 	/* Register new sample resource. */
-	cache_resource = mlx5_ipool_zmalloc(sh->ipool[MLX5_IPOOL_SAMPLE], &idx);
-	if (!cache_resource) {
+	resource = mlx5_ipool_zmalloc(sh->ipool[MLX5_IPOOL_SAMPLE], &idx);
+	if (!resource) {
 		rte_flow_error_set(error, ENOMEM,
 					  RTE_FLOW_ERROR_TYPE_UNSPECIFIED,
 					  NULL,
 					  "cannot allocate resource memory");
 		return NULL;
 	}
-	*cache_resource = *resource;
+	*resource = *ctx_resource;
 	/* Create normal path table level */
-	if (resource->ft_type == MLX5DV_FLOW_TABLE_TYPE_FDB)
+	if (ctx_resource->ft_type == MLX5DV_FLOW_TABLE_TYPE_FDB)
 		is_transfer = 1;
-	else if (resource->ft_type == MLX5DV_FLOW_TABLE_TYPE_NIC_TX)
+	else if (ctx_resource->ft_type == MLX5DV_FLOW_TABLE_TYPE_NIC_TX)
 		is_egress = 1;
 	tbl = flow_dv_tbl_resource_get(dev, next_ft_id,
 					is_egress, is_transfer,
@@ -11361,8 +11361,8 @@ flow_dv_sample_create_cb(struct mlx5_cache_list *list __rte_unused,
 					  "for sample");
 		goto error;
 	}
-	cache_resource->normal_path_tbl = tbl;
-	if (resource->ft_type == MLX5DV_FLOW_TABLE_TYPE_FDB) {
+	resource->normal_path_tbl = tbl;
+	if (ctx_resource->ft_type == MLX5DV_FLOW_TABLE_TYPE_FDB) {
 		if (!sh->default_miss_action) {
 			rte_flow_error_set(error, ENOMEM,
 						RTE_FLOW_ERROR_TYPE_UNSPECIFIED,
@@ -11371,34 +11371,34 @@ flow_dv_sample_create_cb(struct mlx5_cache_list *list __rte_unused,
 						"created");
 			goto error;
 		}
-		sample_dv_actions[resource->sample_act.actions_num++] =
+		sample_dv_actions[ctx_resource->sample_act.actions_num++] =
 						sh->default_miss_action;
 	}
 	/* Create a DR sample action */
-	sampler_attr.sample_ratio = cache_resource->ratio;
+	sampler_attr.sample_ratio = resource->ratio;
 	sampler_attr.default_next_table = tbl->obj;
-	sampler_attr.num_sample_actions = resource->sample_act.actions_num;
+	sampler_attr.num_sample_actions = ctx_resource->sample_act.actions_num;
 	sampler_attr.sample_actions = (struct mlx5dv_dr_action **)
 							&sample_dv_actions[0];
-	sampler_attr.action = cache_resource->set_action;
-	cache_resource->verbs_action =
+	sampler_attr.action = resource->set_action;
+	resource->verbs_action =
 		mlx5_glue->dr_create_flow_action_sampler(&sampler_attr);
-	if (!cache_resource->verbs_action) {
+	if (!resource->verbs_action) {
 		rte_flow_error_set(error, ENOMEM,
 					RTE_FLOW_ERROR_TYPE_UNSPECIFIED,
 					NULL, "cannot create sample action");
 		goto error;
 	}
-	cache_resource->idx = idx;
-	cache_resource->dev = dev;
-	return &cache_resource->entry;
+	resource->idx = idx;
+	resource->dev = dev;
+	return &resource->entry;
 error:
-	if (cache_resource->ft_type != MLX5DV_FLOW_TABLE_TYPE_FDB)
+	if (resource->ft_type != MLX5DV_FLOW_TABLE_TYPE_FDB)
 		flow_dv_sample_sub_actions_release(dev,
-						   &cache_resource->sample_idx);
-	if (cache_resource->normal_path_tbl)
+						   &resource->sample_idx);
+	if (resource->normal_path_tbl)
 		flow_dv_tbl_resource_release(MLX5_SH(dev),
-				cache_resource->normal_path_tbl);
+				resource->normal_path_tbl);
 	mlx5_ipool_free(sh->ipool[MLX5_IPOOL_SAMPLE], idx);
 	return NULL;
 
@@ -11409,8 +11409,8 @@ error:
  *
  * @param[in, out] dev
  *   Pointer to rte_eth_dev structure.
- * @param[in] resource
- *   Pointer to sample resource.
+ * @param[in] ref
+ *   Pointer to sample resource reference.
  * @parm[in, out] dev_flow
  *   Pointer to the dev_flow.
  * @param[out] error
@@ -11421,66 +11421,66 @@ error:
  */
 static int
 flow_dv_sample_resource_register(struct rte_eth_dev *dev,
-			 struct mlx5_flow_dv_sample_resource *resource,
+			 struct mlx5_flow_dv_sample_resource *ref,
 			 struct mlx5_flow *dev_flow,
 			 struct rte_flow_error *error)
 {
-	struct mlx5_flow_dv_sample_resource *cache_resource;
-	struct mlx5_cache_entry *entry;
+	struct mlx5_flow_dv_sample_resource *resource;
+	struct mlx5_list_entry *entry;
 	struct mlx5_priv *priv = dev->data->dev_private;
 	struct mlx5_flow_cb_ctx ctx = {
 		.dev = dev,
 		.error = error,
-		.data = resource,
+		.data = ref,
 	};
 
-	entry = mlx5_cache_register(&priv->sh->sample_action_list, &ctx);
+	entry = mlx5_list_register(&priv->sh->sample_action_list, &ctx);
 	if (!entry)
 		return -rte_errno;
-	cache_resource = container_of(entry, typeof(*cache_resource), entry);
-	dev_flow->handle->dvh.rix_sample = cache_resource->idx;
-	dev_flow->dv.sample_res = cache_resource;
+	resource = container_of(entry, typeof(*resource), entry);
+	dev_flow->handle->dvh.rix_sample = resource->idx;
+	dev_flow->dv.sample_res = resource;
 	return 0;
 }
 
 int
-flow_dv_dest_array_match_cb(struct mlx5_cache_list *list __rte_unused,
-			    struct mlx5_cache_entry *entry, void *cb_ctx)
+flow_dv_dest_array_match_cb(struct mlx5_list *list __rte_unused,
+			    struct mlx5_list_entry *entry, void *cb_ctx)
 {
 	struct mlx5_flow_cb_ctx *ctx = cb_ctx;
-	struct mlx5_flow_dv_dest_array_resource *resource = ctx->data;
+	struct mlx5_flow_dv_dest_array_resource *ctx_resource = ctx->data;
 	struct rte_eth_dev *dev = ctx->dev;
-	struct mlx5_flow_dv_dest_array_resource *cache_resource =
-			container_of(entry, typeof(*cache_resource), entry);
+	struct mlx5_flow_dv_dest_array_resource *resource =
+			container_of(entry, typeof(*resource), entry);
 	uint32_t idx = 0;
 
-	if (resource->num_of_dest == cache_resource->num_of_dest &&
-	    resource->ft_type == cache_resource->ft_type &&
-	    !memcmp((void *)cache_resource->sample_act,
-		    (void *)resource->sample_act,
-		   (resource->num_of_dest *
+	if (ctx_resource->num_of_dest == resource->num_of_dest &&
+	    ctx_resource->ft_type == resource->ft_type &&
+	    !memcmp((void *)resource->sample_act,
+		    (void *)ctx_resource->sample_act,
+		   (ctx_resource->num_of_dest *
 		   sizeof(struct mlx5_flow_sub_actions_list)))) {
 		/*
 		 * Existing sample action should release the prepared
 		 * sub-actions reference counter.
 		 */
-		for (idx = 0; idx < resource->num_of_dest; idx++)
+		for (idx = 0; idx < ctx_resource->num_of_dest; idx++)
 			flow_dv_sample_sub_actions_release(dev,
-					&resource->sample_idx[idx]);
+					&ctx_resource->sample_idx[idx]);
 		return 0;
 	}
 	return 1;
 }
 
-struct mlx5_cache_entry *
-flow_dv_dest_array_create_cb(struct mlx5_cache_list *list __rte_unused,
-			 struct mlx5_cache_entry *entry __rte_unused,
+struct mlx5_list_entry *
+flow_dv_dest_array_create_cb(struct mlx5_list *list __rte_unused,
+			 struct mlx5_list_entry *entry __rte_unused,
 			 void *cb_ctx)
 {
 	struct mlx5_flow_cb_ctx *ctx = cb_ctx;
 	struct rte_eth_dev *dev = ctx->dev;
-	struct mlx5_flow_dv_dest_array_resource *cache_resource;
-	struct mlx5_flow_dv_dest_array_resource *resource = ctx->data;
+	struct mlx5_flow_dv_dest_array_resource *resource;
+	struct mlx5_flow_dv_dest_array_resource *ctx_resource = ctx->data;
 	struct mlx5dv_dr_action_dest_attr *dest_attr[MLX5_MAX_DEST_NUM] = { 0 };
 	struct mlx5dv_dr_action_dest_reformat dest_reformat[MLX5_MAX_DEST_NUM];
 	struct mlx5_priv *priv = dev->data->dev_private;
@@ -11492,23 +11492,23 @@ flow_dv_dest_array_create_cb(struct mlx5_cache_list *list __rte_unused,
 	uint64_t action_flags;
 
 	/* Register new destination array resource. */
-	cache_resource = mlx5_ipool_zmalloc(sh->ipool[MLX5_IPOOL_DEST_ARRAY],
+	resource = mlx5_ipool_zmalloc(sh->ipool[MLX5_IPOOL_DEST_ARRAY],
 					    &res_idx);
-	if (!cache_resource) {
+	if (!resource) {
 		rte_flow_error_set(error, ENOMEM,
 					  RTE_FLOW_ERROR_TYPE_UNSPECIFIED,
 					  NULL,
 					  "cannot allocate resource memory");
 		return NULL;
 	}
-	*cache_resource = *resource;
+	*resource = *ctx_resource;
 	if (resource->ft_type == MLX5DV_FLOW_TABLE_TYPE_FDB)
 		domain = sh->fdb_domain;
 	else if (resource->ft_type == MLX5DV_FLOW_TABLE_TYPE_NIC_RX)
 		domain = sh->rx_domain;
 	else
 		domain = sh->tx_domain;
-	for (idx = 0; idx < resource->num_of_dest; idx++) {
+	for (idx = 0; idx < ctx_resource->num_of_dest; idx++) {
 		dest_attr[idx] = (struct mlx5dv_dr_action_dest_attr *)
 				 mlx5_malloc(MLX5_MEM_ZERO,
 				 sizeof(struct mlx5dv_dr_action_dest_attr),
@@ -11521,7 +11521,7 @@ flow_dv_dest_array_create_cb(struct mlx5_cache_list *list __rte_unused,
 			goto error;
 		}
 		dest_attr[idx]->type = MLX5DV_DR_ACTION_DEST;
-		sample_act = &resource->sample_act[idx];
+		sample_act = &ctx_resource->sample_act[idx];
 		action_flags = sample_act->action_flags;
 		switch (action_flags) {
 		case MLX5_FLOW_ACTION_QUEUE:
@@ -11550,30 +11550,29 @@ flow_dv_dest_array_create_cb(struct mlx5_cache_list *list __rte_unused,
 		}
 	}
 	/* create a dest array actioin */
-	cache_resource->action = mlx5_glue->dr_create_flow_action_dest_array
+	resource->action = mlx5_glue->dr_create_flow_action_dest_array
 						(domain,
-						 cache_resource->num_of_dest,
+						 resource->num_of_dest,
 						 dest_attr);
-	if (!cache_resource->action) {
+	if (!resource->action) {
 		rte_flow_error_set(error, ENOMEM,
 				   RTE_FLOW_ERROR_TYPE_UNSPECIFIED,
 				   NULL,
 				   "cannot create destination array action");
 		goto error;
 	}
-	cache_resource->idx = res_idx;
-	cache_resource->dev = dev;
-	for (idx = 0; idx < resource->num_of_dest; idx++)
+	resource->idx = res_idx;
+	resource->dev = dev;
+	for (idx = 0; idx < ctx_resource->num_of_dest; idx++)
 		mlx5_free(dest_attr[idx]);
-	return &cache_resource->entry;
+	return &resource->entry;
 error:
-	for (idx = 0; idx < resource->num_of_dest; idx++) {
+	for (idx = 0; idx < ctx_resource->num_of_dest; idx++) {
 		flow_dv_sample_sub_actions_release(dev,
-				&cache_resource->sample_idx[idx]);
+						   &resource->sample_idx[idx]);
 		if (dest_attr[idx])
 			mlx5_free(dest_attr[idx]);
 	}
-
 	mlx5_ipool_free(sh->ipool[MLX5_IPOOL_DEST_ARRAY], res_idx);
 	return NULL;
 }
@@ -11583,8 +11582,8 @@ error:
  *
  * @param[in, out] dev
  *   Pointer to rte_eth_dev structure.
- * @param[in] resource
- *   Pointer to destination array resource.
+ * @param[in] ref
+ *   Pointer to destination array resource reference.
  * @parm[in, out] dev_flow
  *   Pointer to the dev_flow.
  * @param[out] error
@@ -11595,25 +11594,25 @@ error:
  */
 static int
 flow_dv_dest_array_resource_register(struct rte_eth_dev *dev,
-			 struct mlx5_flow_dv_dest_array_resource *resource,
+			 struct mlx5_flow_dv_dest_array_resource *ref,
 			 struct mlx5_flow *dev_flow,
 			 struct rte_flow_error *error)
 {
-	struct mlx5_flow_dv_dest_array_resource *cache_resource;
+	struct mlx5_flow_dv_dest_array_resource *resource;
 	struct mlx5_priv *priv = dev->data->dev_private;
-	struct mlx5_cache_entry *entry;
+	struct mlx5_list_entry *entry;
 	struct mlx5_flow_cb_ctx ctx = {
 		.dev = dev,
 		.error = error,
-		.data = resource,
+		.data = ref,
 	};
 
-	entry = mlx5_cache_register(&priv->sh->dest_array_list, &ctx);
+	entry = mlx5_list_register(&priv->sh->dest_array_list, &ctx);
 	if (!entry)
 		return -rte_errno;
-	cache_resource = container_of(entry, typeof(*cache_resource), entry);
-	dev_flow->handle->dvh.rix_dest_array = cache_resource->idx;
-	dev_flow->dv.dest_array_res = cache_resource;
+	resource = container_of(entry, typeof(*resource), entry);
+	dev_flow->handle->dvh.rix_dest_array = resource->idx;
+	dev_flow->dv.dest_array_res = resource;
 	return 0;
 }
 
@@ -14178,14 +14177,15 @@ error:
 }
 
 void
-flow_dv_matcher_remove_cb(struct mlx5_cache_list *list __rte_unused,
-			  struct mlx5_cache_entry *entry)
+flow_dv_matcher_remove_cb(struct mlx5_list *list __rte_unused,
+			  struct mlx5_list_entry *entry)
 {
-	struct mlx5_flow_dv_matcher *cache = container_of(entry, typeof(*cache),
-							  entry);
+	struct mlx5_flow_dv_matcher *resource = container_of(entry,
+							     typeof(*resource),
+							     entry);
 
-	claim_zero(mlx5_flow_os_destroy_flow_matcher(cache->matcher_object));
-	mlx5_free(cache);
+	claim_zero(mlx5_flow_os_destroy_flow_matcher(resource->matcher_object));
+	mlx5_free(resource);
 }
 
 /**
@@ -14209,7 +14209,7 @@ flow_dv_matcher_release(struct rte_eth_dev *dev,
 	int ret;
 
 	MLX5_ASSERT(matcher->matcher_object);
-	ret = mlx5_cache_unregister(&tbl->matchers, &matcher->entry);
+	ret = mlx5_list_unregister(&tbl->matchers, &matcher->entry);
 	flow_dv_tbl_resource_release(MLX5_SH(dev), &tbl->tbl);
 	return ret;
 }
@@ -14228,7 +14228,7 @@ flow_dv_encap_decap_remove_cb(struct mlx5_hlist *list,
 {
 	struct mlx5_dev_ctx_shared *sh = list->ctx;
 	struct mlx5_flow_dv_encap_decap_resource *res =
-		container_of(entry, typeof(*res), entry);
+				       container_of(entry, typeof(*res), entry);
 
 	claim_zero(mlx5_flow_os_destroy_flow_action(res->action));
 	mlx5_ipool_free(sh->ipool[MLX5_IPOOL_DECAP_ENCAP], res->idx);
@@ -14250,15 +14250,14 @@ flow_dv_encap_decap_resource_release(struct rte_eth_dev *dev,
 				     uint32_t encap_decap_idx)
 {
 	struct mlx5_priv *priv = dev->data->dev_private;
-	struct mlx5_flow_dv_encap_decap_resource *cache_resource;
+	struct mlx5_flow_dv_encap_decap_resource *resource;
 
-	cache_resource = mlx5_ipool_get(priv->sh->ipool[MLX5_IPOOL_DECAP_ENCAP],
-					encap_decap_idx);
-	if (!cache_resource)
+	resource = mlx5_ipool_get(priv->sh->ipool[MLX5_IPOOL_DECAP_ENCAP],
+				  encap_decap_idx);
+	if (!resource)
 		return 0;
-	MLX5_ASSERT(cache_resource->action);
-	return mlx5_hlist_unregister(priv->sh->encaps_decaps,
-				     &cache_resource->entry);
+	MLX5_ASSERT(resource->action);
+	return mlx5_hlist_unregister(priv->sh->encaps_decaps, &resource->entry);
 }
 
 /**
@@ -14353,15 +14352,15 @@ flow_dv_modify_hdr_resource_release(struct rte_eth_dev *dev,
 }
 
 void
-flow_dv_port_id_remove_cb(struct mlx5_cache_list *list,
-			  struct mlx5_cache_entry *entry)
+flow_dv_port_id_remove_cb(struct mlx5_list *list,
+			  struct mlx5_list_entry *entry)
 {
 	struct mlx5_dev_ctx_shared *sh = list->ctx;
-	struct mlx5_flow_dv_port_id_action_resource *cache =
-			container_of(entry, typeof(*cache), entry);
+	struct mlx5_flow_dv_port_id_action_resource *resource =
+				  container_of(entry, typeof(*resource), entry);
 
-	claim_zero(mlx5_flow_os_destroy_flow_action(cache->action));
-	mlx5_ipool_free(sh->ipool[MLX5_IPOOL_PORT_ID], cache->idx);
+	claim_zero(mlx5_flow_os_destroy_flow_action(resource->action));
+	mlx5_ipool_free(sh->ipool[MLX5_IPOOL_PORT_ID], resource->idx);
 }
 
 /**
@@ -14380,14 +14379,14 @@ flow_dv_port_id_action_resource_release(struct rte_eth_dev *dev,
 					uint32_t port_id)
 {
 	struct mlx5_priv *priv = dev->data->dev_private;
-	struct mlx5_flow_dv_port_id_action_resource *cache;
+	struct mlx5_flow_dv_port_id_action_resource *resource;
 
-	cache = mlx5_ipool_get(priv->sh->ipool[MLX5_IPOOL_PORT_ID], port_id);
-	if (!cache)
+	resource = mlx5_ipool_get(priv->sh->ipool[MLX5_IPOOL_PORT_ID], port_id);
+	if (!resource)
 		return 0;
-	MLX5_ASSERT(cache->action);
-	return mlx5_cache_unregister(&priv->sh->port_id_action_list,
-				     &cache->entry);
+	MLX5_ASSERT(resource->action);
+	return mlx5_list_unregister(&priv->sh->port_id_action_list,
+				    &resource->entry);
 }
 
 /**
@@ -14410,15 +14409,15 @@ flow_dv_shared_rss_action_release(struct rte_eth_dev *dev, uint32_t srss)
 }
 
 void
-flow_dv_push_vlan_remove_cb(struct mlx5_cache_list *list,
-			    struct mlx5_cache_entry *entry)
+flow_dv_push_vlan_remove_cb(struct mlx5_list *list,
+			    struct mlx5_list_entry *entry)
 {
 	struct mlx5_dev_ctx_shared *sh = list->ctx;
-	struct mlx5_flow_dv_push_vlan_action_resource *cache =
-			container_of(entry, typeof(*cache), entry);
+	struct mlx5_flow_dv_push_vlan_action_resource *resource =
+			container_of(entry, typeof(*resource), entry);
 
-	claim_zero(mlx5_flow_os_destroy_flow_action(cache->action));
-	mlx5_ipool_free(sh->ipool[MLX5_IPOOL_PUSH_VLAN], cache->idx);
+	claim_zero(mlx5_flow_os_destroy_flow_action(resource->action));
+	mlx5_ipool_free(sh->ipool[MLX5_IPOOL_PUSH_VLAN], resource->idx);
 }
 
 /**
@@ -14437,15 +14436,15 @@ flow_dv_push_vlan_action_resource_release(struct rte_eth_dev *dev,
 					  struct mlx5_flow_handle *handle)
 {
 	struct mlx5_priv *priv = dev->data->dev_private;
-	struct mlx5_flow_dv_push_vlan_action_resource *cache;
+	struct mlx5_flow_dv_push_vlan_action_resource *resource;
 	uint32_t idx = handle->dvh.rix_push_vlan;
 
-	cache = mlx5_ipool_get(priv->sh->ipool[MLX5_IPOOL_PUSH_VLAN], idx);
-	if (!cache)
+	resource = mlx5_ipool_get(priv->sh->ipool[MLX5_IPOOL_PUSH_VLAN], idx);
+	if (!resource)
 		return 0;
-	MLX5_ASSERT(cache->action);
-	return mlx5_cache_unregister(&priv->sh->push_vlan_action_list,
-				     &cache->entry);
+	MLX5_ASSERT(resource->action);
+	return mlx5_list_unregister(&priv->sh->push_vlan_action_list,
+				    &resource->entry);
 }
 
 /**
@@ -14488,26 +14487,24 @@ flow_dv_fate_resource_release(struct rte_eth_dev *dev,
 }
 
 void
-flow_dv_sample_remove_cb(struct mlx5_cache_list *list __rte_unused,
-			 struct mlx5_cache_entry *entry)
+flow_dv_sample_remove_cb(struct mlx5_list *list __rte_unused,
+			 struct mlx5_list_entry *entry)
 {
-	struct mlx5_flow_dv_sample_resource *cache_resource =
-			container_of(entry, typeof(*cache_resource), entry);
-	struct rte_eth_dev *dev = cache_resource->dev;
+	struct mlx5_flow_dv_sample_resource *resource = container_of(entry,
+							      typeof(*resource),
+							      entry);
+	struct rte_eth_dev *dev = resource->dev;
 	struct mlx5_priv *priv = dev->data->dev_private;
 
-	if (cache_resource->verbs_action)
+	if (resource->verbs_action)
 		claim_zero(mlx5_flow_os_destroy_flow_action
-				(cache_resource->verbs_action));
-	if (cache_resource->normal_path_tbl)
+						      (resource->verbs_action));
+	if (resource->normal_path_tbl)
 		flow_dv_tbl_resource_release(MLX5_SH(dev),
-			cache_resource->normal_path_tbl);
-	flow_dv_sample_sub_actions_release(dev,
-				&cache_resource->sample_idx);
-	mlx5_ipool_free(priv->sh->ipool[MLX5_IPOOL_SAMPLE],
-			cache_resource->idx);
-	DRV_LOG(DEBUG, "sample resource %p: removed",
-		(void *)cache_resource);
+					     resource->normal_path_tbl);
+	flow_dv_sample_sub_actions_release(dev, &resource->sample_idx);
+	mlx5_ipool_free(priv->sh->ipool[MLX5_IPOOL_SAMPLE], resource->idx);
+	DRV_LOG(DEBUG, "sample resource %p: removed", (void *)resource);
 }
 
 /**
@@ -14526,38 +14523,36 @@ flow_dv_sample_resource_release(struct rte_eth_dev *dev,
 				     struct mlx5_flow_handle *handle)
 {
 	struct mlx5_priv *priv = dev->data->dev_private;
-	struct mlx5_flow_dv_sample_resource *cache_resource;
+	struct mlx5_flow_dv_sample_resource *resource;
 
-	cache_resource = mlx5_ipool_get(priv->sh->ipool[MLX5_IPOOL_SAMPLE],
-			 handle->dvh.rix_sample);
-	if (!cache_resource)
+	resource = mlx5_ipool_get(priv->sh->ipool[MLX5_IPOOL_SAMPLE],
+				  handle->dvh.rix_sample);
+	if (!resource)
 		return 0;
-	MLX5_ASSERT(cache_resource->verbs_action);
-	return mlx5_cache_unregister(&priv->sh->sample_action_list,
-				     &cache_resource->entry);
+	MLX5_ASSERT(resource->verbs_action);
+	return mlx5_list_unregister(&priv->sh->sample_action_list,
+				    &resource->entry);
 }
 
 void
-flow_dv_dest_array_remove_cb(struct mlx5_cache_list *list __rte_unused,
-			     struct mlx5_cache_entry *entry)
+flow_dv_dest_array_remove_cb(struct mlx5_list *list __rte_unused,
+			     struct mlx5_list_entry *entry)
 {
-	struct mlx5_flow_dv_dest_array_resource *cache_resource =
-			container_of(entry, typeof(*cache_resource), entry);
-	struct rte_eth_dev *dev = cache_resource->dev;
+	struct mlx5_flow_dv_dest_array_resource *resource =
+			container_of(entry, typeof(*resource), entry);
+	struct rte_eth_dev *dev = resource->dev;
 	struct mlx5_priv *priv = dev->data->dev_private;
 	uint32_t i = 0;
 
-	MLX5_ASSERT(cache_resource->action);
-	if (cache_resource->action)
-		claim_zero(mlx5_flow_os_destroy_flow_action
-					(cache_resource->action));
-	for (; i < cache_resource->num_of_dest; i++)
+	MLX5_ASSERT(resource->action);
+	if (resource->action)
+		claim_zero(mlx5_flow_os_destroy_flow_action(resource->action));
+	for (; i < resource->num_of_dest; i++)
 		flow_dv_sample_sub_actions_release(dev,
-				&cache_resource->sample_idx[i]);
-	mlx5_ipool_free(priv->sh->ipool[MLX5_IPOOL_DEST_ARRAY],
-			cache_resource->idx);
+						   &resource->sample_idx[i]);
+	mlx5_ipool_free(priv->sh->ipool[MLX5_IPOOL_DEST_ARRAY], resource->idx);
 	DRV_LOG(DEBUG, "destination array resource %p: removed",
-		(void *)cache_resource);
+		(void *)resource);
 }
 
 /**
@@ -14576,15 +14571,15 @@ flow_dv_dest_array_resource_release(struct rte_eth_dev *dev,
 				    struct mlx5_flow_handle *handle)
 {
 	struct mlx5_priv *priv = dev->data->dev_private;
-	struct mlx5_flow_dv_dest_array_resource *cache;
+	struct mlx5_flow_dv_dest_array_resource *resource;
 
-	cache = mlx5_ipool_get(priv->sh->ipool[MLX5_IPOOL_DEST_ARRAY],
-			       handle->dvh.rix_dest_array);
-	if (!cache)
+	resource = mlx5_ipool_get(priv->sh->ipool[MLX5_IPOOL_DEST_ARRAY],
+				  handle->dvh.rix_dest_array);
+	if (!resource)
 		return 0;
-	MLX5_ASSERT(cache->action);
-	return mlx5_cache_unregister(&priv->sh->dest_array_list,
-				     &cache->entry);
+	MLX5_ASSERT(resource->action);
+	return mlx5_list_unregister(&priv->sh->dest_array_list,
+				    &resource->entry);
 }
 
 static void
@@ -15417,7 +15412,7 @@ __flow_dv_destroy_sub_policy_rules(struct rte_eth_dev *dev,
 			claim_zero(mlx5_flow_os_destroy_flow(color_rule->rule));
 			tbl = container_of(color_rule->matcher->tbl,
 					typeof(*tbl), tbl);
-			mlx5_cache_unregister(&tbl->matchers,
+			mlx5_list_unregister(&tbl->matchers,
 						&color_rule->matcher->entry);
 			TAILQ_REMOVE(&sub_policy->color_rules[i],
 					color_rule, next_port);
@@ -16210,8 +16205,8 @@ flow_dv_destroy_mtr_drop_tbls(struct rte_eth_dev *dev)
 		if (mtrmng->def_matcher[i]) {
 			tbl = container_of(mtrmng->def_matcher[i]->tbl,
 				struct mlx5_flow_tbl_data_entry, tbl);
-			mlx5_cache_unregister(&tbl->matchers,
-				      &mtrmng->def_matcher[i]->entry);
+			mlx5_list_unregister(&tbl->matchers,
+					     &mtrmng->def_matcher[i]->entry);
 			mtrmng->def_matcher[i] = NULL;
 		}
 		for (j = 0; j < MLX5_REG_BITS; j++) {
@@ -16220,8 +16215,8 @@ flow_dv_destroy_mtr_drop_tbls(struct rte_eth_dev *dev)
 				container_of(mtrmng->drop_matcher[i][j]->tbl,
 					     struct mlx5_flow_tbl_data_entry,
 					     tbl);
-				mlx5_cache_unregister(&tbl->matchers,
-					&mtrmng->drop_matcher[i][j]->entry);
+				mlx5_list_unregister(&tbl->matchers,
+					    &mtrmng->drop_matcher[i][j]->entry);
 				mtrmng->drop_matcher[i][j] = NULL;
 			}
 		}
@@ -16320,7 +16315,7 @@ __flow_dv_create_policy_matcher(struct rte_eth_dev *dev,
 			struct mlx5_flow_dv_matcher **policy_matcher,
 			struct rte_flow_error *error)
 {
-	struct mlx5_cache_entry *entry;
+	struct mlx5_list_entry *entry;
 	struct mlx5_flow_tbl_resource *tbl_rsc = sub_policy->tbl_rsc;
 	struct mlx5_flow_dv_matcher matcher = {
 		.mask = {
@@ -16354,7 +16349,7 @@ __flow_dv_create_policy_matcher(struct rte_eth_dev *dev,
 	matcher.priority = priority;
 	matcher.crc = rte_raw_cksum((const void *)matcher.mask.buf,
 					matcher.mask.size);
-	entry = mlx5_cache_register(&tbl_data->matchers, &ctx);
+	entry = mlx5_list_register(&tbl_data->matchers, &ctx);
 	if (!entry) {
 		DRV_LOG(ERR, "Failed to register meter drop matcher.");
 		return -1;
@@ -16462,7 +16457,7 @@ err_exit:
 			struct mlx5_flow_tbl_data_entry *tbl =
 				container_of(color_rule->matcher->tbl,
 						typeof(*tbl), tbl);
-			mlx5_cache_unregister(&tbl->matchers,
+			mlx5_list_unregister(&tbl->matchers,
 						&color_rule->matcher->entry);
 		}
 		mlx5_free(color_rule);
@@ -16812,7 +16807,7 @@ flow_dv_create_mtr_tbls(struct rte_eth_dev *dev,
 						     0, &error);
 	uint32_t mtr_id_mask = (UINT32_C(1) << mtrmng->max_mtr_bits) - 1;
 	uint8_t mtr_id_offset = priv->mtr_reg_share ? MLX5_MTR_COLOR_BITS : 0;
-	struct mlx5_cache_entry *entry;
+	struct mlx5_list_entry *entry;
 	struct mlx5_flow_dv_matcher matcher = {
 		.mask = {
 			.size = sizeof(matcher.mask.buf),
@@ -16858,7 +16853,7 @@ flow_dv_create_mtr_tbls(struct rte_eth_dev *dev,
 			matcher.crc = rte_raw_cksum
 					((const void *)matcher.mask.buf,
 					matcher.mask.size);
-			entry = mlx5_cache_register(&tbl_data->matchers, &ctx);
+			entry = mlx5_list_register(&tbl_data->matchers, &ctx);
 			if (!entry) {
 				DRV_LOG(ERR, "Failed to register meter "
 				"drop default matcher.");
@@ -16897,7 +16892,7 @@ flow_dv_create_mtr_tbls(struct rte_eth_dev *dev,
 			matcher.crc = rte_raw_cksum
 					((const void *)matcher.mask.buf,
 					matcher.mask.size);
-			entry = mlx5_cache_register(&tbl_data->matchers, &ctx);
+			entry = mlx5_list_register(&tbl_data->matchers, &ctx);
 			if (!entry) {
 				DRV_LOG(ERR,
 				"Failed to register meter drop matcher.");
@@ -17316,7 +17311,7 @@ err_exit:
 			struct mlx5_flow_tbl_data_entry *tbl =
 				container_of(color_rule->matcher->tbl,
 						typeof(*tbl), tbl);
-			mlx5_cache_unregister(&tbl->matchers,
+			mlx5_list_unregister(&tbl->matchers,
 						&color_rule->matcher->entry);
 		}
 		mlx5_free(color_rule);
