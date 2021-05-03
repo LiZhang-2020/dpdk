@@ -872,10 +872,10 @@ struct mlx5_flow_tbl_resource {
 #define MLX5_FLOW_TABLE_LEVEL_SUFFIX (MLX5_MAX_TABLES - 3)
 #define MLX5_FLOW_TABLE_LEVEL_METER (MLX5_MAX_TABLES - 4)
 /* SFT tables */
-#define MLX5_FLOW_TABLE_LEVEL_SFT (MLX5_MAX_TABLES - 5)
-#define MLX5_FLOW_TABLE_LEVEL_ITMD_SFT (MLX5_MAX_TABLES - 6)
-#define MLX5_FLOW_TABLE_LEVEL_POST_SFT (MLX5_MAX_TABLES - 7)
-#define MLX5_MAX_TABLES_EXTERNAL MLX5_FLOW_TABLE_LEVEL_POST_SFT
+#define MLX5_FLOW_TABLE_SFT_L0 (MLX5_MAX_TABLES - 7)
+#define MLX5_FLOW_TABLE_SFT_L1 (MLX5_MAX_TABLES - 6)
+#define MLX5_FLOW_TABLE_SFT_L2 (MLX5_MAX_TABLES - 5)
+#define MLX5_MAX_TABLES_EXTERNAL MLX5_FLOW_TABLE_SFT_L0
 #define MLX5_MAX_TABLES_FDB UINT16_MAX
 #define MLX5_FLOW_TABLE_FACTOR 10
 
@@ -1276,6 +1276,21 @@ struct mlx5_obj_ops {
 
 #define MLX5_RSS_HASH_FIELDS_LEN RTE_DIM(mlx5_rss_hash_fields)
 
+enum {
+	MLX5_SFT_L0_DFLT_ZONE_FLOW = 0,
+	MLX5_SFT_L0_DFLT_IPV4_FRAG_FLOW,
+	MLX5_SFT_L0_DFLT_IPV6_FRAG_FLOW,
+	MLX5_SFT_L0_DFLT_FLOWS_NUM /* keep this item the last */
+};
+
+/*
+ * default SFT flows
+ */
+struct sft_flows {
+	struct rte_flow *l0_flows[MLX5_SFT_L0_DFLT_FLOWS_NUM];
+	struct rte_flow *l1_flow;
+};
+
 struct mlx5_priv {
 	struct rte_eth_dev_data *dev_data;  /* Pointer to device data. */
 	struct mlx5_dev_ctx_shared *sh; /* Shared device context. */
@@ -1360,6 +1375,7 @@ struct mlx5_priv {
 	uint32_t *sft_lists;
 	struct mlx5_devx_obj *q_counters; /* DevX queue counter object. */
 	uint32_t counter_set_id; /* Queue counter ID to set in DevX objects. */
+	struct sft_flows *sft_flows;
 };
 
 #define PORT_ID(priv) ((priv)->dev_data->port_id)

@@ -5,14 +5,32 @@
 #ifndef RTE_PMD_MLX5_MLX5_H
 #define RTE_PMD_MLX5_MLX5_H
 
+#include <rte_flow.h>
+#include <rte_sft_driver.h>
+
+#define MLX5_SFT_L1_IMPLICIT_ACTIONS_NUM 4
+#define MLX5_SFT_L1_ACTIONS_NUM (SFT_ACTIONS_NUM + \
+				 MLX5_SFT_L1_IMPLICIT_ACTIONS_NUM)
+__extension__
+union mlx5_sft_entry_flags {
+	uint8_t val;
+	struct {
+		uint8_t initiator:1;
+		uint8_t ipv4:1;
+		uint8_t ipv6:1;
+		uint8_t udp:1;
+		uint8_t tcp:1;
+	};
+};
+
 struct rte_sft_entry {
 	ILIST_ENTRY(uint32_t)next;
-	struct rte_flow *flow;
-	struct rte_flow *itmd_flow;
-	struct rte_flow *miss_flow;
 	uint32_t idx;
-	uint32_t state;
-	uint32_t fid_zone;
+	uint32_t fid;
+	union mlx5_sft_entry_flags flags;
+	uint64_t miss_conditions;
+	struct rte_flow *sft_l0_flow;
+	struct rte_flow *sft_l1_flow;
 };
 
 #define MLX5_SFT_QUEUE_MAX			(64)

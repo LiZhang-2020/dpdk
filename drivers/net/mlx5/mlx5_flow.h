@@ -96,8 +96,10 @@ union sft_mark {
 	struct {
 		uint32_t fid_valid:1;
 		uint32_t zone_valid:1;
+		uint32_t direction:1;
+		uint32_t fragment:1;
 		uint32_t control:1;
-		uint32_t reserved:13;
+		uint32_t reserved:11;
 		uint32_t app_state:8;
 		uint32_t _unused_:8;
 	};
@@ -117,12 +119,12 @@ enum mlx5_feature_name {
 	MLX5_MTR_ID,
 	MLX5_MTR_FLOW_ID,
 	MLX5_ASO_FLOW_HIT,
+	MLX5_ASO_CONNTRACK,
 	MLX5_SFT_FID,
 	MLX5_SFT_ZONE,
 	MLX5_SFT_APP_DATA,
 	MLX5_SFT_APP_STATE,
 	MLX5_SFT_JUMP_GROUP,
-	MLX5_ASO_CONNTRACK,
 };
 
 /* Default queue number. */
@@ -623,7 +625,8 @@ struct mlx5_flow_tbl_data_entry {
 /* SFT data structure of the hash organization. */
 struct mlx5_flow_sft_data_entry {
 	struct mlx5_hlist_entry entry; /**< hash list entry. */
-	uint32_t jump_group; /**< Resource key. */
+	uint32_t jump_group; /**< SFT app group part of match key. */
+	uint32_t port_id; /**< port id. part of match key */
 	uint32_t sft_flow_idx; /**< SFT flow index. */
 	uint32_t idx; /**< Index in mempool. */
 };
@@ -1573,9 +1576,10 @@ int flow_dv_sft_match_cb(struct mlx5_hlist *list,
 			 void *cb_ctx);
 void flow_dv_sft_remove_cb(struct mlx5_hlist *list,
 			   struct mlx5_hlist_entry *entry);
-struct mlx5_flow_sft_data_entry *flow_dv_sft_resource_get(struct rte_eth_dev *dev,
-		uint32_t jump_group, struct rte_flow_error *error);
-
+struct mlx5_flow_sft_data_entry *
+flow_dv_sft_resource_get(struct rte_eth_dev *dev,
+			 uint32_t jump_group,
+			 struct rte_flow_error *error);
 struct mlx5_hlist_entry *flow_dv_tag_create_cb(struct mlx5_hlist *list,
 					       uint64_t key, void *cb_ctx);
 int flow_dv_tag_match_cb(struct mlx5_hlist *list,

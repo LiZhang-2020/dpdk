@@ -754,8 +754,6 @@ mlx5_flow_get_reg_id(struct rte_eth_dev *dev,
 		return REG_B;
 	case MLX5_HAIRPIN_TX:
 		return REG_A;
-	case MLX5_SFT_FID:
-	case MLX5_SFT_ZONE:
 	case MLX5_METADATA_RX:
 		switch (config->dv_xmeta_en) {
 		case MLX5_XMETA_MODE_LEGACY:
@@ -778,7 +776,6 @@ mlx5_flow_get_reg_id(struct rte_eth_dev *dev,
 			return REG_C_1;
 		}
 		break;
-	case MLX5_SFT_APP_STATE:
 	case MLX5_FLOW_MARK:
 		switch (config->dv_xmeta_en) {
 		case MLX5_XMETA_MODE_LEGACY:
@@ -870,6 +867,11 @@ mlx5_flow_get_reg_id(struct rte_eth_dev *dev,
 		return config->flow_mreg_c[id + start_reg - REG_C_0];
 	case MLX5_SFT_APP_DATA:
 		return REG_C_0;
+	case MLX5_SFT_APP_STATE:
+		return REG_C_1;
+	case MLX5_SFT_FID:
+	case MLX5_SFT_ZONE:
+		return REG_C_5;
 	case MLX5_SFT_JUMP_GROUP:
 		return REG_C_4;
 	}

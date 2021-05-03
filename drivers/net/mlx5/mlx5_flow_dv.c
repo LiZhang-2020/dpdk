@@ -10170,7 +10170,7 @@ flow_dv_sft_create_cb(struct mlx5_hlist *list, uint64_t key64, void *cb_ctx)
 	/* Create an SFT flow */
 	sft_data->sft_flow_idx =
 		mlx5_flow_add_post_sft_rule(dev,
-					    MLX5_FLOW_TABLE_LEVEL_POST_SFT,
+					    MLX5_FLOW_TABLE_SFT_L2,
 					    reg, sft_data->jump_group,
 					    0, error);
 	if (!sft_data->sft_flow_idx)
@@ -12662,7 +12662,7 @@ flow_dv_translate(struct rte_eth_dev *dev,
 			jump_group = ((const struct rte_flow_action_jump *)
 							action->conf)->group;
 			if (action_flags & MLX5_FLOW_ACTION_SFT)
-				jump_group = MLX5_FLOW_TABLE_LEVEL_SFT;
+				jump_group = MLX5_FLOW_TABLE_SFT_L0;
 			grp_info.std_tbl_fix = 0;
 			if (dev_flow->skip_scale &
 				(1 << MLX5_SCALE_JUMP_FLOW_GROUP_BIT))
