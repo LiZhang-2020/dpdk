@@ -803,6 +803,9 @@ mlx5_devx_cmd_query_hca_attr(void *ctx,
 					      log_compress_mmo_size);
 	attr->log_max_mmo_decompress = MLX5_GET(cmd_hca_cap, hcattr,
 						log_decompress_mmo_size);
+	attr->crypto = MLX5_GET(cmd_hca_cap, hcattr, crypto);
+	if (attr->crypto)
+		attr->aes_xts = MLX5_GET(cmd_hca_cap, hcattr, aes_xts);
 	if (attr->qos.sup) {
 		MLX5_SET(query_hca_cap_in, in, op_mod,
 			 MLX5_GET_HCA_CAP_OP_MOD_QOS_CAP |
