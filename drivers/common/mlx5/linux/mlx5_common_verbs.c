@@ -14,7 +14,7 @@
 #include <rte_bus_pci.h>
 #include <rte_bus_auxiliary.h>
 
-#include "mlx5_common_utils.h"
+#include "mlx5_common_log.h"
 #include "mlx5_common_private.h"
 #include "mlx5_autoconf.h"
 #include "mlx5_common_os.h"

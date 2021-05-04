@@ -10,13 +10,14 @@ endif
 config_flag_fmt = 'RTE_LIBRTE_@0@_COMMON'
 deps += ['hash', 'pci', 'bus_pci', 'bus_auxiliary', 'net', 'eal', 'kvargs']
 sources += files(
-	'mlx5_devx_cmds.c',
-	'mlx5_common.c',
-	'mlx5_common_mp.c',
-	'mlx5_common_mr.c',
-	'mlx5_malloc.c',
-	'mlx5_common_pci.c',
-	'mlx5_common_devx.c',
+        'mlx5_devx_cmds.c',
+        'mlx5_common.c',
+        'mlx5_common_mp.c',
+        'mlx5_common_mr.c',
+        'mlx5_malloc.c',
+        'mlx5_common_pci.c',
+        'mlx5_common_devx.c',
+        'mlx5_common_utils.c',
 )
 
 cflags_options = [

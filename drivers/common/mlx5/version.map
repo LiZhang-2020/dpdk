@@ -73,6 +73,12 @@ INTERNAL {
 	mlx5_get_dbr;
 	mlx5_get_pci_addr;
 
+	mlx5_hlist_create;
+	mlx5_hlist_lookup;
+	mlx5_hlist_register;
+	mlx5_hlist_unregister;
+	mlx5_hlist_destroy;
+
 	mlx5_mp_init_primary;
 	mlx5_mp_uninit_primary;
 	mlx5_mp_init_secondary;
