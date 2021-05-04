@@ -142,6 +142,7 @@ struct mlx5_hca_attr {
 	uint32_t ct_offload:1; /* General obj type ASO CT offload supported. */
 	uint32_t crypto:1; /* Crypto engine is supported. */
 	uint32_t aes_xts:1; /* AES-XTS crypto is supported. */
+	uint32_t dek:1; /* General obj type DEK is supported. */
 	uint32_t regexp_num_of_engines;
 	uint32_t log_max_ft_sampler_num:8;
 	uint32_t inner_ipv4_ihl:1;
@@ -470,6 +471,18 @@ struct mlx5_devx_graph_node_attr {
 	struct mlx5_devx_graph_arc_attr out[MLX5_GRAPH_NODE_ARC_NUM];
 };
 
+/* Encryption key size is up to 1024 bit, 128 bytes. */
+#define MLX5_CRYPTO_KEY_MAX_SIZE	128
+
+struct mlx5_devx_dek_attr {
+	uint32_t key_size:4;
+	uint32_t has_keytag:1;
+	uint32_t key_purpose:4;
+	uint32_t pd:24;
+	uint64_t opaque;
+	uint8_t key[MLX5_CRYPTO_KEY_MAX_SIZE];
+};
+
 /* mlx5_devx_cmds.c */
 
 __rte_internal
@@ -633,4 +646,8 @@ __rte_internal
 int
 mlx5_devx_cmd_query_lag(void *ctx,
 			struct mlx5_devx_lag_context *lag_ctx);
+__rte_internal
+struct mlx5_devx_obj *
+mlx5_devx_cmd_create_dek_obj(void *ctx, struct mlx5_devx_dek_attr *attr);
+
 #endif /* RTE_PMD_MLX5_DEVX_CMDS_H_ */
