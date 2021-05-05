@@ -1309,7 +1309,8 @@ mlx5_txq_dynf_timestamp_set(struct rte_eth_dev *dev)
 				(RTE_MBUF_DYNFLAG_TX_TIMESTAMP_NAME, NULL);
 	off = rte_mbuf_dynfield_lookup
 				(RTE_MBUF_DYNFIELD_TIMESTAMP_NAME, NULL);
-	if (nbit >= 0 && off >= 0 && sh->txpp.refcnt)
+	if (nbit >= 0 && off >= 0 &&
+	    (sh->txpp.refcnt || config->hca_attr.wait_on_time))
 		mask = 1ULL << nbit;
 	for (i = 0; i != priv->txqs_n; ++i) {
 		data = (*priv->txqs)[i];
@@ -1319,6 +1320,8 @@ mlx5_txq_dynf_timestamp_set(struct rte_eth_dev *dev)
 		data->ts_mask = mask;
 		data->ts_offset = off;
 		data->rt_timestamp = sh->dev_cap.rt_timestamp;
-		data->rt_timemask = ts_mask;
+		data->rt_timemask = (data->offloads &
+				     DEV_TX_OFFLOAD_SEND_ON_TIMESTAMP) ?
+				     ts_mask : 0;
 	}
 }
