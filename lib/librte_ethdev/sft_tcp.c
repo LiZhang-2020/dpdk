@@ -289,7 +289,7 @@ sft_tcp_handle_fin(struct sft_tcp_ct *ct, const struct rte_tcp_hdr *tcp,
 		} else if (ct->conn_state == SFT_CT_STATE_HALF_DUPLEX) {
 			ct->conn_state = SFT_CT_STATE_CLOSING;
 		} else {
-			SFT_TCP_LOG(WARNING, "invalid FIN\n");
+			SFT_TCP_LOG(INFO, "invalid FIN\n");
 			goto err;
 		}
 
@@ -412,7 +412,7 @@ sft_tcp_handle_ack(struct sft_tcp_ct *ct, const struct rte_tcp_hdr *tcp,
 err:
 	status->packet_error = 1;
 	status->ct_info = SFT_CT_ERROR_TCP_ACK_SEQ;
-	SFT_TCP_LOG(WARNING,
+	SFT_TCP_LOG(INFO,
 		    "ACK %u max sent %u %s:%s flags %02x \n", ack_seq,
 		    peer->max_sent_seq,
 		    rte_tcp_state_name(sender->sock_state),
