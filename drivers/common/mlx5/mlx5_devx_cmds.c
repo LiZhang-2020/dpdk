@@ -958,6 +958,7 @@ mlx5_devx_cmd_query_hca_attr(void *ctx,
 					      log_compress_mmo_size);
 	attr->log_max_mmo_decompress = MLX5_GET(cmd_hca_cap, hcattr,
 						log_decompress_mmo_size);
+	attr->wait_on_time = MLX5_GET(cmd_hca_cap, hcattr, wait_on_time);
 	attr->crypto = MLX5_GET(cmd_hca_cap, hcattr, crypto);
 	attr->rq_delay_drop = MLX5_GET(cmd_hca_cap, hcattr, rq_delay_drop);
 	if (attr->crypto)

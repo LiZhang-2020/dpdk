@@ -133,6 +133,19 @@
 #define MLX5_OPCODE_WAIT 0x0fu
 #endif
 
+#define MLX5_OPC_MOD_WAIT_CQ_PI 0u
+#define MLX5_OPC_MOD_WAIT_DATA 1u
+#define MLX5_OPC_MOD_WAIT_TIME 2u
+
+
+#define MLX5_WAIT_COND_INVERT 0x10u
+#define MLX5_WAIT_COND_ALWAYS_TRUE 0u
+#define MLX5_WAIT_COND_EQUAL 1u
+#define MLX5_WAIT_COND_BIGGER 2u
+#define MLX5_WAIT_COND_SMALLER 3u
+#define MLX5_WAIT_COND_CYCLIC_BIGGER 4u
+#define MLX5_WAIT_COND_CYCLIC_SMALLER 5u
+
 #ifndef HAVE_MLX5_OPCODE_ACCESS_ASO
 #define MLX5_OPCODE_ACCESS_ASO 0x2du
 #endif
@@ -348,6 +361,15 @@ struct mlx5_wqe_qseg {
 	uint32_t reserved1;
 	uint32_t max_index;
 	uint32_t qpn_cqn;
+} __rte_packed;
+
+struct mlx5_wqe_wseg {
+	uint32_t operation;
+	uint32_t lkey;
+	uint32_t va_high;
+	uint32_t va_low;
+	uint64_t value;
+	uint64_t mask;
 } __rte_packed;
 
 /* The title WQEBB, header of WQE. */
@@ -1694,7 +1716,10 @@ struct mlx5_ifc_cmd_hca_cap_bits {
 	u8 reserve_not_to_use[0x1];
 	u8 reserved_at_620[0x60];
 	u8 sf[0x1];
-	u8 reserved_at_681[0x43];
+	u8 reserved_at_681[0xa];
+	u8 wait_on_data[0x1];
+	u8 wait_on_time[0x1];
+	u8 reserved_at_68d[0x37];
 	u8 flex_parser_id_geneve_opt_0[0x4];
 	u8 flex_parser_id_icmp_dw1[0x4];
 	u8 flex_parser_id_icmp_dw0[0x4];
