@@ -950,6 +950,7 @@ int
 mlx5_txq_ibv_obj_new(struct rte_eth_dev *dev, uint16_t idx)
 {
 	struct mlx5_priv *priv = dev->data->dev_private;
+	struct mlx5_dev_ctx_shared *sh = priv->sh;
 	struct mlx5_txq_data *txq_data = (*priv->txqs)[idx];
 	struct mlx5_txq_ctrl *txq_ctrl =
 		container_of(txq_data, struct mlx5_txq_ctrl, txq);
@@ -1034,6 +1035,8 @@ mlx5_txq_ibv_obj_new(struct rte_eth_dev *dev, uint16_t idx)
 	txq_data->wqe_pi = 0;
 	txq_data->wqe_comp = 0;
 	txq_data->wqe_thres = txq_data->wqe_s / MLX5_TX_COMP_THRESH_INLINE_DIV;
+	txq_data->wait_on_time = !!(!sh->config.tx_pp &&
+				     sh->cdev->config.hca_attr.wait_on_time);
 #ifdef HAVE_IBV_FLOW_DV_SUPPORT
 	/*
 	 * If using DevX need to query and store TIS transport domain value.
