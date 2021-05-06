@@ -864,6 +864,36 @@ sft_flow_deactivate(struct sft_lib_entry *entry, struct rte_sft_error *error)
 	return 0;
 }
 
+static int
+sft_flow_modify(struct sft_lib_entry *entry, struct rte_sft_error *error)
+{
+	int ret;
+	struct rte_eth_dev *dev[2];
+	const struct rte_sft_ops *ops[2];
+
+	dev[0] = &rte_eth_devices[entry->stpl[0].port_id];
+	dev[1] = &rte_eth_devices[entry->stpl[1].port_id];
+	sft_get_dev_ops(dev, entry, ops);
+	if (ops[0] && ops[0]->sft_entry_modify) {
+		ret = ops[0]->sft_entry_modify(dev[0], entry->queue,
+					       entry->sft_entry[0], entry->data,
+					       SFT_DATA_LEN, entry->app_state,
+					       error);
+		if (ret)
+			return ret;
+	}
+	if (ops[1] && ops[1]->sft_entry_modify) {
+		ret = ops[1]->sft_entry_modify(dev[1], entry->queue,
+					       entry->sft_entry[1], entry->data,
+					       SFT_DATA_LEN, entry->app_state,
+					       error);
+		if (ret)
+			return ret;
+	}
+
+	return 0;
+}
+
 static __rte_always_inline int
 sft_create_entry(struct rte_eth_dev *dev[2], const struct rte_sft_ops *ops[2],
 		 struct sft_lib_entry *entry,
@@ -1194,16 +1224,16 @@ static int
 sft_set_data(struct sft_lib_entry *entry, const uint32_t *data,
 	     struct rte_sft_error *error)
 {
-	if (SFT_DATA_LEN == 0) {
-		entry->data = NULL;
+	if (SFT_DATA_LEN == 0)
 		return 0;
+	else if (!entry->data) {
+		entry->data = rte_malloc("uint32_t", SFT_DATA_LEN, 0);
+		if (!entry->data)
+			return rte_sft_error_set(error, ENOMEM,
+						 RTE_SFT_ERROR_TYPE_HASH_ERROR,
+						 NULL,
+						 "failed allocate user data");
 	}
-	entry->data = rte_malloc("uint32_t",
-				 sft_priv->conf.app_data_len, 0);
-	if (!entry->data)
-		return rte_sft_error_set(error, ENOMEM,
-					 RTE_SFT_ERROR_TYPE_HASH_ERROR,
-					 NULL, "failed allocate user data");
 	if (data)
 		memcpy(entry->data, data, SFT_DATA_LEN);
 	else
@@ -1420,7 +1450,7 @@ rte_sft_flow_set_state(uint16_t queue, uint32_t fid, const uint8_t state,
 					 "invalid fid value");
 	entry->app_state = state;
 
-	return 0;
+	return sft_flow_modify(entry, error);
 }
 
 int
@@ -1449,6 +1479,7 @@ int
 rte_sft_flow_set_data(uint16_t queue, uint32_t fid, const uint32_t *data,
 		      struct rte_sft_error *error)
 {
+	int ret;
 	struct sft_lib_entry *entry = NULL;
 
 	sft_fid_locate_entry(queue, fid, &entry);
@@ -1456,7 +1487,10 @@ rte_sft_flow_set_data(uint16_t queue, uint32_t fid, const uint32_t *data,
 		return rte_sft_error_set(error, ENOENT,
 				  	 RTE_SFT_ERROR_TYPE_UNSPECIFIED, NULL,
 					 "invalid fid value");
-	return sft_set_data(entry, data, error);
+	ret = sft_set_data(entry, data, error);
+	if (ret)
+		return ret;
+	return sft_flow_modify(entry, error);
 
 }
 
