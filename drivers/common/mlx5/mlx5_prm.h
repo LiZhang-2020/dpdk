@@ -1594,6 +1594,7 @@ struct mlx5_ifc_ft_fields_support_2_bits {
 	u8 reserved_at_0[0x14];
 	u8 inner_ipv4_ihl[0x1];
 	u8 outer_ipv4_ihl[0x1];
+	u8 psp_syndrome[0x1];
 	u8 inner_l3_ok[0x1];
 	u8 inner_l4_ok[0x1];
 	u8 outer_l3_ok[0x1];
