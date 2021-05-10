@@ -13891,11 +13891,13 @@ flow_dv_translate(struct rte_eth_dev *dev,
 						RTE_FLOW_ERROR_TYPE_ACTION,
 						NULL,
 						"Failed to get CT object.");
+#ifdef MLX5_ASO_CT_SYNC_UPDATE
 			if (mlx5_aso_ct_available(priv->sh, ct))
 				return rte_flow_error_set(error, rte_errno,
 						RTE_FLOW_ERROR_TYPE_ACTION,
 						NULL,
 						"CT is unavailable.");
+#endif
 			if (ct->is_original)
 				dev_flow->dv.actions[actions_n] =
 							ct->dr_action_orig;
@@ -15818,13 +15820,15 @@ __flow_dv_action_ct_update(struct rte_eth_dev *dev, uint32_t idx,
 					RTE_FLOW_ERROR_TYPE_UNSPECIFIED,
 					NULL,
 					"Failed to send CT context update WQE");
-		/* Block until ready or a failure. */
+#ifdef MLX5_ASO_CT_SYNC_UPDATE
+		/* Block until ready or a failure, default is asynchronous. */
 		ret = mlx5_aso_ct_available(priv->sh, ct);
 		if (ret)
 			rte_flow_error_set(error, rte_errno,
 					   RTE_FLOW_ERROR_TYPE_UNSPECIFIED,
 					   NULL,
 					   "Timeout to get the CT update");
+#endif
 	}
 	return ret;
 }
