@@ -72,6 +72,15 @@ enum mlx5_reclaim_mem_mode {
 	MLX5_RCM_AGGR, /* Reclaim PMD and rdma-core level. */
 };
 
+/* The type of flow. */
+enum mlx5_flow_type {
+	MLX5_FLOW_TYPE_CTL, /* Control flow. */
+	MLX5_FLOW_TYPE_GEN, /* General flow. */
+	MLX5_FLOW_TYPE_MCP, /* MCP flow. */
+	MLX5_FLOW_TYPE_SFT, /* SFT flow. */
+	MLX5_FLOW_TYPE_MAXI,
+};
+
 /* Hash and cache list callback context. */
 struct mlx5_flow_cb_ctx {
 	struct rte_eth_dev *dev;
@@ -1439,7 +1448,8 @@ struct mlx5_priv {
 	unsigned int (*reta_idx)[]; /* RETA index table. */
 	unsigned int reta_idx_n; /* RETA index size. */
 	struct mlx5_drop drop_queue; /* Flow drop queues. */
-	uint32_t flows; /* RTE Flow rules. */
+	struct mlx5_indexed_pool *flows[MLX5_FLOW_TYPE_MAXI];
+	/* RTE Flow rules. */
 	uint32_t ctrl_flows; /* Control flow rules. */
 	rte_spinlock_t flow_list_lock;
 	struct mlx5_obj_ops obj_ops; /* HW objects operations. */
@@ -1696,14 +1706,14 @@ int mlx5_flow_validate(struct rte_eth_dev *dev,
 		       const struct rte_flow_action actions[],
 		       struct rte_flow_error *error);
 uint32_t
-mlx5_flow_list_create(struct rte_eth_dev *dev, uint32_t *list,
+mlx5_flow_list_create(struct rte_eth_dev *dev, enum mlx5_flow_type type,
 		      const struct rte_flow_attr *attr,
 		      const struct rte_flow_item items[],
 		      const struct rte_flow_action original_actions[],
 		      bool external, struct rte_flow_error *error);
 void
-mlx5_flow_list_destroy(struct rte_eth_dev *dev, uint32_t *list,
-	uint32_t flow_idx);
+mlx5_flow_list_destroy(struct rte_eth_dev *dev, enum mlx5_flow_type type,
+		       uint32_t flow_idx);
 struct rte_flow *mlx5_flow_create(struct rte_eth_dev *dev,
 				  const struct rte_flow_attr *attr,
 				  const struct rte_flow_item items[],
@@ -1711,7 +1721,8 @@ struct rte_flow *mlx5_flow_create(struct rte_eth_dev *dev,
 				  struct rte_flow_error *error);
 int mlx5_flow_destroy(struct rte_eth_dev *dev, struct rte_flow *flow,
 		      struct rte_flow_error *error);
-void mlx5_flow_list_flush(struct rte_eth_dev *dev, uint32_t *list, bool active);
+void mlx5_flow_list_flush(struct rte_eth_dev *dev, enum mlx5_flow_type type,
+			  bool active);
 int mlx5_flow_flush(struct rte_eth_dev *dev, struct rte_flow_error *error);
 int mlx5_flow_query(struct rte_eth_dev *dev, struct rte_flow *flow,
 		    const struct rte_flow_action *action, void *data,

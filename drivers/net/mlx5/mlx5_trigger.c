@@ -1183,7 +1183,7 @@ mlx5_dev_stop(struct rte_eth_dev *dev)
 	/* Control flows for default traffic can be removed firstly. */
 	mlx5_traffic_disable(dev);
 	/* All RX queue flags will be cleared in the flush interface. */
-	mlx5_flow_list_flush(dev, &priv->flows, true);
+	mlx5_flow_list_flush(dev, MLX5_FLOW_TYPE_GEN, true);
 	mlx5_sft_deactivate(dev);
 	mlx5_flow_meter_rxq_flush(dev);
 	mlx5_rx_intr_vec_disable(dev);
@@ -1362,7 +1362,7 @@ mlx5_traffic_enable(struct rte_eth_dev *dev)
 	return 0;
 error:
 	ret = rte_errno; /* Save rte_errno before cleanup. */
-	mlx5_flow_list_flush(dev, &priv->ctrl_flows, false);
+	mlx5_flow_list_flush(dev, MLX5_FLOW_TYPE_CTL, false);
 	rte_errno = ret; /* Restore rte_errno. */
 	return -rte_errno;
 }
@@ -1377,9 +1377,7 @@ error:
 void
 mlx5_traffic_disable(struct rte_eth_dev *dev)
 {
-	struct mlx5_priv *priv = dev->data->dev_private;
-
-	mlx5_flow_list_flush(dev, &priv->ctrl_flows, false);
+	mlx5_flow_list_flush(dev, MLX5_FLOW_TYPE_CTL, false);
 }
 
 /**

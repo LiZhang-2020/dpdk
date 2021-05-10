@@ -10603,14 +10603,13 @@ flow_dv_sft_remove_cb(struct mlx5_hlist *list,
 		      struct mlx5_hlist_entry *entry)
 {
 	struct rte_eth_dev *dev = list->ctx;
-	struct mlx5_priv *priv = dev->data->dev_private;
 	struct mlx5_dev_ctx_shared *sh = MLX5_SH(dev);
 	struct mlx5_flow_sft_data_entry *sft_data =
 		container_of(entry, struct mlx5_flow_sft_data_entry, entry);
 
 	MLX5_ASSERT(entry && sh);
 	if (sft_data->jump_group)
-		mlx5_flow_list_destroy(dev, &priv->flows,
+		mlx5_flow_list_destroy(dev, MLX5_FLOW_TYPE_GEN,
 				       sft_data->l2_flow_idx);
 	mlx5_ipool_free(sh->ipool[MLX5_IPOOL_SFT], sft_data->idx);
 }
@@ -14716,6 +14715,11 @@ flow_dv_destroy(struct rte_eth_dev *dev, struct rte_flow *flow)
 		if (fm && dev_handle->is_meter_flow_id &&
 		    dev_handle->split_flow_id)
 			mlx5_ipool_free(fm->flow_ipool,
+					dev_handle->split_flow_id);
+		else if (dev_handle->split_flow_id &&
+		    !dev_handle->is_meter_flow_id)
+			mlx5_ipool_free(priv->sh->ipool
+					[MLX5_IPOOL_RSS_EXPANTION_FLOW_ID],
 					dev_handle->split_flow_id);
 		mlx5_ipool_free(priv->sh->ipool[MLX5_IPOOL_MLX5_FLOW],
 			   tmp_idx);
