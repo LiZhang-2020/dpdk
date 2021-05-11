@@ -69,6 +69,11 @@ flow_verbs_discover_priorities(struct rte_eth_dev *dev,
 	int i;
 	int priority = 0;
 
+#if defined(HAVE_MLX5DV_DR_DEVX_PORT) || defined(HAVE_MLX5DV_DR_DEVX_PORT_V35)
+	/* If DevX supported, driver must support 16 verbs flow priorities. */
+	priority = 16;
+	goto out;
+#endif
 	if (!drop->qp) {
 		rte_errno = ENOTSUP;
 		return -rte_errno;
@@ -81,6 +86,9 @@ flow_verbs_discover_priorities(struct rte_eth_dev *dev,
 		claim_zero(mlx5_glue->destroy_flow(flow));
 		priority = vprio[i];
 	}
+#if defined(HAVE_MLX5DV_DR_DEVX_PORT) || defined(HAVE_MLX5DV_DR_DEVX_PORT_V35)
+out:
+#endif
 	return priority;
 }
 
