@@ -3542,7 +3542,7 @@ static const struct token token_list[] = {
 		.help = "zone",
 		.next = NEXT(item_sft, NEXT_ENTRY(UNSIGNED),
 			     NEXT_ENTRY(ITEM_PARAM_IS)),
-		.args = ARGS(ARGS_ENTRY(struct rte_flow_item_sft, fid)),
+		.args = ARGS(ARGS_ENTRY(struct rte_flow_item_sft, zone)),
 	},
 	[ITEM_SFT_ZONE_VALID] = {
 		.name = "zone_valid",
