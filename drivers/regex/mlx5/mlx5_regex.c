@@ -111,7 +111,6 @@ mlx5_regex_dev_probe(struct rte_device *rte_dev)
 	struct mlx5_hca_attr attr;
 	char name[RTE_REGEXDEV_NAME_MAX_LEN];
 	int ret;
-	uint32_t val;
 
 	ibv = mlx5_get_ibv_device(rte_dev);
 	if (ibv == NULL)
@@ -128,7 +127,8 @@ mlx5_regex_dev_probe(struct rte_device *rte_dev)
 		DRV_LOG(ERR, "Unable to read HCA capabilities.");
 		rte_errno = ENOTSUP;
 		goto dev_error;
-	} else if (!attr.regex || attr.regexp_num_of_engines == 0) {
+	} else if (!attr.regexp_params || !attr.regexp_mmo ||
+		attr.regexp_num_of_engines == 0) {
 		DRV_LOG(ERR, "Not enough capabilities to support RegEx, maybe "
 			"old FW/OFED version?");
 		rte_errno = ENOTSUP;
@@ -149,13 +149,7 @@ mlx5_regex_dev_probe(struct rte_device *rte_dev)
 	priv->sq_ts_format = attr.sq_ts_format;
 	priv->ctx = ctx;
 	priv->nb_engines = 2; /* attr.regexp_num_of_engines */
-	ret = mlx5_devx_regex_register_read(priv->ctx, 0,
-					    MLX5_RXP_CSR_IDENTIFIER, &val);
-	if (ret) {
-		DRV_LOG(ERR, "CSR read failed!");
-		return -1;
-	}
-	if (val == MLX5_RXP_BF2_IDENTIFIER)
+	if (attr.regexp_version == MLX5_RXP_BF2_IDENTIFIER)
 		priv->is_bf2 = 1;
 	/* Default RXP programming mode to Shared. */
 	priv->prog_mode = MLX5_RXP_SHARED_PROG_MODE;
