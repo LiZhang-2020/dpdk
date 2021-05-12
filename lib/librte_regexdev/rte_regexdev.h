@@ -621,6 +621,11 @@ struct rte_regexdev_info {
 	/**< Supported compiler rule flags.
 	 * @see RTE_REGEX_PCRE_RULE_*, struct rte_regexdev_rule::rule_flags
 	 */
+	const char *version_name;
+	/**< RegEx device version name.
+	 * The name specifies the actual device being used.
+	 * The input type may change based on the version.
+	 */
 };
 
 /**
