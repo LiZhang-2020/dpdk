@@ -4082,6 +4082,10 @@ This section lists supported actions and their attributes, if any.
 
   - ``indirect_action_id {unsigned}``: Indirect action ID to use
 
+- ``color``: Color the packet to reflect the meter color result
+
+  - ``type {value}``: Set color type with specified value(green/yellow/red)
+
 Destroying flow rules
 ~~~~~~~~~~~~~~~~~~~~~
 
@@ -4969,6 +4973,27 @@ General packet integrity is matched with the ``packet_ok`` bit 0.
 ::
 
  testpmd> flow create 0 ingress pattern integrity value mask 1 value spec 0 / end actions queue index 0 / end
+
+Sample meter with policy rules
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Meter with policy rules can be created by the following commands:
+
+Need to create policy first and actions are set for green/yellow/red colors.
+Create meter with policy id. Create flow with meter id.
+
+Example for policy with meter color action. The purpose is to color the packet
+to reflect the meter color result.
+The meter policy action list: ``green -> green, yellow -> yellow, red -> red``.
+
+::
+
+   testpmd> add port meter profile srtcm_rfc2697 0 13 21504 2688 0 0
+   testpmd> add port meter policy 0 1 g_actions color type green / end y_actions color type yellow / end
+            r_actions color type red / end
+   testpmd> create port meter 0 1 13 1 yes 0xffff 0 0
+   testpmd> flow create 0 priority 0 ingress group 1 pattern eth / end actions meter mtr_id 1 / end
+
 
 BPF Functions
 --------------
