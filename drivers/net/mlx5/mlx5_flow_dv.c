@@ -16954,7 +16954,7 @@ mlx5_flow_dv_discover_counter_offset_support(struct rte_eth_dev *dev)
 		.size = sizeof(value.buf),
 	};
 	struct mlx5dv_flow_matcher_attr dv_attr = {
-		.type = IBV_FLOW_ATTR_NORMAL,
+		.type = IBV_FLOW_ATTR_NORMAL | IBV_FLOW_ATTR_FLAGS_EGRESS,
 		.priority = 0,
 		.match_criteria_enable = 0,
 		.match_mask = (void *)&mask,
@@ -16966,7 +16966,7 @@ mlx5_flow_dv_discover_counter_offset_support(struct rte_eth_dev *dev)
 	void *flow = NULL;
 	int ret = -1;
 
-	tbl = flow_dv_tbl_resource_get(dev, 0, 0, 0, false, NULL,
+	tbl = flow_dv_tbl_resource_get(dev, 0, 1, 0, false, NULL,
 					0, 0, 0, NULL);
 	if (!tbl)
 		goto err;
@@ -16977,8 +16977,6 @@ mlx5_flow_dv_discover_counter_offset_support(struct rte_eth_dev *dev)
 						    &actions[0]);
 	if (ret)
 		goto err;
-	actions[1] = sh->dr_drop_action ? sh->dr_drop_action :
-					  priv->drop_queue.hrxq->action;
 	dv_attr.match_criteria_enable = flow_dv_matcher_enable(mask.buf);
 	__flow_dv_adjust_buf_size(&mask.size, dv_attr.match_criteria_enable);
 	ret = mlx5_flow_os_create_flow_matcher(sh->ctx, &dv_attr, tbl->obj,
@@ -16986,7 +16984,7 @@ mlx5_flow_dv_discover_counter_offset_support(struct rte_eth_dev *dev)
 	if (ret)
 		goto err;
 	__flow_dv_adjust_buf_size(&value.size, dv_attr.match_criteria_enable);
-	ret = mlx5_flow_os_create_flow(matcher, (void *)&value, 2,
+	ret = mlx5_flow_os_create_flow(matcher, (void *)&value, 1,
 				       actions, &flow);
 err:
 	/*
