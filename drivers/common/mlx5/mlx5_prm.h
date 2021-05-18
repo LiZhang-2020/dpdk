@@ -817,6 +817,18 @@ struct mlx5_ifc_fte_match_set_misc4_bits {
 	u8 reserved_at_100[0x100];
 };
 
+struct mlx5_ifc_fte_match_set_misc5_bits {
+	u8 macsec_tag_0[0x20];
+	u8 macsec_tag_1[0x20];
+	u8 macsec_tag_2[0x20];
+	u8 macsec_tag_3[0x20];
+	u8 tunnel_header_0[0x20];
+	u8 tunnel_header_1[0x20];
+	u8 tunnel_header_2[0x20];
+	u8 tunnel_header_3[0x20];
+	u8 reserved[0x100];
+};
+
 /* Flow matcher. */
 struct mlx5_ifc_fte_match_param_bits {
 	struct mlx5_ifc_fte_match_set_lyr_2_4_bits outer_headers;
@@ -825,6 +837,7 @@ struct mlx5_ifc_fte_match_param_bits {
 	struct mlx5_ifc_fte_match_set_misc2_bits misc_parameters_2;
 	struct mlx5_ifc_fte_match_set_misc3_bits misc_parameters_3;
 	struct mlx5_ifc_fte_match_set_misc4_bits misc_parameters_4;
+	struct mlx5_ifc_fte_match_set_misc5_bits misc_parameters_5;
 };
 
 enum {
@@ -834,6 +847,7 @@ enum {
 	MLX5_MATCH_CRITERIA_ENABLE_MISC2_BIT,
 	MLX5_MATCH_CRITERIA_ENABLE_MISC3_BIT,
 	MLX5_MATCH_CRITERIA_ENABLE_MISC4_BIT,
+	MLX5_MATCH_CRITERIA_ENABLE_MISC5_BIT,
 };
 
 enum {
@@ -1591,7 +1605,12 @@ struct mlx5_ifc_flow_table_prop_layout_bits {
  * Table 1872 - Flow Table Fields Supported 2 Format
  */
 struct mlx5_ifc_ft_fields_support_2_bits {
-	u8 reserved_at_0[0x14];
+	u8 reserved_at_0[0xf];
+	u8 tunnel_header_2_3[0x1];
+	u8 tunnel_header_0_1[0x1];
+	u8 macsec_syndrome[0x1];
+	u8 macsec_tag[0x1];
+	u8 outer_lrh_sl[0x1];
 	u8 inner_ipv4_ihl[0x1];
 	u8 outer_ipv4_ihl[0x1];
 	u8 psp_syndrome[0x1];
@@ -1604,6 +1623,7 @@ struct mlx5_ifc_ft_fields_support_2_bits {
 	u8 inner_l4_checksum_ok[0x1];
 	u8 outer_ipv4_checksum_ok[0x1];
 	u8 outer_l4_checksum_ok[0x1];
+	u8 reserved_at_20[0x60];
 };
 
 struct mlx5_ifc_roce_caps_bits {
@@ -1615,13 +1635,20 @@ struct mlx5_ifc_roce_caps_bits {
 struct mlx5_ifc_flow_table_nic_cap_bits {
 	u8 reserved_at_0[0x200];
 	struct mlx5_ifc_flow_table_prop_layout_bits
-	       flow_table_properties_nic_receive;
+		flow_table_properties_nic_receive;
 	struct mlx5_ifc_flow_table_prop_layout_bits
-	       flow_table_properties_unused[5];
-	u8 reserved_at_1C0[0x200];
-	u8 header_modify_nic_receive[0x400];
+		flow_table_properties_nic_receive_rdma;
+	struct mlx5_ifc_flow_table_prop_layout_bits
+		flow_table_properties_nic_receive_sniffer;
+	struct mlx5_ifc_flow_table_prop_layout_bits
+		flow_table_properties_nic_transmit;
+	struct mlx5_ifc_flow_table_prop_layout_bits
+		flow_table_properties_nic_transmit_rdma;
+	struct mlx5_ifc_flow_table_prop_layout_bits
+		flow_table_properties_nic_transmit_sniffer;
+	u8 reserved_at_e00[0x600];
 	struct mlx5_ifc_ft_fields_support_2_bits
-	       ft_field_support_2_nic_receive;
+		ft_field_support_2_nic_receive;
 };
 
 struct mlx5_ifc_cmd_hca_cap_2_bits {
