@@ -8091,15 +8091,7 @@ flow_dv_prepare(struct rte_eth_dev *dev,
 	memset(dev_flow, 0, sizeof(*dev_flow));
 	dev_flow->handle = dev_handle;
 	dev_flow->handle_idx = handle_idx;
-	/*
-	 * In some old rdma-core releases, before continuing, a check of the
-	 * length of matching parameter will be done at first. It needs to use
-	 * the length without misc4 param. If the flow has misc4 support, then
-	 * the length needs to be adjusted accordingly. Each param member is
-	 * aligned with a 64B boundary naturally.
-	 */
-	dev_flow->dv.value.size = MLX5_ST_SZ_BYTES(fte_match_param) -
-				  MLX5_ST_SZ_BYTES(fte_match_set_misc4);
+	dev_flow->dv.value.size = MLX5_ST_SZ_BYTES(fte_match_param);
 	dev_flow->ingress = attr->ingress;
 	dev_flow->dv.transfer = attr->transfer;
 	return dev_flow;
@@ -10753,7 +10745,20 @@ flow_dv_matcher_register(struct rte_eth_dev *dev,
 		.error = error,
 		.data = ref,
 	};
+	uint8_t misc_bitmask;
 
+	/*
+	 * Checking flow matching creteria first, minus misc4 length if flow
+	 * doesn't own misc4 parameters. In some old rdma-core releases,
+	 * misc4 is not supported, and EINVAL is expected  w/o subtration.
+	 */
+	misc_bitmask = flow_dv_matcher_enable(ref->mask.buf);
+	if (!(misc_bitmask & (1 << MLX5_MATCH_CRITERIA_ENABLE_MISC4_BIT))) {
+		dev_flow->dv.value.size = MLX5_ST_SZ_BYTES(fte_match_param) -
+			MLX5_ST_SZ_BYTES(fte_match_set_misc4);
+		ref->mask.size = MLX5_ST_SZ_BYTES(fte_match_param) -
+			MLX5_ST_SZ_BYTES(fte_match_set_misc4);
+	}
 	/**
 	 * tunnel offload API requires this registration for cases when
 	 * tunnel match rule was inserted before tunnel set rule.
@@ -12730,8 +12735,7 @@ flow_dv_translate(struct rte_eth_dev *dev,
 	uint64_t priority = attr->priority;
 	struct mlx5_flow_dv_matcher matcher = {
 		.mask = {
-			.size = sizeof(matcher.mask.buf) -
-				MLX5_ST_SZ_BYTES(fte_match_set_misc4),
+			.size = sizeof(matcher.mask.buf),
 		},
 	};
 	int actions_n = 0;
@@ -13646,10 +13650,6 @@ flow_dv_translate(struct rte_eth_dev *dev,
 						NULL,
 						"cannot create eCPRI parser");
 			}
-			/* Adjust the length matcher and device flow value. */
-			matcher.mask.size = MLX5_ST_SZ_BYTES(fte_match_param);
-			dev_flow->dv.value.size =
-					MLX5_ST_SZ_BYTES(fte_match_param);
 			flow_dv_translate_item_ecpri(dev, match_mask,
 						     match_value, items);
 			/* No other protocol should follow eCPRI layer. */
@@ -16093,11 +16093,13 @@ __flow_dv_create_policy_flow(struct rte_eth_dev *dev,
 	int ret;
 	struct mlx5_flow_dv_match_params value = {
 		.size = sizeof(value.buf) -
-			MLX5_ST_SZ_BYTES(fte_match_set_misc4),
+			MLX5_ST_SZ_BYTES(fte_match_set_misc4) -
+			MLX5_ST_SZ_BYTES(fte_match_set_misc5),
 	};
 	struct mlx5_flow_dv_match_params matcher = {
 		.size = sizeof(matcher.buf) -
-			MLX5_ST_SZ_BYTES(fte_match_set_misc4),
+			MLX5_ST_SZ_BYTES(fte_match_set_misc4) -
+			MLX5_ST_SZ_BYTES(fte_match_set_misc5),
 	};
 	struct mlx5_priv *priv = dev->data->dev_private;
 
@@ -16135,14 +16137,12 @@ __flow_dv_create_policy_matcher(struct rte_eth_dev *dev,
 	struct mlx5_flow_tbl_resource *tbl_rsc = sub_policy->tbl_rsc;
 	struct mlx5_flow_dv_matcher matcher = {
 		.mask = {
-			.size = sizeof(matcher.mask.buf) -
-				MLX5_ST_SZ_BYTES(fte_match_set_misc4),
+			.size = sizeof(matcher.mask.buf),
 		},
 		.tbl = tbl_rsc,
 	};
 	struct mlx5_flow_dv_match_params value = {
-		.size = sizeof(value.buf) -
-			MLX5_ST_SZ_BYTES(fte_match_set_misc4),
+		.size = sizeof(value.buf),
 	};
 	struct mlx5_flow_cb_ctx ctx = {
 		.error = error,
@@ -16520,11 +16520,13 @@ flow_dv_create_mtr_tbls(struct rte_eth_dev *dev,
 	struct mlx5_flow_counter *cnt;
 	struct mlx5_flow_dv_match_params value = {
 		.size = sizeof(value.buf) -
-		MLX5_ST_SZ_BYTES(fte_match_set_misc4),
+		MLX5_ST_SZ_BYTES(fte_match_set_misc4) -
+		MLX5_ST_SZ_BYTES(fte_match_set_misc5),
 	};
 	struct mlx5_flow_dv_match_params matcher_para = {
 		.size = sizeof(matcher_para.buf) -
-		MLX5_ST_SZ_BYTES(fte_match_set_misc4),
+		MLX5_ST_SZ_BYTES(fte_match_set_misc4) -
+		MLX5_ST_SZ_BYTES(fte_match_set_misc5),
 	};
 	int mtr_id_reg_c = mlx5_flow_get_reg_id(dev, MLX5_MTR_ID,
 						     0, &error);
@@ -16534,7 +16536,8 @@ flow_dv_create_mtr_tbls(struct rte_eth_dev *dev,
 	struct mlx5_flow_dv_matcher matcher = {
 		.mask = {
 			.size = sizeof(matcher.mask.buf) -
-			MLX5_ST_SZ_BYTES(fte_match_set_misc4),
+			MLX5_ST_SZ_BYTES(fte_match_set_misc4) -
+			MLX5_ST_SZ_BYTES(fte_match_set_misc5),
 		},
 	};
 	struct mlx5_flow_dv_matcher *drop_matcher;
