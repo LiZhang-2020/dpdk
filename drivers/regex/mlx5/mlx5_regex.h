@@ -58,16 +58,6 @@ struct mlx5_regex_qp {
 	struct mlx5_mr_ctrl mr_ctrl;
 };
 
-struct mlx5_regex_db {
-	void *ptr; /* Pointer to the db memory. */
-	uint32_t len; /* The memory len. */
-	bool active; /* Active flag. */
-	uint8_t db_assigned_to_eng_num;
-	/**< To which engine the db is connected. */
-	struct mlx5_regex_umem umem;
-	/**< The umem struct. */
-};
-
 struct mlx5_regex_priv {
 	TAILQ_ENTRY(mlx5_regex_priv) next;
 	struct ibv_context *ctx; /* Device context. */
@@ -76,8 +66,6 @@ struct mlx5_regex_priv {
 	struct mlx5_regex_qp *qps; /* Pointer to the qp array. */
 	uint16_t nb_max_matches; /* Max number of matches. */
 	enum mlx5_rxp_program_mode prog_mode;
-	struct mlx5_regex_db db[MLX5_RXP_MAX_ENGINES +
-				MLX5_RXP_EM_COUNT];
 	uint32_t nb_engines; /* Number of RegEx engines. */
 	uint32_t eqn; /* EQ number. */
 	struct mlx5dv_devx_uar *uar; /* UAR object. */
