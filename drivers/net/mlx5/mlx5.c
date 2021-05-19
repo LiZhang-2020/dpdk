@@ -181,6 +181,12 @@
 #define MLX5_SFT_EN "sft_en"
 #define MLX5_SFT_DBG "sft_dbg"
 
+/* Device parameter to configure log 2 of the max meter number. */
+#define MLX5_LOG_MAX_MTR_NUM "mtr_log_max_num"
+
+/* Device parameter to configure log 2 of the max flow number per meter. */
+#define MLX5_LOG_MAX_FLOW_PER_MTR "log_max_flow_per_mtr"
+
 /* Device parameter to configure port in isolated mode. */
 #define MLX5_ISOLATED_MODE "isolated_mode"
 
@@ -1830,6 +1836,13 @@ mlx5_args_check(const char *key, const char *val, void *opaque)
 	} else if (strcmp(MLX5_SFT_DBG, key) == 0) {
 		config->sft_dbg = !!tmp;
 		DRV_LOG(NOTICE, "set SFT debug on");
+	} else if (strcmp(MLX5_LOG_MAX_MTR_NUM, key) == 0) {
+		DRV_LOG(WARNING, "mtr_log_max_num parameter is "
+		"not needed anymore for meter feature.");
+	} else if (strcmp(MLX5_LOG_MAX_FLOW_PER_MTR, key) == 0) {
+		DRV_LOG(WARNING,
+		"log_max_flow_per_mtr parameter is "
+		"not needed anymore for meter feature.");
 	} else if (strcmp(MLX5_ISOLATED_MODE, key) == 0) {
 		config->isolated_mode = !!tmp;
 	} else {
@@ -1895,6 +1908,8 @@ mlx5_args(struct mlx5_dev_config *config, struct rte_devargs *devargs)
 		MLX5_DECAP_EN,
 		MLX5_SFT_EN,
 		MLX5_SFT_DBG,
+		MLX5_LOG_MAX_MTR_NUM,
+		MLX5_LOG_MAX_FLOW_PER_MTR,
 		MLX5_ISOLATED_MODE,
 		NULL,
 	};
