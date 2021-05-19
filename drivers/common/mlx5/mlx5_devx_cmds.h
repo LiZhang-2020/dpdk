@@ -273,6 +273,7 @@ struct mlx5_devx_create_sq_attr {
 	uint32_t hairpin:1;
 	uint32_t non_wire:1;
 	uint32_t static_sq_wq:1;
+	uint32_t regexp_en:1;
 	uint32_t ts_format:2;
 	uint32_t user_index:24;
 	uint32_t cqn:24;

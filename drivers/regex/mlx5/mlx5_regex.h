@@ -73,6 +73,7 @@ struct mlx5_regex_priv {
 	struct mlx5_dbr_page_list dbrpgs; /* Door-bell pages. */
 	struct mlx5_mr_share_cache mr_scache; /* Global shared MR cache. */
 	uint8_t is_bf2; /* The device is BF2 device. */
+	uint8_t regexp_sq_en; /* Regex SQ supported */
 	uint8_t has_umr; /* The device supports UMR. */
 	uint8_t sq_ts_format; /* Whether SQ supports timestamp formats. */
 };

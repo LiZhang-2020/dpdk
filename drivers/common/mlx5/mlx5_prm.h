@@ -2207,7 +2207,8 @@ struct mlx5_ifc_sqc_bits {
 	u8 hairpin[0x1];
 	u8 non_wire[0x1];
 	u8 static_sq_wq[0x1];
-	u8 reserved_at_11[0x9];
+	u8 regexp_en[0x1];
+	u8 reserved_at_12[0x8];
 	u8 ts_format[0x02];
 	u8 reserved_at_1c[0x4];
 	u8 reserved_at_20[0x8];

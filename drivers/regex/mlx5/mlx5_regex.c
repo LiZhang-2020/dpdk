@@ -112,6 +112,7 @@ mlx5_regex_dev_probe(struct rte_device *rte_dev)
 	priv->sq_ts_format = attr.sq_ts_format;
 	priv->ctx = ctx;
 	priv->nb_engines = 2; /* attr.regexp_num_of_engines */
+	priv->regexp_sq_en = attr.regexp_mmo;
 	if (attr.regexp_version == MLX5_RXP_BF2_IDENTIFIER)
 		priv->is_bf2 = 1;
 	/* Default RXP programming mode to Shared. */

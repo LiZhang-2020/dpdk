@@ -213,11 +213,12 @@ regex_ctrl_create_sq(struct mlx5_regex_priv *priv, struct mlx5_regex_qp *qp,
 		goto error;
 	}
 	attr.state = MLX5_SQC_STATE_RST;
-	attr.tis_lst_sz = 0;
-	attr.tis_num = 0;
+	attr.regexp_en = priv->regexp_sq_en;
+	attr.ts_format = mlx5_ts_format_conv(priv->sq_ts_format);
 	attr.user_index = q_ind;
 	attr.cqn = qp->cq.obj->id;
-	attr.ts_format = mlx5_ts_format_conv(priv->sq_ts_format),
+	attr.tis_lst_sz = 0;
+	attr.tis_num = 0;
 	wq_attr->uar_page = priv->uar->page_id;
 	regex_get_pdn(priv->pd, &pd_num);
 	wq_attr->pd = pd_num;

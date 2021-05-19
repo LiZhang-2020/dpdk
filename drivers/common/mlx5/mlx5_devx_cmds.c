@@ -1435,6 +1435,7 @@ mlx5_devx_cmd_create_sq(void *ctx,
 	MLX5_SET(sqc, sq_ctx, hairpin, sq_attr->hairpin);
 	MLX5_SET(sqc, sq_ctx, non_wire, sq_attr->non_wire);
 	MLX5_SET(sqc, sq_ctx, static_sq_wq, sq_attr->static_sq_wq);
+	MLX5_SET(sqc, sq_ctx, regexp_en, sq_attr->regexp_en);
 	MLX5_SET(sqc, sq_ctx, user_index, sq_attr->user_index);
 	MLX5_SET(sqc, sq_ctx, cqn, sq_attr->cqn);
 	MLX5_SET(sqc, sq_ctx, packet_pacing_rate_limit_index,
