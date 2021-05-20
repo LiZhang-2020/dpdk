@@ -478,7 +478,7 @@ Run as non-root
 In order to run as a non-root user,
 some capabilities must be granted to the application::
 
-   setcap cap_sys_admin,cap_net_admin,cap_net_raw,cap_ipc_lock+ep <dpdk-app>
+   setcap cap_sys_admin,cap_net_admin,cap_net_raw,cap_ipc_lockcap_sys_rawio+ep <dpdk-app>
 
 Below are the reasons of the need for each capability:
 
@@ -494,6 +494,10 @@ Below are the reasons of the need for each capability:
 
 ``cap_ipc_lock``
    For DMA memory pinning.
+
+``cap_sys_rawio``
+   When creating flows with group > 0.
+   For ICM memory write.
 
 Driver options
 ^^^^^^^^^^^^^^

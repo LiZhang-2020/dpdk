@@ -3240,8 +3240,14 @@ flow_get_drv_type(struct rte_eth_dev *dev, const struct rte_flow_attr *attr)
 	if (type != MLX5_FLOW_TYPE_MAX)
 		return type;
 	/* If no OS specific type - continue with DV/VERBS selection */
-	if (attr->transfer && priv->config.dv_esw_en)
-		type = MLX5_FLOW_TYPE_DV;
+	if (attr->transfer) {
+		if (priv->config.dv_esw_en)
+			type = MLX5_FLOW_TYPE_DV;
+		else
+			DRV_LOG(ERR,
+				"Missing Eswitch manager driver capability, "
+				"maybe cap_sys_rawio capability is not set?");
+	}
 	if (!attr->transfer)
 		type = priv->config.dv_flow_en ? MLX5_FLOW_TYPE_DV :
 						 MLX5_FLOW_TYPE_VERBS;
