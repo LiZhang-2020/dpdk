@@ -93,12 +93,18 @@ flow_dv_encap_decap_resource_release(struct rte_eth_dev *dev,
 static int
 flow_dv_port_id_action_resource_release(struct rte_eth_dev *dev,
 					uint32_t port_id);
+
 static void
 flow_dv_shared_rss_action_release(struct rte_eth_dev *dev, uint32_t srss);
 
 static int
 flow_dv_jump_tbl_resource_release(struct rte_eth_dev *dev,
 				  uint32_t rix_jump);
+
+static int
+__flow_dv_action_ct_update(struct rte_eth_dev *dev, uint32_t idx,
+			   const struct rte_flow_modify_conntrack *action_conf,
+			   struct rte_flow_error *error);
 
 /**
  * Initialize flow attributes structure according to flow items' types.
@@ -12996,7 +13002,7 @@ flow_dv_translate(struct rte_eth_dev *dev,
 			else
 				dev_flow->dv.actions[actions_n] =
 							ct->dr_action_rply;
-			flow->ctx_type = MLX5_SHARED_ACTION_TYPE_CT;
+			flow->ctx_type = MLX5_INDIRECT_ACTION_TYPE_CT;
 			flow->ct = owner_idx;
 			__atomic_fetch_add(&ct->refcnt, 1, __ATOMIC_RELAXED);
 			actions_n++;
@@ -14193,7 +14199,7 @@ flow_dv_destroy(struct rte_eth_dev *dev, struct rte_flow *flow)
 		flow->meter = 0;
 	}
 	/* Keep the current age handling by default. */
-	if (flow->ctx_type == MLX5_SHARED_ACTION_TYPE_CT && flow->ct)
+	if (flow->ctx_type == MLX5_INDIRECT_ACTION_TYPE_CT && flow->ct)
 		flow_dv_aso_ct_release(dev, flow->ct);
 	else if (flow->age)
 		flow_dv_aso_age_release(dev, flow->age);
@@ -14462,7 +14468,7 @@ error_hrxq_new:
  */
 static uint32_t
 __flow_dv_action_rss_create(struct rte_eth_dev *dev,
-			    const struct rte_flow_shared_action_conf *conf,
+			    const struct rte_flow_indir_action_conf *conf,
 			    const struct rte_flow_action_rss *rss,
 			    struct rte_flow_error *error)
 {
@@ -14485,7 +14491,7 @@ __flow_dv_action_rss_create(struct rte_eth_dev *dev,
 				   "cannot allocate resource memory");
 		goto error_rss_init;
 	}
-	if (idx > (1u << MLX5_SHARED_ACTION_TYPE_OFFSET)) {
+	if (idx > (1u << MLX5_INDIRECT_ACTION_TYPE_OFFSET)) {
 		rte_flow_error_set(error, E2BIG,
 				   RTE_FLOW_ERROR_TYPE_UNSPECIFIED, NULL,
 				   "rss action number out of range");
@@ -14598,7 +14604,7 @@ __flow_dv_action_rss_release(struct rte_eth_dev *dev, uint32_t idx,
 }
 
 /**
- * Create shared action, lock free,
+ * Create indirect action, lock free,
  * (mutex should be acquired by caller).
  * Dispatcher for action type specific call.
  *
@@ -14607,7 +14613,7 @@ __flow_dv_action_rss_release(struct rte_eth_dev *dev, uint32_t idx,
  * @param[in] conf
  *   Shared action configuration.
  * @param[in] action
- *   Action specification used to create shared action.
+ *   Action specification used to create indirect action.
  * @param[out] error
  *   Perform verbose error reporting if not NULL. Initialized in case of
  *   error only.
@@ -14616,9 +14622,9 @@ __flow_dv_action_rss_release(struct rte_eth_dev *dev, uint32_t idx,
  *   A valid shared action handle in case of success, NULL otherwise and
  *   rte_errno is set.
  */
-static struct rte_flow_shared_action *
+static struct rte_flow_action_handle *
 flow_dv_action_create(struct rte_eth_dev *dev,
-		      const struct rte_flow_shared_action_conf *conf,
+		      const struct rte_flow_indir_action_conf *conf,
 		      const struct rte_flow_action *action,
 		      struct rte_flow_error *err)
 {
@@ -14629,13 +14635,13 @@ flow_dv_action_create(struct rte_eth_dev *dev,
 	switch (action->type) {
 	case RTE_FLOW_ACTION_TYPE_RSS:
 		ret = __flow_dv_action_rss_create(dev, conf, action->conf, err);
-		idx = (MLX5_SHARED_ACTION_TYPE_RSS <<
-		       MLX5_SHARED_ACTION_TYPE_OFFSET) | ret;
+		idx = (MLX5_INDIRECT_ACTION_TYPE_RSS <<
+		       MLX5_INDIRECT_ACTION_TYPE_OFFSET) | ret;
 		break;
 	case RTE_FLOW_ACTION_TYPE_AGE:
 		ret = flow_dv_translate_create_aso_age(dev, action->conf, err);
-		idx = (MLX5_SHARED_ACTION_TYPE_AGE <<
-		       MLX5_SHARED_ACTION_TYPE_OFFSET) | ret;
+		idx = (MLX5_INDIRECT_ACTION_TYPE_AGE <<
+		       MLX5_INDIRECT_ACTION_TYPE_OFFSET) | ret;
 		if (ret) {
 			struct mlx5_aso_age_action *aso_age =
 					      flow_aso_age_get_by_idx(dev, ret);
@@ -14655,19 +14661,19 @@ flow_dv_action_create(struct rte_eth_dev *dev,
 				   NULL, "action type not supported");
 		break;
 	}
-	return ret ? (struct rte_flow_shared_action *)(uintptr_t)idx : NULL;
+	return ret ? (struct rte_flow_action_handle *)(uintptr_t)idx : NULL;
 }
 
 /**
- * Destroy the shared action.
+ * Destroy the indirect action.
  * Release action related resources on the NIC and the memory.
  * Lock free, (mutex should be acquired by caller).
  * Dispatcher for action type specific call.
  *
  * @param[in] dev
  *   Pointer to the Ethernet device structure.
- * @param[in] action
- *   The shared action object to be removed.
+ * @param[in] handle
+ *   The indirect action object handle to be removed.
  * @param[out] error
  *   Perform verbose error reporting if not NULL. Initialized in case of
  *   error only.
@@ -14677,28 +14683,28 @@ flow_dv_action_create(struct rte_eth_dev *dev,
  */
 static int
 flow_dv_action_destroy(struct rte_eth_dev *dev,
-		       struct rte_flow_shared_action *action,
+		       struct rte_flow_action_handle *handle,
 		       struct rte_flow_error *error)
 {
-	uint32_t act_idx = (uint32_t)(uintptr_t)action;
-	uint32_t type = act_idx >> MLX5_SHARED_ACTION_TYPE_OFFSET;
-	uint32_t idx = act_idx & ((1u << MLX5_SHARED_ACTION_TYPE_OFFSET) - 1);
+	uint32_t act_idx = (uint32_t)(uintptr_t)handle;
+	uint32_t type = act_idx >> MLX5_INDIRECT_ACTION_TYPE_OFFSET;
+	uint32_t idx = act_idx & ((1u << MLX5_INDIRECT_ACTION_TYPE_OFFSET) - 1);
 	int ret;
 
 	switch (type) {
-	case MLX5_SHARED_ACTION_TYPE_RSS:
+	case MLX5_INDIRECT_ACTION_TYPE_RSS:
 		return __flow_dv_action_rss_release(dev, idx, error);
-	case MLX5_SHARED_ACTION_TYPE_AGE:
+	case MLX5_INDIRECT_ACTION_TYPE_AGE:
 		ret = flow_dv_aso_age_release(dev, idx);
 		if (ret)
 			/*
 			 * In this case, the last flow has a reference will
 			 * actually release the age action.
 			 */
-			DRV_LOG(DEBUG, "Shared age action %" PRIu32 " was"
+			DRV_LOG(DEBUG, "Indirect age action %" PRIu32 " was"
 				" released with references %d.", idx, ret);
 		return 0;
-	case MLX5_SHARED_ACTION_TYPE_CT:
+	case MLX5_INDIRECT_ACTION_TYPE_CT:
 		ret = flow_dv_aso_ct_release(dev, idx);
 		if (ret < 0)
 			return ret;
@@ -14786,12 +14792,13 @@ __flow_dv_action_rss_update(struct rte_eth_dev *dev, uint32_t idx,
  *
  * @param[in] dev
  *   Pointer to the Ethernet device structure.
- * @param[in] action
- *   The shared action object to be updated.
- * @param[in] action_conf
- *   Action specification used to modify *action*.
- *   *action_conf* should be of type correlating with type of the *action*,
- *   otherwise considered as invalid.
+ * @param[in] handle
+ *   The indirect action object handle to be updated.
+ * @param[in] update
+ *   Action specification used to modify the action pointed by *handle*.
+ *   *update* could be of same type with the action pointed by the *handle*
+ *   handle argument, or some other structures like a wrapper, depending on
+ *   the indirect action type.
  * @param[out] error
  *   Perform verbose error reporting if not NULL. Initialized in case of
  *   error only.
@@ -14801,17 +14808,21 @@ __flow_dv_action_rss_update(struct rte_eth_dev *dev, uint32_t idx,
  */
 static int
 flow_dv_action_update(struct rte_eth_dev *dev,
-			struct rte_flow_shared_action *action,
-			const void *action_conf,
+			struct rte_flow_action_handle *handle,
+			const void *update,
 			struct rte_flow_error *err)
 {
-	uint32_t act_idx = (uint32_t)(uintptr_t)action;
-	uint32_t type = act_idx >> MLX5_SHARED_ACTION_TYPE_OFFSET;
-	uint32_t idx = act_idx & ((1u << MLX5_SHARED_ACTION_TYPE_OFFSET) - 1);
+	uint32_t act_idx = (uint32_t)(uintptr_t)handle;
+	uint32_t type = act_idx >> MLX5_INDIRECT_ACTION_TYPE_OFFSET;
+	uint32_t idx = act_idx & ((1u << MLX5_INDIRECT_ACTION_TYPE_OFFSET) - 1);
+	const void *action_conf;
 
 	switch (type) {
-	case MLX5_SHARED_ACTION_TYPE_RSS:
+	case MLX5_INDIRECT_ACTION_TYPE_RSS:
+		action_conf = ((const struct rte_flow_action *)update)->conf;
 		return __flow_dv_action_rss_update(dev, idx, action_conf, err);
+	case MLX5_INDIRECT_ACTION_TYPE_CT:
+		return __flow_dv_action_ct_update(dev, idx, update, err);
 	default:
 		return rte_flow_error_set(err, ENOTSUP,
 					  RTE_FLOW_ERROR_TYPE_ACTION,
@@ -14822,21 +14833,21 @@ flow_dv_action_update(struct rte_eth_dev *dev,
 
 static int
 flow_dv_action_query(struct rte_eth_dev *dev,
-		     const struct rte_flow_shared_action *action, void *data,
+		     const struct rte_flow_action_handle *handle, void *data,
 		     struct rte_flow_error *error)
 {
 	struct mlx5_priv *priv = dev->data->dev_private;
 	struct mlx5_age_param *age_param;
 	struct rte_flow_query_age *resp;
-	uint32_t act_idx = (uint32_t)(uintptr_t)action;
-	uint32_t type = act_idx >> MLX5_SHARED_ACTION_TYPE_OFFSET;
-	uint32_t idx = act_idx & ((1u << MLX5_SHARED_ACTION_TYPE_OFFSET) - 1);
+	uint32_t act_idx = (uint32_t)(uintptr_t)handle;
+	uint32_t type = act_idx >> MLX5_INDIRECT_ACTION_TYPE_OFFSET;
+	uint32_t idx = act_idx & ((1u << MLX5_INDIRECT_ACTION_TYPE_OFFSET) - 1);
 	struct mlx5_aso_ct_action *ct;
 	uint16_t owner;
 	uint32_t dev_idx;
 
 	switch (type) {
-	case MLX5_SHARED_ACTION_TYPE_AGE:
+	case MLX5_INDIRECT_ACTION_TYPE_AGE:
 		age_param = &flow_aso_age_get_by_idx(dev, idx)->age_params;
 		resp = data;
 		resp->aged = __atomic_load_n(&age_param->state,
@@ -14847,7 +14858,7 @@ flow_dv_action_query(struct rte_eth_dev *dev,
 			resp->sec_since_last_hit = __atomic_load_n
 			     (&age_param->sec_since_last_hit, __ATOMIC_RELAXED);
 		return 0;
-	case MLX5_SHARED_ACTION_TYPE_CT:
+	case MLX5_INDIRECT_ACTION_TYPE_CT:
 		owner = (uint16_t)MLX5_ACTION_CTX_CT_GET_OWNER(idx);
 		if (owner != PORT_ID(priv))
 			return rte_flow_error_set(error, EACCES,
@@ -14927,46 +14938,6 @@ __flow_dv_action_ct_update(struct rte_eth_dev *dev, uint32_t idx,
 					   "Timeout to get the CT update");
 	}
 	return ret;
-}
-
-/*
- * Updates in place action context configuration, lock free,
- * (mutex should be acquired by caller).
- *
- * @param[in] dev
- *   Pointer to the Ethernet device structure.
- * @param[in] action
- *   The shared action object to be updated.
- * @param[in] action_conf
- *   Action specification used to modify *action*.
- *   *action_conf* should be of type correlating with type of the *action*,
- *   otherwise considered as invalid.
- * @param[out] err
- *   Perform verbose error reporting if not NULL. Initialized in case of
- *   error only.
- *
- * @return
- *   0 on success, otherwise negative errno value.
- */
-static int
-flow_dv_action_ctx_update(struct rte_eth_dev *dev,
-			  struct rte_flow_action_ctx *action,
-			  const void *update,
-			  struct rte_flow_error *err)
-{
-	uint32_t act_idx = (uint32_t)(uintptr_t)action;
-	uint32_t type = act_idx >> MLX5_SHARED_ACTION_TYPE_OFFSET;
-	uint32_t idx = act_idx & ((1u << MLX5_SHARED_ACTION_TYPE_OFFSET) - 1);
-
-	switch (type) {
-	case MLX5_SHARED_ACTION_TYPE_CT:
-		return __flow_dv_action_ct_update(dev, idx, update, err);
-	default:
-		return rte_flow_error_set(err, ENOTSUP,
-					  RTE_FLOW_ERROR_TYPE_ACTION,
-					  NULL,
-					  "action context type update not supported");
-	}
 }
 
 /**
@@ -16713,15 +16684,15 @@ flow_dv_counter_allocate(struct rte_eth_dev *dev)
 }
 
 /**
- * Validate shared action.
+ * Validate indirect action.
  * Dispatcher for action type specific validation.
  *
  * @param[in] dev
  *   Pointer to the Ethernet device structure.
  * @param[in] conf
- *   Shared action configuration.
+ *   Indirect action configuration.
  * @param[in] action
- *   The shared action object to validate.
+ *   The indirect action object to validate.
  * @param[out] error
  *   Perform verbose error reporting if not NULL. Initialized in case of
  *   error only.
@@ -16731,7 +16702,7 @@ flow_dv_counter_allocate(struct rte_eth_dev *dev)
  */
 static int
 flow_dv_action_validate(struct rte_eth_dev *dev,
-			const struct rte_flow_shared_action_conf *conf,
+			const struct rte_flow_indir_action_conf *conf,
 			const struct rte_flow_action *action,
 			struct rte_flow_error *err)
 {
@@ -17118,7 +17089,6 @@ const struct mlx5_flow_driver_ops mlx5_flow_dv_drv_ops = {
 	.action_update = flow_dv_action_update,
 	.action_query = flow_dv_action_query,
 	.sync_domain = flow_dv_sync_domain,
-	.action_ctx_update = flow_dv_action_ctx_update,
 };
 
 #endif /* HAVE_IBV_FLOW_DV_SUPPORT */

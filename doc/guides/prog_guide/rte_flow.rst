@@ -2706,7 +2706,7 @@ timeout passed without any matching on the flow.
    +--------------+---------------------------------+
 
 Query structure to retrieve ageing status information of a
-shared AGE action, or a flow rule using the AGE action:
+indirect AGE action, or a flow rule using the AGE action:
 
 .. _table_rte_flow_query_age:
 
@@ -2747,18 +2747,26 @@ packets, and must have a fate action.
    | ``actions``  | sub-action list for sampling    |
    +--------------+---------------------------------+
 
-Action: ``SHARED``
-^^^^^^^^^^^^^^^^^^
+Action: ``INDIRECT``
+^^^^^^^^^^^^^^^^^^^^
 
-Flow utilize shared action by handle as returned from
-``rte_flow_shared_action_create()``.
+Flow utilize indirect action by handle as returned from
+``rte_flow_action_handle_create()``.
 
-The behaviour of the shared action defined by ``action`` argument of type
-``struct rte_flow_action`` passed to ``rte_flow_shared_action_create()``.
+The behaviour of the indirect action defined by ``action`` argument of type
+``struct rte_flow_action`` passed to ``rte_flow_action_handle_create()``.
 
-.. _table_rte_flow_shared_action:
+The indirect action can be used by a single flow or shared among multiple flows.
+The indirect action can be in-place updated by ``rte_flow_action_handle_update()``
+without destroying flow and creating flow again. The fields that could be
+updated depend on the type of the ``action`` and different for every type.
 
-.. table:: SHARED
+The indirect action specified data (e.g. counter) can be queried by
+``rte_flow_action_handle_query()``.
+
+.. _table_rte_flow_action_handle:
+
+.. table:: INDIRECT
 
    +---------------+
    | Field         |

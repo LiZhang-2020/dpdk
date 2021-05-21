@@ -41,12 +41,12 @@ enum mlx5_rte_flow_action_type {
 	MLX5_RTE_FLOW_ACTION_TYPE_COUNT,
 };
 
-#define MLX5_SHARED_ACTION_TYPE_OFFSET 30
+#define MLX5_INDIRECT_ACTION_TYPE_OFFSET 30
 
 enum {
-	MLX5_SHARED_ACTION_TYPE_RSS,
-	MLX5_SHARED_ACTION_TYPE_AGE,
-	MLX5_SHARED_ACTION_TYPE_CT,
+	MLX5_INDIRECT_ACTION_TYPE_RSS,
+	MLX5_INDIRECT_ACTION_TYPE_AGE,
+	MLX5_INDIRECT_ACTION_TYPE_CT,
 };
 
 /* Now, the maximal ports will be supported is 256, action number is 4M. */
@@ -57,7 +57,7 @@ enum {
 
 /* 30-31: type, 22-29: owner port, 0-21: index. */
 #define MLX5_ACTION_CTX_CT_GEN_IDX(owner, index) \
-	((MLX5_SHARED_ACTION_TYPE_CT << MLX5_SHARED_ACTION_TYPE_OFFSET) | \
+	((MLX5_INDIRECT_ACTION_TYPE_CT << MLX5_INDIRECT_ACTION_TYPE_OFFSET) | \
 	 (((owner) & MLX5_ACTION_CTX_CT_OWNER_MASK) << \
 	  MLX5_ACTION_CTX_CT_OWNER_SHIFT) | (index))
 
@@ -1114,11 +1114,7 @@ struct mlx5_shared_action_rss {
 	rte_spinlock_t action_rss_sl; /**< Shared RSS action spinlock. */
 };
 
-struct rte_flow_shared_action {
-	uint32_t id;
-};
-
-struct rte_flow_action_ctx {
+struct rte_flow_action_handle {
 	uint32_t id;
 };
 
@@ -1213,37 +1209,32 @@ typedef int (*mlx5_flow_get_aged_flows_t)
 					 struct rte_flow_error *error);
 typedef int (*mlx5_flow_action_validate_t)
 				(struct rte_eth_dev *dev,
-				 const struct rte_flow_shared_action_conf *conf,
+				 const struct rte_flow_indir_action_conf *conf,
 				 const struct rte_flow_action *action,
 				 struct rte_flow_error *error);
-typedef struct rte_flow_shared_action *(*mlx5_flow_action_create_t)
+typedef struct rte_flow_action_handle *(*mlx5_flow_action_create_t)
 				(struct rte_eth_dev *dev,
-				 const struct rte_flow_shared_action_conf *conf,
+				 const struct rte_flow_indir_action_conf *conf,
 				 const struct rte_flow_action *action,
 				 struct rte_flow_error *error);
 typedef int (*mlx5_flow_action_destroy_t)
 				(struct rte_eth_dev *dev,
-				 struct rte_flow_shared_action *action,
+				 struct rte_flow_action_handle *handle,
 				 struct rte_flow_error *error);
 typedef int (*mlx5_flow_action_update_t)
 			(struct rte_eth_dev *dev,
-			 struct rte_flow_shared_action *action,
-			 const void *action_conf,
+			 struct rte_flow_action_handle *handle,
+			 const void *update,
 			 struct rte_flow_error *error);
 typedef int (*mlx5_flow_action_query_t)
 			(struct rte_eth_dev *dev,
-			 const struct rte_flow_shared_action *action,
+			 const struct rte_flow_action_handle *handle,
 			 void *data,
 			 struct rte_flow_error *error);
 typedef int (*mlx5_flow_sync_domain_t)
 			(struct rte_eth_dev *dev,
 			 uint32_t domains,
 			 uint32_t flags);
-typedef int (*mlx5_flow_action_ctx_update_t)
-			(struct rte_eth_dev *dev,
-			 struct rte_flow_action_ctx *action,
-			 const void *update,
-			 struct rte_flow_error *error);
 typedef int (*mlx5_flow_validate_mtr_acts_t)
 			(struct rte_eth_dev *dev,
 			 const struct rte_flow_action *actions[RTE_COLORS],
@@ -1303,7 +1294,6 @@ struct mlx5_flow_driver_ops {
 	mlx5_flow_action_update_t action_update;
 	mlx5_flow_action_query_t action_query;
 	mlx5_flow_sync_domain_t sync_domain;
-	mlx5_flow_action_ctx_update_t action_ctx_update;
 };
 
 /* mlx5_flow.c */
@@ -1599,7 +1589,7 @@ struct mlx5_flow_meter_sub_policy *mlx5_flow_meter_sub_policy_rss_prepare
 void mlx5_flow_destroy_sub_policy_with_rxq(struct rte_eth_dev *dev,
 		struct mlx5_flow_meter_policy *mtr_policy);
 int mlx5_flow_dv_discover_counter_offset_support(struct rte_eth_dev *dev);
-int mlx5_shared_action_flush(struct rte_eth_dev *dev);
+int mlx5_action_handle_flush(struct rte_eth_dev *dev);
 void mlx5_release_tunnel_hub(struct mlx5_dev_ctx_shared *sh, uint16_t port_id);
 int mlx5_alloc_tunnel_hub(struct mlx5_dev_ctx_shared *sh);
 
