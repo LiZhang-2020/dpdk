@@ -2448,7 +2448,7 @@ uint32_t mlx5_hrxq_get(struct rte_eth_dev *dev,
 	if (rss_desc->shared_rss) {
 		hrxq = __mlx5_hrxq_create(dev, rss_desc);
 	} else {
-		entry = mlx5_list_register(&priv->hrxqs, &ctx);
+		entry = mlx5_list_register(priv->hrxqs, &ctx);
 		if (!entry)
 			return 0;
 		hrxq = container_of(entry, typeof(*hrxq), entry);
@@ -2478,7 +2478,7 @@ int mlx5_hrxq_release(struct rte_eth_dev *dev, uint32_t hrxq_idx)
 	if (!hrxq)
 		return 0;
 	if (!hrxq->standalone)
-		return mlx5_list_unregister(&priv->hrxqs, &hrxq->entry);
+		return mlx5_list_unregister(priv->hrxqs, &hrxq->entry);
 	__mlx5_hrxq_remove(dev, hrxq);
 	return 0;
 }
@@ -2566,7 +2566,7 @@ mlx5_hrxq_verify(struct rte_eth_dev *dev)
 {
 	struct mlx5_priv *priv = dev->data->dev_private;
 
-	return mlx5_list_get_entry_num(&priv->hrxqs);
+	return mlx5_list_get_entry_num(priv->hrxqs);
 }
 
 /**
