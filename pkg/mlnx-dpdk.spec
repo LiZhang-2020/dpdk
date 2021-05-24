@@ -79,6 +79,7 @@ More libraries are available as extensions in other packages.
 %package devel
 Summary: Data Plane Development Kit for development
 Requires: %{name}%{?_isa} = %{version}-%{release}
+Provides: pkgconfig(libdpdk) = %{version}-%{release}
 %description devel
 DPDK devel is a set of makefiles, headers and examples
 for fast packet processing on x86 platforms.
@@ -107,12 +108,25 @@ CFLAGS="$CFLAGS -fcommon -Werror" meson %{target} -Dprefix=/opt/mellanox/dpdk --
 rm -rf %{buildroot}
 DESTDIR=%{buildroot} %{__ninja} -v -C %{target} install
 
+# Create ld.so.conf.d entry
+mkdir -p %{buildroot}%{_sysconfdir}/ld.so.conf.d
+cat > %{buildroot}%{_sysconfdir}/ld.so.conf.d/%{name}-%{_arch}.conf << EOF
+/opt/mellanox/dpdk/lib64
+EOF
+
+# Export PKG_CONFIG_PATH
+mkdir -p %{buildroot}%{_sysconfdir}/profile.d
+cat > %{buildroot}%{_sysconfdir}/profile.d/%{name}-%{_arch}.sh << EOF
+export PKG_CONFIG_PATH=${PKG_CONFIG_PATH}:/opt/mellanox/dpdk/lib64/pkgconfig
+EOF
+
 %files
 %dir /opt/mellanox/dpdk/lib64/dpdk
 %dir /opt/mellanox/dpdk/lib64/dpdk/pmds
 /opt/mellanox/dpdk/bin/*
 /opt/mellanox/dpdk/lib64/*.so.*
 /opt/mellanox/dpdk/lib64/dpdk/*/*.so.*
+/etc/ld.so.conf.d/%{name}-%{_arch}.conf
 
 %files devel
 /opt/mellanox/dpdk/include/dpdk
@@ -120,6 +134,8 @@ DESTDIR=%{buildroot} %{__ninja} -v -C %{target} install
 /opt/mellanox/dpdk/lib64/dpdk/*/*.so
 /opt/mellanox/dpdk/lib64/*.a
 /opt/mellanox/dpdk/lib64/pkgconfig/*.pc
+/etc/ld.so.conf.d/%{name}-%{_arch}.conf
+/etc/profile.d/%{name}-%{_arch}.sh
 
 %post
 /sbin/ldconfig
