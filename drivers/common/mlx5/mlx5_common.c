@@ -260,8 +260,11 @@ mlx5_common_dev_probe(struct rte_device *eal_dev)
 
 	DRV_LOG(INFO, "probe device \"%s\".", eal_dev->name);
 	ret = parse_class_option(eal_dev->devargs);
-	if (ret < 0)
+	if (ret < 0) {
+		DRV_LOG(ERR, "Unsupported mlx5 class type: %s",
+			eal_dev->devargs->args);
 		return ret;
+	}
 	user_class = ret;
 	if (user_class == 0)
 		/* Default to net class. */
