@@ -207,6 +207,7 @@ enum index {
 	ITEM_SCTP_CKSUM,
 	ITEM_VXLAN,
 	ITEM_VXLAN_VNI,
+	ITEM_VXLAN_LAST_RSVD,
 	ITEM_E_TAG,
 	ITEM_E_TAG_GRP_ECID_B,
 	ITEM_NVGRE,
@@ -1145,6 +1146,7 @@ static const enum index item_sctp[] = {
 
 static const enum index item_vxlan[] = {
 	ITEM_VXLAN_VNI,
+	ITEM_VXLAN_LAST_RSVD,
 	ITEM_NEXT,
 	ZERO,
 };
@@ -2858,6 +2860,13 @@ static const struct token token_list[] = {
 		.help = "VXLAN identifier",
 		.next = NEXT(item_vxlan, NEXT_ENTRY(UNSIGNED), item_param),
 		.args = ARGS(ARGS_ENTRY_HTON(struct rte_flow_item_vxlan, vni)),
+	},
+	[ITEM_VXLAN_LAST_RSVD] = {
+		.name = "last_rsvd",
+		.help = "VXLAN last reserved bits",
+		.next = NEXT(item_vxlan, NEXT_ENTRY(UNSIGNED), item_param),
+		.args = ARGS(ARGS_ENTRY_HTON(struct rte_flow_item_vxlan,
+					     rsvd1)),
 	},
 	[ITEM_E_TAG] = {
 		.name = "e_tag",
