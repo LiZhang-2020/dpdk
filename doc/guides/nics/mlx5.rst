@@ -1891,3 +1891,11 @@ all flows with assistance of external tools.
    .. code-block:: console
 
        mlx_steering_dump.py -f <output_file> -flowptr <flow_ptr>
+
+How to share a meter between ports in the same switch domain
+------------------------------------------------------------
+
+This section demonstrates how to use the shared meter. A meter M can be created
+on port X and to be shared with a port Y on the same switch domain by the next way:
+
+        flow create X ingress transfer pattern eth / port_id id is Y / end actions meter mtr_id M / end
