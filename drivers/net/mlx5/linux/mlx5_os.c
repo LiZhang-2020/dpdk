@@ -350,7 +350,7 @@ static int
 mlx5_alloc_shared_dr(struct mlx5_priv *priv)
 {
 	struct mlx5_dev_ctx_shared *sh = priv->sh;
-	char s[MLX5_HLIST_NAMESIZE] __rte_unused;
+	char s[MLX5_NAME_SIZE] __rte_unused;
 	int err;
 
 	MLX5_ASSERT(sh && sh->refcnt);
@@ -363,7 +363,7 @@ mlx5_alloc_shared_dr(struct mlx5_priv *priv)
 #ifdef HAVE_IBV_FLOW_DV_SUPPORT
 	/* Init port id action list. */
 	snprintf(s, sizeof(s), "%s_port_id_action_list", sh->ibdev_name);
-	sh->port_id_action_list = mlx5_list_create(s, sh,
+	sh->port_id_action_list = mlx5_list_create(s, sh, true,
 						   flow_dv_port_id_create_cb,
 						   flow_dv_port_id_match_cb,
 						   flow_dv_port_id_remove_cb,
@@ -373,7 +373,7 @@ mlx5_alloc_shared_dr(struct mlx5_priv *priv)
 		goto error;
 	/* Init push vlan action list. */
 	snprintf(s, sizeof(s), "%s_push_vlan_action_list", sh->ibdev_name);
-	sh->push_vlan_action_list = mlx5_list_create(s, sh,
+	sh->push_vlan_action_list = mlx5_list_create(s, sh, true,
 						    flow_dv_push_vlan_create_cb,
 						    flow_dv_push_vlan_match_cb,
 						    flow_dv_push_vlan_remove_cb,
@@ -383,7 +383,7 @@ mlx5_alloc_shared_dr(struct mlx5_priv *priv)
 		goto error;
 	/* Init sample action list. */
 	snprintf(s, sizeof(s), "%s_sample_action_list", sh->ibdev_name);
-	sh->sample_action_list = mlx5_list_create(s, sh,
+	sh->sample_action_list = mlx5_list_create(s, sh, true,
 						  flow_dv_sample_create_cb,
 						  flow_dv_sample_match_cb,
 						  flow_dv_sample_remove_cb,
@@ -393,7 +393,7 @@ mlx5_alloc_shared_dr(struct mlx5_priv *priv)
 		goto error;
 	/* Init dest array action list. */
 	snprintf(s, sizeof(s), "%s_dest_array_list", sh->ibdev_name);
-	sh->dest_array_list = mlx5_list_create(s, sh,
+	sh->dest_array_list = mlx5_list_create(s, sh, true,
 					       flow_dv_dest_array_create_cb,
 					       flow_dv_dest_array_match_cb,
 					       flow_dv_dest_array_remove_cb,
@@ -403,58 +403,58 @@ mlx5_alloc_shared_dr(struct mlx5_priv *priv)
 		goto error;
 	/* Create tags hash list table. */
 	snprintf(s, sizeof(s), "%s_tags", sh->ibdev_name);
-	sh->tag_table = mlx5_hlist_create(s, MLX5_TAGS_HLIST_ARRAY_SIZE, 0,
-					  MLX5_HLIST_WRITE_MOST,
-					  flow_dv_tag_create_cb,
+	sh->tag_table = mlx5_hlist_create(s, MLX5_TAGS_HLIST_ARRAY_SIZE, false,
+					  false, sh, flow_dv_tag_create_cb,
 					  flow_dv_tag_match_cb,
-					  flow_dv_tag_remove_cb);
+					  flow_dv_tag_remove_cb,
+					  flow_dv_tag_clone_cb,
+					  flow_dv_tag_clone_free_cb);
 	if (!sh->tag_table) {
 		DRV_LOG(ERR, "tags with hash creation failed.");
 		err = ENOMEM;
 		goto error;
 	}
-	sh->tag_table->ctx = sh;
 	snprintf(s, sizeof(s), "%s_hdr_modify", sh->ibdev_name);
 	sh->modify_cmds = mlx5_hlist_create(s, MLX5_FLOW_HDR_MODIFY_HTABLE_SZ,
-					    0, MLX5_HLIST_WRITE_MOST |
-					    MLX5_HLIST_DIRECT_KEY,
+					    true, false, sh,
 					    flow_dv_modify_create_cb,
 					    flow_dv_modify_match_cb,
-					    flow_dv_modify_remove_cb);
+					    flow_dv_modify_remove_cb,
+					    flow_dv_modify_clone_cb,
+					    flow_dv_modify_clone_free_cb);
 	if (!sh->modify_cmds) {
 		DRV_LOG(ERR, "hdr modify hash creation failed");
 		err = ENOMEM;
 		goto error;
 	}
-	sh->modify_cmds->ctx = sh;
 	snprintf(s, sizeof(s), "%s_encaps_decaps", sh->ibdev_name);
 	sh->encaps_decaps = mlx5_hlist_create(s,
 					      MLX5_FLOW_ENCAP_DECAP_HTABLE_SZ,
-					      0, MLX5_HLIST_DIRECT_KEY |
-					      MLX5_HLIST_WRITE_MOST,
+					      true, true, sh,
 					      flow_dv_encap_decap_create_cb,
 					      flow_dv_encap_decap_match_cb,
-					      flow_dv_encap_decap_remove_cb);
+					      flow_dv_encap_decap_remove_cb,
+					      flow_dv_encap_decap_clone_cb,
+					     flow_dv_encap_decap_clone_free_cb);
 	if (!sh->encaps_decaps) {
 		DRV_LOG(ERR, "encap decap hash creation failed");
 		err = ENOMEM;
 		goto error;
 	}
-	sh->encaps_decaps->ctx = sh;
 	snprintf(s, sizeof(s), "%s_sfts_table", sh->ibdev_name);
-	sh->flow_sfts = mlx5_hlist_create(s,
-					  MLX5_FLOW_SFT_HLIST_ARRAY_SIZE,
-					  0, 0,
+	sh->flow_sfts = mlx5_hlist_create(s, MLX5_FLOW_SFT_HLIST_ARRAY_SIZE,
+					  false, true,
+				      &rte_eth_devices[priv->dev_data->port_id],
 					  flow_dv_sft_create_cb,
 					  flow_dv_sft_match_cb,
-					  flow_dv_sft_remove_cb);
+					  flow_dv_sft_remove_cb,
+					  flow_dv_sft_clone_cb,
+					  flow_dv_sft_clone_free_cb);
 	if (!sh->flow_sfts) {
 		DRV_LOG(ERR, "sft with hash creation failed.");
 		err = ENOMEM;
 		goto error;
 	}
-	struct rte_eth_dev *dev = &rte_eth_devices[priv->dev_data->port_id];
-	sh->flow_sfts->ctx = dev;
 #endif
 #ifdef HAVE_MLX5DV_DR
 	void *domain;
@@ -1881,7 +1881,8 @@ err_secondary:
 			err = ENOTSUP;
 			goto error;
 	}
-	priv->hrxqs = mlx5_list_create("hrxq", eth_dev, mlx5_hrxq_create_cb,
+	priv->hrxqs = mlx5_list_create("hrxq", eth_dev, true,
+				       mlx5_hrxq_create_cb,
 				       mlx5_hrxq_match_cb,
 				       mlx5_hrxq_remove_cb,
 				       mlx5_hrxq_clone_cb,
@@ -1912,15 +1913,16 @@ err_secondary:
 	    priv->sh->dv_regc0_mask) {
 		priv->mreg_cp_tbl = mlx5_hlist_create(MLX5_FLOW_MREG_HNAME,
 						      MLX5_FLOW_MREG_HTABLE_SZ,
-						      0, 0,
+						      false, true, eth_dev,
 						      flow_dv_mreg_create_cb,
 						      flow_dv_mreg_match_cb,
-						      flow_dv_mreg_remove_cb);
+						      flow_dv_mreg_remove_cb,
+						      flow_dv_mreg_clone_cb,
+						    flow_dv_mreg_clone_free_cb);
 		if (!priv->mreg_cp_tbl) {
 			err = ENOMEM;
 			goto error;
 		}
-		priv->mreg_cp_tbl->ctx = eth_dev;
 	}
 	rte_spinlock_init(&priv->shared_act_sl);
 	mlx5_flow_counter_mode_config(eth_dev);

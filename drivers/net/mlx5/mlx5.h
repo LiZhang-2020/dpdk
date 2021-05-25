@@ -86,6 +86,7 @@ struct mlx5_flow_cb_ctx {
 	struct rte_eth_dev *dev;
 	struct rte_flow_error *error;
 	void *data;
+	void *data2;
 };
 
 /* Device attributes used in mlx5 PMD */
