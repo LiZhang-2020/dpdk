@@ -356,7 +356,8 @@ stp_parse_ipv6(struct rte_sft_mbuf_info *mif, struct rte_sft_error *error)
 		 * "any extension headers [section 4] present are considered
 		 *  part of the payload, i.e., included in the length count"
 		 */
-		mif->l4_hdr = (const char *)mif->l3_hdr + ext_len;
+		mif->l4_hdr = (const char *)mif->l3_hdr + sizeof(*mif->ip6)
+			      + ext_len;
 		mif->l4_protocol = l4_protocol;
 		switch (l4_protocol) {
 		case IPPROTO_TCP:
@@ -475,6 +476,11 @@ rte_sft_mbuf_stpl(const struct rte_mbuf *m, struct rte_sft_mbuf_info *mif,
 		break;
 	case RTE_ETHER_TYPE_IPV6:
 		stpl->flow_5tuple.is_ipv6 = true;
+		rte_memcpy(stpl->flow_5tuple.ipv6.src_addr, mif->ip6->src_addr,
+			   sizeof(stpl->flow_5tuple.ipv6.src_addr));
+		rte_memcpy(stpl->flow_5tuple.ipv6.dst_addr, mif->ip6->dst_addr,
+			   sizeof(stpl->flow_5tuple.ipv6.dst_addr));
+		stpl->flow_5tuple.proto = mif->ip6->proto;
 		break;
 	}
 	if (!mif->is_fragment) {
