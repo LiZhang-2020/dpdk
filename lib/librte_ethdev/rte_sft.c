@@ -1303,7 +1303,7 @@ rte_sft_flow_destroy(uint16_t queue, uint32_t fid, struct rte_sft_error *error)
 		rte_free(head);
 	}
 	sft_fid_release(entry->fid);
-	if (entry->ct_enable)
+	if (entry->ct_enable && entry->proto == IPPROTO_TCP)
 		sft_tcp_stop_conn_track(entry, error);
 	rte_free(entry);
 
