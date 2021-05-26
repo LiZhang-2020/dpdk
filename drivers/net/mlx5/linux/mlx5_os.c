@@ -446,8 +446,13 @@ mlx5_alloc_shared_dr(struct mlx5_priv *priv)
 			mlx5_glue->dr_reclaim_domain_memory(sh->fdb_domain, 1);
 	}
 	sh->pop_vlan_action = mlx5_glue->dr_create_flow_action_pop_vlan();
-
 	__mlx5_discovery_misc5_cap(priv);
+	if (!priv->config.allow_duplicate_pattern) {
+		mlx5_glue->dr_allow_duplicate_rules(sh->rx_domain, 0);
+		mlx5_glue->dr_allow_duplicate_rules(sh->tx_domain, 0);
+		if (sh->fdb_domain)
+			mlx5_glue->dr_allow_duplicate_rules(sh->fdb_domain, 0);
+	}
 #endif /* HAVE_MLX5DV_DR */
 	sh->default_miss_action =
 			mlx5_glue->dr_create_flow_action_default_miss();
@@ -2052,6 +2057,7 @@ mlx5_os_config_default(struct mlx5_dev_config *config)
 	config->dv_flow_en = 1;
 	config->decap_en = 1;
 	config->log_hp_size = MLX5_ARG_UNSET;
+	config->allow_duplicate_pattern = 1;
 }
 
 /**

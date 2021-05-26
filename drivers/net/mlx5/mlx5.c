@@ -188,6 +188,9 @@
 /* Device parameter to configure port in isolated mode. */
 #define MLX5_ISOLATED_MODE "isolated_mode"
 
+/* Device parameter to configure allow or prevent duplicate rules pattern. */
+#define MLX5_ALLOW_DUPLICATE_PATTERN "allow_duplicate_pattern"
+
 /* Shared memory between primary and secondary processes. */
 struct mlx5_shared_data *mlx5_shared_data;
 
@@ -1843,6 +1846,8 @@ mlx5_args_check(const char *key, const char *val, void *opaque)
 		"not needed anymore for meter feature.");
 	} else if (strcmp(MLX5_ISOLATED_MODE, key) == 0) {
 		config->isolated_mode = !!tmp;
+	} else if (strcmp(MLX5_ALLOW_DUPLICATE_PATTERN, key) == 0) {
+		config->allow_duplicate_pattern = !!tmp;
 	} else {
 		DRV_LOG(WARNING, "%s: unknown parameter", key);
 		rte_errno = EINVAL;
@@ -1909,6 +1914,7 @@ mlx5_args(struct mlx5_dev_config *config, struct rte_devargs *devargs)
 		MLX5_LOG_MAX_MTR_NUM,
 		MLX5_LOG_MAX_FLOW_PER_MTR,
 		MLX5_ISOLATED_MODE,
+		MLX5_ALLOW_DUPLICATE_PATTERN,
 		NULL,
 	};
 	struct rte_kvargs *kvlist;

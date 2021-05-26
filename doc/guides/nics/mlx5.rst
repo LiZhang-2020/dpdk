@@ -1090,6 +1090,16 @@ Driver options
 
   Set to zero by default.
 
+- ``allow_duplicate_pattern`` parameter [int]
+
+  There are two options to choose:
+
+  - 0. Prevent insertion of rules with the same pattern items on non-root table.
+
+  - 1. Allow insertion of rules with the same pattern items.
+
+  By default, the PMD will set this value to 1.
+
 .. _mlx5_firmware_config:
 
 Firmware configuration

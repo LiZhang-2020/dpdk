@@ -14136,6 +14136,9 @@ flow_dv_apply(struct rte_eth_dev *dev, struct rte_flow *flow,
 					   RTE_FLOW_ERROR_TYPE_UNSPECIFIED,
 					   NULL,
 					   "hardware refuses to create flow");
+			if (!priv->config.allow_duplicate_pattern &&
+			     errno == EEXIST)
+				DRV_LOG(INFO, "duplicate rules not supported");
 			goto error;
 		}
 		if (priv->vmwa_context &&

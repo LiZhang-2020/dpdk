@@ -246,6 +246,8 @@ struct mlx5_dev_config {
 	unsigned int sft_dbg:1; /* Debug SFT */
 	unsigned int dv_miss_info:1; /* restore packet after partial hw miss */
 	unsigned int isolated_mode:1; /* Isolated mode is requested. */
+	unsigned int allow_duplicate_pattern:1;
+	/* Allow/Prevent the duplicate rules pattern. */
 	struct {
 		unsigned int enabled:1; /* Whether MPRQ is enabled. */
 		unsigned int stride_num_n; /* Number of strides. */
