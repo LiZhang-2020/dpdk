@@ -302,10 +302,10 @@ mlx5_net_dma_unmap(struct rte_device *rte_dev, void *addr,
 	}
 	priv = dev->data->dev_private;
 	sh = priv->sh;
-	rte_rwlock_read_lock(&sh->share_cache.rwlock);
+	rte_rwlock_write_lock(&sh->share_cache.rwlock);
 	mr = mlx5_mr_lookup_list(&sh->share_cache, &entry, (uintptr_t)addr);
 	if (!mr) {
-		rte_rwlock_read_unlock(&sh->share_cache.rwlock);
+		rte_rwlock_write_unlock(&sh->share_cache.rwlock);
 		DRV_LOG(WARNING, "address 0x%" PRIxPTR " wasn't registered to device %s",
 			(uintptr_t)addr, rte_dev->name);
 		rte_errno = EINVAL;
@@ -329,7 +329,7 @@ mlx5_net_dma_unmap(struct rte_device *rte_dev, void *addr,
 	DEBUG("broadcasting local cache flush, gen=%d",
 	      sh->share_cache.dev_gen);
 	rte_smp_wmb();
-	rte_rwlock_read_unlock(&sh->share_cache.rwlock);
+	rte_rwlock_write_unlock(&sh->share_cache.rwlock);
 	return 0;
 }
 
