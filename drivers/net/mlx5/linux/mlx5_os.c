@@ -1322,12 +1322,6 @@ err_secondary:
 		config->dv_flow_en = 0;
 	}
 #endif
-	if (spawn->max_port > UINT8_MAX) {
-		/* Verbs can't support ports larger than 255 by design. */
-		DRV_LOG(ERR, "can't support IB ports > UINT8_MAX");
-		err = EINVAL;
-		goto error;
-	}
 	config->ind_table_max_size =
 		sh->device_attr.max_rwq_indirection_table_size;
 	/*
@@ -1795,6 +1789,11 @@ err_secondary:
 	if (config->devx && config->dv_flow_en && config->dest_tir) {
 		priv->obj_ops = devx_obj_ops;
 		mlx5_queue_counter_id_prepare(eth_dev);
+	} else if (spawn->max_port > UINT8_MAX) {
+		/* Verbs can't support ports larger than 255 by design. */
+		DRV_LOG(ERR, "must enable DV and ESW when RDMA link ports > 255");
+		err = ENOTSUP;
+		goto error;
 	} else {
 		priv->obj_ops = ibv_obj_ops;
 	}
