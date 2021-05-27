@@ -101,6 +101,9 @@ Features
 - Multiple-thread flow insertion.
 - Matching on Geneve TLV option header with raw encap/decap action.
 - Matching on GTP extension header with raw encap/decap action.
+- RSS support in sample action.
+- E-Switch mirroring and jump.
+- E-Switch mirroring and modify.
 - Flow metering, including meter policy API.
 - SubFunction and SubFunction representor
 
@@ -355,11 +358,17 @@ Limitations
 
 - Sample flow:
 
-  - Supports ``RTE_FLOW_ACTION_TYPE_SAMPLE`` action only within NIC Rx and E-Switch steering domain.
-  - The E-Switch Sample flow must have the eswitch_manager VPORT destination (PF or ECPF) and no additional actions.
-  - For ConnectX-5, the ``RTE_FLOW_ACTION_TYPE_SAMPLE`` is typically used as first action in the E-Switch egress flow if with header modify or encapsulation actions.
-  - Supports ``MARK``, ``COUNT``, ``QUEUE``, ``RSS`` as sample actions for NIC Rx sampling/mirroring flow.
-  - Supports ``RAW ENCAP``, ``Port ID``, ``VXLAN ENCAP``, ``NVGRE ENCAP`` as sample actions for E-Switch mirroring (sample ratio = 1) flow.
+  - Supports ``RTE_FLOW_ACTION_TYPE_SAMPLE`` action only within NIC Rx and
+    E-Switch steering domain.
+  - For E-Switch Sampling flow with sample ratio > 1, additional actions are not
+    supported in the sample actions list.
+  - For ConnectX-5, the ``RTE_FLOW_ACTION_TYPE_SAMPLE`` is typically used as
+    first action in the E-Switch egress flow if with header modify or
+    encapsulation actions.
+  - For NIC Rx flow, supports ``MARK``, ``COUNT``, ``QUEUE``, ``RSS`` in the
+    sample actions list.
+  - For E-Switch mirroring flow, supports ``RAW ENCAP``, ``Port ID``,
+    ``VXLAN ENCAP``, ``NVGRE ENCAP`` in the sample actions list.
 
 - Modify Field flow:
 

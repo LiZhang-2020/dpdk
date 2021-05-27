@@ -4889,9 +4889,8 @@ Sample Sampling/Mirroring rules
 
 Sample/Mirroring rules can be set by the following commands
 
-NIC-RX Sampling rule, the matched ingress packets are duplicated and sent to
-the queue 1, and each second packets are marked with 0x1234 and sent to
-queue 0.
+NIC-RX Sampling rule, the matched ingress packets and sent to the queue 1,
+and 50% packets are duplicated and marked with 0x1234 and sent to queue 0.
 
 ::
 
@@ -4899,17 +4898,9 @@ queue 0.
  testpmd> flow create 0 ingress group 1 pattern eth / end actions
         sample ratio 2 index 0 / queue index 1 / end
 
-E-Switch Sampling rule, the matched ingress packets are duplicated and sent
-to port id 2, and each second packets are sent to eswitch manager.
-
-::
-
- testpmd> set sample_actions 0 / end
- testpmd> flow create 0 ingress transfer pattern eth / end actions
-        sample ratio 2 index 0 / port_id id 2  / end
-
-E-Switch Mirroring rule, the matched ingress packets with encapsulation header
-are sent to port id 0, and also mirrored the packets and sent to port id 2.
+Mirroring rule with port representors (with "transfer" attribute), the matched
+ingress packets with encapsulation header are sent to port id 0, and also
+mirrored the packets and sent to port id 2.
 
 ::
 
@@ -4917,8 +4908,9 @@ are sent to port id 0, and also mirrored the packets and sent to port id 2.
  testpmd> flow create 1 ingress transfer pattern eth / end actions
         sample ratio 1 index 0  / raw_encap / port_id id 0 / end
 
-E-Switch Mirroring rule, the matched ingress packets are sent to port id 2,
-and also mirrored the packets with encapsulation header and sent to port id 0.
+Mirroring rule with port representors (with "transfer" attribute), the matched
+ingress packets are sent to port id 2, and also mirrored the packets with
+encapsulation header and sent to port id 0.
 
 ::
 
@@ -4926,8 +4918,9 @@ and also mirrored the packets with encapsulation header and sent to port id 0.
  testpmd> flow create 0 ingress transfer pattern eth / end actions
         sample ratio 1 index 0  / port_id id 2 / end
 
-E-Switch Mirroring rule, the matched ingress packets are sent to port id 2,
-and also mirrored the packets with VXLAN encapsulation header and sent to port id 0.
+Mirroring rule with port representors (with "transfer" attribute), the matched
+ingress packets are sent to port id 2, and also mirrored the packets with
+VXLAN encapsulation header and sent to port id 0.
 
 ::
 
@@ -4937,8 +4930,9 @@ and also mirrored the packets with VXLAN encapsulation header and sent to port i
  testpmd> flow create 0 ingress transfer pattern eth / end actions
         sample ratio 1 index 0  / port_id id 2 / end
 
-E-Switch Mirroring rule, the matched ingress packets are sent to port id 2,
-and also mirrored the packets with NVGRE encapsulation header and sent to port id 0.
+Mirroring rule with port representors (with "transfer" attribute), the matched
+ingress packets are sent to port id 2, and also mirrored the packets with
+NVGRE encapsulation header and sent to port id 0.
 
 ::
 
