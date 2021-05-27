@@ -273,7 +273,6 @@ struct rte_sft_conf {
 	uint16_t nb_queues; /**< Preferred number of queues */
 	uint32_t udp_aging; /**< UDP proto default aging in sec */
 	uint32_t tcp_aging; /**< TCP proto default aging in sec */
-	uint32_t tcp_syn_aging; /**< TCP SYN default aging in sec. */
 	uint32_t default_aging; /**< All unlisted proto default aging in sec. */
 	uint32_t nb_max_entries; /**< Max entries in SFT. */
 	uint16_t nb_max_ipfrag; /**< Max IP fragments queue can store */
