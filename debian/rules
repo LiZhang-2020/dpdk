@@ -172,6 +172,13 @@ endif
 override_dh_auto_install-indep:
 
 override_dh_auto_install-arch:
+	# ldconfig conf
+	mkdir -p debian/tmp/etc/ld.so.conf.d
+	echo /$(PREFIX)/lib/$(DEB_HOST_MULTIARCH) > debian/tmp/etc/ld.so.conf.d/mlnx-dpdk-$(DEB_HOST_MULTIARCH).conf
+	# export PKG_CONFIG_PATH
+	mkdir -p debian/tmp/etc/profile.d
+	sed 's,@FAKE_PKG_CONFIG_PATH@,/$(PREFIX)/lib/$(DEB_HOST_MULTIARCH)/pkgconfig,g' \
+		debian/mlnx-dpdk.sh.in > debian/tmp/etc/profile.d/mlnx-dpdk-$(DEB_HOST_MULTIARCH).sh
 	dh_auto_install
 	dh_install -p mlnx-dpdk     $(PREFIX)/bin
 	dh_install -p mlnx-dpdk-dev $(PREFIX)/lib/$(DEB_HOST_MULTIARCH)/*.so.*
