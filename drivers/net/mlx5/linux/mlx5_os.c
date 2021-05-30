@@ -710,56 +710,6 @@ out:
 }
 
 /**
- * Create the Tx queue DevX/Verbs object.
- *
- * @param dev
- *   Pointer to Ethernet device.
- * @param idx
- *   Queue index in DPDK Tx queue array.
- *
- * @return
- *   0 on success, a negative errno value otherwise and rte_errno is set.
- */
-static int
-mlx5_os_txq_obj_new(struct rte_eth_dev *dev, uint16_t idx)
-{
-	struct mlx5_priv *priv = dev->data->dev_private;
-	struct mlx5_txq_data *txq_data = (*priv->txqs)[idx];
-	struct mlx5_txq_ctrl *txq_ctrl =
-			container_of(txq_data, struct mlx5_txq_ctrl, txq);
-
-	if (txq_ctrl->type == MLX5_TXQ_TYPE_HAIRPIN)
-		return mlx5_txq_devx_obj_new(dev, idx);
-#ifdef HAVE_MLX5DV_DEVX_UAR_OFFSET
-	if (!priv->config.dv_esw_en)
-		return mlx5_txq_devx_obj_new(dev, idx);
-#endif
-	return mlx5_txq_ibv_obj_new(dev, idx);
-}
-
-/**
- * Release an Tx DevX/verbs queue object.
- *
- * @param txq_obj
- *   DevX/Verbs Tx queue object.
- */
-static void
-mlx5_os_txq_obj_release(struct mlx5_txq_obj *txq_obj)
-{
-	if (txq_obj->txq_ctrl->type == MLX5_TXQ_TYPE_HAIRPIN) {
-		mlx5_txq_devx_obj_release(txq_obj);
-		return;
-	}
-#ifdef HAVE_MLX5DV_DEVX_UAR_OFFSET
-	if (!txq_obj->txq_ctrl->priv->config.dv_esw_en) {
-		mlx5_txq_devx_obj_release(txq_obj);
-		return;
-	}
-#endif
-	mlx5_txq_ibv_obj_release(txq_obj);
-}
-
-/**
  * DV flow counter mode detect and config.
  *
  * @param dev
@@ -1844,23 +1794,13 @@ err_secondary:
 	}
 	if (config->devx && config->dv_flow_en && config->dest_tir) {
 		priv->obj_ops = devx_obj_ops;
-#ifndef HAVE_MLX5DV_DEVX_UAR_OFFSET
-		priv->obj_ops.txq_obj_modify = ibv_obj_ops.txq_obj_modify;
-#else
-		if (config->dv_esw_en)
-			priv->obj_ops.txq_obj_modify =
-						ibv_obj_ops.txq_obj_modify;
-#endif
-		/* Use specific wrappers for Tx object. */
-		priv->obj_ops.txq_obj_new = mlx5_os_txq_obj_new;
-		priv->obj_ops.txq_obj_release = mlx5_os_txq_obj_release;
 		mlx5_queue_counter_id_prepare(eth_dev);
 	} else {
 		priv->obj_ops = ibv_obj_ops;
 	}
 	if (config->tx_pp &&
 	    (priv->config.dv_esw_en ||
-	     priv->obj_ops.txq_obj_new != mlx5_os_txq_obj_new)) {
+	     priv->obj_ops.txq_obj_new != mlx5_txq_devx_obj_new)) {
 		/*
 		 * HAVE_MLX5DV_DEVX_UAR_OFFSET is required to support
 		 * packet pacing and already checked above.
