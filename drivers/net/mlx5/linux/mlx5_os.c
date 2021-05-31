@@ -1717,6 +1717,12 @@ err_secondary:
 #else
 	config->dv_esw_en = 0;
 #endif
+	if (config->dv_esw_en == 0) {
+		DRV_LOG(INFO, "Eswitch flows (transfer) are not supported.");
+		if (config->hca_attr.eswitch_manager == 0)
+			DRV_LOG(INFO,
+				"Maybe cap_sys_rawio capability is not set?");
+	}
 	/* Detect minimal data bytes to inline. */
 	mlx5_set_min_inline(spawn, config);
 	/* Store device configuration on private structure. */
