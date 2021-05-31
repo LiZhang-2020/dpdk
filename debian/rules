@@ -85,6 +85,8 @@ endif
 # Change default max ethports to 256
 DPDK_CONFIG_OPTIONS += -Dmax_ethports=256
 
+DPDK_CONFIG_OPTIONS += -Ddisable_drivers=regex/octeontx2,common/octeontx2,common/octeontx,compress/octeontx,crypto/octeontx,crypto/octeontx2,event/octeontx,event/octeontx2,mempool/octeontx,mempool/octeontx2,net/octeontx,net/octeontx2,raw/octeontx2_dma,raw/octeontx2_ep
+
 DPDK_CONFIG_OPTIONS += -Dmachine=default
 
 ifneq (,$(findstring bluefield,$(DEB_BUILD_OPTIONS)))
