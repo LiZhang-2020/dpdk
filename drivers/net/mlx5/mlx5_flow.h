@@ -888,7 +888,7 @@ struct mlx5_flow {
 #define MLX5_ASO_WQE_CQE_RESPONSE_DELAY 10u
 #define MLX5_MTR_POLL_WQE_CQE_TIMES 100000u
 
-#define MLX5_CT_POLL_WQE_CQE_TIMES MLX5_MTR_POLL_WQE_CQE_TIMES
+#define MLX5_CT_POLL_WQE_CQE_TIMES ((MLX5_MTR_POLL_WQE_CQE_TIMES) * 10)
 
 #define MLX5_MAN_WIDTH 8
 /* Legacy Meter parameter structure. */

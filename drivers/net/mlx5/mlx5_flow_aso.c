@@ -1325,7 +1325,6 @@ mlx5_aso_ct_update_by_wqe(struct mlx5_dev_ctx_shared *sh,
 		if (mlx5_aso_ct_sq_enqueue_single(mng, ct, profile))
 			return 0;
 		/* Waiting for wqe resource. */
-		usleep(10u);
 	} while (--poll_wqe_times);
 	pool = container_of(ct, struct mlx5_aso_ct_pool, actions[ct->offset]);
 	DRV_LOG(ERR, "Fail to send WQE for ASO CT %d in pool %d",
@@ -1360,8 +1359,7 @@ mlx5_aso_ct_wait_ready(struct mlx5_dev_ctx_shared *sh,
 		if (__atomic_load_n(&ct->state, __ATOMIC_RELAXED) ==
 		    ASO_CONNTRACK_READY)
 			return 0;
-		/* Waiting for CQE ready, consider should block or sleep.  */
-		usleep(MLX5_ASO_WQE_CQE_RESPONSE_DELAY);
+		/* Waiting for CQE ready, no sleep in data path. */
 	} while (--poll_cqe_times);
 	pool = container_of(ct, struct mlx5_aso_ct_pool, actions[ct->offset]);
 	DRV_LOG(ERR, "Fail to poll CQE for ASO CT %d in pool %d",
@@ -1470,7 +1468,7 @@ mlx5_aso_ct_query_by_wqe(struct mlx5_dev_ctx_shared *sh,
 			goto data_handle;
 		/* Waiting for wqe resource or state. */
 		else
-			usleep(10u);
+			continue;
 	} while (--poll_wqe_times);
 	pool = container_of(ct, struct mlx5_aso_ct_pool, actions[ct->offset]);
 	DRV_LOG(ERR, "Fail to send WQE for ASO CT %d in pool %d",
