@@ -96,9 +96,10 @@ rxp_dump_csrs(struct ibv_context *ctx __rte_unused, uint8_t id __rte_unused)
 }
 
 int
-mlx5_regex_info_get(struct rte_regexdev *dev __rte_unused,
+mlx5_regex_info_get(struct rte_regexdev *dev,
 		    struct rte_regexdev_info *info)
 {
+	struct mlx5_regex_priv *priv = dev->data->dev_private;
 	info->max_matches = MLX5_REGEX_MAX_MATCHES;
 	info->max_payload_size = MLX5_REGEX_MAX_PAYLOAD_SIZE;
 	info->max_rules_per_group = MLX5_REGEX_MAX_RULES_PER_GROUP;
@@ -107,6 +108,8 @@ mlx5_regex_info_get(struct rte_regexdev *dev __rte_unused,
 			      RTE_REGEXDEV_CAPA_QUEUE_PAIR_OOS_F;
 	info->rule_flags = 0;
 	info->max_queue_pairs = UINT16_MAX;
+	info->version_name = priv->is_bf2 ?
+		RTE_REGEXDEV_BF2_VERSION : RTE_REGEXDEV_BF3_VERSION;
 	return 0;
 }
 

@@ -16,6 +16,9 @@
 #include "mlx5_rxp.h"
 #include "mlx5_regex_utils.h"
 
+#define RTE_REGEXDEV_BF2_VERSION "BF2"
+#define RTE_REGEXDEV_BF3_VERSION "BF3"
+
 struct mlx5_regex_sq {
 	uint16_t log_nb_desc; /* Log 2 number of desc for this object. */
 	struct mlx5_devx_obj *obj; /* The SQ DevX object. */
