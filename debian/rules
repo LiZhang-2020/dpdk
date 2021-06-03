@@ -89,6 +89,9 @@ DPDK_CONFIG_OPTIONS += -Ddisable_drivers=regex/octeontx2,common/octeontx2,common
 
 DPDK_CONFIG_OPTIONS += -Dmachine=default
 
+# Ensure build is optimized for release
+DPDK_CONFIG_OPTIONS += --buildtype=release
+
 ifneq (,$(findstring bluefield,$(DEB_BUILD_OPTIONS)))
     DPDK_CONFIG_OPTIONS += --cross-file=../config/arm/arm64_bluefield_linux_native_gcc
 endif
