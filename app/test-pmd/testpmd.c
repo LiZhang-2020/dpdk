@@ -1600,6 +1600,7 @@ reconfig(portid_t new_port_id, unsigned socket_id)
 {
 	struct rte_port *port;
 	int ret;
+	int i;
 
 	/* Reconfiguration of Ethernet ports. */
 	port = &ports[new_port_id];
@@ -1612,7 +1613,38 @@ reconfig(portid_t new_port_id, unsigned socket_id)
 	port->need_reconfig = 1;
 	port->need_reconfig_queues = 1;
 	port->socket_id = socket_id;
+	port->tx_metadata = 0;
 
+	/* Apply default TxRx configuration to the port */
+	port->dev_conf.txmode = tx_mode;
+	port->dev_conf.rxmode = rx_mode;
+
+	if (!(port->dev_info.tx_offload_capa & DEV_TX_OFFLOAD_MBUF_FAST_FREE))
+		port->dev_conf.txmode.offloads &=
+					~DEV_TX_OFFLOAD_MBUF_FAST_FREE;
+
+	/* Apply Rx offloads configuration */
+	for (i = 0; i < port->dev_info.max_rx_queues; i++)
+		port->rx_conf[i].offloads = port->dev_conf.rxmode.offloads;
+	/* Apply Tx offloads configuration */
+	for (i = 0; i < port->dev_info.max_tx_queues; i++)
+		port->tx_conf[i].offloads = port->dev_conf.txmode.offloads;
+
+	/* Check for maximum number of segments per MTU. Accordingly
+	 * update the mbuf data size.
+	 */
+	if (port->dev_info.rx_desc_lim.nb_mtu_seg_max != UINT16_MAX &&
+	    port->dev_info.rx_desc_lim.nb_mtu_seg_max != 0) {
+		uint16_t data_size = rx_mode.max_rx_pkt_len /
+				port->dev_info.rx_desc_lim.nb_mtu_seg_max;
+
+		if ((data_size + RTE_PKTMBUF_HEADROOM) > mbuf_data_size[0]) {
+			mbuf_data_size[0] = data_size + RTE_PKTMBUF_HEADROOM;
+			TESTPMD_LOG(WARNING,
+			    "Adjusted mbuf size of the first segment %hu\n",
+			    mbuf_data_size[0]);
+		}
+	}
 	init_port_config();
 }
 
