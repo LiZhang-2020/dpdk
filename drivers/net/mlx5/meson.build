@@ -62,3 +62,4 @@ else
 	cflags += [ '-UPEDANTIC' ]
 endif
 subdir(exec_env)
+subdir('steering')
