@@ -1059,6 +1059,7 @@ enum {
 	MLX5_CMD_OP_QUERY_TIS = 0x915,
 	MLX5_CMD_OP_CREATE_RQT = 0x916,
 	MLX5_CMD_OP_MODIFY_RQT = 0x917,
+	MLX5_CMD_OP_CREATE_FLOW_TABLE = 0x930,
 	MLX5_CMD_OP_ALLOC_FLOW_COUNTER = 0x939,
 	MLX5_CMD_OP_QUERY_FLOW_COUNTER = 0x93b,
 	MLX5_CMD_OP_CREATE_GENERAL_OBJECT = 0xa00,
@@ -3924,6 +3925,68 @@ struct mlx5_ifc_query_q_counter_in_bits {
 	u8 reserved_at_c1[0x1f];
 	u8 reserved_at_e0[0x18];
 	u8 counter_set_id[0x8];
+};
+
+enum {
+	FS_FT_NIC_RX = 0x0,
+	FS_FT_NIC_TX = 0x1,
+	FS_FT_FDB = 0X4,
+};
+
+struct mlx5_ifc_flow_table_context_bits {
+	u8 reformat_en[0x1];
+	u8 decap_en[0x1];
+	u8 sw_owner[0x1];
+	u8 termination_table[0x1];
+	u8 table_miss_action[0x4];
+	u8 level[0x8];
+	u8 reserved_at_10[0x8];
+	u8 log_size[0x8];
+
+	u8 reserved_at_20[0x8];
+	u8 table_miss_id[0x18];
+
+	u8 reserved_at_40[0x8];
+	u8 lag_master_next_table_id[0x18];
+
+	u8 reserved_at_60[0x60];
+
+	u8 sw_owner_icm_root_1[0x40];
+
+	u8 sw_owner_icm_root_0[0x40];
+};
+
+struct mlx5_ifc_create_flow_table_in_bits {
+	u8 opcode[0x10];
+	u8 uid[0x10];
+
+	u8 reserved_at_20[0x10];
+	u8 op_mod[0x10];
+
+	u8 other_vport[0x1];
+	u8 reserved_at_41[0xf];
+	u8 vport_number[0x10];
+
+	u8 reserved_at_60[0x20];
+
+	u8 table_type[0x8];
+	u8 reserved_at_88[0x18];
+
+	u8 reserved_at_a0[0x20];
+
+	struct mlx5_ifc_flow_table_context_bits flow_table_context;
+};
+
+struct mlx5_ifc_create_flow_table_out_bits {
+	u8 status[0x8];
+	u8 icm_address_63_40[0x18];
+
+	u8 syndrome[0x20];
+
+	u8 icm_address_39_32[0x8];
+	u8 table_id[0x18];
+
+	u8 icm_address_31_0[0x20];
 };
 
 /* CQE format mask. */
