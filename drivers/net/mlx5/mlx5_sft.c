@@ -657,6 +657,11 @@ mlx5_sft_add_l1_rules(struct rte_eth_dev *dev, struct rte_sft_entry *entry,
 		.ingress = 1,
 		.group = MLX5_FLOW_TABLE_SFT_L1,
 	};
+	const union sft_mark mark = {
+		.fid_valid = 1,
+		.zone_valid = 1,
+		.app_state = state,
+	};
 	int fid_reg = mlx5_flow_get_reg_id(dev, MLX5_SFT_FID, 0, &rte_err);
 	int state_reg = mlx5_flow_get_reg_id(dev, MLX5_SFT_APP_STATE, 0,
 					     &rte_err);
@@ -711,9 +716,9 @@ mlx5_sft_add_l1_rules(struct rte_eth_dev *dev, struct rte_sft_entry *entry,
 				MLX5_RTE_FLOW_ACTION_TYPE_TAG,
 			.conf = &(struct mlx5_rte_flow_action_set_tag){
 				.id = (enum modify_reg)state_reg,
-				.data = state,
-				.length = 8,
-				.offset = 16
+				.data = mark.val,
+				.length = MLX5_REG_BITS,
+				.offset = 0
 			}
 		},
 		[2] = {
@@ -766,7 +771,7 @@ mlx5_sft_add_l0_rules(struct sft_entry_ctx *ctx, struct rte_sft_entry *entry,
 {
 	int zone_fid_reg, state_reg, i = ctx->hit_actions_num;
 	struct rte_flow_error rte_err;
-	const union sft_mark mark = {
+	union sft_mark mark = {
 		.fid_valid = 1,
 		.direction = ctx->flags.initiator
 	};
@@ -815,6 +820,7 @@ mlx5_sft_add_l0_rules(struct sft_entry_ctx *ctx, struct rte_sft_entry *entry,
 			.mask = UINT32_MAX
 		}
 	};
+	mark.zone_valid = 1;
 	ctx->l0_actions[i++] = (typeof(ctx->l0_actions[0])) {
 		.type = (enum rte_flow_action_type)
 			MLX5_RTE_FLOW_ACTION_TYPE_TAG,

@@ -10171,7 +10171,8 @@ flow_dv_translate_item_sft(struct rte_eth_dev *dev, void *match_mask,
 		 * for matching.
 		 */
 		flow_dv_translate_sft_item_data(dev, app_state_reg,
-						mark_value.val, mark_mask.val,
+						mark_value.val & mark_mask.val,
+						mark_mask.val,
 						match_mask, match_value);
 	}
 	/* PMD can match FID or zone
