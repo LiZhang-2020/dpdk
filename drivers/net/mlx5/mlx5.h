@@ -1673,6 +1673,15 @@ int mlx5_flow_validate(struct rte_eth_dev *dev,
 		       const struct rte_flow_item items[],
 		       const struct rte_flow_action actions[],
 		       struct rte_flow_error *error);
+uint32_t
+mlx5_flow_list_create(struct rte_eth_dev *dev, uint32_t *list,
+		      const struct rte_flow_attr *attr,
+		      const struct rte_flow_item items[],
+		      const struct rte_flow_action original_actions[],
+		      bool external, struct rte_flow_error *error);
+void
+mlx5_flow_list_destroy(struct rte_eth_dev *dev, uint32_t *list,
+	uint32_t flow_idx);
 struct rte_flow *mlx5_flow_create(struct rte_eth_dev *dev,
 				  const struct rte_flow_attr *attr,
 				  const struct rte_flow_item items[],

@@ -4021,18 +4021,6 @@ flow_check_hairpin_split(struct rte_eth_dev *dev,
 	return 0;
 }
 
-/* Declare flow create/destroy prototype in advance. */
-static uint32_t
-flow_list_create(struct rte_eth_dev *dev, uint32_t *list,
-		 const struct rte_flow_attr *attr,
-		 const struct rte_flow_item items[],
-		 const struct rte_flow_action actions[],
-		 bool external, struct rte_flow_error *error);
-
-static void
-flow_list_destroy(struct rte_eth_dev *dev, uint32_t *list,
-		  uint32_t flow_idx);
-
 int
 flow_dv_mreg_match_cb(struct mlx5_hlist *list __rte_unused,
 		      struct mlx5_hlist_entry *entry,
@@ -4152,8 +4140,8 @@ flow_dv_mreg_create_cb(struct mlx5_hlist *list, uint64_t key,
 	 * be applied, removed, deleted in ardbitrary order
 	 * by list traversing.
 	 */
-	mcp_res->rix_flow = flow_list_create(dev, NULL, &attr, items,
-					 actions, false, error);
+	mcp_res->rix_flow = mlx5_flow_list_create(dev, NULL, &attr, items,
+						  actions, false, error);
 	if (!mcp_res->rix_flow) {
 		mlx5_ipool_free(priv->sh->ipool[MLX5_IPOOL_MCP], idx);
 		return NULL;
@@ -4215,7 +4203,7 @@ flow_dv_mreg_remove_cb(struct mlx5_hlist *list, struct mlx5_hlist_entry *entry)
 	struct mlx5_priv *priv = dev->data->dev_private;
 
 	MLX5_ASSERT(mcp_res->rix_flow);
-	flow_list_destroy(dev, NULL, mcp_res->rix_flow);
+	mlx5_flow_list_destroy(dev, NULL, mcp_res->rix_flow);
 	mlx5_ipool_free(priv->sh->ipool[MLX5_IPOOL_MCP], mcp_res->idx);
 }
 
@@ -6142,12 +6130,12 @@ flow_rss_workspace_adjust(struct mlx5_flow_workspace *wks,
  *   A flow index on success, 0 otherwise and rte_errno is set.
  */
 static uint32_t
-mlx5_flow_list_create(struct rte_eth_dev *dev, uint32_t *list,
-		      const struct rte_flow_attr *attr,
-		      const struct rte_flow_item items[],
-		      const struct rte_flow_action original_actions[],
-		      bool external, struct mlx5_flow_workspace *wks,
-		      struct rte_flow_error *error)
+flow_list_create(struct rte_eth_dev *dev, uint32_t *list,
+		 const struct rte_flow_attr *attr,
+		 const struct rte_flow_item items[],
+		 const struct rte_flow_action original_actions[],
+		 bool external, struct mlx5_flow_workspace *wks,
+		 struct rte_flow_error *error)
 {
 	struct mlx5_priv *priv = dev->data->dev_private;
 	struct rte_flow *flow = NULL;
@@ -6401,27 +6389,28 @@ error_before_hairpin_split:
  * @return
  *   A flow index on success, 0 otherwise and rte_errno is set.
  */
-static uint32_t
-flow_list_create(struct rte_eth_dev *dev, uint32_t *list,
+uint32_t
+mlx5_flow_list_create(struct rte_eth_dev *dev, uint32_t *list,
 		      const struct rte_flow_attr *attr,
 		      const struct rte_flow_item items[],
 		      const struct rte_flow_action original_actions[],
 		      bool external, struct rte_flow_error *error)
 {
 	uint32_t flow_idx;
-	int ret = 0;
 	struct mlx5_flow_workspace *wks = mlx5_flow_push_thread_workspace();
+
+	if (!wks)
+		return 0;
 	wks->cb = NULL;
-	flow_idx = mlx5_flow_list_create(dev, list, attr, items,
-					 original_actions, external, wks,
-					 error);
+	flow_idx = flow_list_create(dev, list, attr, items,
+				    original_actions, external, wks,
+				    error);
 	if (!flow_idx)
 		goto end;
 	if (wks->cb) {
-		ret = wks->cb(dev, wks->cb_param, error);
+		int ret = wks->cb(dev, wks->cb_param, error);
 		if (ret) {
-			struct mlx5_priv *priv = dev->data->dev_private;
-			flow_list_destroy(dev, &priv->ctrl_flows, flow_idx);
+			mlx5_flow_list_destroy(dev, list, flow_idx);
 			flow_idx = 0;
 			goto end;
 		}
@@ -6476,9 +6465,9 @@ mlx5_flow_create_esw_table_zero_flow(struct rte_eth_dev *dev)
 	struct mlx5_priv *priv = dev->data->dev_private;
 	struct rte_flow_error error;
 
-	return (void *)(uintptr_t)flow_list_create(dev, &priv->ctrl_flows,
-						   &attr, &pattern,
-						   actions, false, &error);
+	return (void *)(uintptr_t)mlx5_flow_list_create(dev, &priv->ctrl_flows,
+							&attr, &pattern,
+							actions, false, &error);
 }
 
 /**
@@ -6551,9 +6540,8 @@ mlx5_flow_add_post_sft_rule(struct rte_eth_dev *dev, uint32_t post_sft,
 			.type = RTE_FLOW_ACTION_TYPE_END,
 		},
 	};
-
-	return flow_list_create(dev, &priv->ctrl_flows, &attr, pattern,
-				actions, true, error);
+	return mlx5_flow_list_create(dev, &priv->ctrl_flows, &attr, pattern,
+				     actions, true, error);
 }
 
 /**
@@ -6570,7 +6558,7 @@ mlx5_flow_remove_post_sft_rule(struct rte_eth_dev *dev, uint32_t sft_flow_idx)
 {
 	struct mlx5_priv *priv = dev->data->dev_private;
 
-	flow_list_destroy(dev, &priv->ctrl_flows, sft_flow_idx);
+	mlx5_flow_list_destroy(dev, &priv->ctrl_flows, sft_flow_idx);
 }
 
 /**
@@ -6637,8 +6625,9 @@ mlx5_flow_create(struct rte_eth_dev *dev,
 		return NULL;
 	}
 
-	return (void *)(uintptr_t)flow_list_create(dev, &priv->flows,
-				  attr, items, actions, true, error);
+	return (void *)(uintptr_t)mlx5_flow_list_create(dev, &priv->flows,
+							attr, items, actions,
+							true, error);
 }
 
 /**
@@ -6655,8 +6644,7 @@ mlx5_flow_create(struct rte_eth_dev *dev,
  *   Index of flow to destroy.
  */
 static void
-mlx5_flow_list_destroy(struct rte_eth_dev *dev, uint32_t *list,
-		       uint32_t flow_idx)
+flow_list_destroy(struct rte_eth_dev *dev, uint32_t *list, uint32_t flow_idx)
 {
 	struct mlx5_priv *priv = dev->data->dev_private;
 	struct rte_flow *flow = mlx5_ipool_get(priv->sh->ipool
@@ -6703,15 +6691,16 @@ mlx5_flow_list_destroy(struct rte_eth_dev *dev, uint32_t *list,
  * @param[in] flow_idx
  *   Index of flow to destroy.
  */
-static void
-flow_list_destroy(struct rte_eth_dev *dev, uint32_t *list,
-		  uint32_t flow_idx)
+void
+mlx5_flow_list_destroy(struct rte_eth_dev *dev, uint32_t *list,
+		       uint32_t flow_idx)
 {
 	struct rte_flow_error error;
 	struct mlx5_flow_workspace *wks = mlx5_flow_push_thread_workspace();
 
+	RTE_VERIFY(wks != NULL);
 	wks->cb = NULL;
-	mlx5_flow_list_destroy(dev, list, flow_idx);
+	flow_list_destroy(dev, list, flow_idx);
 	if (wks->cb)
 		wks->cb(dev, wks->cb_param, &error);
 	mlx5_flow_pop_thread_workspace();
@@ -6733,7 +6722,7 @@ mlx5_flow_list_flush(struct rte_eth_dev *dev, uint32_t *list, bool active)
 	uint32_t num_flushed = 0;
 
 	while (*list) {
-		flow_list_destroy(dev, list, *list);
+		mlx5_flow_list_destroy(dev, list, *list);
 		num_flushed++;
 	}
 	if (active) {
@@ -6983,8 +6972,8 @@ mlx5_ctrl_flow_source_queue(struct rte_eth_dev *dev,
 	actions[0].type = RTE_FLOW_ACTION_TYPE_JUMP;
 	actions[0].conf = &jump;
 	actions[1].type = RTE_FLOW_ACTION_TYPE_END;
-	flow_idx = flow_list_create(dev, &priv->ctrl_flows,
-				&attr, items, actions, false, &error);
+	flow_idx = mlx5_flow_list_create(dev, &priv->ctrl_flows,
+					 &attr, items, actions, false, &error);
 	if (!flow_idx) {
 		DRV_LOG(DEBUG,
 			"Failed to create ctrl flow: rte_errno(%d),"
@@ -7073,8 +7062,8 @@ mlx5_ctrl_flow_vlan(struct rte_eth_dev *dev,
 		action_rss.types = 0;
 	for (i = 0; i != priv->reta_idx_n; ++i)
 		queue[i] = (*priv->reta_idx)[i];
-	flow_idx = flow_list_create(dev, &priv->ctrl_flows,
-				&attr, items, actions, false, &error);
+	flow_idx = mlx5_flow_list_create(dev, &priv->ctrl_flows,
+					 &attr, items, actions, false, &error);
 	if (!flow_idx)
 		return -rte_errno;
 	return 0;
@@ -7116,6 +7105,9 @@ int
 mlx5_flow_lacp_miss(struct rte_eth_dev *dev)
 {
 	struct mlx5_priv *priv = dev->data->dev_private;
+	struct rte_flow_error error;
+	uint32_t flow_idx;
+
 	/*
 	 * The LACP matching is done by only using ether type since using
 	 * a multicast dst mac causes kernel to give low priority to this flow.
@@ -7148,10 +7140,9 @@ mlx5_flow_lacp_miss(struct rte_eth_dev *dev)
 			.type = RTE_FLOW_ACTION_TYPE_END,
 		},
 	};
-	struct rte_flow_error error;
-	uint32_t flow_idx = flow_list_create(dev, &priv->ctrl_flows,
-				&attr, items, actions, false, &error);
-
+	flow_idx = mlx5_flow_list_create(dev, &priv->ctrl_flows,
+					 &attr, items, actions,
+					 false, &error);
 	if (!flow_idx)
 		return -rte_errno;
 	return 0;
@@ -7173,8 +7164,9 @@ mlx5_sft_ctrl_flow_create(struct rte_eth_dev *dev,
 	struct mlx5_priv *priv = dev->data->dev_private;
 
 	/* The default SFT flow should be created after port is started. */
-	return (void *)(uintptr_t)flow_list_create(dev, &priv->ctrl_flows,
-				  attr, items, actions, false, error);
+	return (void *)(uintptr_t)mlx5_flow_list_create(dev, &priv->ctrl_flows,
+							attr, items, actions,
+							false, error);
 }
 
 /**
@@ -7190,7 +7182,7 @@ mlx5_flow_destroy(struct rte_eth_dev *dev,
 {
 	struct mlx5_priv *priv = dev->data->dev_private;
 
-	flow_list_destroy(dev, &priv->flows, (uintptr_t)(void *)flow);
+	mlx5_flow_list_destroy(dev, &priv->flows, (uintptr_t)(void *)flow);
 	return 0;
 }
 
@@ -8144,14 +8136,14 @@ mlx5_flow_discover_mreg_c(struct rte_eth_dev *dev)
 		if (!config->dv_flow_en)
 			break;
 		/* Create internal flow, validation skips copy action. */
-		flow_idx = flow_list_create(dev, NULL, &attr, items,
-					    actions, false, &error);
+		flow_idx = mlx5_flow_list_create(dev, NULL, &attr, items,
+						 actions, false, &error);
 		flow = mlx5_ipool_get(priv->sh->ipool[MLX5_IPOOL_RTE_FLOW],
 				      flow_idx);
 		if (!flow)
 			continue;
 		config->flow_mreg_c[n++] = idx;
-		flow_list_destroy(dev, NULL, flow_idx);
+		mlx5_flow_list_destroy(dev, NULL, flow_idx);
 	}
 	for (; n < MLX5_MREG_C_NUM; ++n)
 		config->flow_mreg_c[n] = REG_NON;
