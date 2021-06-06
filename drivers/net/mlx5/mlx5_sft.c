@@ -21,11 +21,19 @@ mlx5_sft_entry_destroy(struct rte_eth_dev *dev,
 		       struct rte_sft_entry *entry, uint16_t queue,
 		       struct rte_sft_error *error);
 
-static struct rte_flow *
+static uint32_t *
+sft_flow_list(struct rte_eth_dev *dev)
+{
+	struct mlx5_priv *priv = dev->data->dev_private;
+	return priv->sft_flows ? &priv->sft_flows->idx_list : NULL;
+}
+
+static uint32_t
 sft_fragment_flow(struct rte_eth_dev *dev, const struct rte_flow_item pattern[],
 		  struct rte_flow_error *error)
 {
 	int state_reg = mlx5_flow_get_reg_id(dev, MLX5_SFT_APP_STATE, 0, error);
+	uint32_t *flow_list = sft_flow_list(dev);
 	const struct rte_flow_attr attr = {
 		.ingress = 1,
 		.group = MLX5_FLOW_TABLE_SFT_L0,
@@ -66,12 +74,13 @@ sft_fragment_flow(struct rte_eth_dev *dev, const struct rte_flow_item pattern[],
 		[4] = { .type = RTE_FLOW_ACTION_TYPE_END }
 	};
 
-	if (state_reg < 0)
-		return NULL;
-	return mlx5_sft_ctrl_flow_create(dev, &attr, pattern, actions, error);
+	if (state_reg < 0 || !flow_list)
+		return 0;
+	return mlx5_flow_list_create(dev, flow_list, &attr, pattern,
+				     actions, false, error);
 }
 
-static struct rte_flow *
+static uint32_t
 sft_l0_ipv6_fragment_rule(struct rte_eth_dev *dev, struct rte_flow_error *error)
 {
 	/* reference: 4bdd265768f9 ("app/testpmd: support IPv6 fragments") */
@@ -100,7 +109,7 @@ sft_l0_ipv6_fragment_rule(struct rte_eth_dev *dev, struct rte_flow_error *error)
 	return sft_fragment_flow(dev, pattern, error);
 }
 
-static struct rte_flow *
+static uint32_t
 sft_l0_ipv4_fragment_rule(struct rte_eth_dev *dev, struct rte_flow_error *error)
 {
 	/* reference: b3259edcf878 ("app/testpmd: support IPv4 fragments") */
@@ -132,10 +141,11 @@ sft_l0_ipv4_fragment_rule(struct rte_eth_dev *dev, struct rte_flow_error *error)
 	return sft_fragment_flow(dev, pattern, error);
 }
 
-static struct rte_flow *
+static uint32_t
 sft_l0_dflt_zone_rule(struct rte_eth_dev *dev, struct rte_flow_error *error)
 {
 	int state_reg = mlx5_flow_get_reg_id(dev, MLX5_SFT_APP_STATE, 0, error);
+	uint32_t *flow_list = sft_flow_list(dev);
 	const struct rte_flow_attr attr = {
 		.ingress = 1,
 		.group = MLX5_FLOW_TABLE_SFT_L0,
@@ -189,15 +199,15 @@ sft_l0_dflt_zone_rule(struct rte_eth_dev *dev, struct rte_flow_error *error)
 			.type = RTE_FLOW_ACTION_TYPE_END,
 		}
 	};
-	if (state_reg < 0)
-		return NULL;
-
-	return mlx5_flow_create(dev, &attr, pattern, actions, error);
+	if (state_reg < 0 || !flow_list)
+		return 0;
+	return mlx5_flow_list_create(dev, flow_list, &attr, pattern, actions,
+				     false, error);
 }
 
-static struct rte_flow *
+static uint32_t
 (*mlx5_sft_l0_cb[MLX5_SFT_L0_DFLT_FLOWS_NUM])(struct rte_eth_dev *,
-				     struct rte_flow_error *) = {
+					      struct rte_flow_error *) = {
 	[MLX5_SFT_L0_DFLT_ZONE_FLOW]      = sft_l0_dflt_zone_rule,
 	[MLX5_SFT_L0_DFLT_IPV4_FRAG_FLOW] = sft_l0_ipv4_fragment_rule,
 	[MLX5_SFT_L0_DFLT_IPV6_FRAG_FLOW] = sft_l0_ipv6_fragment_rule,
@@ -208,14 +218,14 @@ mlx5_destroy_sft_l0_flows(struct rte_eth_dev *dev, struct rte_sft_error *err)
 {
 	int i;
 	struct mlx5_priv *priv = dev->data->dev_private;
-	struct rte_flow_error rte_err;
+	uint32_t *flow_list = sft_flow_list(dev);
 
 	RTE_SET_USED(err);
 	for (i = 0; i < MLX5_SFT_L0_DFLT_FLOWS_NUM; i++) {
 		if (!priv->sft_flows->l0_flows[i])
 			break;
-		mlx5_flow_destroy(dev, priv->sft_flows->l0_flows[i],
-				  &rte_err);
+		mlx5_flow_list_destroy(dev, flow_list,
+				       priv->sft_flows->l0_flows[i]);
 	}
 }
 
@@ -225,11 +235,10 @@ mlx5_create_sft_l0_flows(struct rte_eth_dev *dev,
 {
 	int i;
 	struct mlx5_priv *priv = dev->data->dev_private;
-	struct rte_flow *sft_flow;
 	struct rte_flow_error rte_err;
 
 	for (i = 0; i < MLX5_SFT_L0_DFLT_FLOWS_NUM; i++) {
-		sft_flow = mlx5_sft_l0_cb[i](dev, &rte_err);
+		uint32_t sft_flow = mlx5_sft_l0_cb[i](dev, &rte_err);
 		if (sft_flow) {
 			priv->sft_flows->l0_flows[i] = sft_flow;
 		} else {
@@ -247,12 +256,13 @@ mlx5_create_sft_l0_flows(struct rte_eth_dev *dev,
 /*
  * if packet entered SFT L1 table, there is FID value in META register
  */
-static struct rte_flow *
+static uint32_t
 mlx5_create_sft_l1_miss_flow(struct rte_eth_dev *dev)
 {
 	struct rte_flow_error rte_err;
 	int state_reg = mlx5_flow_get_reg_id(dev, MLX5_SFT_APP_STATE, 0,
 					     &rte_err);
+	uint32_t *flow_list = sft_flow_list(dev);
 	const struct rte_flow_attr l1_attr = {
 		.ingress = 1,
 		.group = MLX5_FLOW_TABLE_SFT_L1,
@@ -290,11 +300,10 @@ mlx5_create_sft_l1_miss_flow(struct rte_eth_dev *dev)
 		},
 		[3] = { .type = RTE_FLOW_ACTION_TYPE_END }
 	};
-	if (state_reg < 0)
-		return NULL;
-
-	return mlx5_flow_create(dev, &l1_attr, l1_pattern, l1_actions,
-				&rte_err);
+	if (state_reg < 0 || !flow_list)
+		return 0;
+	return mlx5_flow_list_create(dev, flow_list, &l1_attr, l1_pattern,
+				     l1_actions, false, &rte_err);
 }
 
 static int
@@ -314,11 +323,13 @@ mlx5_create_sft_l1_flows(struct rte_eth_dev *dev, struct rte_sft_error *error)
 static void
 mlx5_destroy_sft_flows(struct rte_eth_dev *dev, struct rte_sft_error *sft_err)
 {
-	struct rte_flow_error rte_err;
 	struct mlx5_priv *priv = dev->data->dev_private;
+	uint32_t *flow_list = sft_flow_list(dev);
 
+	if (!flow_list)
+		return;
 	mlx5_destroy_sft_l0_flows(dev, sft_err);
-	mlx5_flow_destroy(dev, priv->sft_flows->l1_flow, &rte_err);
+	mlx5_flow_list_destroy(dev, flow_list, priv->sft_flows->l1_flow);
 }
 
 static int
@@ -346,6 +357,8 @@ mlx5_sft_release_mem(struct rte_eth_dev *dev, uint16_t nb_queue,
 	uint16_t i;
 
 	RTE_SET_USED(error);
+	if (!priv->sft_flows)
+		return;
 	for (i = 0; i < nb_queue; i++)
 		mlx5_ipool_destroy(sh->ipool_sft[i]);
 	mlx5_free(sh->ipool_sft);
@@ -497,6 +510,7 @@ struct sft_entry_ctx {
 	struct rte_flow_action *hit_actions;
 	struct rte_flow_item *l0_sft_item;
 	struct rte_flow_action *l0_actions;
+	uint32_t *flow_list;
 	uint64_t miss_conditions;
 };
 
@@ -648,6 +662,7 @@ mlx5_sft_add_l1_rules(struct rte_eth_dev *dev, struct rte_sft_entry *entry,
 					     &rte_err);
 	int data_reg = mlx5_flow_get_reg_id(dev, MLX5_SFT_APP_DATA, 0,
 					    &rte_err);
+	uint32_t *flow_list = sft_flow_list(dev);
 	struct rte_flow_item l1_pattern[] = {
 		[0] = {
 			.type = (enum rte_flow_item_type)
@@ -726,23 +741,15 @@ mlx5_sft_add_l1_rules(struct rte_eth_dev *dev, struct rte_sft_entry *entry,
 				  NULL, "failed fetch fid register");
 	if (!entry->miss_conditions)
 		l1_pattern[1].type = RTE_FLOW_ITEM_TYPE_END;
-	entry->sft_l1_flow = mlx5_flow_create(dev, &l1_attr, l1_pattern,
-					      l1_actions, &rte_err);
+	entry->sft_l1_flow = mlx5_flow_list_create(dev, flow_list, &l1_attr,
+						   l1_pattern, l1_actions,
+						   false, &rte_err);
 	if (!entry->sft_l1_flow)
 		rte_sft_error_set(error, rte_errno,
 				  RTE_SFT_ERROR_TYPE_UNSPECIFIED,
 				  NULL, "failed to create sft L1 flow rule");
 
 	return entry->sft_l1_flow ? 0 : -1;
-}
-
-static void
-mlx5_sft_destroy_flow(struct rte_eth_dev *dev, struct rte_flow *sft_flow)
-{
-	if (sft_flow) {
-		uint32_t flow_idx = (uintptr_t)sft_flow;
-		mlx5_flow_remove_post_sft_rule(dev, flow_idx);
-	}
 }
 
 /*
@@ -835,10 +842,10 @@ mlx5_sft_add_l0_rules(struct sft_entry_ctx *ctx, struct rte_sft_entry *entry,
 		}
 	};
 	ctx->l0_actions[i++].type = RTE_FLOW_ACTION_TYPE_END;
-	entry->sft_l0_flow = mlx5_flow_create(ctx->dev, &l0_attr,
-					      ctx->hit_pattern,
-					      ctx->l0_actions,
-					      &rte_err);
+	entry->sft_l0_flow = mlx5_flow_list_create(ctx->dev, ctx->flow_list,
+						   &l0_attr, ctx->hit_pattern,
+						   ctx->l0_actions, false,
+						   &rte_err);
 	if (!entry->sft_l0_flow)
 		rte_sft_error_set(error, rte_errno,
 				  RTE_SFT_ERROR_TYPE_UNSPECIFIED,
@@ -921,6 +928,7 @@ mlx5_sft_entry_create(struct rte_eth_dev *dev, uint32_t fid, uint32_t zone,
 		.data_len = data_len, .queue = queue,
 		.state = state,
 		.flags.initiator = initiator,
+		.flow_list = sft_flow_list(dev),
 	};
 	struct rte_sft_entry *entry;
 
@@ -950,7 +958,7 @@ mlx5_sft_entry_create(struct rte_eth_dev *dev, uint32_t fid, uint32_t zone,
 	return entry;
 
 err2:
-	mlx5_sft_destroy_flow(dev, entry->sft_l1_flow);
+	mlx5_flow_list_destroy(dev, ctx.flow_list, entry->sft_l1_flow);
 err1:
 	mlx5_sft_release_entry(dev, queue, entry);
 err0:
@@ -965,6 +973,7 @@ mlx5_sft_entry_destroy(struct rte_eth_dev *dev,
 {
 	struct mlx5_priv *priv = dev->data->dev_private;
 	struct mlx5_dev_ctx_shared *sh = priv->sh;
+	uint32_t *flow_list = sft_flow_list(dev);
 
 	RTE_SET_USED(queue);
 	if (!priv->config.sft_en)
@@ -975,8 +984,8 @@ mlx5_sft_entry_destroy(struct rte_eth_dev *dev,
 		return rte_sft_error_set(error, EINVAL,
 					 RTE_SFT_ERROR_TYPE_UNSPECIFIED,
 					 NULL, NULL);
-	mlx5_sft_destroy_flow(dev, entry->sft_l0_flow);
-	mlx5_sft_destroy_flow(dev, entry->sft_l1_flow);
+	mlx5_flow_list_destroy(dev, flow_list, entry->sft_l0_flow);
+	mlx5_flow_list_destroy(dev, flow_list, entry->sft_l1_flow);
 	/* Entry index could be checked. */
 	ILIST_REMOVE(sh->ipool_sft[queue], &priv->sft_lists[queue],
 		     entry->idx, entry, next);
@@ -1032,7 +1041,8 @@ mlx5_sft_entry_modify(struct rte_eth_dev *dev, uint16_t queue,
 		      uint8_t state, struct rte_sft_error *error)
 {
 	struct mlx5_priv *priv = dev->data->dev_private;
-	struct rte_flow *l1_flow;
+	uint32_t *flow_list = sft_flow_list(dev);
+	uint32_t l1_flow;
 	int ret;
 
 	RTE_SET_USED(queue);
@@ -1047,7 +1057,7 @@ mlx5_sft_entry_modify(struct rte_eth_dev *dev, uint16_t queue,
 	l1_flow = entry->sft_l1_flow;
 	if (!mlx5_sft_add_l1_rules(dev, entry, rte_cpu_to_be_32(*data),
 				   state, error)) {
-		mlx5_sft_destroy_flow(dev, l1_flow);
+		mlx5_flow_list_destroy(dev, flow_list, l1_flow);
 		ret = 0;
 	} else {
 		entry->sft_l1_flow = l1_flow;
@@ -1071,13 +1081,15 @@ mlx5_sft_dbg_fid_flow(const struct rte_eth_dev *dev,
 
 	printf("[%s] SFT FLOW %u L0: ", direction, entry->fid);
 	memset(&count_data, 0, sizeof(count_data));
-	ret = rte_flow_query(dev->data->port_id, entry->sft_l0_flow,
+	ret = rte_flow_query(dev->data->port_id,
+			     (void *)(uintptr_t)entry->sft_l0_flow,
 			     query_action, &count_data, &flow_error);
 	if (!ret)
 		printf("hits: %" PRIu64 "\n", count_data.hits);
 	printf("[%s] SFT FLOW %u L1: ", direction, entry->fid);
 	memset(&count_data, 0, sizeof(count_data));
-	ret = rte_flow_query(dev->data->port_id, entry->sft_l1_flow,
+	ret = rte_flow_query(dev->data->port_id,
+			     (void *)(uintptr_t)entry->sft_l1_flow,
 			     query_action, &count_data, &flow_error);
 	if (!ret)
 		printf("hits: %" PRIu64 "\n", count_data.hits);
@@ -1093,7 +1105,7 @@ mlx5_sft_debug(const struct rte_eth_dev *dev, struct rte_sft_entry *entry[2],
 		[0] = { .type = RTE_FLOW_ACTION_TYPE_COUNT },
 		[1] = { .type = RTE_FLOW_ACTION_TYPE_END },
 	};
-	struct rte_flow *flow;
+	uint32_t flow;
 	const char *l0_flow_names[MLX5_SFT_L0_DFLT_FLOWS_NUM] = {
 		"default miss",
 		"ipv4 fragment",
@@ -1113,7 +1125,8 @@ mlx5_sft_debug(const struct rte_eth_dev *dev, struct rte_sft_entry *entry[2],
 			continue;
 		}
 		memset(&count_data, 0, sizeof(count_data));
-		ret = rte_flow_query(dev->data->port_id, flow,
+		ret = rte_flow_query(dev->data->port_id,
+				     (void *)(uintptr_t)flow,
 				     query_action, &count_data, &flow_error);
 		if (!ret) {
 			printf("  [%u]:%s:hits: %" PRIu64 "\n",
@@ -1128,7 +1141,8 @@ mlx5_sft_debug(const struct rte_eth_dev *dev, struct rte_sft_entry *entry[2],
 	flow = priv->sft_flows->l1_flow;
 	if (flow) {
 		memset(&count_data, 0, sizeof(count_data));
-		ret = rte_flow_query(dev->data->port_id, flow,
+		ret = rte_flow_query(dev->data->port_id,
+				     (void *)(uintptr_t)flow,
 				     query_action, &count_data, &flow_error);
 		if (!ret) {
 			printf("  [%u]:%s: hits: %" PRIu64 "\n",
@@ -1155,7 +1169,8 @@ mlx5_sft_query(const struct rte_eth_dev *dev, uint16_t queue,
 	RTE_SET_USED(queue);
 	RTE_SET_USED(error);
 
-	return rte_flow_query(dev->data->port_id, entry->sft_l0_flow,
+	return rte_flow_query(dev->data->port_id,
+			      (void *)(uintptr_t)entry->sft_l0_flow,
 			      query_action, data, NULL);
 }
 
@@ -1186,4 +1201,15 @@ mlx5_sft_ops_get(struct rte_eth_dev *dev __rte_unused, void *arg)
 {
 	*(const struct rte_sft_ops **)arg = &mlx5_sft_ops;
 	return 0;
+}
+
+void
+mlx5_sft_deactivate(struct rte_eth_dev *dev)
+{
+	struct mlx5_priv *priv = dev->data->dev_private;
+
+	if (priv->config.sft_en) {
+		struct rte_sft_error err;
+		mlx5_sft_stop(dev, &err);
+	}
 }

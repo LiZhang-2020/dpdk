@@ -1574,6 +1574,7 @@ mlx5_dev_close(struct rte_eth_dev *dev)
 	 * then this will return directly without any action.
 	 */
 	mlx5_flow_list_flush(dev, &priv->flows, true);
+	mlx5_sft_deactivate(dev);
 	mlx5_action_handle_flush(dev);
 	mlx5_flow_meter_flush(dev, NULL);
 	/* Prevent crashes when queues are still in use. */

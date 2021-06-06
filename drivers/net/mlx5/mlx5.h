@@ -1375,8 +1375,9 @@ enum {
  * default SFT flows
  */
 struct sft_flows {
-	struct rte_flow *l0_flows[MLX5_SFT_L0_DFLT_FLOWS_NUM];
-	struct rte_flow *l1_flow;
+	uint32_t l0_flows[MLX5_SFT_L0_DFLT_FLOWS_NUM];
+	uint32_t l1_flow;
+	uint32_t idx_list;
 };
 
 struct mlx5_priv {
@@ -1841,6 +1842,7 @@ int mlx5_aso_ct_query_by_wqe(struct mlx5_dev_ctx_shared *sh,
 			     struct rte_flow_action_conntrack *profile);
 int mlx5_aso_ct_available(struct mlx5_dev_ctx_shared *sh,
 			  struct mlx5_aso_ct_action *ct);
+void mlx5_sft_deactivate(struct rte_eth_dev *dev);
 
 
 /* mlx5_sft.c */

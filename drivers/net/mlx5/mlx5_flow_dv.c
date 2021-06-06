@@ -10561,12 +10561,12 @@ flow_dv_sft_create_cb(struct mlx5_hlist *list, uint64_t key64, void *cb_ctx)
 	sft_data->jump_group = sft_key.jump_group;
 	sft_data->port_id = sft_key.port_id;
 	/* Create an SFT flow */
-	sft_data->sft_flow_idx =
+	sft_data->l2_flow_idx =
 		mlx5_flow_add_post_sft_rule(dev,
 					    MLX5_FLOW_TABLE_SFT_L2,
 					    reg, sft_data->jump_group,
 					    0, error);
-	if (!sft_data->sft_flow_idx)
+	if (!sft_data->l2_flow_idx)
 		goto error;
 	return &sft_data->entry;
 error:
@@ -10596,13 +10596,15 @@ flow_dv_sft_remove_cb(struct mlx5_hlist *list,
 		      struct mlx5_hlist_entry *entry)
 {
 	struct rte_eth_dev *dev = list->ctx;
+	struct mlx5_priv *priv = dev->data->dev_private;
 	struct mlx5_dev_ctx_shared *sh = MLX5_SH(dev);
 	struct mlx5_flow_sft_data_entry *sft_data =
 		container_of(entry, struct mlx5_flow_sft_data_entry, entry);
 
 	MLX5_ASSERT(entry && sh);
 	if (sft_data->jump_group)
-		mlx5_flow_remove_post_sft_rule(dev, sft_data->sft_flow_idx);
+		mlx5_flow_list_destroy(dev, &priv->flows,
+				       sft_data->l2_flow_idx);
 	mlx5_ipool_free(sh->ipool[MLX5_IPOOL_SFT], sft_data->idx);
 }
 

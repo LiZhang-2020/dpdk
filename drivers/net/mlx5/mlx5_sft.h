@@ -27,10 +27,10 @@ struct rte_sft_entry {
 	ILIST_ENTRY(uint32_t)next;
 	uint32_t idx;
 	uint32_t fid;
+	uint32_t sft_l0_flow;
+	uint32_t sft_l1_flow;
 	union mlx5_sft_entry_flags flags;
 	uint64_t miss_conditions;
-	struct rte_flow *sft_l0_flow;
-	struct rte_flow *sft_l1_flow;
 };
 
 #define MLX5_SFT_QUEUE_MAX			(64)

@@ -1184,6 +1184,7 @@ mlx5_dev_stop(struct rte_eth_dev *dev)
 	mlx5_traffic_disable(dev);
 	/* All RX queue flags will be cleared in the flush interface. */
 	mlx5_flow_list_flush(dev, &priv->flows, true);
+	mlx5_sft_deactivate(dev);
 	mlx5_flow_meter_rxq_flush(dev);
 	mlx5_rx_intr_vec_disable(dev);
 	priv->sh->port[priv->dev_port - 1].ih_port_id = RTE_MAX_ETHPORTS;

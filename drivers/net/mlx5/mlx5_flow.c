@@ -6540,25 +6540,8 @@ mlx5_flow_add_post_sft_rule(struct rte_eth_dev *dev, uint32_t post_sft,
 			.type = RTE_FLOW_ACTION_TYPE_END,
 		},
 	};
-	return mlx5_flow_list_create(dev, &priv->ctrl_flows, &attr, pattern,
+	return mlx5_flow_list_create(dev, &priv->flows, &attr, pattern,
 				     actions, true, error);
-}
-
-/**
- * Remove the post SFT rule per table <G>
- *
- * @param dev
- *   Pointer to Ethernet device.
- * @param flow_idx
- *   Flow index to remove.
- *
- */
-void
-mlx5_flow_remove_post_sft_rule(struct rte_eth_dev *dev, uint32_t sft_flow_idx)
-{
-	struct mlx5_priv *priv = dev->data->dev_private;
-
-	mlx5_flow_list_destroy(dev, &priv->ctrl_flows, sft_flow_idx);
 }
 
 /**
