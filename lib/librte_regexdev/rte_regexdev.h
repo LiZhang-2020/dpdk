@@ -624,7 +624,7 @@ struct rte_regexdev_info {
 	const char *version_name;
 	/**< RegEx device version name.
 	 * The name specifies the actual device being used.
-	 * The input type may change based on the version.
+	 * The rules file type may change based on the version.
 	 */
 };
 
