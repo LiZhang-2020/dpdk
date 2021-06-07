@@ -44,7 +44,6 @@
 #define DEFAULT_RULES_BATCH     100000
 #define DEFAULT_GROUP                0
 #define METER_PROFILE_ALG_SRTCM_RFC2697    "srtcm_rfc2697"
-#define METER_PROFILE_ALG_SRTCMP           "srtcmp"
 #define DEFAULT_METER_PROFILE_ALG          METER_PROFILE_ALG_SRTCM_RFC2697
 
 struct rte_flow *flow;
@@ -72,7 +71,6 @@ static uint32_t rules_count;
 static uint32_t rules_batch;
 static uint32_t hairpin_queues_num; /* total hairpin q number - default: 0 */
 static uint32_t nb_lcores;
-static uint32_t mtr_profile_alg;
 
 #define MAX_PKT_BURST    32
 #define LCORE_MODE_PKT    1
@@ -136,8 +134,6 @@ usage(char *progname)
 	printf("  --enable-fwd: To enable packets forwarding"
 		" after insertion\n");
 	printf("  --portmask=N: hexadecimal bitmask of ports used\n");
-	printf("  --meter-profile-alg=str: to set the traffic metering"
-		" algorithm, default is %s\n", DEFAULT_METER_PROFILE_ALG);
 	printf("  --unique-data: flag to set using unique data for all"
 		" actions that support data, such as header modify and encap actions\n");
 
@@ -579,7 +575,6 @@ args_parse(int argc, char **argv)
 		{ "unique-data",                0, 0, 0 },
 		{ "portmask",                   1, 0, 0 },
 		{ "cores",                      1, 0, 0 },
-		{ "meter-profile-alg",          1, 0, 0 },
 		/* Attributes */
 		{ "ingress",                    0, 0, 0 },
 		{ "egress",                     0, 0, 0 },
@@ -808,17 +803,6 @@ args_parse(int argc, char **argv)
 						"Error: cores count must be > 0 and < %d\n",
 						RTE_MAX_LCORE);
 				}
-			}
-			if (strcmp(lgopts[opt_idx].name,
-					"meter-profile-alg") == 0) {
-				if (strcmp(optarg, "srtcm_rfc2697") == 0)
-					mtr_profile_alg = RTE_MTR_SRTCM_RFC2697;
-				else if (strcmp(optarg, "srtcmp") == 0)
-					mtr_profile_alg = RTE_MTR_SRTCMP;
-				else
-					rte_exit(EXIT_FAILURE, "\nError: not supported meter profile algorithm %s\n"
-						 "Current supported algorithms are: [%s, %s]\n",
-						 optarg, METER_PROFILE_ALG_SRTCM_RFC2697, METER_PROFILE_ALG_SRTCMP);
 			}
 			break;
 		default:
@@ -1069,17 +1053,11 @@ create_meter_profile(void)
 		/* If port outside portmask */
 		if (!((ports_mask >> port_id) & 0x1))
 			continue;
-		if (mtr_profile_alg == RTE_MTR_SRTCMP) {
-			mp.alg = RTE_MTR_SRTCMP;
-			mp.srtcmp.cir = METER_CIR;
-			mp.srtcmp.cbs = METER_CIR / 8;
-			mp.srtcmp.ebs = 0;
-		} else {
-			mp.alg = RTE_MTR_SRTCM_RFC2697;
-			mp.srtcm_rfc2697.cir = METER_CIR;
-			mp.srtcm_rfc2697.cbs = METER_CIR / 8;
-			mp.srtcm_rfc2697.ebs = 0;
-		}
+		mp.alg = RTE_MTR_SRTCM_RFC2697;
+		mp.srtcm_rfc2697.cir = METER_CIR;
+		mp.srtcm_rfc2697.cbs = METER_CIR / 8;
+		mp.srtcm_rfc2697.ebs = 0;
+
 		ret = rte_mtr_meter_profile_add
 			(port_id, DEFAULT_METER_PROF_ID, &mp, &error);
 		if (ret != 0) {

@@ -11,7 +11,6 @@ extern cmdline_parse_inst_t cmd_show_port_meter_cap;
 extern cmdline_parse_inst_t cmd_add_port_meter_profile_srtcm;
 extern cmdline_parse_inst_t cmd_add_port_meter_profile_trtcm;
 extern cmdline_parse_inst_t cmd_add_port_meter_profile_trtcm_rfc4115;
-extern cmdline_parse_inst_t cmd_add_port_meter_profile_srtcmp;
 extern cmdline_parse_inst_t cmd_del_port_meter_profile;
 extern cmdline_parse_inst_t cmd_create_port_meter;
 extern cmdline_parse_inst_t cmd_enable_port_meter;

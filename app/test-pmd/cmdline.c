@@ -698,9 +698,6 @@ static void cmd_help_long_parsed(void *parsed_result,
 			"add port meter profile trtcm_rfc4115 (port_id) (profile_id) (cir) (eir) (cbs) (ebs) (packet_mode)\n"
 			"    meter profile add - trtcm rfc 4115\n\n"
 
-			"add port meter profile srtcmp (port_id) (profile_id) (cir) (cbs) (ebs)\n"
-			"    meter profile add - srtcmp packet per second\n\n"
-
 			"del port meter profile (port_id) (profile_id)\n"
 			"    meter profile delete\n\n"
 
@@ -16982,7 +16979,6 @@ cmdline_parse_ctx_t main_ctx[] = {
 	(cmdline_parse_inst_t *)&cmd_show_port_meter_cap,
 	(cmdline_parse_inst_t *)&cmd_add_port_meter_profile_srtcm,
 	(cmdline_parse_inst_t *)&cmd_add_port_meter_profile_trtcm,
-	(cmdline_parse_inst_t *)&cmd_add_port_meter_profile_srtcmp,
 	(cmdline_parse_inst_t *)&cmd_del_port_meter_profile,
 	(cmdline_parse_inst_t *)&cmd_create_port_meter,
 	(cmdline_parse_inst_t *)&cmd_enable_port_meter,

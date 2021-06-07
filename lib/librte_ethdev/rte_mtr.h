@@ -120,11 +120,6 @@ enum rte_mtr_algorithm {
 
 	/** Two Rate Three Color Marker (trTCM) - IETF RFC 4115. */
 	RTE_MTR_TRTCM_RFC4115,
-
-	/** Single Rate Three Color Marker, Packet based (srTCMp).
-	 * - - similar to IETF RFC 2697 but rate is packet per second.
-	 */
-	RTE_MTR_SRTCMP,
 };
 
 /**
@@ -192,20 +187,6 @@ struct rte_mtr_meter_profile {
 			/** Excess Burst Size (EBS) (bytes or packets). */
 			uint64_t ebs;
 		} trtcm_rfc4115;
-
-		/** Items only valid when *alg* is set to srTCMp. */
-		struct {
-			/** Committed Information Rate (CIR)
-			 * (packets/second).
-			 */
-			uint64_t cir;
-
-			/** Committed Burst Size (CBS) (packets). */
-			uint64_t cbs;
-
-			/** Excess Burst Size (EBS) (packets). */
-			uint64_t ebs;
-		} srtcmp;
 	};
 
 	/**
@@ -357,13 +338,6 @@ struct rte_mtr_capabilities {
 	 * metering algorithm is not supported. The maximum value is *n_max*.
 	 */
 	uint32_t meter_trtcm_rfc4115_n_max;
-
-	/** Maximum number of MTR objects that can have their meter configured
-	 * to run the srTCMp algorithm. The value of 0
-	 * indicates this metering algorithm is not supported.
-	 * The maximum value is *n_max*.
-	 */
-	uint32_t meter_srtcmp_n_max;
 
 	/** Maximum traffic rate that can be metered by a single MTR object. For
 	 * srTCM RFC 2697, this is the maximum CIR rate. For trTCM RFC 2698,

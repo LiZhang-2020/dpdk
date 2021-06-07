@@ -256,8 +256,6 @@ static void cmd_show_port_meter_cap_parsed(void *parsed_result,
 		cap.meter_trtcm_rfc2698_n_max);
 	printf("cap.meter_trtcm_rfc4115_n_max %" PRIu32 "\n",
 		cap.meter_trtcm_rfc4115_n_max);
-	printf("cap.meter_srtcmp_n_max %" PRIu32 "\n",
-		cap.meter_srtcmp_n_max);
 	printf("cap.meter_rate_max %" PRIu64 "\n", cap.meter_rate_max);
 	printf("cap.color_aware_srtcm_rfc2697_supported %" PRId32 "\n",
 		cap.color_aware_srtcm_rfc2697_supported);
@@ -633,107 +631,6 @@ cmdline_parse_inst_t cmd_add_port_meter_profile_trtcm_rfc4115 = {
 		(void *)&cmd_add_port_meter_profile_trtcm_rfc4115_cbs,
 		(void *)&cmd_add_port_meter_profile_trtcm_rfc4115_ebs,
 		(void *)&cmd_add_port_meter_profile_trtcm_rfc4115_packet_mode,
-		NULL,
-	},
-};
-
-/* *** Add Port Meter Profile srtcmp *** */
-struct cmd_add_port_meter_profile_srtcmp_result {
-	cmdline_fixed_string_t add;
-	cmdline_fixed_string_t port;
-	cmdline_fixed_string_t meter;
-	cmdline_fixed_string_t profile;
-	cmdline_fixed_string_t srtcmp;
-	uint16_t port_id;
-	uint32_t profile_id;
-	uint64_t cir;
-	uint64_t cbs;
-	uint64_t ebs;
-};
-
-cmdline_parse_token_string_t cmd_add_port_meter_profile_srtcmp_add =
-	TOKEN_STRING_INITIALIZER(
-		struct cmd_add_port_meter_profile_srtcmp_result, add, "add");
-cmdline_parse_token_string_t cmd_add_port_meter_profile_srtcmp_port =
-	TOKEN_STRING_INITIALIZER(
-		struct cmd_add_port_meter_profile_srtcmp_result,
-			port, "port");
-cmdline_parse_token_string_t cmd_add_port_meter_profile_srtcmp_meter =
-	TOKEN_STRING_INITIALIZER(
-		struct cmd_add_port_meter_profile_srtcmp_result,
-			meter, "meter");
-cmdline_parse_token_string_t cmd_add_port_meter_profile_srtcmp_profile =
-	TOKEN_STRING_INITIALIZER(
-		struct cmd_add_port_meter_profile_srtcmp_result,
-			profile, "profile");
-cmdline_parse_token_string_t cmd_add_port_meter_profile_srtcmp_srtcmp =
-	TOKEN_STRING_INITIALIZER(
-		struct cmd_add_port_meter_profile_srtcmp_result,
-			srtcmp, "srtcmp");
-cmdline_parse_token_num_t cmd_add_port_meter_profile_srtcmp_port_id =
-	TOKEN_NUM_INITIALIZER(
-		struct cmd_add_port_meter_profile_srtcmp_result,
-			port_id, RTE_UINT16);
-cmdline_parse_token_num_t cmd_add_port_meter_profile_srtcmp_profile_id =
-	TOKEN_NUM_INITIALIZER(
-		struct cmd_add_port_meter_profile_srtcmp_result,
-			profile_id, RTE_UINT32);
-cmdline_parse_token_num_t cmd_add_port_meter_profile_srtcmp_cir =
-	TOKEN_NUM_INITIALIZER(
-		struct cmd_add_port_meter_profile_srtcmp_result,
-			cir, RTE_UINT64);
-cmdline_parse_token_num_t cmd_add_port_meter_profile_srtcmp_cbs =
-	TOKEN_NUM_INITIALIZER(
-		struct cmd_add_port_meter_profile_srtcmp_result,
-			cbs, RTE_UINT64);
-cmdline_parse_token_num_t cmd_add_port_meter_profile_srtcmp_ebs =
-	TOKEN_NUM_INITIALIZER(
-		struct cmd_add_port_meter_profile_srtcmp_result,
-			ebs, RTE_UINT64);
-
-static void cmd_add_port_meter_profile_srtcmp_parsed(void *parsed_result,
-	__rte_unused struct cmdline *cl,
-	__rte_unused void *data)
-{
-	struct cmd_add_port_meter_profile_srtcmp_result *res = parsed_result;
-	struct rte_mtr_meter_profile mp;
-	struct rte_mtr_error error;
-	uint32_t profile_id = res->profile_id;
-	uint16_t port_id = res->port_id;
-	int ret;
-
-	if (port_id_is_invalid(port_id, ENABLED_WARN))
-		return;
-
-	/* Private shaper profile params */
-	memset(&mp, 0, sizeof(struct rte_mtr_meter_profile));
-	mp.alg = RTE_MTR_SRTCMP;
-	mp.srtcmp.cir = res->cir;
-	mp.srtcmp.cbs = res->cbs;
-	mp.srtcmp.ebs = res->ebs;
-
-	ret = rte_mtr_meter_profile_add(port_id, profile_id, &mp, &error);
-	if (ret != 0) {
-		print_err_msg(&error);
-		return;
-	}
-}
-
-cmdline_parse_inst_t cmd_add_port_meter_profile_srtcmp = {
-	.f = cmd_add_port_meter_profile_srtcmp_parsed,
-	.data = NULL,
-	.help_str = "add port meter profile srtcmp <port_id> <profile_id> <cir> <cbs> <ebs>",
-	.tokens = {
-		(void *)&cmd_add_port_meter_profile_srtcmp_add,
-		(void *)&cmd_add_port_meter_profile_srtcmp_port,
-		(void *)&cmd_add_port_meter_profile_srtcmp_meter,
-		(void *)&cmd_add_port_meter_profile_srtcmp_profile,
-		(void *)&cmd_add_port_meter_profile_srtcmp_srtcmp,
-		(void *)&cmd_add_port_meter_profile_srtcmp_port_id,
-		(void *)&cmd_add_port_meter_profile_srtcmp_profile_id,
-		(void *)&cmd_add_port_meter_profile_srtcmp_cir,
-		(void *)&cmd_add_port_meter_profile_srtcmp_cbs,
-		(void *)&cmd_add_port_meter_profile_srtcmp_ebs,
 		NULL,
 	},
 };

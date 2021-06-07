@@ -2755,21 +2755,6 @@ where:
 * ``ebs``: Excess burst size (bytes or packets).
 * ``packet_mode``: Packets mode for meter profile.
 
-add port meter profile (srTcmp)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Add meter profile (srTcmp) to the ethernet device::
-
-   testpmd> add port meter profile srtcmp (port_id) (profile_id) \
-   (cir) (cbs) (ebs)
-
-where:
-
-* ``profile_id``: ID for the meter profile.
-* ``cpr``: Committed Information Rate (CIR) (packets/second).
-* ``cbs``: Committed Burst Size (CBS) (packets).
-* ``ebs``: Excess Burst Size (EBS) (packets).
-
 delete port meter profile
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
