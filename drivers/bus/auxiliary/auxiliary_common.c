@@ -106,7 +106,7 @@ rte_auxiliary_probe_one_driver(struct rte_auxiliary_driver *dr,
 	}
 
 	if (dev->device.numa_node < 0) {
-		AUXILIARY_LOG(WARNING, "  Invalid NUMA socket, default to 0\n");
+		AUXILIARY_LOG(INFO, "  Device is not NUMA-aware, defaulting socket to 0\n");
 		dev->device.numa_node = 0;
 	}
 
