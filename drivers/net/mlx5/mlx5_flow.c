@@ -3154,8 +3154,14 @@ flow_null_validate(struct rte_eth_dev *dev __rte_unused,
 		   int hairpin __rte_unused,
 		   struct rte_flow_error *error)
 {
+	/*
+	 * The driver type is set to MLX5_FLOW_TYPE_MAX, might be due to an old
+	 * rdma-core version or running as non-root without setting
+	 * capabilities.
+	 */
 	return rte_flow_error_set(error, ENOTSUP,
-				  RTE_FLOW_ERROR_TYPE_UNSPECIFIED, NULL, NULL);
+			RTE_FLOW_ERROR_TYPE_UNSPECIFIED, NULL,
+			"SW steering advanced flow features not supported.");
 }
 
 static struct mlx5_flow *
@@ -3166,7 +3172,8 @@ flow_null_prepare(struct rte_eth_dev *dev __rte_unused,
 		  struct rte_flow_error *error)
 {
 	rte_flow_error_set(error, ENOTSUP,
-			   RTE_FLOW_ERROR_TYPE_UNSPECIFIED, NULL, NULL);
+			RTE_FLOW_ERROR_TYPE_UNSPECIFIED, NULL,
+			"SW steering advanced flow features not supported.");
 	return NULL;
 }
 
@@ -3179,7 +3186,8 @@ flow_null_translate(struct rte_eth_dev *dev __rte_unused,
 		    struct rte_flow_error *error)
 {
 	return rte_flow_error_set(error, ENOTSUP,
-				  RTE_FLOW_ERROR_TYPE_UNSPECIFIED, NULL, NULL);
+			RTE_FLOW_ERROR_TYPE_UNSPECIFIED, NULL,
+			"SW steering advanced flow features not supported.");
 }
 
 static int
@@ -3188,7 +3196,8 @@ flow_null_apply(struct rte_eth_dev *dev __rte_unused,
 		struct rte_flow_error *error)
 {
 	return rte_flow_error_set(error, ENOTSUP,
-				  RTE_FLOW_ERROR_TYPE_UNSPECIFIED, NULL, NULL);
+			RTE_FLOW_ERROR_TYPE_UNSPECIFIED, NULL,
+			"SW steering advanced flow features not supported.");
 }
 
 static void
@@ -3211,7 +3220,8 @@ flow_null_query(struct rte_eth_dev *dev __rte_unused,
 		struct rte_flow_error *error)
 {
 	return rte_flow_error_set(error, ENOTSUP,
-				  RTE_FLOW_ERROR_TYPE_UNSPECIFIED, NULL, NULL);
+			RTE_FLOW_ERROR_TYPE_UNSPECIFIED, NULL,
+			"SW steering advanced flow features not supported.");
 }
 
 static int
