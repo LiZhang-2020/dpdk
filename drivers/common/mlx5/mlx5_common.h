@@ -214,10 +214,14 @@ check_cqe(volatile struct mlx5_cqe *cqe, const uint16_t cqes_n,
 }
 
 /*
- * Get PCI address string from EAL device.
+ * Get PCI address <DBDF> string from EAL device.
  *
+ * @param[out] addr
+ *	The output address buffer string
+ * @param[in] size
+ *	The output buffer size
  * @return
- *   - Copied string length on success.
+ *   - 0 on success.
  *   - Negative value and rte_errno is set otherwise.
  */
 __rte_internal
