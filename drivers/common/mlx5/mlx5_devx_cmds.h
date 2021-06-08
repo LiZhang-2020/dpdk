@@ -133,6 +133,7 @@ struct mlx5_hca_attr {
 	uint32_t roce:1;
 	uint32_t rq_ts_format:2;
 	uint32_t sq_ts_format:2;
+	uint32_t steering_format_version:4;
 	uint32_t qp_ts_format:2;
 	uint32_t regexp_params:1;
 	uint32_t regexp_mmo:1;
