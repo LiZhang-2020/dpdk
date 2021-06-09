@@ -1383,22 +1383,32 @@ mlx5_os_get_stats_n(struct rte_eth_dev *dev)
 	struct mlx5_priv *priv = dev->data->dev_private;
 	struct ethtool_drvinfo drvinfo;
 	struct ifreq ifr;
-	int ret;
+	int ret, i;
+	uint32_t max = 0;
 
 	drvinfo.cmd = ETHTOOL_GDRVINFO;
 	ifr.ifr_data = (caddr_t)&drvinfo;
-	if (priv->master && priv->pf_bond >= 0)
-		/* Bonding PF. */
-		ret = mlx5_ifreq_by_ifname(priv->sh->bond.ports[0].ifname,
-					   SIOCETHTOOL, &ifr);
-	else
+	if (!priv->master || priv->pf_bond < 0) {
 		ret = mlx5_ifreq(dev, SIOCETHTOOL, &ifr);
-	if (ret) {
-		DRV_LOG(WARNING, "port %u unable to query number of statistics",
-			dev->data->port_id);
-		return ret;
+		if (ret) {
+			DRV_LOG(WARNING, "port %u unable to query number of statistics",
+				dev->data->port_id);
+			return ret;
+		}
+		return drvinfo.n_stats;
 	}
-	return drvinfo.n_stats;
+	/* Bonding member ports might have different counter number, get max. */
+	for (i = 0; i < priv->sh->bond.n_port; i++) {
+		ret = mlx5_ifreq_by_ifname(priv->sh->bond.ports[i].ifname,
+					   SIOCETHTOOL, &ifr);
+		if (ret) {
+			DRV_LOG(WARNING, "port %u unable to get pf %u statistic names",
+				dev->data->port_id, i);
+			return ret;
+		}
+		max = RTE_MAX(max, drvinfo.n_stats);
+	}
+	return max;
 }
 
 static const struct mlx5_counter_ctrl mlx5_counters_init[] = {
