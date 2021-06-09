@@ -476,6 +476,7 @@ enum mlx5_flow_fate_type {
 	MLX5_FLOW_FATE_DEFAULT_MISS,
 	MLX5_FLOW_FATE_SHARED_RSS,
 	MLX5_FLOW_FATE_SFT,
+	MLX5_FLOW_FATE_MTR,
 	MLX5_FLOW_FATE_MAX,
 };
 
@@ -1145,6 +1146,10 @@ struct mlx5_flow_workspace {
 		    struct rte_flow_error *error);
 	void *cb_param; /* Post flow callback parameter. */
 	struct mlx5_flow_meter_info *fm; /* Pointer to the meter in flow. */
+	struct mlx5_flow_meter_policy *policy;
+	/* The meter policy used by meter in flow. */
+	struct mlx5_flow_meter_policy *final_policy;
+	/* The final policy when meter policy is hierarchy. */
 	uint32_t skip_matcher_reg:1;
 	/* Indicates if need to skip matcher register in translate. */
 };
