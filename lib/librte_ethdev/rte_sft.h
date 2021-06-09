@@ -976,7 +976,7 @@ rte_sft_flow_get_client_obj(uint16_t queue, const uint32_t fid,
  */
 __rte_experimental
 int
-rte_sft_drain_fragment_mbuf(uint16_t queue, uintptr_t frag_ctx,
+rte_sft_drain_fragment_mbuf(uint16_t queue, uint32_t zone, uintptr_t frag_ctx,
 			    uint16_t num_to_drain, struct rte_mbuf **mbuf_out,
 			    struct rte_sft_flow_status *status,
 			    struct rte_sft_error *error);

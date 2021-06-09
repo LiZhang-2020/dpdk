@@ -64,14 +64,27 @@ static struct {
 
 #define SFT_OFFLOAD_QUERY_REPL_ERROR (1ul << 0)
 #define SFT_OFFLOAD_QUERY_INIT_ERROR (1ul << 1)
+/*
+ * The default IP fragments timeout in Linux is 30 sec
+ */
+#define SFT_DEFAULT_IPFRAG_TIMEOUT 30
+
+static __rte_always_inline bool
+is_first_ipv4_frag(const struct rte_ipv4_hdr *h)
+{
+	uint16_t frag = rte_be_to_cpu_16(h->fragment_offset);
+	return (frag & RTE_IPV4_HDR_MF_FLAG) &&
+	       ((frag & RTE_IPV4_HDR_OFFSET_MASK) == 0);
+}
 
 static inline uint64_t
 sft_calc_max_ipfrag_cycles(void)
 {
-	uint64_t one_sec = rte_get_tsc_hz();
-	uint64_t cycles = one_sec * sft_priv->conf.ipfrag_timeout;
-
-	return cycles;
+	uint64_t one_sec_cycles = rte_get_tsc_hz();
+	uint64_t ipfrag_timeout = sft_priv->conf.ipfrag_timeout ?
+				  sft_priv->conf.ipfrag_timeout :
+				  SFT_DEFAULT_IPFRAG_TIMEOUT;
+	return one_sec_cycles * ipfrag_timeout;
 }
 
 static void
@@ -167,7 +180,6 @@ retry:
 		status->nb_ip_fragments = fp->last_idx - 1;
 		smb->m_out = fp->frags[IP_FIRST_FRAG_IDX].mb;
 		smb->m_in = smb->m_out;
-		fp->frags[IP_FIRST_FRAG_IDX].mb = NULL;
 	} else {
 		status->nb_ip_fragments = 0;
 		smb->m_out = NULL;
@@ -382,13 +394,12 @@ stp_parse_ipv6(struct rte_sft_mbuf_info *mif, struct rte_sft_error *error)
 	return 0;
 }
 
-
 static int
 stp_parse_ipv4(struct rte_sft_mbuf_info *mif, struct rte_sft_error *error)
 {
-	mif->is_fragment = !!(mif->ip4->fragment_offset
-			   & rte_cpu_to_be_16(RTE_IPV4_HDR_FRAGMENT_MASK));
-	if (!mif->is_fragment) {
+	mif->is_fragment = !!(mif->ip4->fragment_offset &
+			      rte_cpu_to_be_16(RTE_IPV4_HDR_FRAGMENT_MASK));
+	if (!mif->is_fragment || is_first_ipv4_frag(mif->ip4)) {
 		mif->l4_hdr =
 			(const uint8_t *)mif->ip4 + rte_ipv4_hdr_len(mif->ip4);
 		mif->l4_protocol = mif->ip4->next_proto_id;
@@ -396,7 +407,7 @@ stp_parse_ipv4(struct rte_sft_mbuf_info *mif, struct rte_sft_error *error)
 		case IPPROTO_UDP:
 			mif->data_len = rte_be_to_cpu_16(mif->ip4->total_length)
 					- rte_ipv4_hdr_len(mif->ip4)
-					- sizeof(struct rte_tcp_hdr);
+					- sizeof(struct rte_udp_hdr);
 			break;
 		case IPPROTO_TCP:
 			mif->data_len = rte_be_to_cpu_16(mif->ip4->total_length)
@@ -483,7 +494,7 @@ rte_sft_mbuf_stpl(const struct rte_mbuf *m, struct rte_sft_mbuf_info *mif,
 		stpl->flow_5tuple.proto = mif->ip6->proto;
 		break;
 	}
-	if (!mif->is_fragment) {
+	if (!mif->is_fragment || is_first_ipv4_frag(mif->ip4)) {
 		switch (stpl->flow_5tuple.proto) {
 		case IPPROTO_TCP:
 			stpl->flow_5tuple.src_port = mif->tcp->src_port;
@@ -2029,21 +2040,92 @@ rte_sft_drain_mbuf(uint16_t queue, uint32_t fid,
 	return ret;
 }
 
+static void
+sft_ipfrag_release_key(uint16_t queue, uintptr_t frag_ctx)
+{
+	struct ip_frag_pkt *fp = (typeof(fp))frag_ctx;
+	fp->key.key_len = 0; /* invalidate key */
+	rte_ip_frag_release_collected(fp, &sft_priv->ipfrag[queue].dr);
+}
+
+static void
+sft_ipfrag_flush(uint16_t queue, uintptr_t frag_ctx)
+{
+	struct ip_frag_pkt *fp = (typeof(fp))frag_ctx;
+	uint32_t fx;
+
+	for (fx = 0; fx < IP_MAX_FRAG_NUM; fx++) {
+		if (fp->frags[fx].mb) {
+			rte_pktmbuf_free(fp->frags[fx].mb);
+			fp->frags[fx].mb = NULL;
+		}
+	}
+	fp->last_idx = 0;
+	sft_ipfrag_release_key(queue, frag_ctx);
+}
+
 int
-rte_sft_drain_fragment_mbuf(uint16_t queue, uintptr_t frag_ctx,
+rte_sft_drain_fragment_mbuf(uint16_t queue, uint32_t zone, uintptr_t frag_ctx,
 			    uint16_t num_to_drain, struct rte_mbuf **mbuf_out,
 			    struct rte_sft_flow_status *status,
 			    struct rte_sft_error *error)
 {
 	struct ip_frag_pkt *fp = (typeof(fp))frag_ctx;
-	uint32_t fx, i;
-
+	struct rte_sft_decode_info decode_info = {{ 0 }, };
+	struct rte_sft_mbuf_info mif = { NULL, };
+	struct sft_mbuf smb;
+	struct sft_lib_entry *entry;
+	uint32_t fx, i, frag_num;
+	int ret = 0;
 	RTE_SET_USED(queue);
 	RTE_SET_USED(error);
-	if (!fp->key.locked)
+	if (!fp || !fp->key.locked)
 		return rte_sft_error_set(error, EINVAL,
 					 RTE_SFT_ERROR_TYPE_UNSPECIFIED, NULL,
 					 "invalid IP fragments context");
+	if (fp->frags[IP_FIRST_FRAG_IDX].mb) {
+		smb.m_in = smb.m_out = fp->frags[IP_FIRST_FRAG_IDX].mb;
+		fp->frags[IP_FIRST_FRAG_IDX].mb = NULL;
+		ret = rte_sft_parse_mbuf(smb.m_in, &mif, NULL, error);
+		if (ret) {
+			sft_ipfrag_flush(queue, frag_ctx);
+			return rte_sft_error_set(error, EINVAL,
+						 RTE_SFT_ERROR_TYPE_UNSPECIFIED,
+						 NULL, "cannot parse mbuf");
+		}
+		entry = sft_stpl_to_entry(queue, &smb, &mif, zone, status,
+					  error);
+		if (!entry) {
+			sft_ipfrag_flush(queue, frag_ctx);
+			return rte_sft_error_set(error, EINVAL,
+						 RTE_SFT_ERROR_TYPE_UNSPECIFIED,
+						 NULL, "no active flow");
+		} else if (entry->zone != zone) {
+			sft_ipfrag_flush(queue, frag_ctx);
+			return rte_sft_error_set(error, EINVAL,
+						 RTE_SFT_ERROR_TYPE_UNSPECIFIED,
+						 NULL, "zones not match");
+		}
+		for (fx = IP_FIRST_FRAG_IDX + 1;
+		     fx != IP_FIRST_FRAG_IDX;
+		     fx = (fx + 1) % IP_MAX_FRAG_NUM) {
+			struct rte_sft_mbuf_info fif = { NULL, };
+			if (!fp->frags[fx].mb)
+				continue;
+			ret = rte_sft_parse_mbuf(fp->frags[fx].mb, &fif, NULL,
+						 error);
+			if (ret) {
+				sft_ipfrag_flush(queue, frag_ctx);
+				return rte_sft_error_set
+					(error, EINVAL,
+					 RTE_SFT_ERROR_TYPE_UNSPECIFIED,
+					 NULL, "cannot parse fragment mbuf");
+			}
+			mif.data_len += fif.data_len;
+		}
+		sft_process_entry(&smb, &mif, &decode_info, entry, status,
+				  error);
+	}
 	for (fx = IP_FIRST_FRAG_IDX + 1, i = 0;
 	     fx != IP_FIRST_FRAG_IDX && i < num_to_drain;
 	     fx = (fx + 1) % IP_MAX_FRAG_NUM) {
@@ -2053,8 +2135,14 @@ rte_sft_drain_fragment_mbuf(uint16_t queue, uintptr_t frag_ctx,
 		fp->frags[fx].mb = NULL;
 	}
 	status->nb_ip_fragments = i;
-	if (!i)
-		rte_ip_frag_release_collected(fp, &sft_priv->ipfrag[queue].dr);
+	for (fx = 0, frag_num = 0; fx < IP_FIRST_FRAG_IDX; fx++) {
+		if (fp->frags[fx].mb)
+			frag_num++;
+	}
+	if (!frag_num) {
+		fp->last_idx = 0;
+		sft_ipfrag_release_key(queue, frag_ctx);
+	}
 	return 0;
 }
 
