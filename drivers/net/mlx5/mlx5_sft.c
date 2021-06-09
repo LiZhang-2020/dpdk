@@ -42,6 +42,7 @@ sft_fragment_flow(struct rte_eth_dev *dev, const struct rte_flow_item pattern[],
 	const union sft_mark mark = {
 		.zone_valid = 1,
 		.fragment = 1,
+		.app_state = RTE_SFT_APP_ERR_STATE
 	};
 	const struct rte_flow_action actions[] = {
 		[0] = {
@@ -60,9 +61,9 @@ sft_fragment_flow(struct rte_eth_dev *dev, const struct rte_flow_item pattern[],
 				MLX5_RTE_FLOW_ACTION_TYPE_TAG,
 			.conf = &(const struct mlx5_rte_flow_action_set_tag){
 				.id = (enum modify_reg)state_reg,
-				.data = RTE_SFT_APP_ERR_STATE,
-				.length = 8,
-				.offset = 16
+				.data = mark.val,
+				.length = MLX5_REG_BITS,
+				.offset = 0
 			}
 		},
 		[3] = {
@@ -263,6 +264,10 @@ mlx5_create_sft_l1_miss_flow(struct rte_eth_dev *dev)
 	int state_reg = mlx5_flow_get_reg_id(dev, MLX5_SFT_APP_STATE, 0,
 					     &rte_err);
 	uint32_t *flow_list = sft_flow_list(dev);
+	const union sft_mark mark = {
+		.fid_valid = 1,
+		.app_state = RTE_SFT_APP_ERR_STATE,
+	};
 	const struct rte_flow_attr l1_attr = {
 		.ingress = 1,
 		.group = MLX5_FLOW_TABLE_SFT_L1,
@@ -287,9 +292,9 @@ mlx5_create_sft_l1_miss_flow(struct rte_eth_dev *dev)
 				MLX5_RTE_FLOW_ACTION_TYPE_TAG,
 			.conf = &(const struct mlx5_rte_flow_action_set_tag){
 				.id = (enum modify_reg)state_reg,
-				.data = RTE_SFT_APP_ERR_STATE,
-				.length = 8,
-				.offset = 16
+				.data = mark.val,
+				.length = MLX5_REG_BITS,
+				.offset = 0
 			}
 		},
 		[2] = {
@@ -652,14 +657,12 @@ mlx5_sft_add_l1_rules(struct rte_eth_dev *dev, struct rte_sft_entry *entry,
 		      struct rte_sft_error *error)
 {
 	struct rte_flow_error rte_err;
-	const union mlx5_sft_entry_flags *flags = &entry->flags;
 	const struct rte_flow_attr l1_attr = {
 		.ingress = 1,
 		.group = MLX5_FLOW_TABLE_SFT_L1,
 	};
 	const union sft_mark mark = {
 		.fid_valid = 1,
-		.zone_valid = 1,
 		.app_state = state,
 	};
 	int fid_reg = mlx5_flow_get_reg_id(dev, MLX5_SFT_FID, 0, &rte_err);
@@ -681,29 +684,8 @@ mlx5_sft_add_l1_rules(struct rte_eth_dev *dev, struct rte_sft_entry *entry,
 				.data = UINT32_MAX
 			}
 		},
-		[1] = {
-			.type = RTE_FLOW_ITEM_TYPE_ETH,
-			.spec = NULL, .last = NULL, .mask = NULL
-		},
-		[2] = {
-			.type = flags->ipv4 ?
-				RTE_FLOW_ITEM_TYPE_IPV4 :
-				RTE_FLOW_ITEM_TYPE_IPV6,
-			.spec = NULL, .last = NULL, .mask = NULL
-		},
-		[3] = {
-			.type = RTE_FLOW_ITEM_TYPE_TCP,
-			.spec = &(struct rte_flow_item_tcp) {
-				.hdr.tcp_flags = RTE_TCP_ACK_FLAG
-			},
-			.mask = &(struct rte_flow_item_tcp) {
-				.hdr.tcp_flags = RTE_TCP_FIN_FLAG |
-						 RTE_TCP_SYN_FLAG |
-						 RTE_TCP_RST_FLAG |
-						 RTE_TCP_ACK_FLAG
-			}
-		},
-		[4] = { .type = RTE_FLOW_ITEM_TYPE_END }
+		[1] = { .type = RTE_FLOW_ITEM_TYPE_ETH },
+		[2] = { .type = RTE_FLOW_ITEM_TYPE_END }
 	};
 	const struct rte_flow_action l1_actions[] = {
 		[0] = {
@@ -744,8 +726,6 @@ mlx5_sft_add_l1_rules(struct rte_eth_dev *dev, struct rte_sft_entry *entry,
 		rte_sft_error_set(error, rte_errno,
 				  RTE_SFT_ERROR_TYPE_UNSPECIFIED,
 				  NULL, "failed fetch fid register");
-	if (!entry->miss_conditions)
-		l1_pattern[1].type = RTE_FLOW_ITEM_TYPE_END;
 	entry->sft_l1_flow = mlx5_flow_list_create(dev, flow_list, &l1_attr,
 						   l1_pattern, l1_actions,
 						   false, &rte_err);
@@ -820,14 +800,13 @@ mlx5_sft_add_l0_rules(struct sft_entry_ctx *ctx, struct rte_sft_entry *entry,
 			.mask = UINT32_MAX
 		}
 	};
-	mark.zone_valid = 1;
 	ctx->l0_actions[i++] = (typeof(ctx->l0_actions[0])) {
 		.type = (enum rte_flow_action_type)
 			MLX5_RTE_FLOW_ACTION_TYPE_TAG,
 		.conf = &(struct mlx5_rte_flow_action_set_tag){
 			.id = (enum modify_reg)state_reg,
 			.data = mark.val,
-			.length = 16,
+			.length = MLX5_REG_BITS,
 			.offset = 0
 		}
 	};
