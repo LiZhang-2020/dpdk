@@ -64,7 +64,9 @@ static const struct {
 	unsigned int drv_class;
 } mlx5_classes[] = {
 	{ .name = "vdpa", .drv_class = MLX5_CLASS_VDPA },
-	{ .name = "net", .drv_class = MLX5_CLASS_NET },
+	{ .name = "eth", .drv_class = MLX5_CLASS_ETH },
+	/* Keep class "net" for backward compatibility. */
+	{ .name = "net", .drv_class = MLX5_CLASS_ETH },
 	{ .name = "regex", .drv_class = MLX5_CLASS_REGEX },
 };
 
@@ -156,7 +158,7 @@ parse_class_options(const struct rte_devargs *devargs)
 }
 
 static const unsigned int mlx5_class_invalid_combinations[] = {
-	MLX5_CLASS_NET | MLX5_CLASS_VDPA,
+	MLX5_CLASS_ETH | MLX5_CLASS_VDPA,
 	/* New class combination should be added here. */
 };
 
@@ -305,7 +307,7 @@ mlx5_common_dev_probe(struct rte_device *eal_dev)
 	classes = ret;
 	if (classes == 0)
 		/* Default to net class. */
-		classes = MLX5_CLASS_NET;
+		classes = MLX5_CLASS_ETH;
 	dev = to_mlx5_device(eal_dev);
 	if (!dev) {
 		dev = rte_zmalloc("mlx5_common_device", sizeof(*dev), 0);
