@@ -1281,6 +1281,8 @@ enum {
 			(1ULL << MLX5_OBJ_TYPE_GENEVE_TLV_OPT)
 #define MLX5_GENERAL_OBJ_TYPES_CAP_CONN_TRACK_OFFLOAD \
 			(1ULL << MLX5_GENERAL_OBJ_TYPE_CONN_TRACK_OFFLOAD)
+#define MLX5_GENERAL_OBJ_TYPES_CAP_RTC \
+			(1ULL << MLX5_GENERAL_OBJ_TYPE_RTC)
 #define MLX5_GENERAL_OBJ_TYPES_CAP_DEK \
 			(1ULL << MLX5_GENERAL_OBJ_TYPE_DEK)
 #define MLX5_GENERAL_OBJ_TYPES_CAP_IMPORT_KEK \
@@ -2774,6 +2776,7 @@ enum {
 	MLX5_GENERAL_OBJ_TYPE_FLOW_METER_ASO = 0x0024,
 	MLX5_GENERAL_OBJ_TYPE_FLOW_HIT_ASO = 0x0025,
 	MLX5_GENERAL_OBJ_TYPE_CONN_TRACK_OFFLOAD = 0x0031,
+	MLX5_GENERAL_OBJ_TYPE_RTC = 0x0034, // TODO valex value not from PRM
 };
 
 struct mlx5_ifc_general_obj_in_cmd_hdr_bits {
@@ -2815,6 +2818,42 @@ struct mlx5_ifc_geneve_tlv_option_bits {
 	u8 reserved_at_78[0x3];
 	u8 option_data_length[0x5];
 	u8 reserved_at_80[0x180];
+};
+
+enum mlx5_ifc_rtc_update_mode {
+	MLX5_IFC_RTC_STE_UPDATE_MODE_BY_HASH = 0x0,
+	MLX5_IFC_RTC_STE_UPDATE_MODE_BY_OFFSET = 0x1,
+};
+
+enum mlx5_ifc_rtc_ste_format {
+	MLX5_IFC_RTC_STE_FORMAT_8DW = 0x4,
+	MLX5_IFC_RTC_STE_FORMAT_11DW = 0x5,
+};
+
+struct mlx5_ifc_rtc_bits {
+	u8 modify_field_select[0x40];
+	u8 reserved_at_40[0x40];
+	u8 update_index_mode[0x2];
+	u8 reserved_at_82[0x6];
+	u8 pd[0x18];
+	u8 reserved_at_a0[0x10];
+	u8 log_depth[0x8];
+	u8 log_hash_size[0x8];
+	u8 ste_format[0x8];
+	u8 table_type[0x8];
+	u8 reserved_at_d0[0x10];
+	u8 match_definer_id[0x20];
+	u8 stc_id[0x20];
+	u8 ste_table_base_id[0x20];
+	u8 ste_table_offset[0x20];
+	u8 reserved_at_160[0x8];
+	u8 miss_flow_table_id[0x18];
+	u8 reserved_at_180[0x80];
+};
+
+struct mlx5_ifc_create_rtc_in_bits {
+        struct mlx5_ifc_general_obj_in_cmd_hdr_bits hdr;
+        struct mlx5_ifc_rtc_bits rtc;
 };
 
 struct mlx5_ifc_create_virtio_q_counters_in_bits {
