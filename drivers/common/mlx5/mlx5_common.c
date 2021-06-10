@@ -93,28 +93,65 @@ driver_get(uint32_t class)
 }
 
 static int
-parse_class_option(const struct rte_devargs *devargs)
+devargs_class_handler(__rte_unused const char *key,
+		      const char *class_names, void *opaque)
 {
-	const char *cls;
-	struct rte_kvargs *kvlist = NULL;
+	int *ret = opaque;
+	int class_val;
+	char *scratch;
+	char *scratch_ref;
+	char *found;
+	char *refstr = NULL;
+
+	*ret = 0;
+	scratch = strdup(class_names);
+	if (!scratch) {
+		*ret = -ENOMEM;
+		return *ret;
+	}
+	scratch_ref = scratch;
+	found = strtok_r(scratch, ":", &refstr);
+	if (!found)
+		/* Empty string. */
+		goto err;
+	do {
+		/* Extract each individual class name. Multiple
+		 * classes can be supplied as class=net:regex:foo:bar.
+		 */
+		class_val = class_name_to_value(found);
+		/* Check if its a valid class. */
+		if (class_val < 0) {
+			*ret = -EINVAL;
+			goto err;
+		}
+		*ret |= class_val;
+		found = strtok_r(NULL, ":", &refstr);
+	} while (found);
+err:
+	free(scratch_ref);
+	if (*ret < 0)
+		DRV_LOG(ERR, "Invalid mlx5 class options: %s.\n", class_names);
+	return *ret;
+}
+
+static int
+parse_class_options(const struct rte_devargs *devargs)
+{
+	struct rte_kvargs *kvlist;
 	int ret = 0;
 
 	if (devargs == NULL)
 		return 0;
-	if (devargs->cls != NULL) {
-		/* Global syntax. */
-		cls = devargs->cls->name;
-	} else {
-		/* Legacy syntax. */
-		kvlist = rte_kvargs_parse(devargs->args, NULL);
-		if (kvlist == NULL)
-			return -EINVAL;
-		cls = rte_kvargs_get(kvlist, RTE_DEVARGS_KEY_CLASS);
-	}
-	if (cls != NULL)
-		ret = class_name_to_value(cls);
-	if (kvlist != NULL)
-		rte_kvargs_free(kvlist);
+	if (devargs->cls != NULL && devargs->cls->name != NULL)
+		/* Global syntax, only one class type. */
+		return class_name_to_value(devargs->cls->name);
+	/* Legacy devargs support multiple classes. */
+	kvlist = rte_kvargs_parse(devargs->args, NULL);
+	if (kvlist == NULL)
+		return 0;
+	rte_kvargs_process(kvlist, RTE_DEVARGS_KEY_CLASS,
+			   devargs_class_handler, &ret);
+	rte_kvargs_free(kvlist);
 	return ret;
 }
 
@@ -254,21 +291,21 @@ int
 mlx5_common_dev_probe(struct rte_device *eal_dev)
 {
 	struct mlx5_common_device *dev;
-	uint32_t user_class = 0;
+	uint32_t classes = 0;
 	bool new_device = false;
 	int ret;
 
 	DRV_LOG(INFO, "probe device \"%s\".", eal_dev->name);
-	ret = parse_class_option(eal_dev->devargs);
+	ret = parse_class_options(eal_dev->devargs);
 	if (ret < 0) {
 		DRV_LOG(ERR, "Unsupported mlx5 class type: %s",
 			eal_dev->devargs->args);
 		return ret;
 	}
-	user_class = ret;
-	if (user_class == 0)
+	classes = ret;
+	if (classes == 0)
 		/* Default to net class. */
-		user_class = MLX5_CLASS_NET;
+		classes = MLX5_CLASS_NET;
 	dev = to_mlx5_device(eal_dev);
 	if (!dev) {
 		dev = rte_zmalloc("mlx5_common_device", sizeof(*dev), 0);
@@ -279,14 +316,14 @@ mlx5_common_dev_probe(struct rte_device *eal_dev)
 		new_device = true;
 	} else {
 		/* Validate combination here. */
-		ret = is_valid_class_combination(user_class |
+		ret = is_valid_class_combination(classes |
 						 dev->classes_loaded);
 		if (ret != 0) {
-			DRV_LOG(ERR, "Unsupported mlx5 classes supplied.");
+			DRV_LOG(ERR, "Unsupported mlx5 classes combination.");
 			return ret;
 		}
 	}
-	ret = drivers_probe(dev, user_class);
+	ret = drivers_probe(dev, classes);
 	if (ret)
 		goto class_err;
 	return 0;
