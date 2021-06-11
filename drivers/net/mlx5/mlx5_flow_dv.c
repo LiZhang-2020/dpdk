@@ -326,6 +326,41 @@ mlx5_flow_tunnel_ip_check(const struct rte_flow_item *item __rte_unused,
 	}
 }
 
+static inline struct mlx5_hlist *
+flow_dv_hlist_prepare(struct mlx5_dev_ctx_shared *sh, struct mlx5_hlist **phl,
+		     const char *name, uint32_t size, bool direct_key,
+		     bool lcores_share, void *ctx,
+		     mlx5_list_create_cb cb_create,
+		     mlx5_list_match_cb cb_match,
+		     mlx5_list_remove_cb cb_remove,
+		     mlx5_list_clone_cb cb_clone,
+		     mlx5_list_clone_free_cb cb_clone_free)
+{
+	struct mlx5_hlist *hl;
+	struct mlx5_hlist *expected = NULL;
+	char s[MLX5_NAME_SIZE];
+
+	hl = __atomic_load_n(phl, __ATOMIC_SEQ_CST);
+	if (likely(hl))
+		return hl;
+	snprintf(s, sizeof(s), "%s_%s", sh->ibdev_name, name);
+	hl = mlx5_hlist_create(s, size, direct_key, lcores_share,
+			ctx, cb_create, cb_match, cb_remove, cb_clone,
+			cb_clone_free);
+	if (!hl) {
+		DRV_LOG(ERR, "%s hash creation failed", name);
+		rte_errno = ENOMEM;
+		return NULL;
+	}
+	if (!__atomic_compare_exchange_n(phl, &expected, hl, false,
+					 __ATOMIC_SEQ_CST,
+					 __ATOMIC_SEQ_CST)) {
+		mlx5_hlist_destroy(hl);
+		hl = __atomic_load_n(phl, __ATOMIC_SEQ_CST);
+	}
+	return hl;
+}
+
 /* Update VLAN's VID/PCP based on input rte_flow_action.
  *
  * @param[in] action
@@ -3768,8 +3803,20 @@ flow_dv_encap_decap_resource_register
 		.error = error,
 		.data = resource,
 	};
+	struct mlx5_hlist *encaps_decaps;
 	uint64_t key64;
 
+	encaps_decaps = flow_dv_hlist_prepare(sh, &sh->encaps_decaps,
+				"encaps_decaps",
+				MLX5_FLOW_ENCAP_DECAP_HTABLE_SZ,
+				true, true, sh,
+				flow_dv_encap_decap_create_cb,
+				flow_dv_encap_decap_match_cb,
+				flow_dv_encap_decap_remove_cb,
+				flow_dv_encap_decap_clone_cb,
+				flow_dv_encap_decap_clone_free_cb);
+	if (unlikely(!encaps_decaps))
+		return -rte_errno;
 	resource->flags = dev_flow->dv.group ? 0 : 1;
 	key64 =  __rte_raw_cksum(&encap_decap_key.v32,
 				 sizeof(encap_decap_key.v32), 0);
@@ -3777,7 +3824,7 @@ flow_dv_encap_decap_resource_register
 	    MLX5DV_FLOW_ACTION_PACKET_REFORMAT_TYPE_L2_TUNNEL_TO_L2 &&
 	    resource->size)
 		key64 = __rte_raw_cksum(resource->buf, resource->size, key64);
-	entry = mlx5_hlist_register(sh->encaps_decaps, key64, &ctx);
+	entry = mlx5_hlist_register(encaps_decaps, key64, &ctx);
 	if (!entry)
 		return -rte_errno;
 	resource = container_of(entry, typeof(*resource), entry);
@@ -5918,8 +5965,20 @@ flow_dv_modify_hdr_resource_register
 		.error = error,
 		.data = resource,
 	};
+	struct mlx5_hlist *modify_cmds;
 	uint64_t key64;
 
+	modify_cmds = flow_dv_hlist_prepare(sh, &sh->modify_cmds,
+				"hdr_modify",
+				MLX5_FLOW_HDR_MODIFY_HTABLE_SZ,
+				true, false, sh,
+				flow_dv_modify_create_cb,
+				flow_dv_modify_match_cb,
+				flow_dv_modify_remove_cb,
+				flow_dv_modify_clone_cb,
+				flow_dv_modify_clone_free_cb);
+	if (unlikely(!modify_cmds))
+		return -rte_errno;
 	resource->root = !dev_flow->dv.group;
 	if (resource->actions_num > flow_dv_modify_hdr_action_max(dev,
 								resource->root))
@@ -5927,7 +5986,7 @@ flow_dv_modify_hdr_resource_register
 					  RTE_FLOW_ERROR_TYPE_ACTION, NULL,
 					  "too many modify header items");
 	key64 = __rte_raw_cksum(&resource->ft_type, key_len, 0);
-	entry = mlx5_hlist_register(sh->modify_cmds, key64, &ctx);
+	entry = mlx5_hlist_register(modify_cmds, key64, &ctx);
 	if (!entry)
 		return -rte_errno;
 	resource = container_of(entry, typeof(*resource), entry);
@@ -10885,7 +10944,20 @@ flow_dv_sft_resource_get(struct rte_eth_dev *dev,
 		.data = &jump_group,
 		.data2 = &port_id,
 	};
-	entry = mlx5_hlist_register(priv->sh->flow_sfts, sft_key.val, &ctx);
+	struct mlx5_hlist *flow_sfts;
+
+	flow_sfts = flow_dv_hlist_prepare(priv->sh, &priv->sh->flow_sfts,
+				"sfts_table",
+				MLX5_FLOW_SFT_HLIST_ARRAY_SIZE,
+				false, true, dev,
+				flow_dv_sft_create_cb,
+				flow_dv_sft_match_cb,
+				flow_dv_sft_remove_cb,
+				flow_dv_sft_clone_cb,
+				flow_dv_sft_clone_free_cb);
+	if (unlikely(!flow_sfts))
+		return NULL;
+	entry = mlx5_hlist_register(flow_sfts, sft_key.val, &ctx);
 	if (!entry) {
 		rte_flow_error_set(error, ENOMEM,
 				   RTE_FLOW_ERROR_TYPE_UNSPECIFIED, NULL,
@@ -11227,8 +11299,20 @@ flow_dv_tag_resource_register
 					.error = error,
 					.data = &tag_be24,
 					};
+	struct mlx5_hlist *tag_table;
 
-	entry = mlx5_hlist_register(priv->sh->tag_table, tag_be24, &ctx);
+	tag_table = flow_dv_hlist_prepare(priv->sh, &priv->sh->tag_table,
+				      "tags",
+				      MLX5_TAGS_HLIST_ARRAY_SIZE,
+				      false, false, priv->sh,
+				      flow_dv_tag_create_cb,
+				      flow_dv_tag_match_cb,
+				      flow_dv_tag_remove_cb,
+				      flow_dv_tag_clone_cb,
+				      flow_dv_tag_clone_free_cb);
+	if (unlikely(!tag_table))
+		return -rte_errno;
+	entry = mlx5_hlist_register(tag_table, tag_be24, &ctx);
 	if (entry) {
 		resource = container_of(entry, struct mlx5_flow_dv_tag_resource,
 					entry);
