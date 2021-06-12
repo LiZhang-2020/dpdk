@@ -8,7 +8,7 @@ if not is_linux
 endif
 
 config_flag_fmt = 'RTE_LIBRTE_@0@_COMMON'
-deps += ['hash', 'pci', 'bus_pci', 'net', 'eal', 'kvargs']
+deps += ['hash', 'pci', 'bus_pci', 'bus_auxiliary', 'net', 'eal', 'kvargs']
 sources += files(
 	'mlx5_devx_cmds.c',
 	'mlx5_common.c',

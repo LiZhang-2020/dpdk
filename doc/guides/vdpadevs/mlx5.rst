@@ -173,6 +173,18 @@ Devargs example
 
   -a auxiliary:mlx5_core.sf.2,class=vdpa
 
+Devargs example
+^^^^^^^^^^^^^^^
+
+- PCI devargs::
+
+  -a 0000:03:00.2,class=vdpa
+
+- Auxiliary devargs::
+
+  -a auxiliary:mlx5_core.sf.2,class=vdpa
+
+
 Error handling
 ^^^^^^^^^^^^^^
 

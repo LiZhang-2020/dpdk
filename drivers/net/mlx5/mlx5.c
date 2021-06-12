@@ -38,6 +38,8 @@
 #include "mlx5_flow_os.h"
 #include "rte_pmd_mlx5.h"
 
+#define MLX5_ETH_DRIVER_NAME mlx5_eth
+
 /* Device parameter to enable RX completion queue compression. */
 #define MLX5_RXQ_CQE_COMP_EN "rxq_cqe_comp_en"
 
@@ -1160,6 +1162,7 @@ mlx5_alloc_shared_dev_ctx(const struct mlx5_dev_spawn_data *spawn,
 		rte_errno  = ENOMEM;
 		goto exit;
 	}
+	sh->numa_node = spawn->numa_node;
 	if (spawn->bond_info)
 		sh->bond = *spawn->bond_info;
 	err = mlx5_os_open_device(spawn, config, sh);
@@ -2158,18 +2161,20 @@ mlx5_set_min_inline(struct mlx5_dev_spawn_data *spawn,
 	if (config->txq_inline_min != MLX5_ARG_UNSET &&
 	    spawn->pci_dev != NULL) {
 		/* Application defines size of inlined data explicitly. */
-		switch (spawn->pci_dev->id.device_id) {
-		case PCI_DEVICE_ID_MELLANOX_CONNECTX4:
-		case PCI_DEVICE_ID_MELLANOX_CONNECTX4VF:
-			if (config->txq_inline_min <
-				       (int)MLX5_INLINE_HSIZE_L2) {
-				DRV_LOG(DEBUG,
-					"txq_inline_mix aligned to minimal"
-					" ConnectX-4 required value %d",
-					(int)MLX5_INLINE_HSIZE_L2);
-				config->txq_inline_min = MLX5_INLINE_HSIZE_L2;
+		if (spawn->pci_dev != NULL) {
+			switch (spawn->pci_dev->id.device_id) {
+			case PCI_DEVICE_ID_MELLANOX_CONNECTX4:
+			case PCI_DEVICE_ID_MELLANOX_CONNECTX4VF:
+				if (config->txq_inline_min <
+					       (int)MLX5_INLINE_HSIZE_L2) {
+					DRV_LOG(DEBUG,
+						"txq_inline_mix aligned to minimal ConnectX-4 required value %d",
+						(int)MLX5_INLINE_HSIZE_L2);
+					config->txq_inline_min =
+							MLX5_INLINE_HSIZE_L2;
+				}
+				break;
 			}
-			break;
 		}
 		goto exit;
 	}
@@ -2536,7 +2541,7 @@ static const struct rte_pci_id mlx5_pci_id_map[] = {
 
 static struct mlx5_class_driver mlx5_net_driver = {
 	.drv_class = MLX5_CLASS_ETH,
-	.name = "mlx5_eth",
+	.name = RTE_STR(MLX5_ETH_DRIVER_NAME),
 	.id_table = mlx5_pci_id_map,
 	.probe = mlx5_os_net_probe,
 	.remove = mlx5_net_remove,
@@ -2564,6 +2569,6 @@ RTE_INIT(rte_mlx5_pmd_init)
 		mlx5_class_driver_register(&mlx5_net_driver);
 }
 
-RTE_PMD_EXPORT_NAME(net_mlx5, __COUNTER__);
-RTE_PMD_REGISTER_PCI_TABLE(net_mlx5, mlx5_pci_id_map);
-RTE_PMD_REGISTER_KMOD_DEP(net_mlx5, "* ib_uverbs & mlx5_core & mlx5_ib");
+RTE_PMD_EXPORT_NAME(MLX5_ETH_DRIVER_NAME, __COUNTER__);
+RTE_PMD_REGISTER_PCI_TABLE(MLX5_ETH_DRIVER_NAME, mlx5_pci_id_map);
+RTE_PMD_REGISTER_KMOD_DEP(MLX5_ETH_DRIVER_NAME, "* ib_uverbs & mlx5_core & mlx5_ib");

@@ -131,6 +131,7 @@ struct mlx5_dev_spawn_data {
 	uint32_t max_port; /**< Device maximal port index. */
 	uint32_t phys_port; /**< Device physical port index. */
 	int pf_bond; /**< bonding device PF index. < 0 - no bonding */
+	int numa_node; /**< Device numa node. */
 	struct mlx5_switch_info info; /**< Switch information. */
 	void *phys_dev; /**< Associated physical device. */
 	struct rte_eth_dev *eth_dev; /**< Associated Ethernet device. */

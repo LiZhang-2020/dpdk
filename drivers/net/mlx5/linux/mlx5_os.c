@@ -1346,7 +1346,7 @@ err_secondary:
 #endif
 	if (spawn->max_port > UINT8_MAX) {
 		/* Verbs can't support ports larger than 255 by design. */
-		DRV_LOG(ERR, "can't support IB ports > 255");
+		DRV_LOG(ERR, "can't support IB ports > UINT8_MAX");
 		err = EINVAL;
 		goto error;
 	}
@@ -2583,6 +2583,7 @@ mlx5_os_pci_probe_pf(struct rte_pci_device *pci_dev,
 		dev_config.dv_validate_mod = 0;
 		dev_config.sft_en = 1;
 		dev_config.sft_dbg = 0;
+		list[i].numa_node = pci_dev->device.numa_node;
 		list[i].eth_dev = mlx5_dev_spawn(&pci_dev->device,
 						 &list[i],
 						 &dev_config,
@@ -2747,13 +2748,16 @@ mlx5_os_auxiliary_probe(struct rte_device *dev)
 	/* Init spawn data. */
 	spawn.max_port = 1;
 	spawn.phys_port = 1;
-	spawn.phys_dev = mlx5_get_ibv_device(dev);
+	spawn.phys_dev = mlx5_os_get_ibv_dev(dev);
+	if (spawn.phys_dev == NULL)
+		return -rte_errno;
 	ret = mlx5_auxiliary_get_ifindex(dev->name);
 	if (ret < 0) {
 		DRV_LOG(ERR, "failed to get ethdev ifindex: %s", dev->name);
 		return ret;
 	}
 	spawn.ifindex = ret;
+	spawn.numa_node = dev->numa_node;
 	/* Spawn device. */
 	eth_dev = mlx5_dev_spawn(dev, &spawn, &config, &eth_da);
 	if (eth_dev == NULL)
@@ -2770,7 +2774,7 @@ mlx5_os_auxiliary_probe(struct rte_device *dev)
 }
 
 /**
- * Common bus driver callback to probe a device.
+ * Net class driver callback to probe a device.
  *
  * This function probe PCI bus device(s) or a single SF on auxiliary bus.
  *

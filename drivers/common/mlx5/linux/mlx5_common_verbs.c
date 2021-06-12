@@ -17,17 +17,18 @@
 #include "mlx5_common_utils.h"
 #include "mlx5_common_private.h"
 #include "mlx5_autoconf.h"
+#include "mlx5_common_os.h"
 #include <mlx5_glue.h>
 #include <mlx5_common.h>
 #include <mlx5_common_mr.h>
 
 struct ibv_device *
-mlx5_get_ibv_device(const struct rte_device *dev)
+mlx5_os_get_ibv_dev(const struct rte_device *dev)
 {
 	struct ibv_device *ibv;
 
 	if (mlx5_dev_is_pci(dev))
-		ibv = mlx5_get_pci_ibv_device(&RTE_DEV_TO_PCI_CONST(dev)->addr);
+		ibv = mlx5_os_get_ibv_device(&RTE_DEV_TO_PCI_CONST(dev)->addr);
 	else
 		ibv = mlx5_get_aux_ibv_device(RTE_DEV_TO_AUXILIARY_CONST(dev));
 	if (ibv == NULL) {

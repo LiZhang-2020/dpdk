@@ -312,9 +312,9 @@ mlx5_net_dma_unmap(struct rte_device *rte_dev, void *addr,
 		return -1;
 	}
 	LIST_REMOVE(mr, mr);
-	mlx5_mr_free(mr, sh->share_cache.dereg_mr_cb);
 	DEBUG("port %u remove MR(%p) from list", dev->data->port_id,
 	      (void *)mr);
+	mlx5_mr_free(mr, sh->share_cache.dereg_mr_cb);
 	mlx5_mr_rebuild_cache(&sh->share_cache);
 	/*
 	 * Flush local caches by propagating invalidation across cores.

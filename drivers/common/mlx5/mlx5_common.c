@@ -94,19 +94,17 @@ devargs_class_handler(__rte_unused const char *key,
 	int *ret = opaque;
 	int class_val;
 	char *scratch;
-	char *scratch_ref;
 	char *found;
 	char *refstr = NULL;
 
 	*ret = 0;
 	scratch = strdup(class_names);
-	if (!scratch) {
+	if (scratch == NULL) {
 		*ret = -ENOMEM;
 		return *ret;
 	}
-	scratch_ref = scratch;
 	found = strtok_r(scratch, ":", &refstr);
-	if (!found)
+	if (found == NULL)
 		/* Empty string. */
 		goto err;
 	do {
@@ -121,9 +119,9 @@ devargs_class_handler(__rte_unused const char *key,
 		}
 		*ret |= class_val;
 		found = strtok_r(NULL, ":", &refstr);
-	} while (found);
+	} while (found != NULL);
 err:
-	free(scratch_ref);
+	free(scratch);
 	if (*ret < 0)
 		DRV_LOG(ERR, "Invalid mlx5 class options: %s.\n", class_names);
 	return *ret;
@@ -720,4 +718,4 @@ exit:
 	return uar;
 }
 
-RTE_PMD_EXPORT_NAME(mlx5_class_driver, __COUNTER__);
+RTE_PMD_EXPORT_NAME(mlx5_common_driver, __COUNTER__);

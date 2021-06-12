@@ -10,6 +10,7 @@
 #include <rte_pci.h>
 #include <rte_debug.h>
 #include <rte_atomic.h>
+#include <rte_rwlock.h>
 #include <rte_log.h>
 #include <rte_kvargs.h>
 #include <rte_devargs.h>
@@ -17,6 +18,7 @@
 
 #include "mlx5_prm.h"
 #include "mlx5_devx_cmds.h"
+#include "mlx5_common_os.h"
 
 /* Reported driver name. */
 #define MLX5_PCI_DRIVER_NAME "mlx5_pci"
@@ -136,10 +138,6 @@ enum {
 	PCI_DEVICE_ID_MELLANOX_CONNECTX7BF = 0Xa2dc,
 };
 
-struct ibv_device;
-
-__rte_internal
-struct ibv_device *mlx5_get_ibv_device(const struct rte_device *dev);
 
 __rte_internal
 int mlx5_auxiliary_get_child_name(const char *dev, const char *node,
@@ -315,7 +313,7 @@ extern uint8_t haswell_broadwell_cpu;
 __rte_internal
 void mlx5_common_init(void);
 
-/**
+/*
  * Common Driver Interface
  * ConnectX common driver supports multiple classes: net,vdpa,regex,crypto and
  * compress devices. This layer enables creating such multiple class of devices
@@ -404,13 +402,14 @@ typedef int (mlx5_class_driver_dma_unmap_t)(struct rte_device *dev, void *addr,
  */
 struct mlx5_class_driver {
 	TAILQ_ENTRY(mlx5_class_driver) next;
-	enum mlx5_class drv_class;                /**< Class of this driver. */
-	const char *name;                         /**< Driver name. */
-	mlx5_class_driver_probe_t *probe;         /**< Device Probe function. */
-	mlx5_class_driver_remove_t *remove;       /**< Device Remove function. */
-	mlx5_class_driver_dma_map_t *dma_map;	  /**< device dma map function. */
-	mlx5_class_driver_dma_unmap_t *dma_unmap; /**< device dma unmap function. */
-	const struct rte_pci_id *id_table;        /**< ID table, NULL terminated. */
+	enum mlx5_class drv_class;            /**< Class of this driver. */
+	const char *name;                     /**< Driver name. */
+	mlx5_class_driver_probe_t *probe;     /**< Device probe function. */
+	mlx5_class_driver_remove_t *remove;   /**< Device remove function. */
+	mlx5_class_driver_dma_map_t *dma_map; /**< Device DMA map function. */
+	mlx5_class_driver_dma_unmap_t *dma_unmap;
+	/**< Device DMA unmap function. */
+	const struct rte_pci_id *id_table;    /**< ID table, NULL terminated. */
 	uint32_t probe_again:1;
 	/**< Device already probed can be probed again to check new device. */
 	uint32_t intr_lsc:1; /**< Supports link state interrupt. */
@@ -429,7 +428,7 @@ void
 mlx5_class_driver_register(struct mlx5_class_driver *driver);
 
 /**
- * Test a device is PCI bus device.
+ * Test device is a PCI bus device.
  *
  * @param dev
  *   Pointer to device.

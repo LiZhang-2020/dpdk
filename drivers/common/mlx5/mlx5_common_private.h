@@ -2,8 +2,8 @@
  * Copyright 2021 Mellanox Technologies, Ltd
  */
 
-#ifndef _MLX5_COMMON_PRIVATE_H_
-#define _MLX5_COMMON_PRIVATE_H_
+#ifndef MLX5_COMMON_PRIVATE_H
+#define MLX5_COMMON_PRIVATE_H
 
 #include <rte_pci.h>
 #include <rte_bus_auxiliary.h>
@@ -35,7 +35,6 @@ void mlx5_common_pci_init(void);
 void mlx5_common_driver_on_register_pci(struct mlx5_class_driver *driver);
 bool mlx5_dev_pci_match(const struct mlx5_class_driver *drv,
 			const struct rte_device *dev);
-struct ibv_device *mlx5_get_pci_ibv_device(const struct rte_pci_addr *addr);
 
 /* Common auxiliary bus driver: */
 void mlx5_common_auxiliary_init(void);
@@ -48,4 +47,4 @@ int mlx5_auxiliary_get_pci_str(const struct rte_auxiliary_device *dev,
 }
 #endif /* __cplusplus */
 
-#endif /* _MLX5_COMMON_PRIVATE_H_ */
+#endif /* MLX5_COMMON_PRIVATE_H */

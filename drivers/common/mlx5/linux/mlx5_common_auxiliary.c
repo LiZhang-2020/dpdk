@@ -118,7 +118,7 @@ mlx5_get_aux_ibv_device(const struct rte_auxiliary_device *dev)
 	}
 	if (mlx5_auxiliary_get_child_name(dev->name, "/infiniband",
 					  ib_name, sizeof(ib_name)) != 0)
-		return NULL;
+		goto out;
 	while (n-- > 0) {
 		if (strcmp(ibv_list[n]->name, ib_name) != 0)
 			continue;
@@ -127,6 +127,7 @@ mlx5_get_aux_ibv_device(const struct rte_auxiliary_device *dev)
 	}
 	if (ibv_match == NULL)
 		rte_errno = ENOENT;
+out:
 	mlx5_glue->free_device_list(ibv_list);
 	return ibv_match;
 }

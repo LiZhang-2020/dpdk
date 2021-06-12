@@ -645,7 +645,7 @@ mlx5_vdpa_dev_probe(struct rte_device *dev)
 	}
 	/* Wait for the IB device to appear again after reload. */
 	for (retry = MLX5_VDPA_MAX_RETRIES; retry > 0; --retry) {
-		ibv = mlx5_get_ibv_device(dev);
+		ibv = mlx5_os_get_ibv_dev(dev);
 		if (ibv != NULL)
 			break;
 		usleep(MLX5_VDPA_USEC);

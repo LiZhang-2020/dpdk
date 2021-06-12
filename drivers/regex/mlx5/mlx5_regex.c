@@ -114,7 +114,7 @@ mlx5_regex_dev_probe(struct rte_device *rte_dev)
 	char name[RTE_REGEXDEV_NAME_MAX_LEN];
 	int ret;
 
-	ibv = mlx5_get_ibv_device(rte_dev);
+	ibv = mlx5_os_get_ibv_dev(rte_dev);
 	if (ibv == NULL)
 		return -rte_errno;
 	DRV_LOG(INFO, "Probe device \"%s\".", ibv->name);

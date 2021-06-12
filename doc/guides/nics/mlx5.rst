@@ -108,6 +108,7 @@ Features
 - SubFunction and SubFunction representor
 - Flow integrity offload API.
 - Shared Rx queue.
+- Sub-Function.
 
 Limitations
 -----------
@@ -1451,8 +1452,8 @@ the DPDK application.
 
         echo switchdev > /sys/class/net/<net device>/compat/devlink/mode
 
-SubFunction support
--------------------
+Sub-Function support
+--------------------
 SubFunction is a portion of the PCI device, a SF netdev has its own
 dedicated queues(txq, rxq). A SF shares PCI level resources with other SFs
 and/or with its parent PCI function.
@@ -1488,10 +1489,12 @@ and/or with its parent PCI function.
 
         auxiliary:mlx5_core.sf.<num>,dv_flow_en=1
 
-SubFunction representor support
--------------------------------
-A SF netdev supports E-Switch representation offload similar to existing PF
-and VF representors. Use <sfnum> to probe SF representor.
+Sub-Function representor support
+--------------------------------
+
+A SF netdev supports E-Switch representation offload
+similar to PF and VF representors.
+Use <sfnum> to probe SF representor::
 
         testpmd> port attach <PCI_BDF>,representor=sf<sfnum>,dv_flow_en=1
 
