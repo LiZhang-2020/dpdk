@@ -5,10 +5,16 @@
 #ifndef MLX5DR_CONTEXT_H_
 #define MLX5DR_CONTEXT_H_
 
+enum mlx5dr_context_flags {
+	MLX5DR_CONTEXT_FLAG_PRIVATE_PD = 1 << 0,
+};
+
 struct mlx5dr_context {
 	struct ibv_context *ibv_ctx;
 	struct ibv_pd *pd;
-	struct mlx5dr_send_engine *send_ring[];
+	uint32_t pd_num;
+	//struct mlx5dr_send_engine *send_ring[];
+	enum mlx5dr_context_flags flags;
 };
 
 #endif
