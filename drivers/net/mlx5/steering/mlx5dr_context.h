@@ -6,7 +6,8 @@
 #define MLX5DR_CONTEXT_H_
 
 enum mlx5dr_context_flags {
-	MLX5DR_CONTEXT_FLAG_PRIVATE_PD = 1 << 0,
+	MLX5DR_CONTEXT_FLAG_HWS_SUPPORT = 1 << 0,
+	MLX5DR_CONTEXT_FLAG_PRIVATE_PD = 1 << 1,
 };
 
 struct mlx5dr_context {

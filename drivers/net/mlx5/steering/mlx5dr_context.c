@@ -64,6 +64,8 @@ static int mlx5dr_context_hws_supp(struct mlx5dr_context *ctx)
 	// TODO check supp general obj STE-ID
 	// TODO check wqe_based_flow_update
 
+	ctx->flags |= MLX5DR_CONTEXT_FLAG_HWS_SUPPORT;
+
 	return ret;
 }
 
