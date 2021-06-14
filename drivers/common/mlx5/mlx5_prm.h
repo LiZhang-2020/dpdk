@@ -3940,7 +3940,8 @@ struct mlx5_ifc_flow_table_context_bits {
 	u8 termination_table[0x1];
 	u8 table_miss_action[0x4];
 	u8 level[0x8];
-	u8 reserved_at_10[0x8];
+	u8 wqe_based_flow_update[0x1];
+	u8 reserved_at_11[0x7];
 	u8 log_size[0x8];
 
 	u8 reserved_at_20[0x8];

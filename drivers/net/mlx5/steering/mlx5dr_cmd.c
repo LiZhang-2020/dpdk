@@ -18,6 +18,8 @@ mlx5dr_cmd_flow_table_create(struct ibv_context *ctx,
 
 	ft_ctx = MLX5_ADDR_OF(create_flow_table_in, in, flow_table_context);
 	MLX5_SET(flow_table_context, ft_ctx, level, ft_attr->level);
+	MLX5_SET(flow_table_context, ft_ctx, wqe_based_flow_update,
+		 ft_attr->wqe_based_flow_update);
 
 	return mlx5_glue->devx_obj_create(ctx, in, sizeof(in), out, sizeof(out));
 }
