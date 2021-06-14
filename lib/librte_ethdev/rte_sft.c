@@ -1641,18 +1641,18 @@ sft_query_alarm(void *param)
 			memset(&init_cnt, 0, sizeof(init_cnt));
 			ret = sft_flow_query(entry, &repl_cnt, &init_cnt, NULL);
 			if (!(ret & SFT_OFFLOAD_QUERY_REPL_ERROR) &&
-			    entry->nb_packets_hw[0] != repl_cnt.hits)
-				entry->last_activity_ts =
-					RTE_MIN((time_t)difftime(time(NULL),
-						entry->last_activity_ts),
-						entry->last_activity_ts);
+			    entry->nb_packets_hw[0] != repl_cnt.hits) {
+				entry->last_activity_ts = now;
+				entry->nb_bytes_hw[0] = repl_cnt.bytes;
+				entry->nb_packets_hw[0] = repl_cnt.hits;
+			}
 			if (!(ret & SFT_OFFLOAD_QUERY_INIT_ERROR) &&
-			    entry->nb_packets_hw[1] != init_cnt.hits)
-				entry->last_activity_ts =
-					RTE_MIN((time_t)difftime(time(NULL),
-						entry->last_activity_ts),
-						entry->last_activity_ts);
-			if ((uint64_t)difftime(now, entry->last_activity_ts) >=
+			    entry->nb_packets_hw[1] != init_cnt.hits) {
+				entry->last_activity_ts = now;
+				entry->nb_bytes_hw[1] = init_cnt.bytes;
+				entry->nb_packets_hw[1] = init_cnt.hits;
+			}
+			if (difftime(now, entry->last_activity_ts) >=
 			    entry->action_specs.aging) {
 				TAILQ_REMOVE(&(sft_priv->age[i].armed_entries),
 					     entry, next);
