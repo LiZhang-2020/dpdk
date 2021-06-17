@@ -3663,8 +3663,7 @@ flow_dv_validate_action_aso_ct(struct rte_eth_dev *dev,
 		return rte_flow_error_set(error, ENOTSUP,
 					  RTE_FLOW_ERROR_TYPE_ACTION, NULL,
 					  "CT cannot follow a fate action");
-	if ((action_flags & MLX5_FLOW_ACTION_METER) ||
-	    (action_flags & MLX5_FLOW_ACTION_AGE))
+	if (action_flags & MLX5_FLOW_ACTION_METER)
 		return rte_flow_error_set(error, EINVAL,
 					  RTE_FLOW_ERROR_TYPE_ACTION, NULL,
 					  "Only one ASO action is supported");
@@ -7096,6 +7095,8 @@ flow_dv_validate(struct rte_eth_dev *dev, const struct rte_flow_attr *attr,
 	const struct rte_flow_item *rule_items = items;
 	const struct rte_flow_item *port_id_item = NULL;
 	bool def_policy = false;
+	const struct rte_flow_action *count = NULL;
+	const struct rte_flow_action_age *non_indirect_age = NULL;
 
 	if (items == NULL)
 		return -1;
@@ -7623,6 +7624,7 @@ flow_dv_validate(struct rte_eth_dev *dev, const struct rte_flow_attr *attr,
 							    error);
 			if (ret < 0)
 				return ret;
+			count = actions;
 			action_flags |= MLX5_FLOW_ACTION_COUNT;
 			++actions_n;
 			break;
@@ -7971,6 +7973,7 @@ flow_dv_validate(struct rte_eth_dev *dev, const struct rte_flow_attr *attr,
 						NULL,
 						"old age action and count must be in the same sub flow");
 			}
+			non_indirect_age = actions->conf;
 			action_flags |= MLX5_FLOW_ACTION_AGE;
 			++actions_n;
 			break;
@@ -8276,6 +8279,30 @@ flow_dv_validate(struct rte_eth_dev *dev, const struct rte_flow_attr *attr,
 		return rte_flow_error_set(error, EINVAL,
 				RTE_FLOW_ERROR_TYPE_ACTION, NULL,
 				"sample before modify action is not supported");
+	/*
+	 * Allow action CT with action AGE only when:
+	 * 1. There is non shared (and non indirect) action COUNT;
+	 * 2. Action AGE is non shared (and non indirect);
+	 * Or:
+	 * 3. flow hit ASO is disabled;
+	 * Or:
+	 * 4. It's root table (Verbs engine)
+	 */
+	if ((action_flags & MLX5_FLOW_ACTION_CT) &&
+	    (action_flags & MLX5_FLOW_ACTION_AGE) &&
+	    priv->sh->flow_hit_aso_en == 1 &&
+	    (attr->group > 0 || attr->transfer == 1)) {
+		if (count == NULL ||
+		    count->type != RTE_FLOW_ACTION_TYPE_COUNT ||
+		    count->conf == NULL ||
+		    ((const struct rte_flow_action_count *)
+		     count->conf)->shared == 1 ||
+		    non_indirect_age == NULL) {
+			return rte_flow_error_set(error, EINVAL,
+					  RTE_FLOW_ERROR_TYPE_ACTION, NULL,
+					  "Only one ASO action is supported");
+		}
+	}
 	return 0;
 }
 
