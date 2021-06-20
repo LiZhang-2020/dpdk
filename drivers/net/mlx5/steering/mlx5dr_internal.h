@@ -6,8 +6,10 @@
 #define MLX5DR_INTERNAL_H_
 
 #include <stdint.h>
+#include <sys/queue.h>
 #include <infiniband/verbs.h>
 #include <infiniband/mlx5dv.h>
+#include <rte_flow.h>
 
 #include "mlx5_prm.h"
 #include "mlx5_glue.h"
@@ -17,6 +19,7 @@
 #include "mlx5dr.h"
 #include "mlx5dr_context.h"
 #include "mlx5dr_table.h"
+#include "mlx5dr_matcher.h"
 #include "mlx5dr_cmd.h"
 
 static inline void *simple_malloc(size_t size)
@@ -37,7 +40,7 @@ static inline void *simple_calloc(size_t size)
 
 static inline void simple_free(void *addr)
 {
-	return mlx5_free(addr);
+	mlx5_free(addr);
 }
 
 #endif
