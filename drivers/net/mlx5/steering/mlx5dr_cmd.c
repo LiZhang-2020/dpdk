@@ -7,7 +7,7 @@
 
 struct mlx5dv_devx_obj *
 mlx5dr_cmd_flow_table_create(struct ibv_context *ctx,
-			     struct mlx5dr_cmd_flow_table_attr *ft_attr)
+			     struct mlx5dr_cmd_ft_create_attr *ft_attr)
 {
 	uint32_t out[MLX5_ST_SZ_DW(create_flow_table_out)] = {};
 	uint32_t in[MLX5_ST_SZ_DW(create_flow_table_in)] = {};
@@ -22,6 +22,26 @@ mlx5dr_cmd_flow_table_create(struct ibv_context *ctx,
 		 ft_attr->wqe_based_flow_update);
 
 	return mlx5_glue->devx_obj_create(ctx, in, sizeof(in), out, sizeof(out));
+}
+
+int
+mlx5dr_cmd_flow_table_modify(struct mlx5dv_devx_obj *devx_obj,
+			     struct mlx5dr_cmd_ft_modify_attr *ft_attr)
+{
+	uint32_t out[MLX5_ST_SZ_DW(modify_flow_table_out)] = {};
+	uint32_t in[MLX5_ST_SZ_DW(modify_flow_table_in)] = {};
+	void *ft_ctx;
+
+	MLX5_SET(modify_flow_table_in, in, opcode, MLX5_CMD_OP_MODIFY_FLOW_TABLE);
+	MLX5_SET(modify_flow_table_in, in, table_type, ft_attr->type);
+	MLX5_SET(modify_flow_table_in, in, modify_field_select, ft_attr->modify_fs);
+	MLX5_SET(modify_flow_table_in, in, table_id,
+		 mlx5dv_devx_obj_get_id(devx_obj));
+
+	ft_ctx = MLX5_ADDR_OF(modify_flow_table_in, in, flow_table_context);
+	MLX5_SET(flow_table_context, ft_ctx, rtc_id, ft_attr->rtc_id);
+
+	return mlx5_glue->devx_obj_modify(devx_obj, in, sizeof(in), out, sizeof(out));
 }
 
 struct mlx5dv_devx_obj *
@@ -53,4 +73,3 @@ mlx5dr_cmd_rtc_create(struct ibv_context *ctx,
 
 	return mlx5_glue->devx_obj_create(ctx, in, sizeof(in), out, sizeof(out));
 }
-
