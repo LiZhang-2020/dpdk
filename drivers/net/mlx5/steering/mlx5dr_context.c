@@ -15,7 +15,7 @@ static int mlx5dr_context_uninit_pd(struct mlx5dr_context *ctx)
 static int mlx5dr_context_init_pd(struct mlx5dr_context *ctx,
 				  struct ibv_pd *pd)
 {
-	struct mlx5dv_pd mlx5_pd = {};
+	struct mlx5dv_pd mlx5_pd = {0};
 	struct mlx5dv_obj obj;
 	int ret;
 
@@ -50,7 +50,7 @@ free_private_pd:
 
 static int mlx5dr_context_hws_supp(struct mlx5dr_context *ctx)
 {
-	struct mlx5_hca_attr attr = {};
+	struct mlx5_hca_attr attr = {0};
 	int ret;
 
 	ret = mlx5_devx_cmd_query_hca_attr(ctx->ibv_ctx, &attr);
