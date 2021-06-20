@@ -2,51 +2,20 @@
  * Copyright (c) 2021 NVIDIA CORPORATION. All rights reserved.
  */
 
-struct mlx5dr_matcher_nic {
-	struct mlx5dv_devx_obj *rtc;
-	struct mlx5dv_devx_obj *ste_id;
-};
+#include "mlx5dr_internal.h"
 
-struct mlx5dr_matcher {
-	struct mlx5dr_table *tbl;
-	struct mlx5dr_matcher_attr attr;
-	struct mlx5dv_flow_matcher *dv_matcher;
-	struct mlx5dv_devx_obj *definer;
-	struct mlx5dv_devx_obj *start_ft;
-	struct mlx5dv_devx_obj *end_ft;
-	struct mlx5dr_matcher_nic rx;
-	struct mlx5dr_matcher_nic tx;
-};
-
-int mlx5dr_matcher_create_start_ft(struct mlx5dr_matcher *matcher)
+static int mlx5dr_matcher_destroy_end_ft(struct mlx5dr_matcher *matcher)
 {
-	struct mlx5dr_cmd_flow_table_attr ft_attr = {};
+	return mlx5_glue->devx_obj_destroy(matcher->end_ft);
+}
+
+static int mlx5dr_matcher_create_end_ft(struct mlx5dr_matcher *matcher)
+{
+	struct mlx5dr_cmd_ft_create_attr ft_attr = {0};
 	struct mlx5dr_table *tbl = matcher->tbl;
 
 	ft_attr.type = tbl->fw_ft_type;
 	ft_attr.wqe_based_flow_update = true;
-	// TODO Need to support default miss behaviour for FDB
-
-	if (matcher->rx.rtc)
-		ft_attr.rx_rtc_id = mlx5dv_devx_obj_get_id(matcher->rx.rtc);
-
-	if (matcher->tx.rtc)
-		ft_attr.tx_rtc_id = mlx5dv_devx_obj_get_id(matcher->tx.rtc);
-
-	matcher->start_ft = mlx5dr_cmd_flow_table_create(tbl->ctx->ibv_ctx, &ft_attr);
-	if (!matcher->start_ft) {
-		DRV_LOG(ERR, "Failed to create matcher start flow table\n");
-		return errno;
-	}
-	return 0;
-
-
-int mlx5dr_matcher_create_end_ft(struct mlx5dr_matcher *matcher)
-{
-	struct mlx5dr_cmd_flow_table_attr ft_attr = {};
-	struct mlx5dr_table *tbl = matcher->tbl;
-
-	ft_attr.type = tbl->fw_ft_type;
 	// TODO Need to support default miss behaviour for FDB
 
 	matcher->end_ft = mlx5dr_cmd_flow_table_create(tbl->ctx->ibv_ctx, &ft_attr);
@@ -57,25 +26,128 @@ int mlx5dr_matcher_create_end_ft(struct mlx5dr_matcher *matcher)
 	return 0;
 }
 
-int mlx5dr_matcher_clear_builders(struct mlx5dr_matcher *matcher)
+static int mlx5dr_matcher_clear_builders(struct mlx5dr_matcher *matcher)
 {
+	struct mlx5dr_table *tbl = matcher->tbl;
+
+	DRV_LOG(ERR, "This is TEMP for the warn %p\n", (void *)tbl);
+
 	return EINVAL;
 }
 
-int mlx5dr_matcher_set_builders(struct mlx5dr_matcher *matcher)
+static int mlx5dr_matcher_set_builders(struct mlx5dr_matcher *matcher)
 {
-	// TODO create definer
+	struct mlx5dr_table *tbl = matcher->tbl;
+
+	DRV_LOG(ERR, "This is TEMP for the warn %p\n", (void *)tbl);
+
 	return EINVAL;
 }
 
-static void mlx5dr_matcher_disconnect(struct mlx5dr_matcher_nic *nic_matcher)
+static int mlx5dr_matcher_disconnect(struct mlx5dr_matcher *matcher)
 {
+	struct mlx5dr_cmd_ft_modify_attr ft_attr = {0};
+	struct mlx5dv_devx_obj *prev_ft;
+	struct mlx5dr_matcher *next;
+	int ret;
 
+	if (LIST_FIRST(&matcher->tbl->head) == matcher)
+		prev_ft = matcher->tbl->ft;
+	else
+		prev_ft = (*matcher->next.le_prev)->end_ft;
+
+	next = matcher->next.le_next;
+
+	ft_attr.modify_fs = MLX5_IFC_MODIFY_FLOW_TABLE_RTC_ID;
+	ft_attr.type = matcher->tbl->fw_ft_type;
+
+	/* Connect previous to next RTC if exists */
+	if (next) {
+		if (next->rx.rtc)
+			ft_attr.rtc_id = mlx5dv_devx_obj_get_id(next->rx.rtc);
+		if (next->tx.rtc)
+			ft_attr.rtc_id = mlx5dv_devx_obj_get_id(next->tx.rtc);
+	}
+
+	ret = mlx5dr_cmd_flow_table_modify(prev_ft, &ft_attr);
+	if (ret) {
+		DRV_LOG(ERR, "Failed to disconnect matcher\n");
+		return ret;
+	}
+
+	LIST_REMOVE(matcher, next);
+
+	return 0;
 }
 
-static int mlx5dr_matcher_connect(struct mlx5dr_matcher_nic *nic_matcher)
+static int mlx5dr_matcher_connect(struct mlx5dr_matcher *matcher)
 {
+	struct mlx5dr_cmd_ft_modify_attr ft_attr = {0};
+	struct mlx5dr_table *tbl = matcher->tbl;
+	struct mlx5dr_matcher *prev = NULL;
+	struct mlx5dr_matcher *next = NULL;
+	struct mlx5dr_matcher *tmp_matcher;
+	struct mlx5dv_devx_obj *ft;
+	int ret;
 
+	/* Connect lists */
+	if (LIST_EMPTY(&tbl->head)) {
+		LIST_INSERT_HEAD(&tbl->head, matcher, next);
+		goto connect;
+	}
+
+	LIST_FOREACH(tmp_matcher, &tbl->head, next) {
+		if (tmp_matcher->attr.priority >= matcher->attr.priority) {
+			next = tmp_matcher;
+			break;
+		}
+		prev = tmp_matcher;
+	}
+
+	if (next)
+		LIST_INSERT_BEFORE(next, matcher, next);
+	else
+		LIST_INSERT_AFTER(prev, matcher, next);
+
+connect:
+	/* Connect to next */
+	if (next) {
+		ft_attr.modify_fs = MLX5_IFC_MODIFY_FLOW_TABLE_RTC_ID;
+		ft_attr.type = tbl->fw_ft_type;
+
+		if (next->rx.rtc)
+			ft_attr.rtc_id = mlx5dv_devx_obj_get_id(next->rx.rtc);
+		if (next->tx.rtc)
+			ft_attr.rtc_id = mlx5dv_devx_obj_get_id(next->tx.rtc);
+
+		ret = mlx5dr_cmd_flow_table_modify(matcher->end_ft, &ft_attr);
+		if (ret) {
+			DRV_LOG(ERR, "Failed to connect new matcher to next RTC\n");
+			goto remove_from_list;
+		}
+	}
+
+	/* Connect to previous */
+	ft = prev ? prev->end_ft : tbl->ft;
+	ft_attr.modify_fs = MLX5_IFC_MODIFY_FLOW_TABLE_RTC_ID;
+	ft_attr.type = tbl->fw_ft_type;
+
+	if (matcher->rx.rtc)
+		ft_attr.rtc_id = mlx5dv_devx_obj_get_id(matcher->rx.rtc);
+	if (matcher->tx.rtc)
+		ft_attr.rtc_id = mlx5dv_devx_obj_get_id(matcher->tx.rtc);
+
+	ret = mlx5dr_cmd_flow_table_modify(ft, &ft_attr);
+	if (ret) {
+		DRV_LOG(ERR, "Failed to connect new matcher to previous FT\n");
+		goto remove_from_list;
+	}
+
+	return 0;
+
+remove_from_list:
+	LIST_REMOVE(matcher, next);
+	return ret;
 }
 
 static void mlx5dr_matcher_destroy_rtc_nic(struct mlx5dr_matcher_nic *nic_matcher)
@@ -84,9 +156,9 @@ static void mlx5dr_matcher_destroy_rtc_nic(struct mlx5dr_matcher_nic *nic_matche
 }
 
 static int mlx5dr_matcher_create_rtc_nic(struct mlx5dr_matcher *matcher,
-				   struct mlx5dr_matcher_nic *nic_matcher)
+				   	 struct mlx5dr_matcher_nic *nic_matcher)
 {
-	struct mlx5dr_cmd_rtc_create_attr rtc_attr = {};
+	struct mlx5dr_cmd_rtc_create_attr rtc_attr = {0};
 	struct mlx5dr_context *ctx = matcher->tbl->ctx;
 
 	// TODO allocate STE chunk
@@ -113,8 +185,8 @@ static int mlx5dr_matcher_create_rtc_nic(struct mlx5dr_matcher *matcher,
 
 static int mlx5dr_matcher_uninit_fdb(struct mlx5dr_matcher *matcher)
 {
-	mlx5dr_matcher_destroy_rtc_nic(matcher, &matcher->rx);
-	mlx5dr_matcher_destroy_rtc_nic(matcher, &matcher->tx);
+	mlx5dr_matcher_destroy_rtc_nic(&matcher->rx);
+	mlx5dr_matcher_destroy_rtc_nic(&matcher->tx);
 	return 0;
 }
 
@@ -133,7 +205,7 @@ static int mlx5dr_matcher_init_fdb(struct mlx5dr_matcher *matcher)
 	return 0;
 
 cleanup_rx:
-	mlx5dr_matcher_destroy_rtc_nic(matcher, &matcher->rx);
+	mlx5dr_matcher_destroy_rtc_nic(&matcher->rx);
 	return ret;
 }
 
@@ -141,10 +213,10 @@ static void mlx5dr_matcher_destroy_rtc(struct mlx5dr_matcher *matcher)
 {
 	switch (matcher->tbl->type) {
 	case MLX5DR_TABLE_TYPE_NIC_RX:
-		mlx5dr_matcher_destroy_rtc_nic(matcher, &matcher->rx);
+		mlx5dr_matcher_destroy_rtc_nic(&matcher->rx);
 		break;
 	case MLX5DR_TABLE_TYPE_NIC_TX:
-		mlx5dr_matcher_destroy_rtc_nic(matcher, &matcher->tx);
+		mlx5dr_matcher_destroy_rtc_nic(&matcher->tx);
 		break;
 	case MLX5DR_TABLE_TYPE_FDB:
 		mlx5dr_matcher_uninit_fdb(matcher);
@@ -154,6 +226,8 @@ static void mlx5dr_matcher_destroy_rtc(struct mlx5dr_matcher *matcher)
 
 static int mlx5dr_matcher_create_rtc(struct mlx5dr_matcher *matcher)
 {
+	int ret;
+
 	switch (matcher->tbl->type) {
 	case MLX5DR_TABLE_TYPE_NIC_RX:
 		ret = mlx5dr_matcher_create_rtc_nic(matcher, &matcher->rx);
@@ -168,7 +242,51 @@ static int mlx5dr_matcher_create_rtc(struct mlx5dr_matcher *matcher)
 	return ret;
 }
 
-static int dr_matcher_uninit_root(struct mlx5dr_matcher *matcher)
+static int mlx5dr_matcher_uninit(struct mlx5dr_matcher *matcher)
+{
+	mlx5dr_matcher_disconnect(matcher);
+	mlx5dr_matcher_destroy_rtc(matcher);
+	mlx5dr_matcher_destroy_end_ft(matcher);
+	mlx5dr_matcher_clear_builders(matcher);
+	return 0;
+}
+
+static int mlx5dr_matcher_init(struct mlx5dr_matcher *matcher)
+{
+	int ret;
+
+	/* Select and create the definers for current matcher */
+	ret = mlx5dr_matcher_set_builders(matcher);
+	if (ret)
+		return ret;
+
+	/* Create matcher end flow table anchor */
+	ret = mlx5dr_matcher_create_end_ft(matcher);
+	if (ret)
+		goto clear_builders;
+
+	/* Allocate the RTC for the new matcher */
+	ret = mlx5dr_matcher_create_rtc(matcher);
+	if (ret)
+		goto destroy_end_ft;
+
+	/* Connect the matcher to the matcher list */
+	ret = mlx5dr_matcher_connect(matcher);
+	if (ret)
+		goto destroy_rtc;
+
+	return 0;
+
+destroy_rtc:
+	mlx5dr_matcher_destroy_rtc(matcher);
+destroy_end_ft:
+	mlx5dr_matcher_destroy_end_ft(matcher);
+clear_builders:
+	mlx5dr_matcher_clear_builders(matcher);
+	return ret;
+}
+
+static int mlx5dr_matcher_uninit_root(struct mlx5dr_matcher *matcher)
 {
 	return mlx5dv_destroy_flow_matcher(matcher->dv_matcher);
 }
@@ -176,7 +294,8 @@ static int dr_matcher_uninit_root(struct mlx5dr_matcher *matcher)
 static int mlx5dr_matcher_init_root(struct mlx5dr_matcher *matcher)
 {
 	enum mlx5dr_table_type type = matcher->tbl->type;
-	struct mlx5dv_flow_matcher_attr attr = {};
+	struct mlx5dr_context *ctx = matcher->tbl->ctx;
+	struct mlx5dv_flow_matcher_attr attr = {0};
 	enum mlx5dv_flow_table_type ft_type;
 
 	switch (type) {
@@ -197,7 +316,7 @@ static int mlx5dr_matcher_init_root(struct mlx5dr_matcher *matcher)
 		return errno;
 	}
 
-	// TODO Need to covnert rte_flow -> match
+	// TODO Need to convert rte_flow -> match
 	// attr.match_mask = mask;
 	// attr.match_criteria_enable = matcher->match_criteria;
 	attr.ft_type = ft_type;
@@ -205,41 +324,11 @@ static int mlx5dr_matcher_init_root(struct mlx5dr_matcher *matcher)
 	attr.priority = matcher->attr.priority;
 	attr.comp_mask = MLX5DV_FLOW_MATCHER_MASK_FT_TYPE;
 
-	matcher->dv_matcher = mlx5dv_create_flow_matcher(dmn->ctx, &attr);
+	matcher->dv_matcher = mlx5dv_create_flow_matcher(ctx->ibv_ctx, &attr);
 	if (!matcher->dv_matcher)
 		return errno;
 
 	return 0;
-}
-
-static int mlx5dr_matcher_uninit(struct mlx5dr_matcher *matcher)
-{
-
-	mlx5dr_matcher_disconnect(matcher);
-
-	mlx5dr_matcher_destroy_rtc(matcher);
-
-	ret = mlx5dr_matcher_destory_anchors(matcher); // Allocate FTs
-}
-
-static int mlx5dr_matcher_init(struct mlx5dr_matcher *matcher)
-{
-	struct mlx5dr_context *ctx = matcher->tbl->ctx;
-	int ret;
-
-	ret = mlx5dr_matcher_set_builders(matcher);	// Definer
-
-	ret = mlx5dr_matcher_create_end_ft(matcher);	// Allocate end FT
-
-	ret = mlx5dr_matcher_create_rtc(matcher); 	// RTCs
-
-	ret = mlx5dr_matcher_create_start_ft(matcher);	// Allocate start FT
-
-	ret = mlx5dr_matcher_connect(matcher);		// Connect matchers
-
-
-out:
-	return ret;
 }
 
 struct mlx5dr_matcher *mlx5dr_matcher_create(struct mlx5dr_table *tbl,
@@ -248,6 +337,8 @@ struct mlx5dr_matcher *mlx5dr_matcher_create(struct mlx5dr_table *tbl,
 {
 	struct mlx5dr_matcher *matcher;
 	int ret;
+
+	DRV_LOG(ERR, "This is TEMP for the warn %p\n", (void *)items);
 
 	matcher = simple_malloc(sizeof(*matcher));
 	if (!matcher)
@@ -273,7 +364,7 @@ free_matcher:
 	return NULL;
 }
 
-int mlx5dr_matcher_destroy(struct mlx5dr_matcher *matcher);
+int mlx5dr_matcher_destroy(struct mlx5dr_matcher *matcher)
 {
 	if (matcher->tbl->level == MLX5DR_ROOT_LEVEL)
 		mlx5dr_matcher_uninit_root(matcher);

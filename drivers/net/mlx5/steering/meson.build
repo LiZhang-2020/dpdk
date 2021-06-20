@@ -5,6 +5,7 @@ includes += include_directories('.')
 sources += files(
 	'mlx5dr_context.c',
 	'mlx5dr_table.c',
+	'mlx5dr_matcher.c',
 	'mlx5dr_cmd.c',
 )
 
