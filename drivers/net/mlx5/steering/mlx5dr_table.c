@@ -14,7 +14,7 @@ static int mlx5dr_table_uninit(struct mlx5dr_table *tbl)
 
 static int mlx5dr_table_init(struct mlx5dr_table *tbl)
 {
-	struct mlx5dr_cmd_flow_table_attr ft_attr = {};
+	struct mlx5dr_cmd_ft_create_attr ft_attr = {0};
 
 	if (tbl->level == MLX5DR_ROOT_LEVEL)
 		return 0;
@@ -40,6 +40,7 @@ static int mlx5dr_table_init(struct mlx5dr_table *tbl)
 	}
 
 	ft_attr.type = tbl->fw_ft_type;
+	ft_attr.wqe_based_flow_update = true;
 	// TODO Need to support default miss behaviour for FDB
 
 	tbl->ft = mlx5dr_cmd_flow_table_create(tbl->ctx->ibv_ctx, &ft_attr);
@@ -69,6 +70,7 @@ struct mlx5dr_table *mlx5dr_table_create(struct mlx5dr_context *ctx,
 	tbl->ctx = ctx;
 	tbl->type = attr->type;
 	tbl->level = attr->level;
+	LIST_INIT(&tbl->head);
 
 	ret = mlx5dr_table_init(tbl);
 	if (ret) {

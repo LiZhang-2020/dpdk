@@ -13,6 +13,7 @@ struct mlx5dr_table {
 	enum mlx5dr_table_type type;
 	uint32_t fw_ft_type;
 	uint32_t level;
+	LIST_HEAD(matcher_head, mlx5dr_matcher) head;
 };
 
 #endif
