@@ -221,6 +221,7 @@ New Features
   * Added support for Age action query.
   * Added support for multi-ports hairpin.
   * Allow unknown link speed.
+  * Added support for metering policy actions of yellow color.
 
   Updated Mellanox mlx5 vDPA driver:
 
