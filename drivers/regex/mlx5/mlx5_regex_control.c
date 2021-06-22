@@ -401,6 +401,7 @@ mlx5_regex_clean_ctrl(struct rte_regexdev *dev)
 		return;
 	for (qp_ind = 0; qp_ind < priv->nb_queues; qp_ind++) {
 		qp = &priv->qps[qp_ind];
+		mlx5_regexdev_teardown_fastpath(priv, qp_ind);
 		mlx5_mr_btree_free(&qp->mr_ctrl.cache_bh);
 		for (i = 0; i < qp->nb_obj; i++)
 			regex_ctrl_destroy_sq(priv, qp, i);
