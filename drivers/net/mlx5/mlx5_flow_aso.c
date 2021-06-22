@@ -1256,7 +1256,7 @@ mlx5_aso_ct_completion_handle(struct mlx5_aso_ct_pools_mng *mng,
 	const uint32_t cq_size = 1 << cq->log_desc_n;
 	const uint32_t mask = cq_size - 1;
 	uint32_t idx;
-	uint32_t next_idx = cq->cq_ci & mask;
+	uint32_t next_idx;
 	uint16_t max;
 	uint16_t n = 0;
 	int ret;
@@ -1267,6 +1267,7 @@ mlx5_aso_ct_completion_handle(struct mlx5_aso_ct_pools_mng *mng,
 		rte_spinlock_unlock(&sq->sqsl);
 		return;
 	}
+	next_idx = cq->cq_ci & mask;
 	do {
 		idx = next_idx;
 		next_idx = (cq->cq_ci + 1) & mask;
