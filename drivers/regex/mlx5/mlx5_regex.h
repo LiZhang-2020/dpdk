@@ -63,7 +63,7 @@ struct mlx5_regex_priv {
 	struct ibv_context *ctx; /* Device context. */
 	struct rte_regexdev *regexdev; /* Pointer to the RegEx dev. */
 	uint16_t nb_queues; /* Number of queues. */
-	struct mlx5_regex_qp *qps; /* Pointer to the qp array. */
+	struct mlx5_regex_qp *qps; /* Pointer to the QP array. */
 	uint16_t nb_max_matches; /* Max number of matches. */
 	enum mlx5_rxp_program_mode prog_mode;
 	uint32_t nb_engines; /* Number of RegEx engines. */
@@ -71,9 +71,11 @@ struct mlx5_regex_priv {
 	struct mlx5dv_devx_uar *uar; /* UAR object. */
 	struct ibv_pd *pd;
 	struct mlx5_dbr_page_list dbrpgs; /* Door-bell pages. */
+	TAILQ_ENTRY(mlx5_regex_priv) mem_event_cb;
+	/* Called by memory event callback. */
 	struct mlx5_mr_share_cache mr_scache; /* Global shared MR cache. */
 	uint8_t is_bf2; /* The device is BF2 device. */
-	uint8_t regexp_sq_en; /* Regex SQ supported */
+	uint8_t regexp_sq_en; /* RegEx SQ supported */
 	uint8_t has_umr; /* The device supports UMR. */
 	uint8_t sq_ts_format; /* Whether SQ supports timestamp formats. */
 };
@@ -102,6 +104,8 @@ regex_get_pdn(void *pd, uint32_t *pdn)
 int mlx5_regex_start(struct rte_regexdev *dev);
 int mlx5_regex_stop(struct rte_regexdev *dev);
 int mlx5_regex_close(struct rte_regexdev *dev);
+void mlx5_regex_mr_mem_event_cb(enum rte_mem_event event_type,
+				const void *addr, size_t len, void *arg);
 
 /* mlx5_rxp.c */
 int mlx5_regex_info_get(struct rte_regexdev *dev,
