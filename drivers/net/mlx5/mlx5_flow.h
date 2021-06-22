@@ -50,17 +50,21 @@ enum {
 	MLX5_INDIRECT_ACTION_TYPE_CT,
 };
 
-/* Now, the maximal ports will be supported is 256, action number is 4M. */
-#define MLX5_ACTION_CTX_CT_MAX_PORT 0x100
+/* Now, the maximal ports will be supported is 32, action number is 32M. */
+#define MLX5_ACTION_CTX_CT_MAX_PORT 0x20
 
-#define MLX5_ACTION_CTX_CT_OWNER_SHIFT 22
+#define MLX5_ACTION_CTX_CT_OWNER_SHIFT 25
 #define MLX5_ACTION_CTX_CT_OWNER_MASK (MLX5_ACTION_CTX_CT_MAX_PORT - 1)
 
-/* 30-31: type, 22-29: owner port, 0-21: index. */
+/*
+ * 30-31: type, 25-29: owner port, 0-24: index.
+ * The last one is 0b1 000..., an overflow, 0 should be used instead.
+ */
 #define MLX5_ACTION_CTX_CT_GEN_IDX(owner, index) \
 	((MLX5_INDIRECT_ACTION_TYPE_CT << MLX5_INDIRECT_ACTION_TYPE_OFFSET) | \
 	 (((owner) & MLX5_ACTION_CTX_CT_OWNER_MASK) << \
-	  MLX5_ACTION_CTX_CT_OWNER_SHIFT) | (index))
+	  MLX5_ACTION_CTX_CT_OWNER_SHIFT) | \
+	 ((index) & ((1 << MLX5_ACTION_CTX_CT_OWNER_SHIFT) - 1)))
 
 #define MLX5_ACTION_CTX_CT_GET_OWNER(index) \
 	(((index) >> MLX5_ACTION_CTX_CT_OWNER_SHIFT) & \
@@ -1401,7 +1405,12 @@ flow_aso_ct_get_by_dev_idx(struct rte_eth_dev *dev, uint32_t idx)
 	struct mlx5_aso_ct_pools_mng *mng = priv->sh->ct_mng;
 	struct mlx5_aso_ct_pool *pool;
 
-	idx--;
+	/*
+	 * In case of an overflow of the last one in the last pool
+	 * 0 - 1 = 0xffffffff, the LSB could still be used to find the
+	 * correct pool and offset of an ASO CT action.
+	 */
+	idx = (idx - 1) & ((1 << MLX5_ACTION_CTX_CT_OWNER_SHIFT) - 1);
 	MLX5_ASSERT((idx / MLX5_ASO_CT_ACTIONS_PER_POOL) < mng->n);
 	/* Bit operation AND could be used. */
 	rte_rwlock_read_lock(&mng->resize_rwl);

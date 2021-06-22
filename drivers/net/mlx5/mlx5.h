@@ -1134,7 +1134,7 @@ struct mlx5_aso_ct_action {
 
 /* ASO connection tracking software pool definition. */
 struct mlx5_aso_ct_pool {
-	uint16_t index; /* Pool index in pools array. */
+	uint32_t index; /* Pool index in pools array. */
 	struct mlx5_devx_obj *devx_obj;
 	/* The first devx object in the bulk, used for freeing (not yet). */
 	struct mlx5_aso_ct_action actions[MLX5_ASO_CT_ACTIONS_PER_POOL];
@@ -1148,8 +1148,8 @@ LIST_HEAD(aso_ct_list, mlx5_aso_ct_action);
 /* Pools management structure for ASO connection tracking pools. */
 struct mlx5_aso_ct_pools_mng {
 	struct mlx5_aso_ct_pool **pools;
-	uint16_t n; /* Total number of pools. */
-	uint16_t next; /* Number of pools in use, index of next free pool. */
+	uint32_t n; /* Total number of pools. */
+	uint32_t next; /* Number of pools in use, index of next free pool. */
 	rte_spinlock_t ct_sl; /* The ASO CT free list lock. */
 	rte_rwlock_t resize_rwl; /* The ASO CT pool resize lock. */
 	struct aso_ct_list free_cts; /* Free ASO CT objects list. */

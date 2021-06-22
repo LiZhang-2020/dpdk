@@ -13029,10 +13029,16 @@ flow_dv_aso_ct_pools_resize(struct rte_eth_dev *dev)
 	struct mlx5_aso_ct_pools_mng *mng = priv->sh->ct_mng;
 	void *old_pools = mng->pools;
 	/* Magic number now, need a macro. */
-	uint32_t resize = mng->n + 64;
+	uint32_t resize = mng->n + 256;
 	uint32_t mem_size = sizeof(struct mlx5_aso_ct_pool *) * resize;
-	void *pools = mlx5_malloc(MLX5_MEM_ZERO, mem_size, 0, SOCKET_ID_ANY);
-
+	void *pools;
+	const uint32_t max_pools = (1 << MLX5_ACTION_CTX_CT_OWNER_SHIFT) /
+				   MLX5_ASO_CT_ACTIONS_PER_POOL;
+	if (resize > max_pools) {
+		rte_errno = ENOMEM;
+		return -rte_errno;
+	}
+	pools = mlx5_malloc(MLX5_MEM_ZERO, mem_size, 0, SOCKET_ID_ANY);
 	if (!pools) {
 		rte_errno = ENOMEM;
 		return -rte_errno;
