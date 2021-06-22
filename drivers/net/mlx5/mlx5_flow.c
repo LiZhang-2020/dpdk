@@ -135,6 +135,7 @@ mlx5_flow_is_rss_expandable_item(const struct rte_flow_item *item)
 	case RTE_FLOW_ITEM_TYPE_NVGRE:
 	case RTE_FLOW_ITEM_TYPE_GRE:
 	case RTE_FLOW_ITEM_TYPE_GENEVE:
+	case RTE_FLOW_ITEM_TYPE_MPLS:
 		return true;
 	default:
 		break;
@@ -480,8 +481,7 @@ static const struct mlx5_flow_expand_node mlx5_support_expansion[] = {
 	},
 	[MLX5_EXPANSION_OUTER_ETH] = {
 		.next = MLX5_FLOW_EXPAND_RSS_NEXT(MLX5_EXPANSION_OUTER_IPV4,
-						  MLX5_EXPANSION_OUTER_IPV6,
-						  MLX5_EXPANSION_MPLS),
+						  MLX5_EXPANSION_OUTER_IPV6),
 		.type = RTE_FLOW_ITEM_TYPE_ETH,
 		.rss_types = 0,
 	},
@@ -509,7 +509,8 @@ static const struct mlx5_flow_expand_node mlx5_support_expansion[] = {
 	},
 	[MLX5_EXPANSION_OUTER_IPV4_UDP] = {
 		.next = MLX5_FLOW_EXPAND_RSS_NEXT(MLX5_EXPANSION_VXLAN,
-						  MLX5_EXPANSION_VXLAN_GPE),
+						  MLX5_EXPANSION_VXLAN_GPE,
+						  MLX5_EXPANSION_MPLS),
 		.type = RTE_FLOW_ITEM_TYPE_UDP,
 		.rss_types = ETH_RSS_NONFRAG_IPV4_UDP,
 	},
@@ -531,7 +532,8 @@ static const struct mlx5_flow_expand_node mlx5_support_expansion[] = {
 	},
 	[MLX5_EXPANSION_OUTER_IPV6_UDP] = {
 		.next = MLX5_FLOW_EXPAND_RSS_NEXT(MLX5_EXPANSION_VXLAN,
-						  MLX5_EXPANSION_VXLAN_GPE),
+						  MLX5_EXPANSION_VXLAN_GPE,
+						  MLX5_EXPANSION_MPLS),
 		.type = RTE_FLOW_ITEM_TYPE_UDP,
 		.rss_types = ETH_RSS_NONFRAG_IPV6_UDP,
 	},
@@ -554,12 +556,14 @@ static const struct mlx5_flow_expand_node mlx5_support_expansion[] = {
 	[MLX5_EXPANSION_GRE] = {
 		.next = MLX5_FLOW_EXPAND_RSS_NEXT(MLX5_EXPANSION_IPV4,
 						  MLX5_EXPANSION_IPV6,
-						  MLX5_EXPANSION_GRE_KEY),
+						  MLX5_EXPANSION_GRE_KEY,
+						  MLX5_EXPANSION_MPLS),
 		.type = RTE_FLOW_ITEM_TYPE_GRE,
 	},
 	[MLX5_EXPANSION_GRE_KEY] = {
 		.next = MLX5_FLOW_EXPAND_RSS_NEXT(MLX5_EXPANSION_IPV4,
-						  MLX5_EXPANSION_IPV6),
+						  MLX5_EXPANSION_IPV6,
+						  MLX5_EXPANSION_MPLS),
 		.type = RTE_FLOW_ITEM_TYPE_GRE_KEY,
 		.optional = 1,
 	},
@@ -569,7 +573,8 @@ static const struct mlx5_flow_expand_node mlx5_support_expansion[] = {
 	},
 	[MLX5_EXPANSION_MPLS] = {
 		.next = MLX5_FLOW_EXPAND_RSS_NEXT(MLX5_EXPANSION_IPV4,
-						  MLX5_EXPANSION_IPV6),
+						  MLX5_EXPANSION_IPV6,
+						  MLX5_EXPANSION_ETH),
 		.type = RTE_FLOW_ITEM_TYPE_MPLS,
 	},
 	[MLX5_EXPANSION_ETH] = {
