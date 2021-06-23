@@ -9,7 +9,7 @@ static int mlx5dr_table_uninit(struct mlx5dr_table *tbl)
 	if (tbl->level == MLX5DR_ROOT_LEVEL)
 		return 0;
 
-	return mlx5_glue->devx_obj_destroy(tbl->ft);
+	return mlx5dr_cmd_destroy_obj(tbl->ft);
 }
 
 static int mlx5dr_table_init(struct mlx5dr_table *tbl)

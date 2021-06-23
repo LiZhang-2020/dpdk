@@ -9,7 +9,7 @@
 
 struct mlx5dr_table {
 	struct mlx5dr_context *ctx;
-	struct mlx5dv_devx_obj *ft;
+	struct mlx5dr_devx_obj *ft;
 	enum mlx5dr_table_type type;
 	uint32_t fw_ft_type;
 	uint32_t level;

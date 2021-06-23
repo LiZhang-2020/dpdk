@@ -6,7 +6,7 @@
 
 static int mlx5dr_matcher_destroy_end_ft(struct mlx5dr_matcher *matcher)
 {
-	return mlx5_glue->devx_obj_destroy(matcher->end_ft);
+	return mlx5dr_cmd_destroy_obj(matcher->end_ft);
 }
 
 static int mlx5dr_matcher_create_end_ft(struct mlx5dr_matcher *matcher)
@@ -47,7 +47,7 @@ static int mlx5dr_matcher_set_builders(struct mlx5dr_matcher *matcher)
 static int mlx5dr_matcher_disconnect(struct mlx5dr_matcher *matcher)
 {
 	struct mlx5dr_cmd_ft_modify_attr ft_attr = {0};
-	struct mlx5dv_devx_obj *prev_ft;
+	struct mlx5dr_devx_obj *prev_ft;
 	struct mlx5dr_matcher *next;
 	int ret;
 
@@ -64,9 +64,9 @@ static int mlx5dr_matcher_disconnect(struct mlx5dr_matcher *matcher)
 	/* Connect previous to next RTC if exists */
 	if (next) {
 		if (next->rx.rtc)
-			ft_attr.rtc_id = mlx5dv_devx_obj_get_id(next->rx.rtc);
+			ft_attr.rtc_id = next->rx.rtc->id;
 		if (next->tx.rtc)
-			ft_attr.rtc_id = mlx5dv_devx_obj_get_id(next->tx.rtc);
+			ft_attr.rtc_id = next->tx.rtc->id;
 	}
 
 	ret = mlx5dr_cmd_flow_table_modify(prev_ft, &ft_attr);
@@ -87,7 +87,7 @@ static int mlx5dr_matcher_connect(struct mlx5dr_matcher *matcher)
 	struct mlx5dr_matcher *prev = NULL;
 	struct mlx5dr_matcher *next = NULL;
 	struct mlx5dr_matcher *tmp_matcher;
-	struct mlx5dv_devx_obj *ft;
+	struct mlx5dr_devx_obj *ft;
 	int ret;
 
 	/* Connect lists */
@@ -116,9 +116,9 @@ connect:
 		ft_attr.type = tbl->fw_ft_type;
 
 		if (next->rx.rtc)
-			ft_attr.rtc_id = mlx5dv_devx_obj_get_id(next->rx.rtc);
+			ft_attr.rtc_id = next->rx.rtc->id;
 		if (next->tx.rtc)
-			ft_attr.rtc_id = mlx5dv_devx_obj_get_id(next->tx.rtc);
+			ft_attr.rtc_id = next->tx.rtc->id;
 
 		ret = mlx5dr_cmd_flow_table_modify(matcher->end_ft, &ft_attr);
 		if (ret) {
@@ -133,9 +133,9 @@ connect:
 	ft_attr.type = tbl->fw_ft_type;
 
 	if (matcher->rx.rtc)
-		ft_attr.rtc_id = mlx5dv_devx_obj_get_id(matcher->rx.rtc);
+		ft_attr.rtc_id = matcher->rx.rtc->id;
 	if (matcher->tx.rtc)
-		ft_attr.rtc_id = mlx5dv_devx_obj_get_id(matcher->tx.rtc);
+		ft_attr.rtc_id = matcher->tx.rtc->id;
 
 	ret = mlx5dr_cmd_flow_table_modify(ft, &ft_attr);
 	if (ret) {
@@ -152,7 +152,7 @@ remove_from_list:
 
 static void mlx5dr_matcher_destroy_rtc_nic(struct mlx5dr_matcher_nic *nic_matcher)
 {
-	mlx5_glue->devx_obj_destroy(nic_matcher->rtc);
+	mlx5dr_cmd_destroy_obj(nic_matcher->rtc);
 }
 
 static int mlx5dr_matcher_create_rtc_nic(struct mlx5dr_matcher *matcher,
@@ -163,8 +163,8 @@ static int mlx5dr_matcher_create_rtc_nic(struct mlx5dr_matcher *matcher,
 
 	// TODO allocate STE chunk
 
-	rtc_attr.definer_id = mlx5dv_devx_obj_get_id(matcher->definer);
-	rtc_attr.miss_ft_id = mlx5dv_devx_obj_get_id(matcher->end_ft);
+	rtc_attr.definer_id = matcher->definer->id;
+	rtc_attr.miss_ft_id = matcher->end_ft->id;
 	rtc_attr.update_index_mode = MLX5_IFC_RTC_STE_UPDATE_MODE_BY_HASH;
 	rtc_attr.log_depth = matcher->attr.size_hint_column_log;
 	rtc_attr.log_size = matcher->attr.size_hint_rows_log;

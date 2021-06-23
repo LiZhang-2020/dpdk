@@ -5,6 +5,11 @@
 #ifndef MLX5DR_CMD_H_
 #define MLX5DR_CMD_H_
 
+struct mlx5dr_devx_obj {
+	struct mlx5dv_devx_obj *obj;
+	uint32_t id;
+};
+
 struct mlx5dr_cmd_ft_create_attr {
 	uint8_t type;
 	uint8_t level;
@@ -40,15 +45,17 @@ struct mlx5dr_cmd_stc_modify_attr {
 	uint64_t modify_bits;
 };
 
-struct mlx5dv_devx_obj *
+int mlx5dr_cmd_destroy_obj(struct mlx5dr_devx_obj *devx_obj);
+
+struct mlx5dr_devx_obj *
 mlx5dr_cmd_flow_table_create(struct ibv_context *ctx,
 			     struct mlx5dr_cmd_ft_create_attr *ft_attr);
 
 int
-mlx5dr_cmd_flow_table_modify(struct mlx5dv_devx_obj *devx_obj,
+mlx5dr_cmd_flow_table_modify(struct mlx5dr_devx_obj *devx_obj,
 			     struct mlx5dr_cmd_ft_modify_attr *ft_attr);
 
-struct mlx5dv_devx_obj *
+struct mlx5dr_devx_obj *
 mlx5dr_cmd_rtc_create(struct ibv_context *ctx,
 		      struct mlx5dr_cmd_rtc_create_attr *rtc_attr);
 
