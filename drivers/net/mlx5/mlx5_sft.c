@@ -1061,16 +1061,14 @@ mlx5_sft_dbg_fid_flow(const struct rte_eth_dev *dev,
 
 	printf("[%s] SFT FLOW %u L0: ", direction, entry->fid);
 	memset(&count_data, 0, sizeof(count_data));
-	ret = rte_flow_query(dev->data->port_id,
-			     (void *)(uintptr_t)entry->sft_l0_flow,
-			     query_action, &count_data, &flow_error);
+	ret = mlx5_flow_query(dev, entry->sft_l0_flow, MLX5_FLOW_TYPE_SFT,
+			query_action, &count_data, &flow_error);
 	if (!ret)
 		printf("hits: %" PRIu64 "\n", count_data.hits);
 	printf("[%s] SFT FLOW %u L1: ", direction, entry->fid);
 	memset(&count_data, 0, sizeof(count_data));
-	ret = rte_flow_query(dev->data->port_id,
-			     (void *)(uintptr_t)entry->sft_l1_flow,
-			     query_action, &count_data, &flow_error);
+	ret = mlx5_flow_query(dev, entry->sft_l1_flow, MLX5_FLOW_TYPE_SFT,
+			query_action, &count_data, &flow_error);
 	if (!ret)
 		printf("hits: %" PRIu64 "\n", count_data.hits);
 }
@@ -1105,9 +1103,8 @@ mlx5_sft_debug(const struct rte_eth_dev *dev, struct rte_sft_entry *entry[2],
 			continue;
 		}
 		memset(&count_data, 0, sizeof(count_data));
-		ret = rte_flow_query(dev->data->port_id,
-				     (void *)(uintptr_t)flow,
-				     query_action, &count_data, &flow_error);
+		ret = mlx5_flow_query(dev, flow, MLX5_FLOW_TYPE_SFT,
+				query_action, &count_data, &flow_error);
 		if (!ret) {
 			printf("  [%u]:%s:hits: %" PRIu64 "\n",
 				i, l0_flow_names[i], count_data.hits);
@@ -1121,9 +1118,8 @@ mlx5_sft_debug(const struct rte_eth_dev *dev, struct rte_sft_entry *entry[2],
 	flow = priv->sft_flows->l1_flow;
 	if (flow) {
 		memset(&count_data, 0, sizeof(count_data));
-		ret = rte_flow_query(dev->data->port_id,
-				     (void *)(uintptr_t)flow,
-				     query_action, &count_data, &flow_error);
+		ret = mlx5_flow_query(dev, flow, MLX5_FLOW_TYPE_SFT,
+				query_action, &count_data, &flow_error);
 		if (!ret) {
 			printf("  [%u]:%s: hits: %" PRIu64 "\n",
 			       0, "default_miss", count_data.hits);
@@ -1149,9 +1145,8 @@ mlx5_sft_query(const struct rte_eth_dev *dev, uint16_t queue,
 	RTE_SET_USED(queue);
 	RTE_SET_USED(error);
 
-	return rte_flow_query(dev->data->port_id,
-			      (void *)(uintptr_t)entry->sft_l0_flow,
-			      query_action, data, NULL);
+	return mlx5_flow_query(dev, entry->sft_l0_flow, MLX5_FLOW_TYPE_SFT,
+			query_action, data, NULL);
 }
 
 static const struct rte_sft_ops mlx5_sft_ops = {

@@ -153,7 +153,7 @@ mlx5_flow_adjust_priority(struct rte_eth_dev *dev, int32_t priority,
  *   A pointer to the counter, NULL otherwise.
  */
 static struct mlx5_flow_counter *
-flow_verbs_counter_get_by_idx(struct rte_eth_dev *dev,
+flow_verbs_counter_get_by_idx(const struct rte_eth_dev *dev,
 			      uint32_t idx,
 			      struct mlx5_flow_counter_pool **ppool)
 {
@@ -368,7 +368,7 @@ flow_verbs_counter_release(struct rte_eth_dev *dev, uint32_t counter)
  * @see rte_flow_ops
  */
 static int
-flow_verbs_counter_query(struct rte_eth_dev *dev __rte_unused,
+flow_verbs_counter_query(const struct rte_eth_dev *dev __rte_unused,
 			 struct rte_flow *flow, void *data,
 			 struct rte_flow_error *error)
 {
@@ -2039,7 +2039,7 @@ error:
  * @see rte_flow_ops
  */
 static int
-flow_verbs_query(struct rte_eth_dev *dev,
+flow_verbs_query(const struct rte_eth_dev *dev,
 		 struct rte_flow *flow,
 		 const struct rte_flow_action *actions,
 		 void *data,

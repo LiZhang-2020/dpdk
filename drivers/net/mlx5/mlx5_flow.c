@@ -64,7 +64,12 @@ tunnel_flow_group_to_flow_table(struct rte_eth_dev *dev,
 
 static struct mlx5_flow_workspace *mlx5_flow_push_thread_workspace(void);
 static void mlx5_flow_pop_thread_workspace(void);
-
+static int
+mlx5_flow_drv_query(struct rte_eth_dev *dev,
+		    struct rte_flow *flow,
+		    const struct rte_flow_action *actions,
+		    void *data,
+		    struct rte_flow_error *error);
 
 /** Device flow drivers. */
 extern const struct mlx5_flow_driver_ops mlx5_flow_verbs_drv_ops;
@@ -665,7 +670,7 @@ static const struct rte_flow_ops mlx5_flow_ops = {
 	.destroy = mlx5_flow_destroy,
 	.flush = mlx5_flow_flush,
 	.isolate = mlx5_flow_isolate,
-	.query = mlx5_flow_query,
+	.query = mlx5_flow_drv_query,
 	.dev_dump = mlx5_flow_dev_dump,
 	.get_aged_flows = mlx5_flow_get_aged_flows,
 	.action_handle_create = mlx5_action_handle_create,
@@ -3188,7 +3193,7 @@ flow_null_destroy(struct rte_eth_dev *dev __rte_unused,
 }
 
 static int
-flow_null_query(struct rte_eth_dev *dev __rte_unused,
+flow_null_query(const struct rte_eth_dev *dev __rte_unused,
 		struct rte_flow *flow __rte_unused,
 		const struct rte_flow_action *actions __rte_unused,
 		void *data __rte_unused,
@@ -3572,7 +3577,7 @@ flow_get_rss_action(struct rte_eth_dev *dev,
  *   The specified ASO age action.
  */
 struct mlx5_aso_age_action*
-flow_aso_age_get_by_idx(struct rte_eth_dev *dev, uint32_t age_idx)
+flow_aso_age_get_by_idx(const struct rte_eth_dev *dev, uint32_t age_idx)
 {
 	uint16_t pool_idx = age_idx & UINT16_MAX;
 	uint16_t offset = (age_idx >> 16) & UINT16_MAX;
@@ -7212,7 +7217,7 @@ mlx5_sft_ctrl_flow_create(struct rte_eth_dev *dev,
 			  struct rte_flow_error *error)
 {
 	/* The default SFT flow should be created after port is started. */
-	return (void *)(uintptr_t)mlx5_flow_list_create(dev, MLX5_FLOW_TYPE_SFT,
+	return (void *)(uintptr_t)mlx5_flow_list_create(dev, MLX5_FLOW_TYPE_CTL,
 							attr, items, actions,
 							false, error);
 }
@@ -7279,22 +7284,17 @@ mlx5_flow_isolate(struct rte_eth_dev *dev,
 	return 0;
 }
 
-/**
- * Query a flow.
- *
- * @see rte_flow_query()
- * @see rte_flow_ops
- */
-static int
-flow_drv_query(struct rte_eth_dev *dev,
-	       uint32_t flow_idx,
-	       const struct rte_flow_action *actions,
-	       void *data,
-	       struct rte_flow_error *error)
+int
+mlx5_flow_query(const struct rte_eth_dev *dev,
+		uint32_t flow_idx,
+		enum mlx5_flow_type type,
+		const struct rte_flow_action *actions,
+		void *data,
+		struct rte_flow_error *error)
 {
 	struct mlx5_priv *priv = dev->data->dev_private;
 	const struct mlx5_flow_driver_ops *fops;
-	struct rte_flow *flow = mlx5_ipool_get(priv->flows[MLX5_FLOW_TYPE_GEN],
+	struct rte_flow *flow = mlx5_ipool_get(priv->flows[type],
 					       flow_idx);
 	enum mlx5_flow_drv_type ftype;
 
@@ -7317,17 +7317,17 @@ flow_drv_query(struct rte_eth_dev *dev,
  * @see rte_flow_query()
  * @see rte_flow_ops
  */
-int
-mlx5_flow_query(struct rte_eth_dev *dev,
-		struct rte_flow *flow,
-		const struct rte_flow_action *actions,
-		void *data,
-		struct rte_flow_error *error)
+static int
+mlx5_flow_drv_query(struct rte_eth_dev *dev,
+		    struct rte_flow *flow,
+		    const struct rte_flow_action *actions,
+		    void *data,
+		    struct rte_flow_error *error)
 {
 	int ret;
 
-	ret = flow_drv_query(dev, (uintptr_t)(void *)flow, actions, data,
-			     error);
+	ret = mlx5_flow_query(dev, (uintptr_t)(void *)flow,
+			      MLX5_FLOW_TYPE_GEN, actions, data, error);
 	if (ret < 0)
 		return ret;
 	return 0;

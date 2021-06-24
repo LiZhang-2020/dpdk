@@ -1177,7 +1177,7 @@ typedef void (*mlx5_flow_remove_t)(struct rte_eth_dev *dev,
 				   struct rte_flow *flow);
 typedef void (*mlx5_flow_destroy_t)(struct rte_eth_dev *dev,
 				    struct rte_flow *flow);
-typedef int (*mlx5_flow_query_t)(struct rte_eth_dev *dev,
+typedef int (*mlx5_flow_query_t)(const struct rte_eth_dev *dev,
 				 struct rte_flow *flow,
 				 const struct rte_flow_action *actions,
 				 void *data,
@@ -1736,8 +1736,8 @@ struct mlx5_list_entry *flow_dv_dest_array_clone_cb(void *tool_ctx,
 void flow_dv_dest_array_clone_free_cb(void *tool_ctx,
 				      struct mlx5_list_entry *entry);
 
-struct mlx5_aso_age_action *flow_aso_age_get_by_idx(struct rte_eth_dev *dev,
-						    uint32_t age_idx);
+struct mlx5_aso_age_action *flow_aso_age_get_by_idx
+			(const struct rte_eth_dev *dev, uint32_t age_idx);
 int flow_dev_geneve_tlv_option_resource_register(struct rte_eth_dev *dev,
 					     const struct rte_flow_item *item,
 					     struct rte_flow_error *error);

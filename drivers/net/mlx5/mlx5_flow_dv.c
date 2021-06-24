@@ -6023,7 +6023,7 @@ flow_dv_modify_hdr_resource_register
  *   Pointer to the counter, NULL otherwise.
  */
 static struct mlx5_flow_counter *
-flow_dv_counter_get_by_idx(struct rte_eth_dev *dev,
+flow_dv_counter_get_by_idx(const struct rte_eth_dev *dev,
 			   uint32_t idx,
 			   struct mlx5_flow_counter_pool **ppool)
 {
@@ -6158,8 +6158,8 @@ flow_dv_container_resize(struct rte_eth_dev *dev)
  *   0 on success, otherwise a negative errno value and rte_errno is set.
  */
 static inline int
-_flow_dv_query_count(struct rte_eth_dev *dev, uint32_t counter, uint64_t *pkts,
-		     uint64_t *bytes)
+_flow_dv_query_count(const struct rte_eth_dev *dev, uint32_t counter,
+		     uint64_t *pkts, uint64_t *bytes)
 {
 	struct mlx5_priv *priv = dev->data->dev_private;
 	struct mlx5_flow_counter_pool *pool = NULL;
@@ -6474,7 +6474,7 @@ flow_dv_counter_get_shared(struct rte_eth_dev *dev, uint32_t id)
  *   The aging parameter specified for the counter index.
  */
 static struct mlx5_age_param*
-flow_dv_counter_idx_get_age(struct rte_eth_dev *dev,
+flow_dv_counter_idx_get_age(const struct rte_eth_dev *dev,
 				uint32_t counter)
 {
 	struct mlx5_flow_counter *cnt;
@@ -16401,7 +16401,7 @@ flow_dv_create_mtr_policy_acts(struct rte_eth_dev *dev,
  *   0 on success, a negative errno value otherwise and rte_errno is set.
  */
 static int
-flow_dv_query_count(struct rte_eth_dev *dev, uint32_t cnt_idx, void *data,
+flow_dv_query_count(const struct rte_eth_dev *dev, uint32_t cnt_idx, void *data,
 		    struct rte_flow_error *error)
 {
 	struct mlx5_priv *priv = dev->data->dev_private;
@@ -16515,7 +16515,7 @@ flow_dv_action_query(struct rte_eth_dev *dev,
  *   0 on success, a negative errno value otherwise and rte_errno is set.
  */
 static int
-flow_dv_query_age(struct rte_eth_dev *dev, struct rte_flow *flow,
+flow_dv_query_age(const struct rte_eth_dev *dev, struct rte_flow *flow,
 		  void *data, struct rte_flow_error *error)
 {
 	struct rte_flow_query_age *resp = data;
@@ -16555,7 +16555,7 @@ flow_dv_query_age(struct rte_eth_dev *dev, struct rte_flow *flow,
  * @see rte_flow_ops
  */
 static int
-flow_dv_query(struct rte_eth_dev *dev,
+flow_dv_query(const struct rte_eth_dev *dev,
 	      struct rte_flow *flow __rte_unused,
 	      const struct rte_flow_action *actions __rte_unused,
 	      void *data __rte_unused,
