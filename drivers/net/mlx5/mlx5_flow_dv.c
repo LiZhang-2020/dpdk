@@ -18090,6 +18090,7 @@ flow_dv_action_validate(struct rte_eth_dev *dev,
 						NULL,
 						"Indirect age action not supported");
 		return flow_dv_validate_action_age(0, action, dev, err);
+	/* CONNTRACK will be validated on-demand. */
 	case RTE_FLOW_ACTION_TYPE_CONNTRACK:
 		if (!priv->sh->ct_aso_en)
 			return rte_flow_error_set(err, ENOTSUP,
