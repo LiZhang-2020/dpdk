@@ -1051,7 +1051,6 @@ mlx5_aso_ct_sq_enqueue_single(struct mlx5_aso_ct_pools_mng *mng,
 	/* Fill next WQE. */
 	__atomic_store_n(&ct->state, ASO_CONNTRACK_WAIT, __ATOMIC_RELAXED);
 	sq->elts[sq->head & mask].ct = ct;
-	sq->elts[sq->head & mask].query_data = NULL;
 	pool = container_of(ct, struct mlx5_aso_ct_pool, actions[ct->offset]);
 	/* Each WQE will have a single CT object. */
 	wqe->general_cseg.misc = rte_cpu_to_be_32(pool->devx_obj->id +
@@ -1154,7 +1153,8 @@ mlx5_aso_ct_sq_enqueue_single(struct mlx5_aso_ct_pools_mng *mng,
  *   0 on success, a negative value.
  */
 static void
-mlx5_aso_ct_status_update(struct mlx5_aso_sq *sq, uint16_t num)
+mlx5_aso_ct_status_update(struct mlx5_aso_sq *sq, uint16_t num,
+			  struct mlx5_aso_ct_action *in_ct, void *buf)
 {
 	uint16_t size = 1 << sq->log_desc_n;
 	uint16_t mask = size - 1;
@@ -1168,8 +1168,8 @@ mlx5_aso_ct_status_update(struct mlx5_aso_sq *sq, uint16_t num)
 		MLX5_ASSERT(ct);
 		__atomic_store_n(&ct->state, ASO_CONNTRACK_READY,
 				 __ATOMIC_RELAXED);
-		if (sq->elts[idx].query_data)
-			rte_memcpy(sq->elts[idx].query_data,
+		if (buf && ct == in_ct)
+			rte_memcpy(buf,
 				   (char *)((uintptr_t)sq->mr.buf + idx * 64),
 				   64);
 	}
@@ -1189,6 +1189,7 @@ mlx5_aso_ct_sq_query_single(struct mlx5_aso_ct_pools_mng *mng,
 	struct mlx5_aso_ct_pool *pool;
 	uint8_t state = __atomic_load_n(&ct->state, __ATOMIC_RELAXED);
 
+	(void)data;
 	if (state == ASO_CONNTRACK_FREE) {
 		DRV_LOG(ERR, "Fail: No context to query");
 		return -1;
@@ -1209,7 +1210,6 @@ mlx5_aso_ct_sq_query_single(struct mlx5_aso_ct_pools_mng *mng,
 	/* Fill next WQE. */
 	wqe_idx = sq->head & mask;
 	sq->elts[wqe_idx].ct = ct;
-	sq->elts[wqe_idx].query_data = data;
 	pool = container_of(ct, struct mlx5_aso_ct_pool, actions[ct->offset]);
 	/* Each WQE will have a single CT object. */
 	wqe->general_cseg.misc = rte_cpu_to_be_32(pool->devx_obj->id +
@@ -1247,7 +1247,7 @@ mlx5_aso_ct_sq_query_single(struct mlx5_aso_ct_pools_mng *mng,
 /* TODO: 3 ASO functions could be combined */
 static void
 mlx5_aso_ct_completion_handle(struct mlx5_aso_ct_pools_mng *mng,
-			      struct mlx5_aso_ct_action *ct)
+			      struct mlx5_aso_ct_action *ct, char *buf)
 {
 	uint32_t sq_idx = ct->offset & (MLX5_ASO_CT_SQ_NUM - 1);
 	struct mlx5_aso_sq *sq = &mng->aso_sqs[sq_idx];
@@ -1290,7 +1290,7 @@ mlx5_aso_ct_completion_handle(struct mlx5_aso_ct_pools_mng *mng,
 		cq->cq_ci++;
 	} while (1);
 	if (likely(n)) {
-		mlx5_aso_ct_status_update(sq, n);
+		mlx5_aso_ct_status_update(sq, n, ct, buf);
 		sq->tail += n;
 		rte_io_wmb();
 		cq->db_rec[0] = rte_cpu_to_be_32(cq->cq_ci);
@@ -1322,7 +1322,7 @@ mlx5_aso_ct_update_by_wqe(struct mlx5_dev_ctx_shared *sh,
 
 	/* Assertion here. */
 	do {
-		mlx5_aso_ct_completion_handle(mng, ct);
+		mlx5_aso_ct_completion_handle(mng, ct, NULL);
 		if (mlx5_aso_ct_sq_enqueue_single(mng, ct, profile))
 			return 0;
 		/* Waiting for wqe resource. */
@@ -1346,7 +1346,7 @@ mlx5_aso_ct_update_by_wqe(struct mlx5_dev_ctx_shared *sh,
  */
 int
 mlx5_aso_ct_wait_ready(struct mlx5_dev_ctx_shared *sh,
-		       struct mlx5_aso_ct_action *ct)
+		       struct mlx5_aso_ct_action *ct, char *buf)
 {
 	struct mlx5_aso_ct_pools_mng *mng = sh->ct_mng;
 	uint32_t poll_cqe_times = MLX5_CT_POLL_WQE_CQE_TIMES;
@@ -1356,7 +1356,7 @@ mlx5_aso_ct_wait_ready(struct mlx5_dev_ctx_shared *sh,
 	    ASO_CONNTRACK_READY)
 		return 0;
 	do {
-		mlx5_aso_ct_completion_handle(mng, ct);
+		mlx5_aso_ct_completion_handle(mng, ct, buf);
 		if (__atomic_load_n(&ct->state, __ATOMIC_RELAXED) ==
 		    ASO_CONNTRACK_READY)
 			return 0;
@@ -1461,7 +1461,7 @@ mlx5_aso_ct_query_by_wqe(struct mlx5_dev_ctx_shared *sh,
 
 	/* Assertion here. */
 	do {
-		mlx5_aso_ct_completion_handle(mng, ct);
+		mlx5_aso_ct_completion_handle(mng, ct, NULL);
 		ret = mlx5_aso_ct_sq_query_single(mng, ct, out_data);
 		if (ret < 0)
 			return ret;
@@ -1476,7 +1476,7 @@ mlx5_aso_ct_query_by_wqe(struct mlx5_dev_ctx_shared *sh,
 		ct->offset, pool->index);
 	return -1;
 data_handle:
-	ret = mlx5_aso_ct_wait_ready(sh, ct);
+	ret = mlx5_aso_ct_wait_ready(sh, ct, out_data);
 	if (!ret)
 		mlx5_aso_ct_obj_analyze(profile, out_data);
 	return ret;
@@ -1496,7 +1496,7 @@ mlx5_aso_ct_available(struct mlx5_dev_ctx_shared *sh,
 	} else if (state == ASO_CONNTRACK_READY || state == ASO_CONNTRACK_QUERY)
 		return 0;
 	do {
-		mlx5_aso_ct_completion_handle(mng, ct);
+		mlx5_aso_ct_completion_handle(mng, ct, NULL);
 		state = __atomic_load_n(&ct->state, __ATOMIC_RELAXED);
 		if (state == ASO_CONNTRACK_READY ||
 		    state == ASO_CONNTRACK_QUERY)
