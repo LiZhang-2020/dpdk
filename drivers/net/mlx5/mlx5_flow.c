@@ -3594,6 +3594,9 @@ struct mlx5_translated_action_handle {
 	int index; /**< Index in related array of rte_flow_action. */
 };
 
+#define MLX5_MAX_SPLIT_ACTIONS 24
+#define MLX5_MAX_SPLIT_ITEMS 24
+
 /**
  * Translates actions of type RTE_FLOW_ACTION_TYPE_INDIRECT to related
  * direct action if translation possible.
@@ -3618,7 +3621,8 @@ struct mlx5_translated_action_handle {
  *   Pointer to the error structure.
  *
  * @return
- *   0 on success, a negative errno value otherwise and rte_errno is set.
+ *   0 or a positive value on success, number of translated actions
+ *   a negative errno value otherwise and rte_errno is set.
  */
 static int
 flow_action_handles_translate(struct rte_eth_dev *dev,
@@ -3653,10 +3657,18 @@ flow_action_handles_translate(struct rte_eth_dev *dev,
 	if (!copied_n)
 		return 0;
 	actions_size = sizeof(struct rte_flow_action) * n;
-	translated = mlx5_malloc(MLX5_MEM_ZERO, actions_size, 0, SOCKET_ID_ANY);
-	if (!translated) {
-		rte_errno = ENOMEM;
-		return -ENOMEM;
+	/* Only try to allocate memory if the stack is not enough. */
+	if (unlikely(n > MLX5_MAX_SPLIT_ACTIONS)) {
+		translated = mlx5_malloc(MLX5_MEM_ZERO, actions_size,
+					 0, SOCKET_ID_ANY);
+		if (!translated) {
+			*translated_actions = NULL;
+			rte_errno = ENOMEM;
+			return -ENOMEM;
+		}
+	} else {
+		/* No need to clear to 0s. */
+		translated = *translated_actions;
 	}
 	memcpy(translated, actions, actions_size);
 	for (handle_end = handle + copied_n; handle < handle_end; handle++) {
@@ -3701,14 +3713,15 @@ flow_action_handles_translate(struct rte_eth_dev *dev,
 			}
 			/* Fall-through */
 		default:
-			mlx5_free(translated);
+			if (unlikely(n > MLX5_MAX_SPLIT_ACTIONS))
+				mlx5_free(translated);
 			return rte_flow_error_set
 				(error, EINVAL, RTE_FLOW_ERROR_TYPE_ACTION,
 				 NULL, "invalid indirect action type");
 		}
 	}
 	*translated_actions = translated;
-	return 0;
+	return copied_n;
 }
 
 /**
@@ -4442,9 +4455,6 @@ flow_mreg_update_copy_table(struct rte_eth_dev *dev,
 	}
 	return 0;
 }
-
-#define MLX5_MAX_SPLIT_ACTIONS 24
-#define MLX5_MAX_SPLIT_ITEMS 24
 
 /**
  * Split the hairpin flow.
@@ -6255,6 +6265,11 @@ flow_list_create(struct rte_eth_dev *dev, enum mlx5_flow_type type,
 		struct rte_flow_item items[MLX5_MAX_SPLIT_ITEMS];
 		uint8_t buffer[2048];
 	} items_tx;
+	/* Consider workspace. */
+	union {
+		struct rte_flow_action actions[MLX5_MAX_SPLIT_ACTIONS];
+		uint8_t buffer[2048];
+	} actions_translate;
 	struct mlx5_flow_expand_rss *buf = &expand_buffer.buf;
 	struct mlx5_flow_rss_desc *rss_desc;
 	const struct rte_flow_action *p_actions_rx;
@@ -6278,6 +6293,7 @@ flow_list_create(struct rte_eth_dev *dev, enum mlx5_flow_type type,
 
 	MLX5_ASSERT(wks);
 	rss_desc = &wks->rss_desc;
+	translated_actions = actions_translate.actions;
 	ret = flow_action_handles_translate(dev, original_actions,
 					    indir_actions,
 					    &indir_actions_n,
@@ -6286,7 +6302,7 @@ flow_list_create(struct rte_eth_dev *dev, enum mlx5_flow_type type,
 		MLX5_ASSERT(translated_actions == NULL);
 		return 0;
 	}
-	actions = translated_actions ? translated_actions : original_actions;
+	actions = (ret > 0) ? translated_actions : original_actions;
 	p_actions_rx = actions;
 	hairpin_flow = flow_check_hairpin_split(dev, attr, actions);
 	ret = flow_drv_validate(dev, attr, items, p_actions_rx,
@@ -6427,7 +6443,9 @@ flow_list_create(struct rte_eth_dev *dev, enum mlx5_flow_type type,
 	flow->type = type;
 	flow_rxq_flags_set(dev, flow);
 	tunnel = flow_tunnel_from_rule(dev, attr, items, actions);
-	mlx5_free(translated_actions);
+	if (unlikely((uintptr_t)translated_actions !=
+		     (uintptr_t)actions_translate.actions))
+		mlx5_free(translated_actions);
 	if (tunnel) {
 		flow->tunnel = 1;
 		flow->tunnel_id = tunnel->tunnel_id;
@@ -6450,7 +6468,9 @@ error:
 	ret = rte_errno;
 	rte_errno = ret;
 error_before_hairpin_split:
-	mlx5_free(translated_actions);
+	if (unlikely((uintptr_t)translated_actions !=
+		     (uintptr_t)actions_translate.actions))
+		mlx5_free(translated_actions);
 	return 0;
 }
 
@@ -6649,19 +6669,27 @@ mlx5_flow_validate(struct rte_eth_dev *dev,
 		indir_actions[MLX5_MAX_INDIRECT_ACTIONS];
 	int indir_actions_n = MLX5_MAX_INDIRECT_ACTIONS;
 	const struct rte_flow_action *actions;
+	union {
+		struct rte_flow_action actions[MLX5_MAX_SPLIT_ACTIONS];
+		uint8_t buffer[2048];
+	} actions_translate;
 	struct rte_flow_action *translated_actions = NULL;
-	int ret = flow_action_handles_translate(dev, original_actions,
-						indir_actions,
-						&indir_actions_n,
-						&translated_actions, error);
+	int ret;
 
-	if (ret)
+	translated_actions = actions_translate.actions;
+	ret = flow_action_handles_translate(dev, original_actions,
+					    indir_actions,
+					    &indir_actions_n,
+					    &translated_actions, error);
+	if (ret < 0)
 		return ret;
-	actions = translated_actions ? translated_actions : original_actions;
+	actions = (ret > 0) ? translated_actions : original_actions;
 	hairpin_flow = flow_check_hairpin_split(dev, attr, actions);
 	ret = flow_drv_validate(dev, attr, items, actions,
 				true, hairpin_flow, error);
-	mlx5_free(translated_actions);
+	if (unlikely((uintptr_t)translated_actions !=
+		     (uintptr_t)actions_translate.actions))
+		mlx5_free(translated_actions);
 	return ret;
 }
 
