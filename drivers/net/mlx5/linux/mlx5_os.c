@@ -275,7 +275,7 @@ __mlx5_discovery_misc5_cap(struct mlx5_priv *priv)
 
 	tbl = mlx5_glue->dr_create_flow_tbl(priv->sh->rx_domain, 1);
 	if (!tbl) {
-		DRV_LOG(ERR, "dr_create_flow_tbl failed");
+		DRV_LOG(INFO, "No sw steering support");
 		return;
 	}
 	dv_attr.type = IBV_FLOW_ATTR_NORMAL,
