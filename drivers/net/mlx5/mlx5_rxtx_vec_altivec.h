@@ -1223,7 +1223,7 @@ rxq_cq_process_v(struct mlx5_rxq_data *rxq, volatile struct mlx5_cqe *cq,
 			int32_t offs = rxq->flow_meta_offset;
 			uint32_t mask = rxq->flow_meta_port_mask;
 			uint32_t shift =
-				__builtin_popcount(rxq->flow_meta_port_mask);
+				__builtin_clz(rxq->flow_meta_port_mask);
 			uint32_t metadata;
 
 			/* This code is subject for futher optimization. */

@@ -770,7 +770,7 @@ rxq_cq_process_v(struct mlx5_rxq_data *rxq, volatile struct mlx5_cqe *cq,
 			int32_t offs = rxq->flow_meta_offset;
 			uint32_t mask = rxq->flow_meta_port_mask;
 			uint32_t shift =
-				__builtin_popcount(rxq->flow_meta_port_mask);
+				__builtin_clz(rxq->flow_meta_port_mask);
 
 			*RTE_MBUF_DYNFIELD(pkts[pos], offs, uint32_t *) =
 				(rte_be_to_cpu_32
