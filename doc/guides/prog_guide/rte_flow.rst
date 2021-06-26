@@ -2786,6 +2786,16 @@ updated depend on the type of the ``action`` and different for every type.
 The indirect action specified data (e.g. counter) can be queried by
 ``rte_flow_action_handle_query()``.
 
+Indirect actions persist across device configure, stop, and start.
+If a new configuration is incompatible with an existing indirect action,
+the start operation will fail. "Incompatible" means that if this action
+was destroyed and created again, creation would fail.
+It is a programmer's responsibility to remove or update offending actions.
+
+PMD developers should use the same diagnostics for ``rte_eth_dev_start()``
+as for ``rte_flow_action_handle_create()``. PMD is not allowed to silently
+ignore or correct offending actions.
+
 .. _table_rte_flow_action_handle:
 
 .. table:: INDIRECT

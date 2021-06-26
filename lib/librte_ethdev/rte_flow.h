@@ -4071,6 +4071,10 @@ struct rte_flow_indir_action_conf {
  * The created object handle has single state and configuration
  * across all the flow rules using it.
  *
+ * Indirect actions persist across device configure, stop, and start.
+ * If a new configuration is incompatible with an existing indirect
+ * action, rte_eth_dev_start() will fail.
+ *
  * @param[in] port_id
  *    The port identifier of the Ethernet device.
  * @param[in] conf
