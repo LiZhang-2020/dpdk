@@ -1835,6 +1835,7 @@ err_secondary:
 				       mlx5_hrxq_clone_free_cb);
 	if (!priv->hrxqs)
 		goto error;
+	rte_rwlock_init(&priv->ind_tbls_lock);
 	/* Query availability of metadata reg_c's. */
 	err = mlx5_flow_discover_mreg_c(eth_dev);
 	if (err < 0) {
