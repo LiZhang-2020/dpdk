@@ -1026,7 +1026,6 @@ mlx5_sft_dbg_enabled(const struct rte_eth_dev *dev)
 
 /* Flow structure. */
 struct rte_flow {
-	ILIST_ENTRY(uint32_t)next; /**< Index to the next flow structure. */
 	uint32_t dev_handles;
 	/**< Device flow handles that are part of the flow. */
 	uint32_t type:2;

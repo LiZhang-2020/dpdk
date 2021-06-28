@@ -81,12 +81,14 @@ static struct mlx5_indexed_pool_config icfg[] = {
 	},
 	{
 		.size = sizeof(struct rte_flow),
-		.trunk_size = 4096,
+		.trunk_size = 64,
+		.grow_trunk = 3,
+		.grow_shift = 2,
 		.need_lock = 1,
 		.release_mem_en = 0,
 		.malloc = mlx5_malloc,
 		.free = mlx5_free,
-		.per_core_cache = 1 << 19,
+		.per_core_cache = 1 << 14,
 		.type = "rte_flow_ipool",
 	},
 	{
@@ -110,7 +112,7 @@ static struct mlx5_indexed_pool_config icfg[] = {
 		.release_mem_en = 0,
 		.malloc = mlx5_malloc,
 		.free = mlx5_free,
-		.per_core_cache = 1 << 19,
+		.per_core_cache = 1 << 14,
 		.type = "sft_flow_ipool",
 	},
 };
