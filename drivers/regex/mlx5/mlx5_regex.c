@@ -114,11 +114,6 @@ mlx5_regex_dev_probe(struct rte_device *rte_dev)
 	char name[RTE_REGEXDEV_NAME_MAX_LEN];
 	int ret;
 
-	/* Register callback function for global shared MR cache management. */
-	if (TAILQ_EMPTY(&mlx5_mem_event_list))
-		rte_mem_event_callback_register("MLX5_MEM_EVENT_CB",
-						mlx5_regex_mr_mem_event_cb,
-						NULL);
 	ibv = mlx5_get_ibv_device(rte_dev);
 	if (ibv == NULL)
 		return -rte_errno;
@@ -209,6 +204,11 @@ mlx5_regex_dev_probe(struct rte_device *rte_dev)
 	    rte_errno = ENOMEM;
 		goto error;
 	}
+	/* Register callback function for global shared MR cache management. */
+	if (TAILQ_EMPTY(&mlx5_mem_event_list))
+		rte_mem_event_callback_register("MLX5_MEM_EVENT_CB",
+						mlx5_regex_mr_mem_event_cb,
+						NULL);
 	/* Add device to memory callback list. */
 	pthread_mutex_lock(&mem_event_list_lock);
 	TAILQ_INSERT_TAIL(&mlx5_mem_event_list, priv, mem_event_cb);
