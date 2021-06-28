@@ -779,10 +779,12 @@ mlx5_flow_aso_ct_mng_close(struct mlx5_dev_ctx_shared *sh)
 		ct_pool = mng->pools[idx];
 		for (i = 0; i < MLX5_ASO_CT_ACTIONS_PER_POOL; i++) {
 			ct = &ct_pool->actions[i];
-			val = __atomic_sub_fetch(&ct->refcnt, 1,
+			val = __atomic_fetch_sub(&ct->refcnt, 1,
 						 __ATOMIC_RELAXED);
 			MLX5_ASSERT(val <= 1);
-			if (val > 1)
+			if (!val)
+				continue;
+			else if (val > 1)
 				cnt++;
 			if (ct->dr_action_orig)
 				claim_zero(mlx5_glue->destroy_flow_action
@@ -793,7 +795,7 @@ mlx5_flow_aso_ct_mng_close(struct mlx5_dev_ctx_shared *sh)
 		}
 		claim_zero(mlx5_devx_cmd_destroy(ct_pool->devx_obj));
 		if (cnt) {
-			DRV_LOG(WARNING, "%u ASO CT objects are being used in the pool %u",
+			DRV_LOG(DEBUG, "%u ASO CT objects are being used in the pool %u",
 				cnt, i);
 		}
 		mlx5_free(ct_pool);
