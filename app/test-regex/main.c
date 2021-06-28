@@ -472,7 +472,9 @@ run_regex(struct rte_mempool *mbuf_mp, uint32_t nb_jobs,
 			match = ops[d_ind % actual_jobs]->matches;
 			for (i = 0; i < nb_matches; i++) {
 				printf("start = %ld, len = %d, rule = %d\n",
-				       match->start_offset + d_ind * job_len,
+				       match->start_offset +
+					   ops[d_ind % actual_jobs]->user_id *
+					   job_len,
 				       match->len, match->rule_id);
 				match++;
 			}
