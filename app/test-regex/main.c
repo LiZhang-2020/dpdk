@@ -331,7 +331,7 @@ run_regex(struct rte_mempool *mbuf_mp, uint32_t nb_jobs,
 	long buf_len;
 	long job_len;
 	uint32_t actual_jobs = 0;
-	uint32_t i;
+	uint32_t i, job_id;
 	struct rte_regex_ops **ops;
 	uint16_t dev_id = 0;
 	uint16_t qp_id = 0;
@@ -423,6 +423,9 @@ run_regex(struct rte_mempool *mbuf_mp, uint32_t nb_jobs,
 	for (i = 0; i < nb_iterations; i++) {
 		total_enqueue = 0;
 		total_dequeue = 0;
+		/* Re-set user id after dequeue to match data in mbuf. */
+		for (job_id = 0; job_id < actual_jobs; job_id++)
+			ops[job_id]->user_id = job_id;
 		while (total_dequeue < actual_jobs) {
 			struct rte_regex_ops **cur_ops_to_enqueue = ops +
 				total_enqueue;
