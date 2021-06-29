@@ -17,8 +17,9 @@ struct mlx5dr_context {
 	struct mlx5dr_pool *stc_pool[MLX5DR_TABLE_TYPE_MAX];
 	struct mlx5dr_pool *ste_pool[MLX5DR_TABLE_TYPE_MAX];
 	pthread_spinlock_t ctrl_lock;
-	//struct mlx5dr_send_engine *send_ring[];
 	enum mlx5dr_context_flags flags;
+	struct mlx5dr_send_engine *send_queue;
+	size_t queues;
 };
 
 #endif

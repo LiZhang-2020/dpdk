@@ -23,7 +23,7 @@ enum mlx5dr_matcher_insertion_mode {
 
 struct mlx5dr_context_attr {
 	uint16_t queues;
-	uint16_t queues_size;
+	uint16_t queue_size;
 	size_t initial_log_ste_memory;
 	struct ibv_pd *pd;
 };

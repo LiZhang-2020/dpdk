@@ -10,7 +10,7 @@
 #include "../../drivers/net/mlx5/steering/mlx5dr.h"
 #include "/usr/include/infiniband/mlx5dv.h"
 
-char dev_name[] = "mlx5_0";
+char dev_name[] = "rocep8s0f0";
 
 static int run_test(struct ibv_context *ibv_ctx)
 {
@@ -24,7 +24,8 @@ static int run_test(struct ibv_context *ibv_ctx)
 	dr_ctx_attr.initial_log_ste_memory = 0;
 	dr_ctx_attr.pd = NULL;
 	dr_ctx_attr.queues = 16;
-	dr_ctx_attr.queues_size = 1024;
+	dr_ctx_attr.queue_size = 512;
+
 	ctx = mlx5dr_context_open(ibv_ctx, &dr_ctx_attr);
 	if (!ctx) {
 		printf("Failed to create context\n");

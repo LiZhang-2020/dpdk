@@ -161,7 +161,9 @@ struct mlx5dr_context *mlx5dr_context_open(struct ibv_context *ibv_ctx,
 	if (ret)
 		goto uninit_pd;
 
-	// Allocate send rings
+	ret = mlx5dr_send_queues_open(ctx, attr->queues, attr->queue_size);
+	if (ret)
+		goto uninit_pd;
 
 	return ctx;
 
@@ -174,7 +176,7 @@ free_ctx:
 
 int mlx5dr_context_close(struct mlx5dr_context *ctx)
 {
-	// Deallocate send rings
+	mlx5dr_send_queues_close(ctx);
 
 	mlx5dr_context_pools_uninit(ctx);
 	pthread_spin_destroy(&ctx->ctrl_lock);

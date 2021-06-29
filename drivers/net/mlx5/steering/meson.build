@@ -8,5 +8,6 @@ sources += files(
 	'mlx5dr_matcher.c',
 	'mlx5dr_pool.c',
 	'mlx5dr_cmd.c',
+	'mlx5dr_send.c',
 )
 

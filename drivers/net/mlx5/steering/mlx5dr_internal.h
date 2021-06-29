@@ -21,6 +21,7 @@
 #include "mlx5dr_context.h"
 #include "mlx5dr_table.h"
 #include "mlx5dr_matcher.h"
+#include "mlx5dr_send.h"
 #include "mlx5dr_cmd.h"
 
 static inline void *simple_malloc(size_t size)

@@ -63,6 +63,15 @@ struct mlx5dr_cmd_definer_create_attr {
 	uint8_t *match_mask;
 };
 
+struct mlx5dr_cmd_sq_create_attr {
+	uint32_t cqn;
+	uint32_t pdn;
+	uint32_t page_id;
+	uint32_t dbr_id;
+	uint32_t wq_id;
+	uint32_t log_wq_sz;
+};
+
 int mlx5dr_cmd_destroy_obj(struct mlx5dr_devx_obj *devx_obj);
 
 struct mlx5dr_devx_obj *
@@ -92,5 +101,11 @@ mlx5dr_cmd_ste_create(struct ibv_context *ctx,
 struct mlx5dr_devx_obj *
 mlx5dr_cmd_definer_create(struct ibv_context *ctx,
 			  struct mlx5dr_cmd_definer_create_attr *def_attr);
+
+struct mlx5dr_devx_obj *
+mlx5dr_cmd_sq_create(struct ibv_context *ctx,
+		     struct mlx5dr_cmd_sq_create_attr *attr);
+
+int mlx5dr_cmd_sq_modify_rdy(struct mlx5dr_devx_obj *devx_obj);
 
 #endif

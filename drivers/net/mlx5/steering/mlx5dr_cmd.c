@@ -288,3 +288,65 @@ mlx5dr_cmd_definer_create(struct ibv_context *ctx,
 
 	return devx_obj;
 }
+
+struct mlx5dr_devx_obj *
+mlx5dr_cmd_sq_create(struct ibv_context *ctx,
+		     struct mlx5dr_cmd_sq_create_attr *attr)
+{
+	uint32_t out[DEVX_ST_SZ_DW(create_sq_out)] = {};
+	uint32_t in[DEVX_ST_SZ_DW(create_sq_in)] = {};
+	void *sqc = DEVX_ADDR_OF(create_sq_in, in, ctx);
+	void *wqc = DEVX_ADDR_OF(sqc, sqc, wq);
+	struct mlx5dr_devx_obj *devx_obj;
+
+	devx_obj = simple_malloc(sizeof(*devx_obj));
+	if (!devx_obj) {
+		DRV_LOG(ERR, "Failed to create SQ");
+		rte_errno = ENOMEM;
+		return NULL;
+	}
+
+	DEVX_SET(create_sq_in, in, opcode, MLX5_CMD_OP_CREATE_SQ);
+	DEVX_SET(sqc, sqc, cqn, attr->cqn);
+	DEVX_SET(sqc, sqc, flush_in_error_en, 1);
+	DEVX_SET(sqc, sqc, non_wire, 1);
+	DEVX_SET(wq, wqc, wq_type, MLX5_WQ_TYPE_CYCLIC);
+	DEVX_SET(wq, wqc, pd, attr->pdn);
+	DEVX_SET(wq, wqc, uar_page, attr->page_id);
+	DEVX_SET(wq, wqc, log_wq_stride, log2above(MLX5_SEND_WQE_BB));
+	DEVX_SET(wq, wqc, log_wq_sz, attr->log_wq_sz);
+	DEVX_SET(wq, wqc, dbr_umem_id, attr->dbr_id);
+	DEVX_SET(wq, wqc, wq_umem_id, attr->wq_id);
+
+	devx_obj->obj = mlx5_glue->devx_obj_create(ctx, in, sizeof(in), out, sizeof(out));
+	if (!devx_obj->obj) {
+		simple_free(devx_obj);
+		rte_errno = errno;
+		return NULL;
+	}
+
+	devx_obj->id = MLX5_GET(create_sq_out, out, sqn);
+
+	return devx_obj;
+}
+
+int mlx5dr_cmd_sq_modify_rdy(struct mlx5dr_devx_obj *devx_obj)
+{
+	uint32_t out[DEVX_ST_SZ_DW(modify_sq_out)] = {};
+	uint32_t in[DEVX_ST_SZ_DW(modify_sq_in)] = {};
+	void *sqc = DEVX_ADDR_OF(modify_sq_in, in, ctx);
+	int ret;
+
+	DEVX_SET(modify_sq_in, in, opcode, MLX5_CMD_OP_MODIFY_SQ);
+	DEVX_SET(modify_sq_in, in, sqn, devx_obj->id);
+	DEVX_SET(modify_sq_in, in, sq_state, MLX5_SQC_STATE_RST);
+	DEVX_SET(sqc, sqc, state, MLX5_SQC_STATE_RDY);
+
+	ret = mlx5_glue->devx_obj_modify(devx_obj->obj, in, sizeof(in), out, sizeof(out));
+	if (ret) {
+		DRV_LOG(ERR, "Failed to modify SQ");
+		rte_errno = errno;
+	}
+
+	return ret;
+}
