@@ -13204,20 +13204,27 @@ flow_dv_translate_create_conntrack(struct rte_eth_dev *dev,
 	struct mlx5_aso_ct_action *ct;
 	uint32_t idx;
 
-	if (!sh->ct_aso_en)
-		return rte_flow_error_set(error, ENOTSUP,
-					  RTE_FLOW_ERROR_TYPE_ACTION, NULL,
-					  "Connection is not supported");
+	if (!sh->ct_aso_en) {
+		rte_flow_error_set(error, ENOTSUP,
+				   RTE_FLOW_ERROR_TYPE_ACTION, NULL,
+				   "Connection is not supported");
+		return 0;
+	}
 	idx = flow_dv_aso_ct_alloc(dev, error);
-	if (!idx)
-		return rte_flow_error_set(error, rte_errno,
-					  RTE_FLOW_ERROR_TYPE_ACTION, NULL,
-					  "Failed to allocate CT object");
+	if (!idx) {
+		rte_flow_error_set(error, rte_errno,
+				   RTE_FLOW_ERROR_TYPE_ACTION, NULL,
+				   "Failed to allocate CT object");
+		return idx;
+	}
 	ct = flow_aso_ct_get_by_dev_idx(dev, idx);
-	if (mlx5_aso_ct_update_by_wqe(sh, ct, pro))
-		return rte_flow_error_set(error, EBUSY,
-					  RTE_FLOW_ERROR_TYPE_ACTION, NULL,
-					  "Failed to update CT");
+	if (mlx5_aso_ct_update_by_wqe(sh, ct, pro)) {
+		flow_dv_aso_ct_dev_release(dev, idx);
+		rte_flow_error_set(error, EBUSY,
+				   RTE_FLOW_ERROR_TYPE_ACTION, NULL,
+				   "Failed to update CT");
+		return 0;
+	}
 	ct->is_original = !!pro->is_original_dir;
 	ct->peer = pro->peer_port;
 	return idx;
@@ -15592,7 +15599,8 @@ flow_dv_action_create(struct rte_eth_dev *dev,
 	case RTE_FLOW_ACTION_TYPE_CONNTRACK:
 		ret = flow_dv_translate_create_conntrack(dev, action->conf,
 							 err);
-		idx = MLX5_ACTION_CTX_CT_GEN_IDX(PORT_ID(priv), ret);
+		if (ret)
+			idx = MLX5_ACTION_CTX_CT_GEN_IDX(PORT_ID(priv), ret);
 		break;
 	case RTE_FLOW_ACTION_TYPE_COUNT:
 		ret = flow_dv_translate_create_counter(dev, NULL, NULL, NULL);
