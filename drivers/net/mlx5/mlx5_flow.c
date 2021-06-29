@@ -1724,7 +1724,7 @@ mlx5_validate_action_ct(struct rte_eth_dev *dev,
 		return rte_flow_error_set(error, EINVAL,
 					  RTE_FLOW_ERROR_TYPE_ACTION, NULL,
 					  "Invalid CT state");
-	if (conntrack->last_index > RTE_FLOW_CONNTRACK_INDEX_RST)
+	if (conntrack->last_index > RTE_FLOW_CONNTRACK_FLAG_RST)
 		return rte_flow_error_set(error, EINVAL,
 					  RTE_FLOW_ERROR_TYPE_ACTION, NULL,
 					  "Invalid last TCP packet flag");

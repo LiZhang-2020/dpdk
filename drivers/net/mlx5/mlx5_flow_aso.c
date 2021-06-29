@@ -1084,26 +1084,26 @@ mlx5_aso_ct_sq_enqueue_single(struct mlx5_aso_ct_pools_mng *mng,
 	MLX5_SET(conn_track_aso, desg, retranmission_limit_exceeded, 0);
 	MLX5_SET(conn_track_aso, desg, retranmission_limit,
 		 profile->retransmission_limit);
-	MLX5_SET(conn_track_aso, desg, reply_dircetion_tcp_scale,
+	MLX5_SET(conn_track_aso, desg, reply_direction_tcp_scale,
 		 profile->reply_dir.scale);
-	MLX5_SET(conn_track_aso, desg, reply_dircetion_tcp_close_initiated,
+	MLX5_SET(conn_track_aso, desg, reply_direction_tcp_close_initiated,
 		 profile->reply_dir.close_initiated);
 	/* Both directions will use the same liberal mode. */
-	MLX5_SET(conn_track_aso, desg, reply_dircetion_tcp_liberal_enabled,
+	MLX5_SET(conn_track_aso, desg, reply_direction_tcp_liberal_enabled,
 		 profile->liberal_mode);
-	MLX5_SET(conn_track_aso, desg, reply_dircetion_tcp_data_unacked,
+	MLX5_SET(conn_track_aso, desg, reply_direction_tcp_data_unacked,
 		 profile->reply_dir.data_unacked);
-	MLX5_SET(conn_track_aso, desg, reply_dircetion_tcp_max_ack,
+	MLX5_SET(conn_track_aso, desg, reply_direction_tcp_max_ack,
 		 profile->reply_dir.last_ack_seen);
-	MLX5_SET(conn_track_aso, desg, original_dircetion_tcp_scale,
+	MLX5_SET(conn_track_aso, desg, original_direction_tcp_scale,
 		 profile->original_dir.scale);
-	MLX5_SET(conn_track_aso, desg, original_dircetion_tcp_close_initiated,
+	MLX5_SET(conn_track_aso, desg, original_direction_tcp_close_initiated,
 		 profile->original_dir.close_initiated);
-	MLX5_SET(conn_track_aso, desg, original_dircetion_tcp_liberal_enabled,
+	MLX5_SET(conn_track_aso, desg, original_direction_tcp_liberal_enabled,
 		 profile->liberal_mode);
-	MLX5_SET(conn_track_aso, desg, original_dircetion_tcp_data_unacked,
+	MLX5_SET(conn_track_aso, desg, original_direction_tcp_data_unacked,
 		 profile->original_dir.data_unacked);
-	MLX5_SET(conn_track_aso, desg, original_dircetion_tcp_max_ack,
+	MLX5_SET(conn_track_aso, desg, original_direction_tcp_max_ack,
 		 profile->original_dir.last_ack_seen);
 	MLX5_SET(conn_track_aso, desg, last_win, profile->last_window);
 	MLX5_SET(conn_track_aso, desg, last_dir, profile->last_direction);
@@ -1244,7 +1244,12 @@ mlx5_aso_ct_sq_query_single(struct mlx5_aso_ct_pools_mng *mng,
 	return 1;
 }
 
-/* TODO: 3 ASO functions could be combined */
+/*
+ * Handle completions from WQEs sent to ASO CT.
+ *
+ * @param[in] mng
+ *   Pointer to the CT pools management structure.
+ */
 static void
 mlx5_aso_ct_completion_handle(struct mlx5_aso_ct_pools_mng *mng,
 			      struct mlx5_aso_ct_action *ct, char *buf)
@@ -1368,6 +1373,14 @@ mlx5_aso_ct_wait_ready(struct mlx5_dev_ctx_shared *sh,
 	return -1;
 }
 
+/*
+ * Convert the hardware conntrack data format into the profile.
+ *
+ * @param[in] profile
+ *   Pointer to conntrack profile to be filled after query.
+ * @param[in] wdata
+ *   Pointer to data fetched from hardware.
+ */
 static inline void
 mlx5_aso_ct_obj_analyze(struct rte_flow_action_conntrack *profile,
 			char *wdata)
@@ -1391,24 +1404,24 @@ mlx5_aso_ct_obj_analyze(struct rte_flow_action_conntrack *profile,
 						 retranmission_limit);
 	profile->last_window = MLX5_GET(conn_track_aso, wdata, last_win);
 	profile->last_direction = MLX5_GET(conn_track_aso, wdata, last_dir);
-	profile->last_index = (enum rte_flow_conntrack_index)
+	profile->last_index = (enum rte_flow_conntrack_tcp_last_index)
 			      MLX5_GET(conn_track_aso, wdata, last_index);
 	profile->last_seq = MLX5_GET(conn_track_aso, wdata, last_seq);
 	profile->last_ack = MLX5_GET(conn_track_aso, wdata, last_ack);
 	profile->last_end = MLX5_GET(conn_track_aso, wdata, last_end);
 	profile->liberal_mode = MLX5_GET(conn_track_aso, wdata,
-				reply_dircetion_tcp_liberal_enabled) |
+				reply_direction_tcp_liberal_enabled) |
 				MLX5_GET(conn_track_aso, wdata,
-				original_dircetion_tcp_liberal_enabled);
+				original_direction_tcp_liberal_enabled);
 	/* No liberal in the RTE structure profile. */
 	profile->reply_dir.scale = MLX5_GET(conn_track_aso, wdata,
-					    reply_dircetion_tcp_scale);
+					    reply_direction_tcp_scale);
 	profile->reply_dir.close_initiated = MLX5_GET(conn_track_aso, wdata,
-					reply_dircetion_tcp_close_initiated);
+					reply_direction_tcp_close_initiated);
 	profile->reply_dir.data_unacked = MLX5_GET(conn_track_aso, wdata,
-					reply_dircetion_tcp_data_unacked);
+					reply_direction_tcp_data_unacked);
 	profile->reply_dir.last_ack_seen = MLX5_GET(conn_track_aso, wdata,
-					reply_dircetion_tcp_max_ack);
+					reply_direction_tcp_max_ack);
 	profile->reply_dir.sent_end = MLX5_GET(tcp_window_params,
 					       r_dir, sent_end);
 	profile->reply_dir.reply_end = MLX5_GET(tcp_window_params,
@@ -1418,13 +1431,13 @@ mlx5_aso_ct_obj_analyze(struct rte_flow_action_conntrack *profile,
 	profile->reply_dir.max_ack = MLX5_GET(tcp_window_params,
 					      r_dir, max_ack);
 	profile->original_dir.scale = MLX5_GET(conn_track_aso, wdata,
-					       original_dircetion_tcp_scale);
+					       original_direction_tcp_scale);
 	profile->original_dir.close_initiated = MLX5_GET(conn_track_aso, wdata,
-					original_dircetion_tcp_close_initiated);
+					original_direction_tcp_close_initiated);
 	profile->original_dir.data_unacked = MLX5_GET(conn_track_aso, wdata,
-					original_dircetion_tcp_data_unacked);
+					original_direction_tcp_data_unacked);
 	profile->original_dir.last_ack_seen = MLX5_GET(conn_track_aso, wdata,
-					original_dircetion_tcp_max_ack);
+					original_direction_tcp_max_ack);
 	profile->original_dir.sent_end = MLX5_GET(tcp_window_params,
 						  o_dir, sent_end);
 	profile->original_dir.reply_end = MLX5_GET(tcp_window_params,

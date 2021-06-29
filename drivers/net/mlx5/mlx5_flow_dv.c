@@ -2797,10 +2797,10 @@ flow_dv_validate_item_aso_ct(struct rte_eth_dev *dev,
 		flags = spec->flags & mask->flags;
 	else
 		flags = spec->flags;
-	if ((flags & RTE_FLOW_CONNTRACK_FLAG_STATE_VALID) &&
-	    ((flags & RTE_FLOW_CONNTRACK_FLAG_ERROR) ||
-	     (flags & RTE_FLOW_CONNTRACK_FLAG_BAD_PKT) ||
-	     (flags & RTE_FLOW_CONNTRACK_FLAG_DISABLED)))
+	if ((flags & RTE_FLOW_CONNTRACK_PKT_STATE_VALID) &&
+	    ((flags & RTE_FLOW_CONNTRACK_PKT_STATE_INVALID) ||
+	     (flags & RTE_FLOW_CONNTRACK_PKT_STATE_BAD) ||
+	     (flags & RTE_FLOW_CONNTRACK_PKT_STATE_DISABLED)))
 		return rte_flow_error_set(error, EINVAL,
 					  RTE_FLOW_ERROR_TYPE_ITEM, NULL,
 					  "Conflict status bits");
@@ -10449,23 +10449,23 @@ flow_dv_translate_item_aso_ct(struct rte_eth_dev *dev,
 		return;
 	flags = spec->flags & mask->flags;
 	/* The conflict should be checked in the validation. */
-	if (flags & RTE_FLOW_CONNTRACK_FLAG_STATE_VALID)
+	if (flags & RTE_FLOW_CONNTRACK_PKT_STATE_VALID)
 		reg_value |= MLX5_CT_SYNDROME_VALID;
-	if (flags & RTE_FLOW_CONNTRACK_FLAG_STATE_CHANGED)
+	if (flags & RTE_FLOW_CONNTRACK_PKT_STATE_CHANGED)
 		reg_value |= MLX5_CT_SYNDROME_STATE_CHANGE;
-	if (flags & RTE_FLOW_CONNTRACK_FLAG_ERROR)
+	if (flags & RTE_FLOW_CONNTRACK_PKT_STATE_INVALID)
 		reg_value |= MLX5_CT_SYNDROME_INVALID;
-	if (flags & RTE_FLOW_CONNTRACK_FLAG_DISABLED)
+	if (flags & RTE_FLOW_CONNTRACK_PKT_STATE_DISABLED)
 		reg_value |= MLX5_CT_SYNDROME_TRAP;
-	if (flags & RTE_FLOW_CONNTRACK_FLAG_BAD_PKT)
+	if (flags & RTE_FLOW_CONNTRACK_PKT_STATE_BAD)
 		reg_value |= MLX5_CT_SYNDROME_BAD_PACKET;
-	if (mask->flags & (RTE_FLOW_CONNTRACK_FLAG_STATE_VALID |
-			   RTE_FLOW_CONNTRACK_FLAG_ERROR |
-			   RTE_FLOW_CONNTRACK_FLAG_DISABLED))
+	if (mask->flags & (RTE_FLOW_CONNTRACK_PKT_STATE_VALID |
+			   RTE_FLOW_CONNTRACK_PKT_STATE_INVALID |
+			   RTE_FLOW_CONNTRACK_PKT_STATE_DISABLED))
 		reg_mask |= 0xc0;
-	if (mask->flags & RTE_FLOW_CONNTRACK_FLAG_STATE_CHANGED)
+	if (mask->flags & RTE_FLOW_CONNTRACK_PKT_STATE_CHANGED)
 		reg_mask |= MLX5_CT_SYNDROME_STATE_CHANGE;
-	if (mask->flags & RTE_FLOW_CONNTRACK_FLAG_BAD_PKT)
+	if (mask->flags & RTE_FLOW_CONNTRACK_PKT_STATE_BAD)
 		reg_mask |= MLX5_CT_SYNDROME_BAD_PACKET;
 	/* The REG_C_x value could be saved during startup. */
 	reg_id = mlx5_flow_get_reg_id(dev, MLX5_ASO_CONNTRACK, 0, &error);

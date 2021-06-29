@@ -202,6 +202,7 @@ static const struct rte_flow_desc_data rte_flow_desc_action[] = {
 	MK_FLOW_ACTION(SET_TCP_TP_DST,
 		       sizeof(struct rte_flow_action_set_tp)),
 	MK_FLOW_ACTION(SFT, sizeof(struct rte_flow_action_sft)),
+	MK_FLOW_ACTION(CONNTRACK, sizeof(struct rte_flow_action_conntrack)),
 };
 
 int

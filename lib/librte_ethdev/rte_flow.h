@@ -29,6 +29,7 @@
 #include <rte_esp.h>
 #include <rte_higig.h>
 #include <rte_ecpri.h>
+#include <rte_bitops.h>
 #include <rte_mbuf.h>
 #include <rte_mbuf_dyn.h>
 #include <rte_meter.h>
@@ -575,7 +576,7 @@ enum rte_flow_item_type {
 	 *
 	 * Matches conntrack state.
 	 *
-	 * See struct rte_flow_item_conntrack.
+	 * @see struct rte_flow_item_conntrack.
 	 */
 	RTE_FLOW_ITEM_TYPE_CONNTRACK,
 };
@@ -1727,18 +1728,29 @@ struct rte_flow_item_sft {
 	uint8_t *user_data; /**< Arbitrary user data. */
 };
 
-#define RTE_FLOW_CONNTRACK_FLAG_STATE_VALID (1 << 0)
-/**< The packet is valid. */
-#define RTE_FLOW_CONNTRACK_FLAG_STATE_CHANGED (1 << 1)
-/**< The state of the connection was changed. */
-#define RTE_FLOW_CONNTRACK_FLAG_ERROR (1 << 2)
-/**< Error was detected on this packet. */
-#define RTE_FLOW_CONNTRACK_FLAG_DISABLED (1 << 3)
-/**< The HW module is disabled can be due to application command or
- * invalid state.
+/**
+ * The packet is valid after conntrack checking.
  */
-#define RTE_FLOW_CONNTRACK_FLAG_BAD_PKT (1 << 4)
-/**< The packet contains some bad field(s). */
+#define RTE_FLOW_CONNTRACK_PKT_STATE_VALID RTE_BIT32(0)
+/**
+ * The state of the connection is changed.
+ */
+#define RTE_FLOW_CONNTRACK_PKT_STATE_CHANGED RTE_BIT32(1)
+/**
+ * Error is detected on this packet for this connection and
+ * an invalid state is set.
+ */
+#define RTE_FLOW_CONNTRACK_PKT_STATE_INVALID RTE_BIT32(2)
+/**
+ * The HW connection tracking module is disabled.
+ * It can be due to application command or an invalid state.
+ */
+#define RTE_FLOW_CONNTRACK_PKT_STATE_DISABLED RTE_BIT32(3)
+/**
+ * The packet contains some bad field(s) and cannot continue
+ * with the conntrack module checking.
+ */
+#define RTE_FLOW_CONNTRACK_PKT_STATE_BAD RTE_BIT32(4)
 
 /**
  * @warning
@@ -1747,9 +1759,8 @@ struct rte_flow_item_sft {
  * RTE_FLOW_ITEM_TYPE_CONNTRACK
  *
  * Matches the state of a packet after it passed the connection tracking
- * examination. The state is a bit mask of one RTE_FLOW_CONNTRACK_FLAG*
- * or a reasonable combination of the bits.
- *
+ * examination. The state is a bitmap of one RTE_FLOW_CONNTRACK_PKT_STATE*
+ * or a reasonable combination of these bits.
  */
 struct rte_flow_item_conntrack {
 	uint32_t flags;
@@ -2457,9 +2468,7 @@ enum rte_flow_action_type {
 	 *
 	 * Enable tracking a TCP connection state.
 	 *
-	 * Send packet to HW connection tracking module for examination.
-	 *
-	 * See struct rte_flow_action_conntrack.
+	 * @see struct rte_flow_action_conntrack.
 	 */
 	RTE_FLOW_ACTION_TYPE_CONNTRACK,
 
@@ -3065,39 +3074,71 @@ struct rte_flow_action_set_dscp {
 	uint8_t dscp;
 };
 
+/**
+ * The state of a TCP connection.
+ */
 enum rte_flow_conntrack_state {
+	/** SYN-ACK packet was seen. */
 	RTE_FLOW_CONNTRACK_STATE_SYN_RECV,
+	/** 3-way handshake was done. */
 	RTE_FLOW_CONNTRACK_STATE_ESTABLISHED,
+	/** First FIN packet was received to close the connection. */
 	RTE_FLOW_CONNTRACK_STATE_FIN_WAIT,
+	/** First FIN was ACKed. */
 	RTE_FLOW_CONNTRACK_STATE_CLOSE_WAIT,
+	/** Second FIN was received, waiting for the last ACK. */
 	RTE_FLOW_CONNTRACK_STATE_LAST_ACK,
+	/** Second FIN was ACKed, connection was closed. */
 	RTE_FLOW_CONNTRACK_STATE_TIME_WAIT,
 };
 
-struct rte_flow_tcp_dir_param {
-	uint32_t scale:4; /**< TCP window scaling factor, 0xF to disable. */
-	uint32_t close_initiated:1; /**< This FIN was sent by this direction. */
-	uint32_t last_ack_seen:1;
-	/**< An ACK packet has been received by this side. */
-	uint32_t data_unacked:1;
-	/**< If set indicates that there is unacked data on the connection. */
-	uint32_t sent_end;
-	/**< Maximal value of sequence + payload length over sent packets. */
-	uint32_t reply_end;
-	/**< Maximal value of ACK + window size over received packets. */
-	uint32_t max_win;
-	/**< Same as the member reply_end. */
-	uint32_t max_ack;
-	/**< Maximal value of ACK over received packets. */
+/**
+ * The last passed TCP packet flags of a connection.
+ */
+enum rte_flow_conntrack_tcp_last_index {
+	RTE_FLOW_CONNTRACK_FLAG_NONE = 0, /**< No Flag. */
+	RTE_FLOW_CONNTRACK_FLAG_SYN = RTE_BIT32(0), /**< With SYN flag. */
+	RTE_FLOW_CONNTRACK_FLAG_SYNACK = RTE_BIT32(1), /**< With SYNACK flag. */
+	RTE_FLOW_CONNTRACK_FLAG_FIN = RTE_BIT32(2), /**< With FIN flag. */
+	RTE_FLOW_CONNTRACK_FLAG_ACK = RTE_BIT32(3), /**< With ACK flag. */
+	RTE_FLOW_CONNTRACK_FLAG_RST = RTE_BIT32(4), /**< With RST flag. */
 };
 
-enum rte_flow_conntrack_index {
-	RTE_FLOW_CONNTRACK_INDEX_NONE = 0,
-	RTE_FLOW_CONNTRACK_INDEX_SYN = (1 << 0),
-	RTE_FLOW_CONNTRACK_INDEX_SYN_ACK = (1 << 1),
-	RTE_FLOW_CONNTRACK_INDEX_FIN = (1 << 2),
-	RTE_FLOW_CONNTRACK_INDEX_ACK = (1 << 3),
-	RTE_FLOW_CONNTRACK_INDEX_RST = (1 << 4),
+/**
+ * @warning
+ * @b EXPERIMENTAL: this structure may change without prior notice
+ *
+ * Configuration parameters for each direction of a TCP connection.
+ * All fields should be in host byte order.
+ * If needed, driver should convert all fields to network byte order
+ * if HW needs them in that way.
+ */
+struct rte_flow_tcp_dir_param {
+	/** TCP window scaling factor, 0xF to disable. */
+	uint32_t scale:4;
+	/** The FIN was sent by this direction. */
+	uint32_t close_initiated:1;
+	/** An ACK packet has been received by this side. */
+	uint32_t last_ack_seen:1;
+	/**
+	 * If set, it indicates that there is unacknowledged data for the
+	 * packets sent from this direction.
+	 */
+	uint32_t data_unacked:1;
+	/**
+	 * Maximal value of sequence + payload length in sent
+	 * packets (next ACK from the opposite direction).
+	 */
+	uint32_t sent_end;
+	/**
+	 * Maximal value of (ACK + window size) in received packet + length
+	 * over sent packet (maximal sequence could be sent).
+	 */
+	uint32_t reply_end;
+	/** Maximal value of actual window size in sent packets. */
+	uint32_t max_win;
+	/** Maximal value of ACK in sent packets. */
+	uint32_t max_ack;
 };
 
 /**
@@ -3106,51 +3147,61 @@ enum rte_flow_conntrack_index {
  *
  * RTE_FLOW_ACTION_TYPE_CONNTRACK
  *
- * Configuration and initial state for the conntrack HW module.
+ * Configuration and initial state for the connection tracking module.
+ * This structure could be used for both setting and query.
+ * All fields should be in host byte order.
  */
 struct rte_flow_action_conntrack {
-	uint16_t peer_port; /**< The peer port number, can be the same port. */
-	uint32_t is_original_dir:1;
-	/**< Direction of this connection when creating, the value only affect
-	 * the subsequent flows creation.
+	/** The peer port number, can be the same port. */
+	uint16_t peer_port;
+	/**
+	 * Direction of this connection when creating a flow rule, the
+	 * value only affects the creation of subsequent flow rules.
 	 */
-	uint32_t enable:1;
-	/**< Enable / disable the conntrack HW module. When disabled, the
+	uint32_t is_original_dir:1;
+	/**
+	 * Enable / disable the conntrack HW module. When disabled, the
 	 * result will always be RTE_FLOW_CONNTRACK_FLAG_DISABLED.
 	 * In this state the HW will act as passthrough.
+	 * It only affects this conntrack object in the HW without any effect
+	 * to the other objects.
 	 */
+	uint32_t enable:1;
+	/** At least one ack was seen after the connection was established. */
 	uint32_t live_connection:1;
-	/**< Seen at least one ack, after the connection was established. */
+	/** Enable selective ACK on this connection. */
 	uint32_t selective_ack:1;
-	/**< Enable selective ACK on this connection. */
+	/** A challenge ack has passed. */
 	uint32_t challenge_ack_passed:1;
+	/**
+	 * 1: The last packet is seen from the original direction.
+	 * 0: The last packet is seen from the reply direction.
+	 */
 	uint32_t last_direction:1;
-	/**< 1: If the last packet is seen that it arrived from
-	 * the original direction.
-	 */
+	/** No TCP check will be done except the state change. */
 	uint32_t liberal_mode:1;
-	/**< No TCP check will be done except the state change. */
+	/** The current state of this connection. */
 	enum rte_flow_conntrack_state state;
-	/**< The current state of the connection. */
+	/** Scaling factor for maximal allowed ACK window. */
 	uint8_t max_ack_window;
-	/**< Scaling factor for maximal allowed ACK window. */
+	/** Maximal allowed number of retransmission times. */
 	uint8_t retransmission_limit;
-	/**< Retransmission times exceed maximal allowed number. */
+	/** TCP parameters of the original direction. */
 	struct rte_flow_tcp_dir_param original_dir;
-	/**< TCP parameters of the original direction. */
+	/** TCP parameters of the reply direction. */
 	struct rte_flow_tcp_dir_param reply_dir;
-	/**< TCP parameters of the reply direction. */
+	/** The window value of the last packet passed this conntrack. */
 	uint16_t last_window;
-	/**< The window value of the last packet passed this conntrack. */
-	enum rte_flow_conntrack_index last_index;
+	enum rte_flow_conntrack_tcp_last_index last_index;
+	/** The sequence of the last packet passed this conntrack. */
 	uint32_t last_seq;
-	/**< The sequence of the last packet passed this conntrack. */
+	/** The acknowledgment of the last packet passed this conntrack. */
 	uint32_t last_ack;
-	/**< The acknowledgement of the last packet passed this conntrack. */
-	uint32_t last_end;
-	/**< The total value ACK + payload length of the last packet passed
-	 * this conntrack.
+	/**
+	 * The total value ACK + payload length of the last packet
+	 * passed this conntrack.
 	 */
+	uint32_t last_end;
 };
 
 /**
@@ -3161,12 +3212,14 @@ struct rte_flow_action_conntrack {
  * destroy the old context and create a new one instead.
  */
 struct rte_flow_modify_conntrack {
+	/** New connection tracking parameters to be updated. */
 	struct rte_flow_action_conntrack new_ct;
-	/**< New connection tracking parameters to be updated. */
-	uint32_t direction:1; /**< The direction field will be updated. */
+	/** The direction field will be updated. */
+	uint32_t direction:1;
+	/** All the other fields except direction will be updated. */
 	uint32_t state:1;
-	/**< All the other fields except direction will be updated. */
-	uint32_t reserved:30; /**< Reserved bits for the future usage. */
+	/** Reserved bits for the future usage. */
+	uint32_t reserved:30;
 };
 
 /**

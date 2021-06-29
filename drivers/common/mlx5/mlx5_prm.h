@@ -2580,42 +2580,42 @@ struct mlx5_ifc_tcp_window_params_bits {
 };
 
 struct mlx5_ifc_conn_track_aso_bits {
-	struct mlx5_ifc_tcp_window_params_bits reply_dir; /* End of DW15. */
-	struct mlx5_ifc_tcp_window_params_bits original_dir; /* End of DW11. */
-	u8 last_end[0x20]; /* End of DW7. */
-	u8 last_ack[0x20]; /* End of DW6. */
-	u8 last_seq[0x20]; /* End of DW5. */
+	struct mlx5_ifc_tcp_window_params_bits reply_dir; /* End of DW3. */
+	struct mlx5_ifc_tcp_window_params_bits original_dir; /* End of DW7. */
+	u8 last_end[0x20]; /* End of DW8. */
+	u8 last_ack[0x20]; /* End of DW9. */
+	u8 last_seq[0x20]; /* End of DW10. */
 	u8 last_win[0x10];
-	u8 reserved_at_50[0xa];
+	u8 reserved_at_170[0xa];
 	u8 last_dir[0x1];
-	u8 last_index[0x5]; /* End of DW4. */
-	u8 reserved_at_40[0x40]; /* End of DW3. */
-	u8 reply_dircetion_tcp_scale[0x4];
-	u8 reply_dircetion_tcp_close_initiated[0x1];
-	u8 reply_dircetion_tcp_liberal_enabled[0x1];
-	u8 reply_dircetion_tcp_data_unacked[0x1];
-	u8 reply_dircetion_tcp_max_ack[0x1];
-	u8 reserved_at_28[0x8];
-	u8 original_dircetion_tcp_scale[0x4];
-	u8 original_dircetion_tcp_close_initiated[0x1];
-	u8 original_dircetion_tcp_liberal_enabled[0x1];
-	u8 original_dircetion_tcp_data_unacked[0x1];
-	u8 original_dircetion_tcp_max_ack[0x1];
-	u8 reserved_at_38[0x8]; /* End of DW1. */
+	u8 last_index[0x5]; /* End of DW11. */
+	u8 reserved_at_180[0x40]; /* End of DW13. */
+	u8 reply_direction_tcp_scale[0x4];
+	u8 reply_direction_tcp_close_initiated[0x1];
+	u8 reply_direction_tcp_liberal_enabled[0x1];
+	u8 reply_direction_tcp_data_unacked[0x1];
+	u8 reply_direction_tcp_max_ack[0x1];
+	u8 reserved_at_1c8[0x8];
+	u8 original_direction_tcp_scale[0x4];
+	u8 original_direction_tcp_close_initiated[0x1];
+	u8 original_direction_tcp_liberal_enabled[0x1];
+	u8 original_direction_tcp_data_unacked[0x1];
+	u8 original_direction_tcp_max_ack[0x1];
+	u8 reserved_at_1d8[0x8]; /* End of DW14. */
 	u8 valid[0x1];
 	u8 state[0x3];
 	u8 freeze_track[0x1];
-	u8 reserved_at_5[0xb];
-	u8 reserved_at_10[0x1];
+	u8 reserved_at_1e5[0xb];
+	u8 reserved_at_1f0[0x1];
 	u8 connection_assured[0x1];
 	u8 sack_permitted[0x1];
 	u8 challenged_acked[0x1];
 	u8 heartbeat[0x1];
 	u8 max_ack_window[0x3];
-	u8 reserved_at_18[0x1];
+	u8 reserved_at_1f8[0x1];
 	u8 retransmission_counter[0x3];
 	u8 retranmission_limit_exceeded[0x1];
-	u8 retranmission_limit[0x3]; /* End of DW0. */
+	u8 retranmission_limit[0x3]; /* End of DW15. */
 };
 
 struct mlx5_ifc_conn_track_offload_bits {
