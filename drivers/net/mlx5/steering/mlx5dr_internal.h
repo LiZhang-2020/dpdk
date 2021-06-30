@@ -17,6 +17,7 @@
 #include "mlx5_malloc.h"
 
 #include "mlx5dr.h"
+#include "mlx5dr_pool.h"
 #include "mlx5dr_context.h"
 #include "mlx5dr_table.h"
 #include "mlx5dr_matcher.h"
