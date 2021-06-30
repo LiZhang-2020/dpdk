@@ -42,7 +42,20 @@ struct mlx5dr_cmd_stc_create_attr {
 };
 
 struct mlx5dr_cmd_stc_modify_attr {
-	uint64_t modify_bits;
+	uint32_t object_id;
+	uint8_t action_offset;
+	enum mlx5_ifc_stc_action_type action_type;
+	union {
+		uint32_t id; /* TIRN, TAG, FT ID, STE ID */
+		uint32_t dest_table_id;
+		uint32_t dest_tir_num;
+		uint32_t tag;
+	};
+};
+
+struct mlx5dr_cmd_ste_create_attr {
+	uint8_t log_obj_range;
+	uint8_t table_type; /* TODO under arch talks */
 };
 
 int mlx5dr_cmd_destroy_obj(struct mlx5dr_devx_obj *devx_obj);
@@ -58,5 +71,17 @@ mlx5dr_cmd_flow_table_modify(struct mlx5dr_devx_obj *devx_obj,
 struct mlx5dr_devx_obj *
 mlx5dr_cmd_rtc_create(struct ibv_context *ctx,
 		      struct mlx5dr_cmd_rtc_create_attr *rtc_attr);
+
+struct mlx5dr_devx_obj *
+mlx5dr_cmd_stc_create(struct ibv_context *ctx,
+		      struct mlx5dr_cmd_stc_create_attr *stc_attr);
+
+int
+mlx5dr_cmd_stc_modify(struct mlx5dr_devx_obj *devx_obj,
+		      struct mlx5dr_cmd_stc_modify_attr *stc_attr);
+
+struct mlx5dr_devx_obj *
+mlx5dr_cmd_ste_create(struct ibv_context *ctx,
+		      struct mlx5dr_cmd_ste_create_attr *ste_attr);
 
 #endif

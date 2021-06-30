@@ -114,3 +114,107 @@ mlx5dr_cmd_rtc_create(struct ibv_context *ctx,
 
 	return devx_obj;
 }
+
+struct mlx5dr_devx_obj *
+mlx5dr_cmd_stc_create(struct ibv_context *ctx,
+		      struct mlx5dr_cmd_stc_create_attr *stc_attr)
+{
+	uint32_t out[MLX5_ST_SZ_DW(general_obj_out_cmd_hdr)] = {};
+	uint32_t in[MLX5_ST_SZ_DW(create_stc_in)] = {};
+	struct mlx5dr_devx_obj *devx_obj;
+	void *attr;
+
+	devx_obj = simple_malloc(sizeof(*devx_obj));
+	if (!devx_obj) {
+		DRV_LOG(ERR, "Failed to create RTC");
+		rte_errno = ENOMEM;
+		return NULL;
+	}
+
+	attr = MLX5_ADDR_OF(create_stc_in, in, hdr);
+	MLX5_SET(general_obj_in_cmd_hdr,
+		 attr, opcode, MLX5_CMD_OP_CREATE_GENERAL_OBJECT);
+	MLX5_SET(general_obj_in_cmd_hdr,
+		 attr, obj_type, MLX5_GENERAL_OBJ_TYPE_STC);
+
+	attr = MLX5_ADDR_OF(create_stc_in, in, stc);
+	MLX5_SET(stc, attr, table_type, stc_attr->table_type);
+
+	devx_obj->obj = mlx5_glue->devx_obj_create(ctx, in, sizeof(in), out, sizeof(out));
+	if (!devx_obj->obj) {
+		simple_free(devx_obj);
+		return NULL;
+	}
+
+	devx_obj->id = MLX5_GET(general_obj_out_cmd_hdr, out, obj_id);
+
+	return devx_obj;
+}
+
+int
+mlx5dr_cmd_stc_modify(struct mlx5dr_devx_obj *devx_obj,
+		      struct mlx5dr_cmd_stc_modify_attr *stc_attr)
+{
+	uint32_t out[MLX5_ST_SZ_DW(general_obj_out_cmd_hdr)] = {};
+	uint32_t in[MLX5_ST_SZ_DW(create_stc_in)] = {};
+	void *stc_parm;
+	void *attr;
+
+	attr = MLX5_ADDR_OF(create_stc_in, in, hdr);
+	MLX5_SET(general_obj_in_cmd_hdr,
+		 attr, opcode, MLX5_CMD_OP_MODIFY_GENERAL_OBJECT);
+	MLX5_SET(general_obj_in_cmd_hdr,
+		 attr, obj_type, MLX5_GENERAL_OBJ_TYPE_STC);
+	MLX5_SET(general_obj_in_cmd_hdr, in, obj_id, stc_attr->object_id);
+
+	attr = MLX5_ADDR_OF(create_stc_in, in, stc);
+	MLX5_SET(stc, attr, ste_action_offset, stc_attr->action_offset);
+	MLX5_SET(stc, attr, action_type, stc_attr->action_type);
+	MLX5_SET64(stc, attr, modify_field_select,
+		   MLX5_IFC_MODIFY_STC_FIELD_SELECT_STE_OFFSET |
+		   MLX5_IFC_MODIFY_STC_FIELD_SELECT_ACTION_TYPE |
+		   MLX5_IFC_MODIFY_STC_FIELD_SELECT_STC_PARAM);
+
+	stc_parm = MLX5_ADDR_OF(stc, attr, stc_param);
+	MLX5_SET(stc_ste_param_ste_table, stc_parm, obj_id, stc_attr->id);
+
+	return mlx5_glue->devx_obj_modify(devx_obj->obj, in, sizeof(in), out, sizeof(out));
+}
+
+struct mlx5dr_devx_obj *
+mlx5dr_cmd_ste_create(struct ibv_context *ctx,
+		      struct mlx5dr_cmd_ste_create_attr *ste_attr)
+{
+	uint32_t out[MLX5_ST_SZ_DW(general_obj_out_cmd_hdr)] = {};
+	uint32_t in[MLX5_ST_SZ_DW(create_ste_in)] = {};
+	struct mlx5dr_devx_obj *devx_obj;
+	void *attr;
+
+	devx_obj = simple_malloc(sizeof(*devx_obj));
+	if (!devx_obj) {
+		DRV_LOG(ERR, "Failed to create STE");
+		rte_errno = ENOMEM;
+		return NULL;
+	}
+
+	attr = MLX5_ADDR_OF(create_ste_in, in, hdr);
+	MLX5_SET(general_obj_in_cmd_hdr,
+		 attr, opcode, MLX5_CMD_OP_CREATE_GENERAL_OBJECT);
+	MLX5_SET(general_obj_in_cmd_hdr,
+		 attr, obj_type, MLX5_GENERAL_OBJ_TYPE_STE);
+	MLX5_SET(general_obj_in_cmd_hdr,
+		 attr, log_obj_range, ste_attr->log_obj_range);
+
+	attr = MLX5_ADDR_OF(create_ste_in, in, ste);
+	MLX5_SET(ste, attr, table_type, ste_attr->table_type);
+
+	devx_obj->obj = mlx5_glue->devx_obj_create(ctx, in, sizeof(in), out, sizeof(out));
+	if (!devx_obj->obj) {
+		simple_free(devx_obj);
+		return NULL;
+	}
+
+	devx_obj->id = MLX5_GET(general_obj_out_cmd_hdr, out, obj_id);
+
+	return devx_obj;
+}

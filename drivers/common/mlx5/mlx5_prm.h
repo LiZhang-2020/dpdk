@@ -2778,6 +2778,7 @@ enum {
 	MLX5_GENERAL_OBJ_TYPE_FLOW_HIT_ASO = 0x0025,
 	MLX5_GENERAL_OBJ_TYPE_CONN_TRACK_OFFLOAD = 0x0031,
 	MLX5_GENERAL_OBJ_TYPE_STC = 0x0032, // TODO valex value not from PRM
+	MLX5_GENERAL_OBJ_TYPE_STE = 0x0033, // TODO valex value not from PRM
 	MLX5_GENERAL_OBJ_TYPE_RTC = 0x0034, // TODO valex value not from PRM
 };
 
@@ -2861,7 +2862,7 @@ enum mlx5_ifc_stc_action_type {
 };
 
 struct mlx5_ifc_stc_ste_param_ste_table_bits {
-	u8 ste_obj_id[0x20];
+	u8 obj_id[0x20];
 	u8 reserved_at_20[0x60];
 };
 
@@ -2884,6 +2885,12 @@ union mlx5_ifc_stc_param_bits {
 	u8 reserved_at_0[0x80];
 };
 
+enum {
+	MLX5_IFC_MODIFY_STC_FIELD_SELECT_STE_OFFSET = 1 << 0,
+	MLX5_IFC_MODIFY_STC_FIELD_SELECT_ACTION_TYPE= 1 << 1,
+	MLX5_IFC_MODIFY_STC_FIELD_SELECT_STC_PARAM = 1 << 2,
+};
+
 struct mlx5_ifc_stc_bits {
 	u8 modify_field_select[0x40];
 	u8 reserved_at_40[0x48];
@@ -2895,14 +2902,11 @@ struct mlx5_ifc_stc_bits {
 	u8 reserved_at_180[0x280];
 };
 
-struct mlx5_ifc_create_rtc_in_bits {
-        struct mlx5_ifc_general_obj_in_cmd_hdr_bits hdr;
-        struct mlx5_ifc_rtc_bits rtc;
-};
-
-struct mlx5_ifc_create_stc_in_bits {
-        struct mlx5_ifc_general_obj_in_cmd_hdr_bits hdr;
-        struct mlx5_ifc_stc_bits stc;
+struct mlx5_ifc_ste_bits {
+	u8 modify_field_select[0x40];
+	u8 reserved_at_40[0x48];
+	u8 table_type[0x8];
+	u8 reserved_at_90[0x370];
 };
 
 struct mlx5_ifc_create_virtio_q_counters_in_bits {
@@ -2918,6 +2922,21 @@ struct mlx5_ifc_query_virtio_q_counters_out_bits {
 struct mlx5_ifc_create_geneve_tlv_option_in_bits {
 	struct mlx5_ifc_general_obj_in_cmd_hdr_bits hdr;
 	struct mlx5_ifc_geneve_tlv_option_bits geneve_tlv_opt;
+};
+
+struct mlx5_ifc_create_rtc_in_bits {
+	struct mlx5_ifc_general_obj_in_cmd_hdr_bits hdr;
+	struct mlx5_ifc_rtc_bits rtc;
+};
+
+struct mlx5_ifc_create_stc_in_bits {
+	struct mlx5_ifc_general_obj_in_cmd_hdr_bits hdr;
+	struct mlx5_ifc_stc_bits stc;
+};
+
+struct mlx5_ifc_create_ste_in_bits {
+	struct mlx5_ifc_general_obj_in_cmd_hdr_bits hdr;
+	struct mlx5_ifc_ste_bits ste;
 };
 
 enum {
