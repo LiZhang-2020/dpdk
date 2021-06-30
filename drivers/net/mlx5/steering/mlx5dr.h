@@ -13,6 +13,7 @@ enum mlx5dr_table_type {
 	MLX5DR_TABLE_TYPE_NIC_RX,
 	MLX5DR_TABLE_TYPE_NIC_TX,
 	MLX5DR_TABLE_TYPE_FDB,
+	MLX5DR_TABLE_TYPE_MAX,
 };
 
 enum mlx5dr_matcher_insertion_mode {
@@ -23,7 +24,7 @@ enum mlx5dr_matcher_insertion_mode {
 struct mlx5dr_context_attr {
 	uint16_t queues;
 	uint16_t queues_size;
-	size_t initial_ste_memory;
+	size_t initial_log_ste_memory;
 	struct ibv_pd *pd;
 };
 

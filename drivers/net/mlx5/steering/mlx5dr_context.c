@@ -4,12 +4,66 @@
 
 #include "mlx5dr_internal.h"
 
-static int mlx5dr_context_uninit_pd(struct mlx5dr_context *ctx)
+static int mlx5dr_context_pools_init(struct mlx5dr_context *ctx,
+				     size_t log_ste_memory)
 {
-	if (ctx->flags & MLX5DR_CONTEXT_FLAG_PRIVATE_PD)
-		return mlx5_glue->dealloc_pd(ctx->pd);
+	struct mlx5dr_pool_attr pool_attr = {0};
+	int i;
+
+	/* Create an STC pool per FT type */
+	pool_attr.single_resource = 1;
+	pool_attr.pool_type = MLX5DR_POOL_TYPE_STC;
+	pool_attr.alloc_log_sz = MLX5DR_POOL_STC_LOG_SZ;
+	pool_attr.inital_log_sz = 0;
+
+	for (i = 0; i < MLX5DR_TABLE_TYPE_MAX; i++) {
+		pool_attr.table_type = i;
+		ctx->stc_pool[i] = mlx5dr_pool_create(ctx, &pool_attr);
+		if (!ctx->stc_pool[i]) {
+			DRV_LOG(ERR, "Failed to allocate STC pool [%d]\n" ,i);
+			goto free_stc_pools;
+		}
+	}
+
+	/* Create an STE pool per FT type */
+	pool_attr.single_resource = 0;
+	pool_attr.pool_type = MLX5DR_POOL_TYPE_STE;
+	pool_attr.alloc_log_sz = MLX5DR_POOL_STE_LOG_SZ;
+	pool_attr.inital_log_sz = log_ste_memory;
+
+	for (i = 0; i < MLX5DR_TABLE_TYPE_MAX; i++) {
+		pool_attr.table_type = i;
+		ctx->ste_pool[i] = mlx5dr_pool_create(ctx, &pool_attr);
+		if (!ctx->ste_pool[i]) {
+			DRV_LOG(ERR, "Failed to allocate STE pool [%d]\n" ,i);
+			goto free_ste_pools;
+		}
+	}
 
 	return 0;
+
+free_ste_pools:
+	for (i = 0; i < MLX5DR_TABLE_TYPE_MAX; i++)
+		if (ctx->ste_pool[i])
+			mlx5dr_pool_destroy(ctx->ste_pool[i]);
+free_stc_pools:
+	for (i = 0; i < MLX5DR_TABLE_TYPE_MAX; i++)
+		if (ctx->stc_pool[i])
+			mlx5dr_pool_destroy(ctx->stc_pool[i]);
+	return errno;
+}
+
+static void mlx5dr_context_pools_uninit(struct mlx5dr_context *ctx)
+{
+	int i;
+
+	for (i = 0; i < MLX5DR_TABLE_TYPE_MAX; i++) {
+		if (ctx->ste_pool[i])
+			mlx5dr_pool_destroy(ctx->ste_pool[i]);
+
+		if (ctx->stc_pool[i])
+			mlx5dr_pool_destroy(ctx->stc_pool[i]);
+	}
 }
 
 static int mlx5dr_context_init_pd(struct mlx5dr_context *ctx,
@@ -48,6 +102,14 @@ free_private_pd:
 	return ret;
 }
 
+static int mlx5dr_context_uninit_pd(struct mlx5dr_context *ctx)
+{
+	if (ctx->flags & MLX5DR_CONTEXT_FLAG_PRIVATE_PD)
+		return mlx5_glue->dealloc_pd(ctx->pd);
+
+	return 0;
+}
+
 static int mlx5dr_context_hws_supp(struct mlx5dr_context *ctx)
 {
 	struct mlx5_hca_attr attr = {0};
@@ -76,23 +138,27 @@ struct mlx5dr_context *mlx5dr_context_open(struct ibv_context *ibv_ctx,
 	int ret;
 
 	ctx = simple_malloc(sizeof(*ctx));
-	if (!ctx)
+	if (!ctx) {
+		rte_errno = ENOMEM;
 		return NULL;
+	}
 
 	ctx->ibv_ctx = ibv_ctx;
+	pthread_spin_init(&ctx->ctrl_lock, PTHREAD_PROCESS_PRIVATE);
 
 	ret = mlx5dr_context_init_pd(ctx, attr->pd);
 	if (ret)
 		goto free_ctx;
 
-	// Check HW steering is supported
+	/* Check HW steering is supported */
 	ret = mlx5dr_context_hws_supp(ctx);
 	if (ret)
 		goto uninit_pd;
 
-	// Init memory pools
-
-	// Reserve STE memory
+	/* Initialise memory pools */
+	ret = mlx5dr_context_pools_init(ctx, attr->initial_log_ste_memory);
+	if (ret)
+		goto uninit_pd;
 
 	// Allocate send rings
 
@@ -109,8 +175,8 @@ int mlx5dr_context_close(struct mlx5dr_context *ctx)
 {
 	// Deallocate send rings
 
-	// Release STE memory
-
+	mlx5dr_context_pools_uninit(ctx);
+	pthread_spin_destroy(&ctx->ctrl_lock);
 	mlx5dr_context_uninit_pd(ctx);
 	simple_free(ctx);
 	return 0;
