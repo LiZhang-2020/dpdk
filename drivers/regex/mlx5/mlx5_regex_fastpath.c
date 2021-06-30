@@ -566,7 +566,7 @@ mlx5_regexdev_dequeue(struct rte_regexdev *dev, uint16_t qp_id,
 		uint16_t wq_counter
 			= (rte_be_to_cpu_16(cqe->wqe_counter) + 1) &
 			  MLX5_REGEX_MAX_WQE_INDEX;
-		size_t sqid = cqe->rsvd3[2];
+		size_t sqid = cqe->user_index_bytes[2];
 		struct mlx5_regex_sq *sq = &queue->sqs[sqid];
 
 		/* UMR mode WQE counter move as WQE set(4 WQEBBS).*/
