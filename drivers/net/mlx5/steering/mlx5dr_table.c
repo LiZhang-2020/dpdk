@@ -4,17 +4,14 @@
 
 #include "mlx5dr_internal.h"
 
-static int mlx5dr_table_uninit(struct mlx5dr_table *tbl)
-{
-	if (tbl->level == MLX5DR_ROOT_LEVEL)
-		return 0;
-
-	return mlx5dr_cmd_destroy_obj(tbl->ft);
-}
-
 static int mlx5dr_table_init(struct mlx5dr_table *tbl)
 {
+	struct mlx5dr_cmd_stc_modify_attr stc_attr = {0};
 	struct mlx5dr_cmd_ft_create_attr ft_attr = {0};
+	struct mlx5dr_context *ctx = tbl->ctx;
+	struct mlx5dr_devx_obj *devx_obj;
+	struct mlx5dr_pool *stc_pool;
+	int ret;
 
 	if (tbl->level == MLX5DR_ROOT_LEVEL)
 		return 0;
@@ -35,7 +32,7 @@ static int mlx5dr_table_init(struct mlx5dr_table *tbl)
 		tbl->fw_ft_type = FS_FT_FDB;
 		break;
 	default:
-		assert(false);
+		assert(0);
 		break;
 	}
 
@@ -49,7 +46,40 @@ static int mlx5dr_table_init(struct mlx5dr_table *tbl)
 		return errno;
 	}
 
+	stc_pool = ctx->stc_pool[tbl->type];
+	tbl->stc = mlx5dr_pool_chunk_alloc(stc_pool, &ret);
+	if (ret) {
+		DRV_LOG(ERR, "Failed to allocate go to FT STC\n");
+		goto flow_table_destroy;
+	}
+
+	stc_attr.object_id = tbl->stc.id;
+	stc_attr.action_type = MLX5_IFC_STC_ACTION_TYPE_JUMP_TO_FT;
+	stc_attr.dest_table_id = tbl->ft->id;
+	devx_obj = mlx5dr_pool_chunk_get_base_devx_obj(stc_pool, &tbl->stc);
+
+	ret = mlx5dr_cmd_stc_modify(devx_obj, &stc_attr);
+	if (ret) {
+		DRV_LOG(ERR, "Failed to modify STC to jump for FT\n");
+		goto free_chunk;
+	}
+
 	return 0;
+
+free_chunk:
+	mlx5dr_pool_chunk_free(stc_pool, &tbl->stc);
+flow_table_destroy:
+	mlx5dr_cmd_destroy_obj(tbl->ft);
+	return errno;
+}
+
+static void mlx5dr_table_uninit(struct mlx5dr_table *tbl)
+{
+	if (tbl->level == MLX5DR_ROOT_LEVEL)
+		return;
+
+	mlx5dr_pool_chunk_free(tbl->ctx->stc_pool[tbl->type], &tbl->stc);
+	mlx5dr_cmd_destroy_obj(tbl->ft);
 }
 
 struct mlx5dr_table *mlx5dr_table_create(struct mlx5dr_context *ctx,
@@ -64,8 +94,10 @@ struct mlx5dr_table *mlx5dr_table_create(struct mlx5dr_context *ctx,
 	}
 
 	tbl = simple_malloc(sizeof(*tbl));
-	if (!tbl)
+	if (!tbl) {
+		rte_errno = ENOMEM;
 		return NULL;
+	}
 
 	tbl->ctx = ctx;
 	tbl->type = attr->type;
