@@ -25,7 +25,7 @@
 
 static inline void *simple_malloc(size_t size)
 {
-	return mlx5_malloc(MLX5_MEM_ANY,
+	return mlx5_malloc(MLX5_MEM_SYS,
 			   size,
 			   MLX5_MALLOC_ALIGNMENT,
 			   SOCKET_ID_ANY);
