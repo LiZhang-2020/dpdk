@@ -7,7 +7,7 @@
 
 struct mlx5dr_matcher_nic {
 	struct mlx5dr_devx_obj *rtc;
-	struct mlx5dr_devx_obj *ste_id;
+	struct mlx5dr_pool_chunk ste;
 };
 
 struct mlx5dr_matcher {

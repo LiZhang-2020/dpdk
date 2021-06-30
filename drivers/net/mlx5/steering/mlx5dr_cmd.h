@@ -25,7 +25,7 @@ struct mlx5dr_cmd_ft_modify_attr {
 
 struct mlx5dr_cmd_rtc_create_attr {
 	uint32_t pd;
-	uint32_t stc_id;
+	uint32_t stc_base;
 	uint32_t ste_base;
 	uint32_t ste_offset;
 	uint32_t miss_ft_id;

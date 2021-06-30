@@ -99,7 +99,7 @@ mlx5dr_cmd_rtc_create(struct ibv_context *ctx,
 	MLX5_SET(rtc, attr, log_hash_size, rtc_attr->log_size);
 	MLX5_SET(rtc, attr, table_type, rtc_attr->table_type);
 	MLX5_SET(rtc, attr, match_definer_id, rtc_attr->definer_id);
-	MLX5_SET(rtc, attr, stc_id, rtc_attr->stc_id);
+	MLX5_SET(rtc, attr, stc_id, rtc_attr->stc_base);
 	MLX5_SET(rtc, attr, ste_table_base_id, rtc_attr->ste_base);
 	MLX5_SET(rtc, attr, ste_table_offset, rtc_attr->ste_offset);
 	MLX5_SET(rtc, attr, miss_flow_table_id, rtc_attr->miss_ft_id);
