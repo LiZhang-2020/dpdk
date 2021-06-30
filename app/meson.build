@@ -19,7 +19,8 @@ apps = [
 	'test-pipeline',
 	'test-pmd',
 	'test-regex',
-	'test-sad']
+	'test-sad',
+	'test-mlx5']
 
 default_cflags = machine_args + ['-DALLOW_EXPERIMENTAL_API']
 default_ldflags = []
