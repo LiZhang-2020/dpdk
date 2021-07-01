@@ -370,6 +370,8 @@ mlx5_regex_qp_setup(struct rte_regexdev *dev, uint16_t qp_ind,
 		DRV_LOG(ERR, "Error setting up mr btree");
 		goto err_btree;
 	}
+	/* Save pointer of global generation number to check memory event. */
+	qp->mr_ctrl.dev_gen_ptr = &priv->mr_scache.dev_gen;
 
 	ret = mlx5_regexdev_setup_fastpath(priv, qp_ind);
 	if (ret) {
