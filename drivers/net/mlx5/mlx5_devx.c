@@ -471,6 +471,7 @@ mlx5_rxq_create_devx_rq(struct mlx5_rxq_priv *rxq)
 	struct mlx5_devx_obj *rq;
 
 	/* Fill RQ attributes. */
+	rq_attr.user_index = rte_cpu_to_be_16(priv->dev_data->port_id);
 	mlx5_devx_create_rq_attr_fill(rxq_data, cqn, &rq_attr);
 	rq_attr.ts_format = mlx5_ts_format_conv(priv->sh->rq_ts_format);
 	if (rxq_data->shared) {

@@ -1288,7 +1288,7 @@ rxq_cq_to_mbuf(struct mlx5_rxq_data *rxq, struct rte_mbuf *pkt,
 {
 	/* Update packet information. */
 	pkt->packet_type = rxq_cq_to_pkt_type(rxq, cqe, mcqe);
-
+	pkt->port = unlikely(rxq->shared) ? cqe->user_index_low : rxq->port_id;
 	if (rxq->rss_hash) {
 		uint32_t rss_hash_res = 0;
 
@@ -1448,7 +1448,6 @@ mlx5_rx_burst(void *dpdk_rxq, struct rte_mbuf **pkts, uint16_t pkts_n)
 		DATA_LEN(rep) = DATA_LEN(seg);
 		PKT_LEN(rep) = PKT_LEN(seg);
 		SET_DATA_OFF(rep, DATA_OFF(seg));
-		PORT(rep) = PORT(seg);
 		(*rxq->elts)[idx] = rep;
 		/*
 		 * Fill NIC descriptor with the new buffer.  The lkey and size
@@ -1717,7 +1716,6 @@ mlx5_rx_burst_mprq(void *dpdk_rxq, struct rte_mbuf **pkts, uint16_t pkts_n)
 			pkt->tso_segsz = len / cqe->lro_num_seg;
 		}
 		PKT_LEN(pkt) = len;
-		PORT(pkt) = rxq->port_id;
 #ifdef MLX5_PMD_SOFT_COUNTERS
 		/* Increment bytes counter. */
 		rxq->stats.ibytes += PKT_LEN(pkt);
