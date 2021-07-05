@@ -6,10 +6,10 @@
 
 // TODO VALEX: this a BAD temporary implementation
 
-struct mlx5dr_pool_chunk
-mlx5dr_pool_chunk_alloc(struct mlx5dr_pool *pool, int *error)
+int
+mlx5dr_pool_chunk_alloc(struct mlx5dr_pool *pool,
+			struct mlx5dr_pool_chunk *chunk)
 {
-	struct mlx5dr_pool_chunk chunk;
 	int ret = 0;
 
 	pthread_spin_lock(&pool->lock);
@@ -21,9 +21,7 @@ mlx5dr_pool_chunk_alloc(struct mlx5dr_pool *pool, int *error)
 
 	pthread_spin_unlock(&pool->lock);
 
-	*error = ret;
-
-	return chunk;
+	return 0;
 }
 
 void mlx5dr_pool_chunk_free(struct mlx5dr_pool *pool,

@@ -47,7 +47,7 @@ static int mlx5dr_table_init(struct mlx5dr_table *tbl)
 	}
 
 	stc_pool = ctx->stc_pool[tbl->type];
-	tbl->stc = mlx5dr_pool_chunk_alloc(stc_pool, &ret);
+	ret = mlx5dr_pool_chunk_alloc(stc_pool, &tbl->stc);
 	if (ret) {
 		DRV_LOG(ERR, "Failed to allocate go to FT STC\n");
 		goto flow_table_destroy;

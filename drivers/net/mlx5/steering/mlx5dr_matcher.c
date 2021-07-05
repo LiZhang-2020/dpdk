@@ -164,7 +164,7 @@ static int mlx5dr_matcher_create_rtc_nic(struct mlx5dr_matcher *matcher,
 	ste_pool = ctx->ste_pool[tbl->type];
 	stc_pool = ctx->stc_pool[tbl->type];
 
-	nic_matcher->ste = mlx5dr_pool_chunk_alloc(ste_pool, &ret);
+	ret = mlx5dr_pool_chunk_alloc(ste_pool, &nic_matcher->ste);
 	if (ret) {
 		DRV_LOG(ERR, "Failed to allocate STE for matcher RTC\n");
 		return ret;

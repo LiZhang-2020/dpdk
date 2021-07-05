@@ -55,8 +55,8 @@ mlx5dr_pool_create(struct mlx5dr_context *ctx,
 
 int mlx5dr_pool_destroy(struct mlx5dr_pool *pool);
 
-struct mlx5dr_pool_chunk
-mlx5dr_pool_chunk_alloc(struct mlx5dr_pool *pool, int *error);
+int mlx5dr_pool_chunk_alloc(struct mlx5dr_pool *pool,
+			    struct mlx5dr_pool_chunk *chunk);
 
 void mlx5dr_pool_chunk_free(struct mlx5dr_pool *pool,
 			    struct mlx5dr_pool_chunk *chunk);
