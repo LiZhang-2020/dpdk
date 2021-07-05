@@ -49,9 +49,9 @@ rte_devargs_layers_parse(struct rte_devargs *devargs,
 		const char *str;
 		struct rte_kvargs *kvlist;
 	} layers[] = {
-		{ "bus=",    NULL, NULL, },
-		{ "class=",  NULL, NULL, },
-		{ "driver=", NULL, NULL, },
+		{ RTE_DEVARGS_KEY_BUS "=",    NULL, NULL, },
+		{ RTE_DEVARGS_KEY_CLASS "=",  NULL, NULL, },
+		{ RTE_DEVARGS_KEY_DRIVER "=", NULL, NULL, },
 	};
 	struct rte_kvargs_pair *kv = NULL;
 	struct rte_class *cls = NULL;
