@@ -1812,11 +1812,12 @@ flow_verbs_translate(struct rte_eth_dev *dev,
 			flow_verbs_translate_item_tcp(dev_flow, items,
 						      item_flags);
 			subpriority = MLX5_PRIORITY_MAP_L4;
-			dev_flow->hash_fields |=
-				mlx5_flow_hashfields_adjust
-					(rss_desc, tunnel, ETH_RSS_TCP,
-					 (IBV_RX_HASH_SRC_PORT_TCP |
-					  IBV_RX_HASH_DST_PORT_TCP));
+			if (dev_flow->hash_fields != 0)
+				dev_flow->hash_fields |=
+						mlx5_flow_hashfields_adjust
+							(rss_desc, tunnel, ETH_RSS_TCP,
+								(IBV_RX_HASH_SRC_PORT_TCP |
+								 IBV_RX_HASH_DST_PORT_TCP));
 			item_flags |= tunnel ? MLX5_FLOW_LAYER_INNER_L4_TCP :
 					       MLX5_FLOW_LAYER_OUTER_L4_TCP;
 			break;
@@ -1824,11 +1825,12 @@ flow_verbs_translate(struct rte_eth_dev *dev,
 			flow_verbs_translate_item_udp(dev_flow, items,
 						      item_flags);
 			subpriority = MLX5_PRIORITY_MAP_L4;
-			dev_flow->hash_fields |=
-				mlx5_flow_hashfields_adjust
-					(rss_desc, tunnel, ETH_RSS_UDP,
-					 (IBV_RX_HASH_SRC_PORT_UDP |
-					  IBV_RX_HASH_DST_PORT_UDP));
+			if (dev_flow->hash_fields != 0)
+				dev_flow->hash_fields |=
+						mlx5_flow_hashfields_adjust
+							(rss_desc, tunnel, ETH_RSS_UDP,
+								(IBV_RX_HASH_SRC_PORT_UDP |
+								 IBV_RX_HASH_DST_PORT_UDP));
 			item_flags |= tunnel ? MLX5_FLOW_LAYER_INNER_L4_UDP :
 					       MLX5_FLOW_LAYER_OUTER_L4_UDP;
 			break;
