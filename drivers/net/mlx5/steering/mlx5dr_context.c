@@ -50,7 +50,7 @@ free_stc_pools:
 	for (i = 0; i < MLX5DR_TABLE_TYPE_MAX; i++)
 		if (ctx->stc_pool[i])
 			mlx5dr_pool_destroy(ctx->stc_pool[i]);
-	return errno;
+	return rte_errno;
 }
 
 static void mlx5dr_context_pools_uninit(struct mlx5dr_context *ctx)
@@ -79,7 +79,8 @@ static int mlx5dr_context_init_pd(struct mlx5dr_context *ctx,
 		ctx->pd = mlx5_glue->alloc_pd(ctx->ibv_ctx);
 		if (!ctx->pd) {
 			DRV_LOG(ERR, "Failed to allocate PD\n");
-			return errno;
+			rte_errno = errno;
+			return rte_errno;
 		}
 		ctx->flags |= MLX5DR_CONTEXT_FLAG_PRIVATE_PD;
 	}
