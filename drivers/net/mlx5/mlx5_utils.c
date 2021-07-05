@@ -870,6 +870,16 @@ _mlx5_ipool_get_cache(struct mlx5_indexed_pool *pool, int cidx, uint32_t idx)
 	uint32_t entry_idx;
 
 	MLX5_ASSERT(idx);
+	if (unlikely(!pool->cache[cidx])) {
+		pool->cache[cidx] = pool->cfg.malloc(MLX5_MEM_ZERO,
+			sizeof(struct mlx5_ipool_per_lcore) +
+			(pool->cfg.per_core_cache * sizeof(uint32_t)),
+			RTE_CACHE_LINE_SIZE, SOCKET_ID_ANY);
+		if (!pool->cache[cidx]) {
+			DRV_LOG(ERR, "Ipool cache%d allocate failed\n", cidx);
+			return NULL;
+		}
+	}
 	lc = mlx5_ipool_update_global_cache(pool, cidx);
 	idx -= 1;
 	trunk_idx = mlx5_trunk_idx_get(pool, idx);
