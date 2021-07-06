@@ -14363,6 +14363,15 @@ flow_dv_translate(struct rte_eth_dev *dev,
 				    matcher.mask.size);
 	matcher.priority = mlx5_flow_adjust_priority(dev, priority,
 						     matcher.priority);
+	/**
+	 * When creating meter drop flow in drop table, using original
+	 * 5-tuple match, the matcher priority should be lower than
+	 * mtr_id matcher.
+	 */
+	if (attr->group == MLX5_FLOW_TABLE_LEVEL_METER &&
+	    dev_flow->dv.table_id == MLX5_MTR_TABLE_ID_DROP &&
+	    matcher.priority <= MLX5_REG_BITS)
+		matcher.priority += MLX5_REG_BITS;
 	/* reserved field no needs to be set to 0 here. */
 	tbl_key.is_fdb = attr->transfer;
 	tbl_key.is_egress = attr->egress;
