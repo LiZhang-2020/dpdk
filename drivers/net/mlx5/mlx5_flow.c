@@ -4693,9 +4693,7 @@ get_meter_sub_policy(struct rte_eth_dev *dev,
 
 	policy = wks->policy;
 	final_policy = policy->is_hierarchy ? wks->final_policy : policy;
-	if (final_policy->is_rss ||
-		(final_policy->is_queue &&
-	!final_policy->sub_policys[MLX5_MTR_DOMAIN_INGRESS][0]->rix_hrxq[0])) {
+	if (final_policy->is_rss || final_policy->is_queue) {
 		struct mlx5_flow_rss_desc rss_desc_v[MLX5_MTR_RTE_COLORS];
 		struct mlx5_flow_rss_desc *rss_desc[MLX5_MTR_RTE_COLORS] = {0};
 		uint32_t i;
