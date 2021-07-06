@@ -17712,8 +17712,7 @@ flow_dv_meter_hierarchy_rule_create(struct rte_eth_dev *dev,
 	sub_policy = mtr_policy->sub_policys[domain][0];
 	for (i = 0; i < RTE_COLORS; i++) {
 		bool rule_exist = false;
-		struct mlx5_meter_policy_action_container *act_cnt =
-					&mtr_policy->act_cnt[i];
+		struct mlx5_meter_policy_action_container *act_cnt;
 
 		if (i >= RTE_COLOR_YELLOW)
 			break;
@@ -17740,6 +17739,7 @@ flow_dv_meter_hierarchy_rule_create(struct rte_eth_dev *dev,
 		next_sub_policy = next_policy->sub_policys[domain][0];
 		tbl_data = container_of(next_sub_policy->tbl_rsc,
 					struct mlx5_flow_tbl_data_entry, tbl);
+		act_cnt = &mtr_policy->act_cnt[i];
 		if (mtr_first) {
 			acts.dv_actions[0] = next_fm->meter_action;
 			acts.dv_actions[1] = act_cnt->modify_hdr->action;
