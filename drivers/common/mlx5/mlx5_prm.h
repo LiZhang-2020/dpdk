@@ -2769,6 +2769,7 @@ enum {
 	MLX5_OBJ_TYPE_GENEVE_TLV_OPT = 0x000b,
 	MLX5_GENERAL_OBJ_TYPE_DEK = 0x000c,
 	MLX5_GENERAL_OBJ_TYPE_VIRTQ = 0x000d,
+	MLX5_GENERAL_OBJ_TYPE_DEFINER = 0x0018,
 	MLX5_GENERAL_OBJ_TYPE_VIRTIO_Q_COUNTERS = 0x001c,
 	MLX5_GENERAL_OBJ_TYPE_IMPORT_KEK = 0x001d,
 	MLX5_GENERAL_OBJ_TYPE_CREDENTIAL = 0x001e,
@@ -2777,9 +2778,9 @@ enum {
 	MLX5_GENERAL_OBJ_TYPE_FLOW_METER_ASO = 0x0024,
 	MLX5_GENERAL_OBJ_TYPE_FLOW_HIT_ASO = 0x0025,
 	MLX5_GENERAL_OBJ_TYPE_CONN_TRACK_OFFLOAD = 0x0031,
-	MLX5_GENERAL_OBJ_TYPE_STC = 0x0032, // TODO valex value not from PRM
-	MLX5_GENERAL_OBJ_TYPE_STE = 0x0033, // TODO valex value not from PRM
-	MLX5_GENERAL_OBJ_TYPE_RTC = 0x0034, // TODO valex value not from PRM
+	MLX5_GENERAL_OBJ_TYPE_STC = 0x0024, // TODO PRM valex value not from PRM and already taken
+	MLX5_GENERAL_OBJ_TYPE_STE = 0x0025, // TODO PRM valex value not from PRM and already taken
+	MLX5_GENERAL_OBJ_TYPE_RTC = 0x0026, // TODO PRM valex value not from PRM and already taken
 };
 
 struct mlx5_ifc_general_obj_in_cmd_hdr_bits {
@@ -2787,9 +2788,14 @@ struct mlx5_ifc_general_obj_in_cmd_hdr_bits {
 	u8 reserved_at_10[0x20];
 	u8 obj_type[0x10];
 	u8 obj_id[0x20];
-	u8 reserved_at_60[0x3];
-	u8 log_obj_range[0x5];
-	u8 reserved_at_58[0x18];
+	union {
+		struct {
+			u8 reserved_at_60[0x3];
+			u8 log_obj_range[0x5];
+			u8 reserved_at_58[0x18];
+		};
+		u8 obj_offset[0x20];
+	};
 };
 
 struct mlx5_ifc_general_obj_out_cmd_hdr_bits {
@@ -2854,11 +2860,16 @@ struct mlx5_ifc_rtc_bits {
 	u8 reserved_at_180[0x280];
 };
 
+// TODO PRM Values are not part of PRM
 enum mlx5_ifc_stc_action_type {
-	MLX5_IFC_STC_ACTION_TYPE_TAG = 0xc,
+	MLX5_IFC_STC_ACTION_TYPE_TAG = 0x0c,
+	MLX5_IFC_STC_ACTION_TYPE_ACC_MODIFY_LIST = 0x0e,
 	MLX5_IFC_STC_ACTION_TYPE_JUMP_TO_STE = 0x80,
 	MLX5_IFC_STC_ACTION_TYPE_JUMP_TO_TIR = 0x81,
-	MLX5_IFC_STC_ACTION_TYPE_JUMP_TO_FT = 0x82,
+	MLX5_IFC_STC_ACTION_TYPE_COUNTER = 0x82,
+	MLX5_IFC_STC_ACTION_TYPE_DROP = 0x83,
+	MLX5_IFC_STC_ACTION_TYPE_WIRE = 0x84,
+	MLX5_IFC_STC_ACTION_TYPE_JUMP_TO_FT = 0xff,
 };
 
 struct mlx5_ifc_stc_ste_param_ste_table_bits {
@@ -2909,6 +2920,16 @@ struct mlx5_ifc_ste_bits {
 	u8 reserved_at_90[0x370];
 };
 
+struct mlx5_ifc_definer_bits {
+	u8 modify_field_select[0x40];
+	u8 reserved_at_40[0x50];
+	u8 format_id[0x10];
+	u8 reserved_at_60[0x160];
+	u8 ctrl[0xa0];
+	u8 match_mask_dw_11_8[0x60];
+	u8 match_mask_dw_7_0[0x100];
+};
+
 struct mlx5_ifc_create_virtio_q_counters_in_bits {
 	struct mlx5_ifc_general_obj_in_cmd_hdr_bits hdr;
 	struct mlx5_ifc_virtio_q_counters_bits virtio_q_counters;
@@ -2937,6 +2958,11 @@ struct mlx5_ifc_create_stc_in_bits {
 struct mlx5_ifc_create_ste_in_bits {
 	struct mlx5_ifc_general_obj_in_cmd_hdr_bits hdr;
 	struct mlx5_ifc_ste_bits ste;
+};
+
+struct mlx5_ifc_create_definer_in_bits {
+        struct mlx5_ifc_general_obj_in_cmd_hdr_bits hdr;
+        struct mlx5_ifc_definer_bits definer;
 };
 
 enum {
@@ -4101,7 +4127,7 @@ struct mlx5_ifc_create_flow_table_out_bits {
 
 enum {
 	MLX5_IFC_MODIFY_FLOW_TABLE_MISS_ACTION = 1 << 0,
-	MLX5_IFC_MODIFY_FLOW_TABLE_RTC_ID = 1 << 1,
+	MLX5_IFC_MODIFY_FLOW_TABLE_RTC_ID = 1 << 14,
 };
 
 struct mlx5_ifc_modify_flow_table_in_bits {
