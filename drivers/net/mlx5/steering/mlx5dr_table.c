@@ -38,6 +38,7 @@ static int mlx5dr_table_init(struct mlx5dr_table *tbl)
 
 	ft_attr.type = tbl->fw_ft_type;
 	ft_attr.wqe_based_flow_update = true;
+	ft_attr.level = MLX5DR_DEFAULT_LEVEL;
 	// TODO Need to support default miss behaviour for FDB
 
 	tbl->ft = mlx5dr_cmd_flow_table_create(tbl->ctx->ibv_ctx, &ft_attr);
@@ -53,7 +54,7 @@ static int mlx5dr_table_init(struct mlx5dr_table *tbl)
 		goto flow_table_destroy;
 	}
 
-	stc_attr.object_id = tbl->stc.id;
+	stc_attr.stc_offset = tbl->stc.offset;
 	stc_attr.action_type = MLX5_IFC_STC_ACTION_TYPE_JUMP_TO_FT;
 	stc_attr.dest_table_id = tbl->ft->id;
 	devx_obj = mlx5dr_pool_chunk_get_base_devx_obj(stc_pool, &tbl->stc);
@@ -61,7 +62,7 @@ static int mlx5dr_table_init(struct mlx5dr_table *tbl)
 	ret = mlx5dr_cmd_stc_modify(devx_obj, &stc_attr);
 	if (ret) {
 		DRV_LOG(ERR, "Failed to modify STC to jump for FT\n");
-		goto free_chunk;
+		 goto free_chunk;
 	}
 
 	return 0;
