@@ -42,7 +42,7 @@ struct mlx5dr_cmd_stc_create_attr {
 };
 
 struct mlx5dr_cmd_stc_modify_attr {
-	uint32_t object_id;
+	uint32_t stc_offset;
 	uint8_t action_offset;
 	enum mlx5_ifc_stc_action_type action_type;
 	union {
@@ -55,7 +55,12 @@ struct mlx5dr_cmd_stc_modify_attr {
 
 struct mlx5dr_cmd_ste_create_attr {
 	uint8_t log_obj_range;
-	uint8_t table_type; /* TODO under arch talks */
+	uint8_t table_type;
+};
+
+struct mlx5dr_cmd_definer_create_attr {
+	uint16_t format_id;
+	uint8_t *match_mask;
 };
 
 int mlx5dr_cmd_destroy_obj(struct mlx5dr_devx_obj *devx_obj);
@@ -83,5 +88,9 @@ mlx5dr_cmd_stc_modify(struct mlx5dr_devx_obj *devx_obj,
 struct mlx5dr_devx_obj *
 mlx5dr_cmd_ste_create(struct ibv_context *ctx,
 		      struct mlx5dr_cmd_ste_create_attr *ste_attr);
+
+struct mlx5dr_devx_obj *
+mlx5dr_cmd_definer_create(struct ibv_context *ctx,
+			  struct mlx5dr_cmd_definer_create_attr *def_attr);
 
 #endif

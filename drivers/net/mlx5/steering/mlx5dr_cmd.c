@@ -19,8 +19,8 @@ struct mlx5dr_devx_obj *
 mlx5dr_cmd_flow_table_create(struct ibv_context *ctx,
 			     struct mlx5dr_cmd_ft_create_attr *ft_attr)
 {
-	uint32_t out[MLX5_ST_SZ_DW(create_flow_table_out)] = {};
-	uint32_t in[MLX5_ST_SZ_DW(create_flow_table_in)] = {};
+	uint32_t out[MLX5_ST_SZ_DW(create_flow_table_out)] = {0};
+	uint32_t in[MLX5_ST_SZ_DW(create_flow_table_in)] = {0};
 	struct mlx5dr_devx_obj *devx_obj;
 	void *ft_ctx;
 
@@ -56,8 +56,8 @@ int
 mlx5dr_cmd_flow_table_modify(struct mlx5dr_devx_obj *devx_obj,
 			     struct mlx5dr_cmd_ft_modify_attr *ft_attr)
 {
-	uint32_t out[MLX5_ST_SZ_DW(modify_flow_table_out)] = {};
-	uint32_t in[MLX5_ST_SZ_DW(modify_flow_table_in)] = {};
+	uint32_t out[MLX5_ST_SZ_DW(modify_flow_table_out)] = {0};
+	uint32_t in[MLX5_ST_SZ_DW(modify_flow_table_in)] = {0};
 	void *ft_ctx;
 	int ret;
 
@@ -82,8 +82,8 @@ struct mlx5dr_devx_obj *
 mlx5dr_cmd_rtc_create(struct ibv_context *ctx,
 		      struct mlx5dr_cmd_rtc_create_attr *rtc_attr)
 {
-	uint32_t out[MLX5_ST_SZ_DW(general_obj_out_cmd_hdr)] = {};
-	uint32_t in[MLX5_ST_SZ_DW(create_rtc_in)] = {};
+	uint32_t out[MLX5_ST_SZ_DW(general_obj_out_cmd_hdr)] = {0};
+	uint32_t in[MLX5_ST_SZ_DW(create_rtc_in)] = {0};
 	struct mlx5dr_devx_obj *devx_obj;
 	void *attr;
 
@@ -130,8 +130,8 @@ struct mlx5dr_devx_obj *
 mlx5dr_cmd_stc_create(struct ibv_context *ctx,
 		      struct mlx5dr_cmd_stc_create_attr *stc_attr)
 {
-	uint32_t out[MLX5_ST_SZ_DW(general_obj_out_cmd_hdr)] = {};
-	uint32_t in[MLX5_ST_SZ_DW(create_stc_in)] = {};
+	uint32_t out[MLX5_ST_SZ_DW(general_obj_out_cmd_hdr)] = {0};
+	uint32_t in[MLX5_ST_SZ_DW(create_stc_in)] = {0};
 	struct mlx5dr_devx_obj *devx_obj;
 	void *attr;
 
@@ -147,13 +147,15 @@ mlx5dr_cmd_stc_create(struct ibv_context *ctx,
 		 attr, opcode, MLX5_CMD_OP_CREATE_GENERAL_OBJECT);
 	MLX5_SET(general_obj_in_cmd_hdr,
 		 attr, obj_type, MLX5_GENERAL_OBJ_TYPE_STC);
+	MLX5_SET(general_obj_in_cmd_hdr,
+		 attr, log_obj_range, stc_attr->log_obj_range);
 
 	attr = MLX5_ADDR_OF(create_stc_in, in, stc);
 	MLX5_SET(stc, attr, table_type, stc_attr->table_type);
 
 	devx_obj->obj = mlx5_glue->devx_obj_create(ctx, in, sizeof(in), out, sizeof(out));
 	if (!devx_obj->obj) {
-		DRV_LOG(ERR, "Failed to create RTC");
+		DRV_LOG(ERR, "Failed to create STC");
 		simple_free(devx_obj);
 		rte_errno = errno;
 		return NULL;
@@ -168,18 +170,23 @@ int
 mlx5dr_cmd_stc_modify(struct mlx5dr_devx_obj *devx_obj,
 		      struct mlx5dr_cmd_stc_modify_attr *stc_attr)
 {
-	uint32_t out[MLX5_ST_SZ_DW(general_obj_out_cmd_hdr)] = {};
-	uint32_t in[MLX5_ST_SZ_DW(create_stc_in)] = {};
+	uint32_t out[MLX5_ST_SZ_DW(general_obj_out_cmd_hdr)] = {0};
+	uint32_t in[MLX5_ST_SZ_DW(create_stc_in)] = {0};
 	void *stc_parm;
 	void *attr;
 	int ret;
+
+	/* TODO Ignore, not supported due to FW */
+	if (stc_attr->action_type == MLX5_IFC_STC_ACTION_TYPE_JUMP_TO_FT)
+		return 0;
 
 	attr = MLX5_ADDR_OF(create_stc_in, in, hdr);
 	MLX5_SET(general_obj_in_cmd_hdr,
 		 attr, opcode, MLX5_CMD_OP_MODIFY_GENERAL_OBJECT);
 	MLX5_SET(general_obj_in_cmd_hdr,
 		 attr, obj_type, MLX5_GENERAL_OBJ_TYPE_STC);
-	MLX5_SET(general_obj_in_cmd_hdr, in, obj_id, stc_attr->object_id);
+	MLX5_SET(general_obj_in_cmd_hdr, in, obj_id, devx_obj->id);
+	MLX5_SET(general_obj_in_cmd_hdr, in, obj_offset, stc_attr->stc_offset);
 
 	attr = MLX5_ADDR_OF(create_stc_in, in, stc);
 	MLX5_SET(stc, attr, ste_action_offset, stc_attr->action_offset);
@@ -189,6 +196,7 @@ mlx5dr_cmd_stc_modify(struct mlx5dr_devx_obj *devx_obj,
 		   MLX5_IFC_MODIFY_STC_FIELD_SELECT_ACTION_TYPE |
 		   MLX5_IFC_MODIFY_STC_FIELD_SELECT_STC_PARAM);
 
+	/* Set destination TIRN, TAG, FT ID, STE ID */
 	stc_parm = MLX5_ADDR_OF(stc, attr, stc_param);
 	MLX5_SET(stc_ste_param_ste_table, stc_parm, obj_id, stc_attr->id);
 
@@ -205,8 +213,8 @@ struct mlx5dr_devx_obj *
 mlx5dr_cmd_ste_create(struct ibv_context *ctx,
 		      struct mlx5dr_cmd_ste_create_attr *ste_attr)
 {
-	uint32_t out[MLX5_ST_SZ_DW(general_obj_out_cmd_hdr)] = {};
-	uint32_t in[MLX5_ST_SZ_DW(create_ste_in)] = {};
+	uint32_t out[MLX5_ST_SZ_DW(general_obj_out_cmd_hdr)] = {0};
+	uint32_t in[MLX5_ST_SZ_DW(create_ste_in)] = {0};
 	struct mlx5dr_devx_obj *devx_obj;
 	void *attr;
 
@@ -231,6 +239,46 @@ mlx5dr_cmd_ste_create(struct ibv_context *ctx,
 	devx_obj->obj = mlx5_glue->devx_obj_create(ctx, in, sizeof(in), out, sizeof(out));
 	if (!devx_obj->obj) {
 		DRV_LOG(ERR, "Failed to create STE");
+		simple_free(devx_obj);
+		rte_errno = errno;
+		return NULL;
+	}
+
+	devx_obj->id = MLX5_GET(general_obj_out_cmd_hdr, out, obj_id);
+
+	return devx_obj;
+}
+
+struct mlx5dr_devx_obj *
+mlx5dr_cmd_definer_create(struct ibv_context *ctx,
+			  struct mlx5dr_cmd_definer_create_attr *def_attr)
+{
+	uint32_t out[MLX5_ST_SZ_DW(general_obj_out_cmd_hdr)] = {0};
+	uint32_t in[MLX5_ST_SZ_DW(create_definer_in)] = {0};
+	struct mlx5dr_devx_obj *devx_obj;
+	void *ptr;
+
+	devx_obj = simple_malloc(sizeof(*devx_obj));
+	if (!devx_obj) {
+		DRV_LOG(ERR, "Failed to allocate memory for STE object");
+		rte_errno = ENOMEM;
+		return NULL;
+	}
+
+	MLX5_SET(general_obj_in_cmd_hdr,
+		 in, opcode, MLX5_CMD_OP_CREATE_GENERAL_OBJECT);
+	MLX5_SET(general_obj_in_cmd_hdr,
+		 in, obj_type, MLX5_GENERAL_OBJ_TYPE_DEFINER);
+
+	ptr = MLX5_ADDR_OF(create_definer_in, in, definer);
+	MLX5_SET(definer, ptr, format_id, def_attr->format_id);
+
+	ptr = MLX5_ADDR_OF(definer, ptr, match_mask_dw_7_0);
+	memcpy(ptr, def_attr->match_mask, MLX5_FLD_SZ_BYTES(definer, match_mask_dw_7_0));
+
+	devx_obj->obj = mlx5_glue->devx_obj_create(ctx, in, sizeof(in), out, sizeof(out));
+	if (!devx_obj->obj) {
+		DRV_LOG(ERR, "Failed to create Definer");
 		simple_free(devx_obj);
 		rte_errno = errno;
 		return NULL;
