@@ -11,6 +11,7 @@ static int mlx5dr_matcher_create_end_ft(struct mlx5dr_matcher *matcher)
 
 	ft_attr.type = tbl->fw_ft_type;
 	ft_attr.wqe_based_flow_update = true;
+	ft_attr.level = MLX5DR_DEFAULT_LEVEL;
 	// TODO Need to support default miss behaviour for FDB
 
 	matcher->end_ft = mlx5dr_cmd_flow_table_create(tbl->ctx->ibv_ctx, &ft_attr);
@@ -28,20 +29,25 @@ static int mlx5dr_matcher_destroy_end_ft(struct mlx5dr_matcher *matcher)
 
 static int mlx5dr_matcher_set_builders(struct mlx5dr_matcher *matcher)
 {
+	struct mlx5dr_cmd_definer_create_attr def_attr = {0};
 	struct mlx5dr_table *tbl = matcher->tbl;
+	uint8_t match_mask[32] = {0};
 
-	DRV_LOG(ERR, "This is TEMP for the warn %p\n", (void *)tbl);
+	/* TODO hard coded definer creation for testing */
+	def_attr.format_id = 60;
+	def_attr.match_mask = match_mask;
+	matcher->definer = mlx5dr_cmd_definer_create(tbl->ctx->ibv_ctx, &def_attr);
+	if (!matcher->definer) {
+		DRV_LOG(ERR, "Failed to create matcher definer\n");
+		return rte_errno;
+	}
 
-	return EINVAL;
+	return 0;
 }
 
 static int mlx5dr_matcher_clear_builders(struct mlx5dr_matcher *matcher)
 {
-	struct mlx5dr_table *tbl = matcher->tbl;
-
-	DRV_LOG(ERR, "This is TEMP for the warn %p\n", (void *)tbl);
-
-	return EINVAL;
+	return mlx5dr_cmd_destroy_obj(matcher->definer);
 }
 
 static int mlx5dr_matcher_connect(struct mlx5dr_matcher *matcher)
@@ -173,7 +179,7 @@ static int mlx5dr_matcher_create_rtc_nic(struct mlx5dr_matcher *matcher,
 	devx_obj = mlx5dr_pool_chunk_get_base_devx_obj(ste_pool, &nic_matcher->ste);
 
 	rtc_attr.ste_base = devx_obj->id;
-	rtc_attr.ste_offset = nic_matcher->ste.id - rtc_attr.ste_base;
+	rtc_attr.ste_offset = nic_matcher->ste.offset;
 	rtc_attr.definer_id = matcher->definer->id;
 	rtc_attr.miss_ft_id = matcher->end_ft->id;
 	rtc_attr.update_index_mode = MLX5_IFC_RTC_STE_UPDATE_MODE_BY_HASH;
@@ -330,6 +336,8 @@ static int mlx5dr_matcher_init_root(struct mlx5dr_matcher *matcher)
 	struct mlx5dr_context *ctx = matcher->tbl->ctx;
 	struct mlx5dv_flow_matcher_attr attr = {0};
 	enum mlx5dv_flow_table_type ft_type;
+	uint8_t buf[100] = {0};
+	struct mlx5dv_flow_match_parameters *mask = (void *)buf;
 
 	switch (type) {
 	case MLX5DR_TABLE_TYPE_NIC_RX:
@@ -347,8 +355,9 @@ static int mlx5dr_matcher_init_root(struct mlx5dr_matcher *matcher)
 	}
 
 	// TODO Need to convert rte_flow -> match
-	// attr.match_mask = mask;
-	// attr.match_criteria_enable = matcher->match_criteria;
+	mask->match_sz = 1;
+	attr.match_mask = mask;
+	attr.match_criteria_enable = 0;
 	attr.ft_type = ft_type;
 	attr.type = IBV_FLOW_ATTR_NORMAL;
 	attr.priority = matcher->attr.priority;
