@@ -2,35 +2,110 @@
  * Copyright (c) 2021 NVIDIA CORPORATION. All rights reserved.
  */
 
+#include <rte_bitmap.h>
+#include <rte_malloc.h>
 #include "mlx5dr_internal.h"
 
-// TODO VALEX: this a BAD temporary implementation
+static int mlx5dr_onesize_db_get_chunk(struct mlx5dr_pool *pool,
+				       struct mlx5dr_pool_chunk *chunk)
+{
+	uint64_t slab = 0;
+	uint32_t iidx = 0;
+
+	if (!rte_bitmap_scan(pool->db.bitmap, &iidx, &slab))
+		return -1;
+
+	iidx += __builtin_ctzll(slab);
+
+	rte_bitmap_clear(pool->db.bitmap, iidx);
+
+	// Assume only one array:
+	chunk->resource_idx = 0;//TBD, support more than one array
+	chunk->offset = iidx; //pool->resource[0][iidx].devx_obj->id;
+	//chunk->mem_arr_idx = 0;
+
+	return 0;
+}
+
+static void mlx5dr_onesize_db_put_chunk(struct mlx5dr_pool *pool,
+					struct mlx5dr_pool_chunk *chunk)
+{
+	rte_bitmap_clear(pool->db.bitmap, chunk->resource_idx);
+}
+
+static int mlx5dr_one_size_db_init(struct mlx5dr_pool *pool, uint32_t log_range)
+{
+	uint32_t bmp_size;
+	void *mem;
+	int ret = 0;
+
+	bmp_size = rte_bitmap_get_memory_footprint(1 << log_range);
+	mem = rte_zmalloc("create_stc_bmap", bmp_size, RTE_CACHE_LINE_SIZE);
+	if (!mem) {
+		printf("no mem for bitmap\n");
+		return -1 /*rte_errno*/; //TBD
+	}
+
+	pool->db.bitmap = rte_bitmap_init_with_all_set(1 << log_range,
+						       mem, bmp_size);
+	if (!pool->db.bitmap) {
+		printf("Failed to initialize stc bitmap.");
+		ret = -rte_errno;
+		goto err_mem_alloc;
+	}
+	pool->p_get_chunk = mlx5dr_onesize_db_get_chunk;
+	pool->p_put_chunk = mlx5dr_onesize_db_put_chunk;
+
+	return 0;
+
+err_mem_alloc:
+	rte_free(mem);
+	return ret;
+}
+
+static int mlx5dr_pool_db_init(struct mlx5dr_pool *pool, uint32_t log_range,
+			       enum mlx5dr_db_type db_type)
+{
+	int ret;
+
+	if (db_type == MLX5DR_DB_TYPE_ONE_SIZE) {
+		ret = mlx5dr_one_size_db_init(pool, log_range);
+		if (ret) {
+			printf("%s failed to init db (ret: %d)\n", __func__, ret);
+			return ret;
+		}
+	}
+	return 0;
+}
+
+static void mlx5dr_pool_db_unint(struct mlx5dr_pool *pool)
+{
+	if (pool->db.type == MLX5DR_DB_TYPE_ONE_SIZE)
+		rte_free(pool->db.bitmap);
+}
 
 int
 mlx5dr_pool_chunk_alloc(struct mlx5dr_pool *pool,
 			struct mlx5dr_pool_chunk *chunk)
 {
-	int ret = 0;
+	int ret;
 
 	pthread_spin_lock(&pool->lock);
 
 	// STC, ACTION_STE -> fixed 1, quick, low memory overhead
 	// STE_FOR_RTC -> by table size, slow
 	// VALEX: Erez please do
-	chunk.id = 5;
-
+	ret = pool->p_get_chunk(pool, chunk);
 	pthread_spin_unlock(&pool->lock);
 
-	return 0;
+	return ret;
 }
 
 void mlx5dr_pool_chunk_free(struct mlx5dr_pool *pool,
 			    struct mlx5dr_pool_chunk *chunk)
 {
 	pthread_spin_lock(&pool->lock);
-
-	chunk->id = 0; // TODO just for compilation
-
+	pool->p_put_chunk(pool, chunk);
 	pthread_spin_unlock(&pool->lock);
 }
 
@@ -60,7 +135,6 @@ mlx5dr_pool_resource_alloc(struct mlx5dr_pool *pool, uint32_t log_range)
 
 	switch (pool->type) {
 	case MLX5DR_POOL_TYPE_STE:
-
 		ste_attr.log_obj_range = log_range;
 		ste_attr.table_type = pool->fw_ft_type;
 		devx_obj = mlx5dr_cmd_ste_create(pool->ctx->ibv_ctx, &ste_attr);
@@ -95,6 +169,7 @@ free_resource:
 struct mlx5dr_pool *
 mlx5dr_pool_create(struct mlx5dr_context *ctx, struct mlx5dr_pool_attr *pool_attr)
 {
+	enum mlx5dr_db_type res_db_type = MLX5DR_DB_TYPE_ONE_SIZE; //now support db one size
 	struct mlx5dr_pool *pool;
 
 	pool = simple_calloc(sizeof(*pool));
@@ -123,14 +198,22 @@ mlx5dr_pool_create(struct mlx5dr_context *ctx, struct mlx5dr_pool_attr *pool_att
 		goto free_pool;
 	}
 
-	if (pool_attr->inital_log_sz) {
-		pool->resource[0] = mlx5dr_pool_resource_alloc(pool, pool_attr->inital_log_sz);
+	res_db_type = MLX5DR_DB_TYPE_ONE_SIZE;
+
+	/* the first resource that allocated use this tracking db */
+	if (mlx5dr_pool_db_init(pool, pool_attr->alloc_log_sz, res_db_type))
+		goto free_pool;
+
+	if (pool_attr->alloc_log_sz/*inital_log_sz*/) {
+		pool->resource[0] = mlx5dr_pool_resource_alloc(pool, pool_attr->alloc_log_sz);
 		if (!pool->resource[0])
-			goto free_pool;
+			goto free_db;
 	}
 
 	return pool;
 
+free_db:
+	mlx5dr_pool_db_unint(pool);
 free_pool:
 	pthread_spin_destroy(&pool->lock);
 	simple_free(pool);
@@ -144,6 +227,8 @@ int mlx5dr_pool_destroy(struct mlx5dr_pool *pool)
 	for (i = 0; i <= MLX5DR_POOL_RESOURCE_ARR_SZ; i++)
 		if (pool->resource[i])
 			mlx5dr_pool_resource_free(pool->resource[i]);
+
+	mlx5dr_pool_db_unint(pool);
 
 	pthread_spin_destroy(&pool->lock);
 	simple_free(pool);
