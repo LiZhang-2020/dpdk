@@ -163,10 +163,12 @@ struct mlx5dr_context *mlx5dr_context_open(struct ibv_context *ibv_ctx,
 
 	ret = mlx5dr_send_queues_open(ctx, attr->queues, attr->queue_size);
 	if (ret)
-		goto uninit_pd;
+		goto pools_uninit;
 
 	return ctx;
 
+pools_uninit:
+	mlx5dr_context_pools_uninit(ctx);
 uninit_pd:
 	mlx5dr_context_uninit_pd(ctx);
 free_ctx:
