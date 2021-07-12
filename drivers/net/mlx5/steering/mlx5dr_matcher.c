@@ -394,7 +394,7 @@ struct mlx5dr_matcher *mlx5dr_matcher_create(struct mlx5dr_table *tbl,
 
 	DRV_LOG(ERR, "This is TEMP for the warn %p\n", (void *)items);
 
-	matcher = simple_malloc(sizeof(*matcher));
+	matcher = simple_calloc(sizeof(*matcher));
 	if (!matcher) {
 		rte_errno = ENOMEM;
 		return NULL;
