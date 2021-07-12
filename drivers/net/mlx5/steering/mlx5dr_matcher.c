@@ -403,7 +403,7 @@ struct mlx5dr_matcher *mlx5dr_matcher_create(struct mlx5dr_table *tbl,
 	matcher->tbl = tbl;
 	matcher->attr = *attr;
 
-	if (matcher->tbl->level == MLX5DR_ROOT_LEVEL)
+	if (mlx5dr_table_is_root(matcher->tbl))
 		ret = mlx5dr_matcher_init_root(matcher);
 	else
 		ret = mlx5dr_matcher_init(matcher);
@@ -422,7 +422,7 @@ free_matcher:
 
 int mlx5dr_matcher_destroy(struct mlx5dr_matcher *matcher)
 {
-	if (matcher->tbl->level == MLX5DR_ROOT_LEVEL)
+	if (mlx5dr_table_is_root(matcher->tbl))
 		mlx5dr_matcher_uninit_root(matcher);
 	else
 		mlx5dr_matcher_uninit(matcher);

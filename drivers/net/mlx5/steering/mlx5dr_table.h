@@ -18,4 +18,9 @@ struct mlx5dr_table {
 	LIST_HEAD(matcher_head, mlx5dr_matcher) head;
 };
 
+static inline bool mlx5dr_table_is_root(struct mlx5dr_table *tbl)
+{
+	return (tbl->level == MLX5DR_ROOT_LEVEL);
+}
+
 #endif

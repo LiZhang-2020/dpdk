@@ -13,7 +13,7 @@ static int mlx5dr_table_init(struct mlx5dr_table *tbl)
 	struct mlx5dr_pool *stc_pool;
 	int ret;
 
-	if (tbl->level == MLX5DR_ROOT_LEVEL)
+	if (mlx5dr_table_is_root(tbl))
 		return 0;
 
 	if (!(tbl->ctx->flags & MLX5DR_CONTEXT_FLAG_HWS_SUPPORT)) {
@@ -76,7 +76,7 @@ flow_table_destroy:
 
 static void mlx5dr_table_uninit(struct mlx5dr_table *tbl)
 {
-	if (tbl->level == MLX5DR_ROOT_LEVEL)
+	if (mlx5dr_table_is_root(tbl))
 		return;
 
 	mlx5dr_pool_chunk_free(tbl->ctx->stc_pool[tbl->type], &tbl->stc);
