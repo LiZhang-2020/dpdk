@@ -10,7 +10,7 @@
 #include "../../drivers/net/mlx5/steering/mlx5dr.h"
 #include "/usr/include/infiniband/mlx5dv.h"
 
-char dev_name[] = "rocep8s0f0";
+char def_dev_name[] = "mlx5_0";
 
 static int run_test(struct ibv_context *ibv_ctx)
 {
@@ -93,11 +93,16 @@ out_err:
 int main(int argc, char **argv)
 {
 	struct mlx5dv_context_attr dv_ctx_attr = {};
+	char *dev_name = def_dev_name;
 	struct ibv_device **dev_list;
 	struct ibv_context *ibv_ctx;
 	struct ibv_device *dev;
 	int i, ret;
 
+	if (argc >= 3 && !memcmp("-d", argv[argc - 2], 2)) {
+		dev_name = argv[argc - 1];
+		argc -=2;
+	}
 	ret = rte_eal_init(argc, argv);
 	if (ret < 0)
 		rte_exit(EXIT_FAILURE, ":: invalid EAL arguments\n");
