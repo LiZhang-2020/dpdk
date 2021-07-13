@@ -248,7 +248,6 @@ mlx5_rxq_start(struct rte_eth_dev *dev)
 			if (mlx5_rxq_ctrl_prepare(dev, rxq_ctrl, i) < 0)
 				goto error;
 			LIST_INSERT_HEAD(&priv->rxqsobj, rxq_ctrl->obj, next);
-			rxq_ctrl->started = true;
 		}
 		ret = priv->obj_ops.rxq_res_new(rxq);
 		if (ret) {
@@ -256,6 +255,7 @@ mlx5_rxq_start(struct rte_eth_dev *dev)
 			rxq_ctrl->obj = NULL;
 			goto error;
 		}
+		rxq_ctrl->started = true;
 	}
 	return 0;
 error:

@@ -24,6 +24,7 @@
 
 #include "mlx5_rxtx.h"
 #include "mlx5_autoconf.h"
+#include "mlx5_devx.h"
 
 /**
  * Get the interface index from device name.
@@ -103,7 +104,7 @@ mlx5_dev_configure(struct rte_eth_dev *dev)
 	priv->rss_conf.rss_key_len = MLX5_RSS_HASH_KEY_LEN;
 	priv->rss_conf.rss_hf = dev->data->dev_conf.rx_adv_conf.rss_conf.rss_hf;
 	priv->rxq_privs = mlx5_realloc(priv->rxq_privs,
-				       MLX5_MEM_ANY | MLX5_MEM_ZERO,
+				       MLX5_MEM_RTE | MLX5_MEM_ZERO,
 				       sizeof(void *) * rxqs_n, 0,
 				       SOCKET_ID_ANY);
 	if (priv->rxq_privs == NULL) {
@@ -333,9 +334,13 @@ mlx5_dev_infos_get(struct rte_eth_dev *dev, struct rte_eth_dev_info *info)
 	info->flow_type_rss_offloads = ~MLX5_RSS_HF_MASK;
 	mlx5_set_default_params(dev, info);
 	mlx5_set_txlimit_params(dev, info);
+	if (priv->config.hca_attr.mem_rq_rmp &&
+	    priv->obj_ops.rxq_res_new == devx_obj_ops.rxq_res_new)
+		info->dev_capa |= RTE_ETH_DEV_CAPA_RXQ_SHARE;
 	info->switch_info.name = dev->data->name;
 	info->switch_info.domain_id = priv->domain_id;
 	info->switch_info.port_id = priv->representor_id;
+	info->switch_info.rx_domain = 0; /* No sub Rx domains. */
 	if (priv->representor) {
 		uint16_t port_id;
 

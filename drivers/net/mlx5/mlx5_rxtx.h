@@ -198,7 +198,8 @@ struct mlx5_rxq_ctrl {
 	unsigned int socket; /* CPU socket ID for allocations. */
 	LIST_ENTRY(mlx5_rxq_ctrl) share_entry; /* Entry in shared RXQ list. */
 	uint32_t share_group; /* Group ID of shared RXQ. */
-	unsigned int started:1; /* Whether (shared) RXQ has been started. */
+	uint16_t share_qid; /* Shared RxQ ID in group. */
+	unsigned int started:1; /* Whether RXQ has been started. */
 	unsigned int irq:1; /* Whether IRQ is enabled. */
 	uint32_t flow_mark_n; /* Number of Mark/Flag flows using this Queue. */
 	uint32_t flow_tunnels_n[MLX5_FLOW_TUNNEL]; /* Tunnels counters. */

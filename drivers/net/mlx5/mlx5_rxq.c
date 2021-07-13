@@ -423,9 +423,6 @@ mlx5_get_rx_queue_offloads(struct rte_eth_dev *dev)
 		offloads |= DEV_RX_OFFLOAD_VLAN_STRIP;
 	if (MLX5_LRO_SUPPORTED(dev))
 		offloads |= DEV_RX_OFFLOAD_TCP_LRO;
-	if (priv->config.hca_attr.mem_rq_rmp &&
-	    priv->obj_ops.rxq_res_new == devx_obj_ops.rxq_res_new)
-		offloads |= RTE_ETH_RX_OFFLOAD_SHARED_RXQ;
 	return offloads;
 }
 
@@ -749,20 +746,21 @@ mlx5_rx_queue_pre_setup(struct rte_eth_dev *dev, uint16_t idx, uint16_t *desc,
  *   Pointer to Ethernet device structure.
  * @param group
  *   Shared RXQ group.
- * @param idx
- *   RX queue index.
+ * @param share_qid
+ *   Shared RX queue index.
  *
  * @return
  *   Shared RXQ object that matching, or NULL if not found.
  */
 static struct mlx5_rxq_ctrl *
-mlx5_shared_rxq_get(struct rte_eth_dev *dev, uint32_t group, uint16_t idx)
+mlx5_shared_rxq_get(struct rte_eth_dev *dev, uint32_t group, uint16_t share_qid)
 {
 	struct mlx5_rxq_ctrl *rxq_ctrl;
 	struct mlx5_priv *priv = dev->data->dev_private;
 
 	LIST_FOREACH(rxq_ctrl, &priv->sh->shared_rxqs, share_entry) {
-		if (rxq_ctrl->share_group == group && rxq_ctrl->rxq.idx == idx)
+		if (rxq_ctrl->share_group == group &&
+		    rxq_ctrl->share_qid == share_qid)
 			return rxq_ctrl;
 	}
 	return NULL;
@@ -907,7 +905,7 @@ mlx5_rx_queue_setup(struct rte_eth_dev *dev, uint16_t idx, uint16_t desc,
 		}
 		MLX5_ASSERT(n_seg < MLX5_MAX_RXQ_NSEG);
 	}
-	if (offloads & RTE_ETH_RX_OFFLOAD_SHARED_RXQ) {
+	if (conf->share_group > 0) {
 		if (!priv->config.hca_attr.mem_rq_rmp) {
 			DRV_LOG(ERR, "port %u queue index %u shared Rx queue not supported by fw",
 				     dev->data->port_id, idx);
@@ -922,12 +920,13 @@ mlx5_rx_queue_setup(struct rte_eth_dev *dev, uint16_t idx, uint16_t desc,
 		}
 		if (priv->config.mprq.enabled) {
 			DRV_LOG(ERR, "port %u shared Rx queue index %u: not supported when MPRQ enabled",
-				dev->data->port_id, idx);
+				dev->data->port_id, conf->share_qid);
 			rte_errno = EINVAL;
 			return -rte_errno;
 		}
 		/* Try to reuse shared RXQ. */
-		rxq_ctrl = mlx5_shared_rxq_get(dev, conf->shared_group, idx);
+		rxq_ctrl = mlx5_shared_rxq_get(dev, conf->share_group,
+					       conf->share_qid);
 		if (rxq_ctrl != NULL &&
 		    !mlx5_shared_rxq_match(rxq_ctrl, dev, idx, desc, socket,
 					   conf, mp)) {
@@ -939,7 +938,7 @@ mlx5_rx_queue_setup(struct rte_eth_dev *dev, uint16_t idx, uint16_t desc,
 	if (res)
 		return res;
 	/* Allocate RXQ. */
-	rxq = mlx5_malloc(MLX5_MEM_ANY | MLX5_MEM_ZERO, sizeof(*rxq), 0,
+	rxq = mlx5_malloc(MLX5_MEM_RTE | MLX5_MEM_ZERO, sizeof(*rxq), 0,
 			  SOCKET_ID_ANY);
 	if (!rxq) {
 		DRV_LOG(ERR, "port %u unable to allocate rx queue index %u private data",
@@ -954,7 +953,6 @@ mlx5_rx_queue_setup(struct rte_eth_dev *dev, uint16_t idx, uint16_t desc,
 		/* Join owner list of shared RXQ. */
 		LIST_INSERT_HEAD(&rxq_ctrl->owners, rxq, owner_entry);
 		rxq->ctrl = rxq_ctrl;
-		mlx5_rxq_ref(dev, idx);
 	} else {
 		/* Create new shared RXQ. */
 		rxq_ctrl = mlx5_rxq_new(dev, rxq, desc, socket, conf, rx_seg,
@@ -968,6 +966,7 @@ mlx5_rx_queue_setup(struct rte_eth_dev *dev, uint16_t idx, uint16_t desc,
 			return -rte_errno;
 		}
 	}
+	mlx5_rxq_ref(dev, idx);
 	DRV_LOG(DEBUG, "port %u adding Rx queue %u to list",
 		dev->data->port_id, idx);
 	dev->data->rx_queues[idx] = &rxq_ctrl->rxq;
@@ -1030,7 +1029,7 @@ mlx5_rx_hairpin_queue_setup(struct rte_eth_dev *dev, uint16_t idx,
 			return -rte_errno;
 		}
 	}
-	rxq = mlx5_malloc(MLX5_MEM_ANY | MLX5_MEM_ZERO, sizeof(*rxq), 0,
+	rxq = mlx5_malloc(MLX5_MEM_RTE | MLX5_MEM_ZERO, sizeof(*rxq), 0,
 			  SOCKET_ID_ANY);
 	if (!rxq) {
 		DRV_LOG(ERR, "port %u unable to allocate hairpin rx queue index %u private data",
@@ -1628,8 +1627,10 @@ mlx5_rxq_new(struct rte_eth_dev *dev, struct mlx5_rxq_priv *rxq,
 		return NULL;
 	}
 	LIST_INIT(&tmpl->owners);
-	if (offloads & RTE_ETH_RX_OFFLOAD_SHARED_RXQ) {
+	if (conf->share_group > 0) {
 		tmpl->rxq.shared = 1;
+		tmpl->share_group = conf->share_group;
+		tmpl->share_qid = conf->share_qid;
 		LIST_INSERT_HEAD(&priv->sh->shared_rxqs, tmpl, share_entry);
 	}
 	rxq->ctrl = tmpl;
@@ -1882,7 +1883,6 @@ mlx5_rxq_new(struct rte_eth_dev *dev, struct mlx5_rxq_priv *rxq,
 	tmpl->rxq.uar_lock_cq = &priv->sh->uar_lock_cq;
 #endif
 	tmpl->rxq.idx = idx;
-	mlx5_rxq_ref(dev, idx);
 	LIST_INSERT_HEAD(&priv->rxqsctrl, tmpl, next);
 	return tmpl;
 error:
