@@ -1606,6 +1606,10 @@ mlx5_dev_close(struct rte_eth_dev *dev)
 		priv->rxqs_n = 0;
 		priv->rxqs = NULL;
 	}
+	if (priv->rxq_privs != NULL) {
+		mlx5_free(priv->rxq_privs);
+		priv->rxq_privs = NULL;
+	}
 	if (priv->txqs != NULL) {
 		/* XXX race condition if mlx5_tx_burst() is still running. */
 		usleep(1000);
