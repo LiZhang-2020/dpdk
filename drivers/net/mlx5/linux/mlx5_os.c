@@ -1771,10 +1771,6 @@ err_secondary:
 	}
 	if (config->devx && config->dv_flow_en && config->dest_tir) {
 		priv->obj_ops = devx_obj_ops;
-		priv->obj_ops.drop_action_create =
-						ibv_obj_ops.drop_action_create;
-		priv->obj_ops.drop_action_destroy =
-						ibv_obj_ops.drop_action_destroy;
 #ifndef HAVE_MLX5DV_DEVX_UAR_OFFSET
 		priv->obj_ops.txq_obj_modify = ibv_obj_ops.txq_obj_modify;
 #else
