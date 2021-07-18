@@ -68,6 +68,9 @@ mlx5dr_cmd_flow_table_modify(struct mlx5dr_devx_obj *devx_obj,
 
 	ft_ctx = MLX5_ADDR_OF(modify_flow_table_in, in, flow_table_context);
 	MLX5_SET(flow_table_context, ft_ctx, rtc_id, ft_attr->rtc_id);
+	// TODO This is not needed PRM wise this is due to current FW
+	MLX5_SET(flow_table_context, ft_ctx, wqe_based_flow_update,
+		 ft_attr->wqe_based_flow_update);
 
 	ret = mlx5_glue->devx_obj_modify(devx_obj->obj, in, sizeof(in), out, sizeof(out));
 	if (ret) {
