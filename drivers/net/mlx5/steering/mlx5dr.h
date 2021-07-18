@@ -8,6 +8,7 @@
 struct mlx5dr_context;
 struct mlx5dr_table;
 struct mlx5dr_matcher;
+struct mlx5dr_rule;
 
 enum mlx5dr_table_type {
 	MLX5DR_TABLE_TYPE_NIC_RX,
@@ -19,6 +20,11 @@ enum mlx5dr_table_type {
 enum mlx5dr_matcher_insertion_mode {
 	MLX5DR_MATCHER_INSERTION_MODE_ASSURED,
 	MLX5DR_MATCHER_INSERTION_MODE_BEST_EFFORT,
+};
+
+enum mlx5dr_action_flags {
+	MLX5DR_ACTION_FLAG_ROOT,
+	MLX5DR_ACTION_FLAG_SHARED,
 };
 
 struct mlx5dr_context_attr {
@@ -40,6 +46,26 @@ struct mlx5dr_matcher_attr {
 	uint32_t size_hint_column_log;
 };
 
+struct mlx5dr_rule_attr {
+	uint16_t queue_id;
+	void *user_data;
+	uint32_t requst_comp:1;
+	uint32_t burst:1;
+};
+
+struct mlx5dr_rule_action {
+	struct mlx5dr_action *action;
+	union {
+		struct {
+			uint32_t tag;
+		} tag;
+
+		struct {
+			uint32_t offset;
+		} counter;
+	};
+};
+
 struct mlx5dr_context *
 mlx5dr_context_open(struct ibv_context *ibv_ctx,
 		    struct mlx5dr_context_attr *attr);
@@ -58,5 +84,31 @@ mlx5dr_matcher_create(struct mlx5dr_table *table,
 		      struct mlx5dr_matcher_attr *attr);
 
 int mlx5dr_matcher_destroy(struct mlx5dr_matcher *matcher);
+
+size_t mlx5dr_rule_get_handle_size(void);
+
+int mlx5dr_rule_create(struct mlx5dr_matcher *matcher,
+		       struct rte_flow_item items[],
+		       struct mlx5dr_rule_action rule_actions[],
+		       uint8_t num_of_actions,
+		       struct mlx5dr_rule_attr *attr,
+		       struct mlx5dr_rule *rule_handle);
+
+int mlx5dr_rule_destroy(struct mlx5dr_rule *rule,
+			struct mlx5dr_rule_attr *attr);
+
+struct mlx5dr_action *
+mlx5dr_action_create_table_dest(struct mlx5dr_table *tbl,
+				enum mlx5dr_action_flags flags);
+
+struct mlx5dr_action *
+mlx5dr_action_create_drop(struct mlx5dr_context *ctx,
+			  enum mlx5dr_action_flags flags);
+
+struct mlx5dr_action *
+mlx5dr_action_create_default_miss(struct mlx5dr_context *ctx,
+				  enum mlx5dr_action_flags flags);
+
+void mlx5dr_action_destroy(struct mlx5dr_action *action);
 
 #endif
