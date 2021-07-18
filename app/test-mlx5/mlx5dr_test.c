@@ -10,16 +10,46 @@
 #include "../../drivers/net/mlx5/steering/mlx5dr.h"
 #include "/usr/include/infiniband/mlx5dv.h"
 
-char def_dev_name[] = "mlx5_0";
+#define MAX_ITEMS 10
+
+char dev_name[] = "mlx5_0";
+
+static void set_mask_and_value(struct rte_ipv4_hdr *mask,
+			       struct rte_ipv4_hdr *value,
+			       struct rte_flow_item *items)
+{
+	memset(mask, 0, sizeof(*mask));
+	memset(value, 0, sizeof(*value));
+
+	mask->version = 0xf;
+	value->version = 0x4;
+
+	mask->dst_addr = 0xffffffff;
+	value->dst_addr = 0x01010102;
+
+	items[0].type = RTE_FLOW_ITEM_TYPE_IPV4;
+	items[0].mask = mask;
+	items[0].spec = value;
+
+	items[1].type = RTE_FLOW_ITEM_TYPE_END;
+}
 
 static int run_test(struct ibv_context *ibv_ctx)
 {
 	struct mlx5dr_context *ctx;
 	struct mlx5dr_table *root_tbl, *hws_tbl;
-	struct mlx5dr_matcher *root_matcher, *hws_matcher;
+	struct mlx5dr_matcher *root_matcher, *hws_matcher1, *hws_matcher2;
+	struct mlx5dr_rule_action rule_actions[10];
+	struct mlx5dr_action *to_hws_tbl;
+	struct mlx5dr_rule *connect_rule;
 	struct mlx5dr_context_attr dr_ctx_attr = {0};
 	struct mlx5dr_table_attr dr_tbl_attr = {0};
 	struct mlx5dr_matcher_attr matcher_attr = {0};
+	struct mlx5dr_rule_attr rule_attr = {0};
+	struct rte_flow_item items[MAX_ITEMS] = {{0}};
+	struct rte_ipv4_hdr ipv_mask;
+	struct rte_ipv4_hdr ipv_value;
+	int ret;
 
 	dr_ctx_attr.initial_log_ste_memory = 0;
 	dr_ctx_attr.pd = NULL;
@@ -50,34 +80,79 @@ static int run_test(struct ibv_context *ibv_ctx)
 		goto destroy_root_tbl;
 	}
 
+	set_mask_and_value(&ipv_mask, &ipv_value, items);
+
 	/* Create root matcher */
 	matcher_attr.priority = 0;
 	matcher_attr.insertion_mode = MLX5DR_MATCHER_INSERTION_MODE_ASSURED;
-	root_matcher = mlx5dr_matcher_create(root_tbl, NULL, &matcher_attr);
+	root_matcher = mlx5dr_matcher_create(root_tbl, items, &matcher_attr);
 	if (!root_matcher) {
 		printf("Failed to create root matcher\n");
 		goto destroy_hws_tbl;
 	}
 
-	/* Create HWS matcher */
+	/* Create HWS matcher1 */
 	matcher_attr.priority = 0;
 	matcher_attr.insertion_mode = MLX5DR_MATCHER_INSERTION_MODE_BEST_EFFORT;
 	matcher_attr.size_hint_column_log = 4;
 	matcher_attr.size_hint_rows_log = 4;
-	hws_matcher = mlx5dr_matcher_create(hws_tbl, NULL, &matcher_attr);
-	if (!hws_matcher) {
-		printf("Failed to create HWS matcher\n");
+	hws_matcher1 = mlx5dr_matcher_create(hws_tbl, items, &matcher_attr);
+	if (!hws_matcher1) {
+		printf("Failed to create HWS matcher 1\n");
 		goto destroy_root_matcher;
 	}
 
-	mlx5dr_matcher_destroy(hws_matcher);
+	/* Create HWS matcher2 */
+	matcher_attr.priority = 1;
+	matcher_attr.insertion_mode = MLX5DR_MATCHER_INSERTION_MODE_BEST_EFFORT;
+	matcher_attr.size_hint_column_log = 4;
+	matcher_attr.size_hint_rows_log = 4;
+	hws_matcher2 = mlx5dr_matcher_create(hws_tbl, items, &matcher_attr);
+	if (!hws_matcher2) {
+		printf("Failed to create HWS matcher 2\n");
+		goto destroy_hws_matcher1;
+	}
+
+	/* Create goto table action */
+	to_hws_tbl = mlx5dr_action_create_table_dest(hws_tbl, 0);
+	if (!to_hws_tbl) {
+		printf("Failed to create action jump to HWS table\n");
+		goto destroy_hws_matcher2;
+	}
+
+	/* Create connecting rule to HWS */
+	connect_rule = calloc(1, mlx5dr_rule_get_handle_size());
+	if (!connect_rule) {
+		printf("Failed to allocate memory for connect rule\n");
+		goto destroy_action_to_hws_tbl;
+	}
+
+	rule_actions[0].action = to_hws_tbl;
+	ret = mlx5dr_rule_create(root_matcher, items, rule_actions, 1, &rule_attr, connect_rule);
+	if (ret) {
+		printf("Failed to create connect rule\n");
+		goto free_connect_rule;
+	}
+
+	mlx5dr_rule_destroy(connect_rule, &rule_attr);
+	free(connect_rule);
+	mlx5dr_action_destroy(to_hws_tbl);
+	mlx5dr_matcher_destroy(hws_matcher2);
+	mlx5dr_matcher_destroy(hws_matcher1);
 	mlx5dr_matcher_destroy(root_matcher);
 	mlx5dr_table_destroy(hws_tbl);
 	mlx5dr_table_destroy(root_tbl);
 	mlx5dr_context_close(ctx);
 
 	return 0;
-
+free_connect_rule:
+	free(connect_rule);
+destroy_action_to_hws_tbl:
+	mlx5dr_action_destroy(to_hws_tbl);
+destroy_hws_matcher2:
+	mlx5dr_matcher_destroy(hws_matcher2);
+destroy_hws_matcher1:
+	mlx5dr_matcher_destroy(hws_matcher1);
 destroy_root_matcher:
 	mlx5dr_matcher_destroy(root_matcher);
 destroy_hws_tbl:
