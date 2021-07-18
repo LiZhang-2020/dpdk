@@ -27,7 +27,7 @@ static int mlx5dr_send_ring_create_sq_obj(struct mlx5dr_context *ctx,
 
 	sq->obj = mlx5dr_cmd_sq_create(ctx->ibv_ctx, &attr);
 	if (!sq->obj)
-		return errno;
+		return rte_errno;
 
 	sq->sqn = sq->obj->id;
 
@@ -57,20 +57,23 @@ static int mlx5dr_send_ring_open_sq(struct mlx5dr_context *ctx,
 	sq->reg_addr = queue->uar->reg_addr;
 
 	err = posix_memalign((void **)&sq->buf, sysconf(_SC_PAGESIZE), sq_buf_sz);
-	if (err)
+	if (err) {
+		rte_errno = ENOMEM;
 		return err;
+	}
+
 	err = posix_memalign((void **)&sq->db, 8, 8);
 	if (err)
 		goto free_buf;
 
-	sq->buf_umem = mlx5dv_devx_umem_reg(ctx->ibv_ctx, sq->buf, sq_buf_sz, 0);
+	sq->buf_umem = mlx5_glue->devx_umem_reg(ctx->ibv_ctx, sq->buf, sq_buf_sz, 0);
 
 	if (!sq->buf_umem) {
 		err = errno;
 		goto free_db;
 	}
 
-	sq->db_umem = mlx5dv_devx_umem_reg(ctx->ibv_ctx, sq->db, 8, 0);
+	sq->db_umem = mlx5_glue->devx_umem_reg(ctx->ibv_ctx, sq->db, 8, 0);
 	if (!sq->db_umem) {
 		err = errno;
 		goto free_buf_umem;
@@ -84,7 +87,7 @@ static int mlx5dr_send_ring_open_sq(struct mlx5dr_context *ctx,
 	sq->wr_priv = simple_malloc(sizeof(*sq->wr_priv) *
 				    queue->queue_num_entries);
 	if (!sq->wr_priv) {
-		err = -ENOMEM;
+		err = ENOMEM;
 		goto destroy_sq_obj;
 	}
 
@@ -95,22 +98,22 @@ static int mlx5dr_send_ring_open_sq(struct mlx5dr_context *ctx,
 destroy_sq_obj:
 	mlx5dr_cmd_destroy_obj(sq->obj);
 free_db_umem:
-	mlx5dv_devx_umem_dereg(sq->db_umem);
+	mlx5_glue->devx_umem_dereg(sq->db_umem);
 free_buf_umem:
-	mlx5dv_devx_umem_dereg(sq->buf_umem);
+	mlx5_glue->devx_umem_dereg(sq->buf_umem);
 free_db:
 	free(sq->db);
 free_buf:
 	free(sq->buf);
-
+	rte_errno = err;
 	return err;
 }
 
 static void mlx5dr_send_ring_close_sq(struct mlx5dr_send_ring_sq *sq)
 {
 	mlx5dr_cmd_destroy_obj(sq->obj);
-	mlx5dv_devx_umem_dereg(sq->db_umem);
-	mlx5dv_devx_umem_dereg(sq->buf_umem);
+	mlx5_glue->devx_umem_dereg(sq->db_umem);
+	mlx5_glue->devx_umem_dereg(sq->buf_umem);
 	simple_free(sq->wr_priv);
 	free(sq->db);
 	free(sq->buf);
@@ -127,13 +130,16 @@ static int mlx5dr_send_ring_open_cq(struct mlx5dr_context *ctx,
 	int err;
 
 	cq_size = queue->queue_num_entries;
-	ibv_cq = ibv_create_cq(ctx->ibv_ctx, cq_size, NULL, NULL, 0);
-	if (!ibv_cq)
-		return errno;
+	ibv_cq = mlx5_glue->create_cq(ctx->ibv_ctx, cq_size, NULL, NULL, 0);
+	if (!ibv_cq) {
+		DRV_LOG(ERR, "Failed to create CQ");
+		rte_errno = errno;
+		return rte_errno;
+	}
 
 	obj.cq.in = ibv_cq;
 	obj.cq.out = &mlx5_cq;
-	err = mlx5dv_init_obj(&obj, MLX5DV_OBJ_CQ);
+	err = mlx5_glue->dv_init_obj(&obj, MLX5DV_OBJ_CQ);
 	if (err) {
 		err = errno;
 		goto close_cq;
@@ -143,10 +149,10 @@ static int mlx5dr_send_ring_open_cq(struct mlx5dr_context *ctx,
 	cq->db = mlx5_cq.dbrec;
 	cq->ncqe = mlx5_cq.cqe_cnt;
 	if (cq->ncqe < queue->queue_num_entries)
-		printf("%s - (ncqe: %u quque_num_entries: %u) Bug?!\n",
-		       __func__,
-		       cq->ncqe,
-		       queue->queue_num_entries); /* TODO - Debug test */
+		DRV_LOG(ERR, "%s - (ncqe: %u quque_num_entries: %u) Bug?!\n",
+			__func__,
+			cq->ncqe,
+			queue->queue_num_entries); /* TODO - Debug test */
 	cq->cqe_sz = mlx5_cq.cqe_size;
         cq->cqn = mlx5_cq.cqn;
 	cq->ibv_cq = ibv_cq;
@@ -154,14 +160,14 @@ static int mlx5dr_send_ring_open_cq(struct mlx5dr_context *ctx,
         return 0;
 
 close_cq:
-	ibv_destroy_cq(ibv_cq);
-
+	mlx5_glue->destroy_cq(ibv_cq);
+	rte_errno = err;
 	return err;
 }
 
 static void mlx5dr_send_ring_close_cq(struct mlx5dr_send_ring_cq *cq)
 {
-	ibv_destroy_cq(cq->ibv_cq);
+	mlx5_glue->destroy_cq(cq->ibv_cq);
 }
 
 static void mlx5dr_send_ring_close(struct mlx5dr_send_ring *ring)
@@ -227,7 +233,7 @@ free_rings:
 static void mlx5dr_send_queue_close(struct mlx5dr_send_engine *queue)
 {
 	mlx5dr_send_rings_close(queue);
-	mlx5dv_devx_free_uar(queue->uar);
+	mlx5_glue->devx_free_uar(queue->uar);
 }
 
 static int mlx5dr_send_queue_open(struct mlx5dr_context *ctx,
@@ -237,7 +243,7 @@ static int mlx5dr_send_queue_open(struct mlx5dr_context *ctx,
 	struct mlx5dv_devx_uar *uar;
 	int err;
 
-	uar = mlx5dv_devx_alloc_uar(ctx->ibv_ctx, MLX5_IB_UAPI_UAR_ALLOC_TYPE_NC);
+	uar = mlx5_glue->devx_alloc_uar(ctx->ibv_ctx, MLX5_IB_UAPI_UAR_ALLOC_TYPE_NC);
 	if (!uar)
 		return errno;
 
@@ -253,7 +259,7 @@ static int mlx5dr_send_queue_open(struct mlx5dr_context *ctx,
 	return 0;
 
 free_uar:
-	mlx5dv_devx_free_uar(uar);
+	mlx5_glue->devx_free_uar(uar);
 
 	return err;
 }
@@ -289,7 +295,8 @@ int mlx5dr_send_queues_open(struct mlx5dr_context *ctx,
 
 	ctx->send_queue = simple_malloc(sizeof(*ctx->send_queue) * queues);
 	if (!ctx->send_queue)
-		return -ENOMEM;
+		rte_errno = ENOMEM;
+		return rte_errno;
 
 	for (i = 0; i < queues; i++) {
 		err = mlx5dr_send_queue_open(ctx, &ctx->send_queue[i], queue_size);
