@@ -17,8 +17,8 @@ static int mlx5dr_table_init(struct mlx5dr_table *tbl)
 		return 0;
 
 	if (!(tbl->ctx->flags & MLX5DR_CONTEXT_FLAG_HWS_SUPPORT)) {
-		errno = EOPNOTSUPP;
-		return errno;
+		rte_errno = EOPNOTSUPP;
+		return rte_errno;
 	}
 
 	switch (tbl->type) {
@@ -44,7 +44,7 @@ static int mlx5dr_table_init(struct mlx5dr_table *tbl)
 	tbl->ft = mlx5dr_cmd_flow_table_create(tbl->ctx->ibv_ctx, &ft_attr);
 	if (!tbl->ft) {
 		DRV_LOG(ERR, "Failed to create flow table devx object\n");
-		return errno;
+		return rte_errno;
 	}
 
 	stc_pool = ctx->stc_pool[tbl->type];
@@ -71,7 +71,7 @@ free_chunk:
 	mlx5dr_pool_chunk_free(stc_pool, &tbl->stc);
 flow_table_destroy:
 	mlx5dr_cmd_destroy_obj(tbl->ft);
-	return errno;
+	return rte_errno;
 }
 
 static void mlx5dr_table_uninit(struct mlx5dr_table *tbl)
