@@ -294,9 +294,10 @@ int mlx5dr_send_queues_open(struct mlx5dr_context *ctx,
 	ctx->queues = queues;
 
 	ctx->send_queue = simple_malloc(sizeof(*ctx->send_queue) * queues);
-	if (!ctx->send_queue)
+	if (!ctx->send_queue) {
 		rte_errno = ENOMEM;
 		return rte_errno;
+	}
 
 	for (i = 0; i < queues; i++) {
 		err = mlx5dr_send_queue_open(ctx, &ctx->send_queue[i], queue_size);
