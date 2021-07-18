@@ -58,6 +58,10 @@ regex_ctrl_get_nb_obj(uint16_t nb_desc)
 static int
 regex_ctrl_destroy_cq(struct mlx5_regex_priv *priv, struct mlx5_regex_cq *cq)
 {
+	if (cq->obj) {
+		mlx5_devx_cmd_destroy(cq->obj);
+		cq->obj = NULL;
+	}
 	if (cq->cqe_umem) {
 		mlx5_glue->devx_umem_dereg(cq->cqe_umem);
 		cq->cqe_umem = NULL;
@@ -69,10 +73,6 @@ regex_ctrl_destroy_cq(struct mlx5_regex_priv *priv, struct mlx5_regex_cq *cq)
 	if (cq->dbr_offset) {
 		mlx5_release_dbr(&priv->dbrpgs, cq->dbr_umem, cq->dbr_offset);
 		cq->dbr_offset = -1;
-	}
-	if (cq->obj) {
-		mlx5_devx_cmd_destroy(cq->obj);
-		cq->obj = NULL;
 	}
 	return 0;
 }
@@ -283,6 +283,10 @@ regex_ctrl_destroy_sq(struct mlx5_regex_priv *priv, struct mlx5_regex_qp *qp,
 {
 	struct mlx5_regex_sq *sq = &qp->sqs[q_ind];
 
+	if (sq->obj) {
+		mlx5_devx_cmd_destroy(sq->obj);
+		sq->obj = NULL;
+	}
 	if (sq->wqe_umem) {
 		mlx5_glue->devx_umem_dereg(sq->wqe_umem);
 		sq->wqe_umem = NULL;
@@ -294,10 +298,6 @@ regex_ctrl_destroy_sq(struct mlx5_regex_priv *priv, struct mlx5_regex_qp *qp,
 	if (sq->dbr_offset) {
 		mlx5_release_dbr(&priv->dbrpgs, sq->dbr_umem, sq->dbr_offset);
 		sq->dbr_offset = -1;
-	}
-	if (sq->obj) {
-		mlx5_devx_cmd_destroy(sq->obj);
-		sq->obj = NULL;
 	}
 	return 0;
 }
