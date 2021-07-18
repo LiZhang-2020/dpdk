@@ -172,7 +172,7 @@ mlx5dr_pool_create(struct mlx5dr_context *ctx, struct mlx5dr_pool_attr *pool_att
 	enum mlx5dr_db_type res_db_type = MLX5DR_DB_TYPE_ONE_SIZE; //now support db one size
 	struct mlx5dr_pool *pool;
 
-	pool = simple_calloc(sizeof(*pool));
+	pool = simple_calloc(1, sizeof(*pool));
 	if (!pool)
 		return NULL;
 

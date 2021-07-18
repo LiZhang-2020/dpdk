@@ -22,6 +22,8 @@
 #include "mlx5dr_table.h"
 #include "mlx5dr_matcher.h"
 #include "mlx5dr_send.h"
+#include "mlx5dr_rule.h"
+#include "mlx5dr_action.h"
 #include "mlx5dr_cmd.h"
 
 static inline void *simple_malloc(size_t size)
@@ -32,10 +34,10 @@ static inline void *simple_malloc(size_t size)
 			   SOCKET_ID_ANY);
 }
 
-static inline void *simple_calloc(size_t size)
+static inline void *simple_calloc(size_t nmemb, size_t size)
 {
 	return mlx5_malloc(MLX5_MEM_SYS | MLX5_MEM_ZERO,
-			   size,
+			   nmemb * size,
 			   MLX5_MALLOC_ALIGNMENT,
 			   SOCKET_ID_ANY);
 }
