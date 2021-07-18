@@ -27,14 +27,32 @@ static int mlx5dr_matcher_destroy_end_ft(struct mlx5dr_matcher *matcher)
 	return mlx5dr_cmd_destroy_obj(matcher->end_ft);
 }
 
-static int mlx5dr_matcher_set_builders(struct mlx5dr_matcher *matcher)
+static int mlx5dr_matcher_set_builders(struct mlx5dr_matcher *matcher,
+				       struct rte_flow_item *items)
 {
 	struct mlx5dr_cmd_definer_create_attr def_attr = {0};
 	struct mlx5dr_table *tbl = matcher->tbl;
 	uint8_t match_mask[32] = {0};
 
+	/* TODO Temp code for testing */
+	for (; items->type != RTE_FLOW_ITEM_TYPE_END; items++) {
+		switch (items->type) {
+		case RTE_FLOW_ITEM_TYPE_IPV4:
+		{
+			const struct rte_ipv4_hdr *v = items->mask;
+
+			MLX5_SET(ste_def22, match_mask, outer_ip_dst_addr, v->dst_addr);
+			MLX5_SET(ste_def22, match_mask, outer_ip_src_addr, v->src_addr);
+			break;
+		}
+		default:
+			rte_errno = ENOTSUP;
+			return rte_errno;
+		}
+	}
+
 	/* TODO hard coded definer creation for testing */
-	def_attr.format_id = 60;
+	def_attr.format_id = 22;
 	def_attr.match_mask = match_mask;
 	matcher->definer = mlx5dr_cmd_definer_create(tbl->ctx->ibv_ctx, &def_attr);
 	if (!matcher->definer) {
@@ -84,6 +102,7 @@ connect:
 	if (next) {
 		ft_attr.modify_fs = MLX5_IFC_MODIFY_FLOW_TABLE_RTC_ID;
 		ft_attr.type = tbl->fw_ft_type;
+		ft_attr.wqe_based_flow_update = true;
 
 		if (next->rx.rtc)
 			ft_attr.rtc_id = next->rx.rtc->id;
@@ -101,6 +120,7 @@ connect:
 	ft = prev ? prev->end_ft : tbl->ft;
 	ft_attr.modify_fs = MLX5_IFC_MODIFY_FLOW_TABLE_RTC_ID;
 	ft_attr.type = tbl->fw_ft_type;
+	ft_attr.wqe_based_flow_update = true;
 
 	if (matcher->rx.rtc)
 		ft_attr.rtc_id = matcher->rx.rtc->id;
@@ -136,6 +156,7 @@ static int mlx5dr_matcher_disconnect(struct mlx5dr_matcher *matcher)
 
 	ft_attr.modify_fs = MLX5_IFC_MODIFY_FLOW_TABLE_RTC_ID;
 	ft_attr.type = matcher->tbl->fw_ft_type;
+	ft_attr.wqe_based_flow_update = true;
 
 	/* Connect previous end FT to next RTC if exists */
 	if (next) {
@@ -274,7 +295,8 @@ static void mlx5dr_matcher_destroy_rtc(struct mlx5dr_matcher *matcher)
 	}
 }
 
-static int mlx5dr_matcher_init(struct mlx5dr_matcher *matcher)
+static int mlx5dr_matcher_init(struct mlx5dr_matcher *matcher,
+			       struct rte_flow_item *items)
 {
 	struct mlx5dr_context *ctx = matcher->tbl->ctx;
 	int ret;
@@ -282,7 +304,7 @@ static int mlx5dr_matcher_init(struct mlx5dr_matcher *matcher)
 	pthread_spin_lock(&ctx->ctrl_lock);
 
 	/* Select and create the definers for current matcher */
-	ret = mlx5dr_matcher_set_builders(matcher);
+	ret = mlx5dr_matcher_set_builders(matcher, items);
 	if (ret)
 		goto unlock_err;
 
@@ -330,14 +352,48 @@ static int mlx5dr_matcher_uninit(struct mlx5dr_matcher *matcher)
 	return 0;
 }
 
-static int mlx5dr_matcher_init_root(struct mlx5dr_matcher *matcher)
+// TODO Temp prm convert should be replaced by a shared DPDK func
+int mlx5dr_matcher_conv_items_to_prm(uint64_t *match_buf,
+				     struct rte_flow_item *items,
+				     uint8_t *match_criteria,
+				     bool is_value)
+{
+	for (; items->type != RTE_FLOW_ITEM_TYPE_END; items++) {
+		switch (items->type) {
+		case RTE_FLOW_ITEM_TYPE_IPV4:
+		{
+			const struct rte_ipv4_hdr *v = is_value ? items->spec : items->mask;
+			void *src_ip, *dst_ip;
+
+			MLX5_SET(fte_match_set_lyr_2_4, match_buf, ip_version, v->version);
+
+			dst_ip = MLX5_ADDR_OF(fte_match_set_lyr_2_4, match_buf,  dst_ipv4_dst_ipv6.ipv4_layout);
+			src_ip = MLX5_ADDR_OF(fte_match_set_lyr_2_4, match_buf,  src_ipv4_src_ipv6.ipv4_layout);
+			MLX5_SET(ipv4_layout, dst_ip, ipv4, v->dst_addr);
+			MLX5_SET(ipv4_layout, src_ip, ipv4, v->src_addr);
+
+			*match_criteria |= 1 << MLX5_MATCH_CRITERIA_ENABLE_OUTER_BIT;
+			break;
+		}
+		default:
+			rte_errno = ENOTSUP;
+			return rte_errno;
+		}
+	}
+
+	return 0;
+}
+
+static int mlx5dr_matcher_init_root(struct mlx5dr_matcher *matcher,
+				    struct rte_flow_item *items)
 {
 	enum mlx5dr_table_type type = matcher->tbl->type;
 	struct mlx5dr_context *ctx = matcher->tbl->ctx;
 	struct mlx5dv_flow_matcher_attr attr = {0};
+	struct mlx5dv_flow_match_parameters *mask;
 	enum mlx5dv_flow_table_type ft_type;
-	uint8_t buf[100] = {0};
-	struct mlx5dv_flow_match_parameters *mask = (void *)buf;
+	uint8_t match_criteria;
+	int ret;
 
 	switch (type) {
 	case MLX5DR_TABLE_TYPE_NIC_RX:
@@ -354,24 +410,48 @@ static int mlx5dr_matcher_init_root(struct mlx5dr_matcher *matcher)
 		break;
 	}
 
-	// TODO Need to convert rte_flow -> match
-	mask->match_sz = 1;
+	mask = simple_calloc(1, MLX5_ST_SZ_BYTES(fte_match_param) +
+			     offsetof(struct mlx5dv_flow_match_parameters, match_buf));
+	if (!mask) {
+		rte_errno = ENOMEM;
+		return rte_errno;
+	}
+
+	ret = mlx5dr_matcher_conv_items_to_prm(mask->match_buf,
+					       items,
+					       &match_criteria,
+					       false);
+	if (ret) {
+		DRV_LOG(ERR, "Failed to convert items to PRM");
+		goto free_mask;
+	}
+
+	mask->match_sz = MLX5_ST_SZ_BYTES(fte_match_param);
 	attr.match_mask = mask;
-	attr.match_criteria_enable = 0;
+	attr.match_criteria_enable = match_criteria;
 	attr.ft_type = ft_type;
 	attr.type = IBV_FLOW_ATTR_NORMAL;
 	attr.priority = matcher->attr.priority;
 	attr.comp_mask = MLX5DV_FLOW_MATCHER_MASK_FT_TYPE;
 
 	matcher->dv_matcher = mlx5dv_create_flow_matcher(ctx->ibv_ctx, &attr);
-	if (!matcher->dv_matcher)
-		return errno;
+	if (!matcher->dv_matcher) {
+		DRV_LOG(ERR, "Failed to create DV flow matcher");
+		rte_errno = errno;
+		goto free_mask;
+	}
+
+	simple_free(mask);
 
 	pthread_spin_lock(&ctx->ctrl_lock);
 	LIST_INSERT_HEAD(&matcher->tbl->head, matcher, next);
 	pthread_spin_unlock(&ctx->ctrl_lock);
 
 	return 0;
+
+free_mask:
+	simple_free(mask);
+	return rte_errno;
 }
 
 static int mlx5dr_matcher_uninit_root(struct mlx5dr_matcher *matcher)
@@ -392,9 +472,7 @@ struct mlx5dr_matcher *mlx5dr_matcher_create(struct mlx5dr_table *tbl,
 	struct mlx5dr_matcher *matcher;
 	int ret;
 
-	DRV_LOG(ERR, "This is TEMP for the warn %p\n", (void *)items);
-
-	matcher = simple_calloc(sizeof(*matcher));
+	matcher = simple_calloc(1, sizeof(*matcher));
 	if (!matcher) {
 		rte_errno = ENOMEM;
 		return NULL;
@@ -404,9 +482,9 @@ struct mlx5dr_matcher *mlx5dr_matcher_create(struct mlx5dr_table *tbl,
 	matcher->attr = *attr;
 
 	if (mlx5dr_table_is_root(matcher->tbl))
-		ret = mlx5dr_matcher_init_root(matcher);
+		ret = mlx5dr_matcher_init_root(matcher, items);
 	else
-		ret = mlx5dr_matcher_init(matcher);
+		ret = mlx5dr_matcher_init(matcher, items);
 
 	if (ret) {
 		DRV_LOG(ERR, "Failed to initialise matcher: %d\n", ret);

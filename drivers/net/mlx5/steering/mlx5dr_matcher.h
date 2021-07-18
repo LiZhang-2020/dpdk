@@ -21,4 +21,9 @@ struct mlx5dr_matcher {
 	LIST_ENTRY(mlx5dr_matcher) next;
 };
 
+int mlx5dr_matcher_conv_items_to_prm(uint64_t *match_buf,
+				     struct rte_flow_item *items,
+				     uint8_t *match_criteria,
+				     bool is_value);
+
 #endif
