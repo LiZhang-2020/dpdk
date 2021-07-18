@@ -3052,6 +3052,31 @@ struct mlx5_ifc_create_crypto_login_in_bits {
 	struct mlx5_ifc_crypto_login_bits crypto_login;
 };
 
+struct mlx5_ifc_ste_def22_bits {
+	u8 outer_ip_src_addr[0x20];
+	u8 outer_ip_dst_addr[0x20];
+	u8 outer_l4_sport[0x10];
+	u8 outer_l4_dport[0x10];
+	u8 reserved_at_40[0x1];
+	u8 sx_sniffer[0x1];
+	u8 functional_loopback[0x1];
+	u8 outer_ip_frag[0x1];
+	u8 qp_type[0x2];
+	u8 encapsulation_type[0x2];
+	u8 port[0x2];
+	u8 outer_l3_type[0x2];
+	u8 outer_l4_type[0x2];
+	u8 first_vlan_qualifier[0x2];
+	u8 first_priority[0x3];
+	u8 first_cfi[0x1];
+	u8 first_vlan_id[0xc];
+	u8 metadata_reg_c_0[0x20];
+	u8 outer_dmac_47_16[0x20];
+	u8 outer_smac_47_16[0x20];
+	u8 outer_smac_15_0[0x10];
+	u8 outer_dmac_15_0[0x10];
+};
+
 enum {
 	MLX5_VIRTQ_STATE_INIT = 0,
 	MLX5_VIRTQ_STATE_RDY = 1,
