@@ -179,7 +179,6 @@ free_ctx:
 int mlx5dr_context_close(struct mlx5dr_context *ctx)
 {
 	mlx5dr_send_queues_close(ctx);
-
 	mlx5dr_context_pools_uninit(ctx);
 	pthread_spin_destroy(&ctx->ctrl_lock);
 	mlx5dr_context_uninit_pd(ctx);
