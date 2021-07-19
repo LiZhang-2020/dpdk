@@ -70,7 +70,7 @@ regex_ctrl_destroy_cq(struct mlx5_regex_priv *priv, struct mlx5_regex_cq *cq)
 		rte_free((void *)(uintptr_t)cq->cqe);
 		cq->cqe = NULL;
 	}
-	if (cq->dbr_offset) {
+	if (cq->dbr_offset >= 0) {
 		mlx5_release_dbr(&priv->dbrpgs, cq->dbr_umem, cq->dbr_offset);
 		cq->dbr_offset = -1;
 	}
@@ -148,7 +148,7 @@ error:
 		mlx5_glue->devx_umem_dereg(cq->cqe_umem);
 	if (buf)
 		rte_free(buf);
-	if (cq->dbr_offset)
+	if (cq->dbr_offset >= 0)
 		mlx5_release_dbr(&priv->dbrpgs, cq->dbr_umem, cq->dbr_offset);
 	return -rte_errno;
 }
@@ -251,7 +251,7 @@ error:
 		mlx5_glue->devx_umem_dereg(sq->wqe_umem);
 	if (buf)
 		rte_free(buf);
-	if (sq->dbr_offset)
+	if (sq->dbr_offset >= 0)
 		mlx5_release_dbr(&priv->dbrpgs, sq->dbr_umem, sq->dbr_offset);
 	return -rte_errno;
 #else
@@ -295,7 +295,7 @@ regex_ctrl_destroy_sq(struct mlx5_regex_priv *priv, struct mlx5_regex_qp *qp,
 		rte_free((void *)(uintptr_t)sq->wqe);
 		sq->wqe = NULL;
 	}
-	if (sq->dbr_offset) {
+	if (sq->dbr_offset >= 0) {
 		mlx5_release_dbr(&priv->dbrpgs, sq->dbr_umem, sq->dbr_offset);
 		sq->dbr_offset = -1;
 	}
