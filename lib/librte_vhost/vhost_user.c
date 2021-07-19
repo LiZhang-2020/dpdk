@@ -2858,9 +2858,6 @@ skip_to_post_handle:
 		}
 	}
 
-	if (unlock_required)
-		vhost_user_unlock_all_queue_pairs(dev);
-
 	/* If message was not handled at this stage, treat it as an error */
 	if (!handled) {
 		VHOST_LOG_CONFIG(ERR,
@@ -2895,6 +2892,8 @@ skip_to_post_handle:
 		}
 	}
 
+	if (unlock_required)
+		vhost_user_unlock_all_queue_pairs(dev);
 
 	if (!virtio_is_ready(dev))
 		goto out;
