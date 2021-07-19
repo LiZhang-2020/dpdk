@@ -2564,7 +2564,7 @@ flow_dv_validate_item_ipv4(struct rte_eth_dev *dev,
 		},
 	};
 
-	if (mask && mask->hdr.ihl) {
+	if (mask && (mask->hdr.version_ihl & RTE_IPV4_HDR_IHL_MASK)) {
 		int tunnel = !!(item_flags & MLX5_FLOW_LAYER_TUNNEL);
 		bool ihl_cap = !tunnel ? priv->config.hca_attr.outer_ipv4_ihl :
 			       priv->config.hca_attr.inner_ipv4_ihl;
@@ -8695,7 +8695,7 @@ flow_dv_translate_item_ipv4(void *matcher, void *key,
 	void *headers_v;
 	char *l24_m;
 	char *l24_v;
-	uint8_t tos;
+	uint8_t tos, ihl_m, ihl_v;
 
 	if (inner) {
 		headers_m = MLX5_ADDR_OF(fte_match_param, matcher,
@@ -8724,9 +8724,10 @@ flow_dv_translate_item_ipv4(void *matcher, void *key,
 	*(uint32_t *)l24_m = ipv4_m->hdr.src_addr;
 	*(uint32_t *)l24_v = ipv4_m->hdr.src_addr & ipv4_v->hdr.src_addr;
 	tos = ipv4_m->hdr.type_of_service & ipv4_v->hdr.type_of_service;
-	MLX5_SET(fte_match_set_lyr_2_4, headers_m, ipv4_ihl, ipv4_m->hdr.ihl);
-	MLX5_SET(fte_match_set_lyr_2_4, headers_v, ipv4_ihl,
-		 ipv4_v->hdr.ihl & ipv4_m->hdr.ihl);
+	ihl_m = ipv4_m->hdr.version_ihl & RTE_IPV4_HDR_IHL_MASK;
+	ihl_v = ipv4_v->hdr.version_ihl & RTE_IPV4_HDR_IHL_MASK;
+	MLX5_SET(fte_match_set_lyr_2_4, headers_m, ipv4_ihl, ihl_m);
+	MLX5_SET(fte_match_set_lyr_2_4, headers_v, ipv4_ihl, ihl_m & ihl_v);
 	MLX5_SET(fte_match_set_lyr_2_4, headers_m, ip_ecn,
 		 ipv4_m->hdr.type_of_service);
 	MLX5_SET(fte_match_set_lyr_2_4, headers_v, ip_ecn, tos);
