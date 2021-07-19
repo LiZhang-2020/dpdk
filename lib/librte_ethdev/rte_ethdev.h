@@ -1035,6 +1035,7 @@ struct rte_eth_rxconf {
 	uint8_t rx_drop_en; /**< Drop packets if no descriptors are available. */
 	uint8_t rx_deferred_start; /**< Do not start queue with rte_eth_dev_start(). */
 	uint16_t rx_nseg; /**< Number of descriptions in rx_seg array. */
+	uint32_t shared_group; /**< Shared port group index in switch domain. */
 	/**
 	 * Per-queue Rx offloads to be set using DEV_RX_OFFLOAD_* flags.
 	 * Only offloads set on rx_queue_offload_capa or rx_offload_capa
@@ -1357,6 +1358,12 @@ struct rte_eth_conf {
 #define DEV_RX_OFFLOAD_OUTER_UDP_CKSUM  0x00040000
 #define DEV_RX_OFFLOAD_RSS_HASH		0x00080000
 #define RTE_ETH_RX_OFFLOAD_BUFFER_SPLIT 0x00100000
+/**
+ * Rx queue is shared among ports in same switch domain to save memory,
+ * avoid polling each port. Any port in group can be used to receive packets.
+ * Real source port number saved in mbuf->port field.
+ */
+#define RTE_ETH_RX_OFFLOAD_SHARED_RXQ   0x00200000
 
 #define DEV_RX_OFFLOAD_CHECKSUM (DEV_RX_OFFLOAD_IPV4_CKSUM | \
 				 DEV_RX_OFFLOAD_UDP_CKSUM | \

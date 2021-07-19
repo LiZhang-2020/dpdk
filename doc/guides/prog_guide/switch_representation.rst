@@ -123,6 +123,16 @@ thought as a software "patch panel" front-end for applications.
 .. [1] `Ethernet switch device driver model (switchdev)
        <https://www.kernel.org/doc/Documentation/networking/switchdev.txt>`_
 
+- Memory usage of representors is huge when number of representor grows,
+  because PMD always allocate mbuf for each descriptor of Rx queue.
+  Polling the large number of ports brings more CPU load, cache miss and
+  latency. Shared Rx queue can be used to share Rx queue between PF and
+  representors in same switch domain. ``RTE_ETH_RX_OFFLOAD_SHARED_RXQ``
+  is present in Rx offloading capability of device info. Setting the
+  offloading flag in device Rx mode or Rx queue configuration to enable
+  shared Rx queue. Polling any member port of shared Rx queue can return
+  packets of all ports in group, port ID is saved in ``mbuf.port``.
+
 Basic SR-IOV
 ------------
 
