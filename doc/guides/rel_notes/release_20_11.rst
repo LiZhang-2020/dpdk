@@ -451,6 +451,10 @@ New Features
   The cryptodev library has been enhanced to allow operations on multiple
   data-units for AES-XTS algorithm, the data-unit length should be set in the
   transformation. A capability for it was added too.
+* **Added support for Nvidia crypto device driver.**
+
+  Added mlx5 crypto driver to support AES-XTS cipher operations.
+  The first device to support it is ConnectX-6.
 
 * **Updated mlx5 compress PMD.**
   * Added devarg to allow manual setting of Huffman block size.
