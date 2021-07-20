@@ -41,32 +41,24 @@
 #include "testpmd.h"
 
 /*
- * Received a burst of packets.
+ * Process a burst of received packets from same stream.
+ */
+static void
+rxonly_forward_stream(struct fwd_stream *fs, uint16_t nb_rx,
+		      struct rte_mbuf **pkts_burst)
+{
+	RTE_SET_USED(fs);
+	rte_pktmbuf_free_bulk(pkts_burst, nb_rx);
+}
+
+
+/*
+ * Wrapper of real fwd engine.
  */
 static void
 pkt_burst_receive(struct fwd_stream *fs)
 {
-	struct rte_mbuf  *pkts_burst[MAX_PKT_BURST];
-	uint16_t nb_rx;
-	uint16_t i;
-	uint64_t start_tsc = 0;
-
-	get_start_cycles(&start_tsc);
-
-	/*
-	 * Receive a burst of packets.
-	 */
-	nb_rx = rte_eth_rx_burst(fs->rx_port, fs->rx_queue, pkts_burst,
-				 nb_pkt_per_burst);
-	inc_rx_burst_stats(fs, nb_rx);
-	if (unlikely(nb_rx == 0))
-		return;
-
-	fs->rx_packets += nb_rx;
-	for (i = 0; i < nb_rx; i++)
-		rte_pktmbuf_free(pkts_burst[i]);
-
-	get_end_cycles(fs, start_tsc);
+	return do_burst_fwd(fs, rxonly_forward_stream);
 }
 
 struct fwd_engine rx_only_engine = {
