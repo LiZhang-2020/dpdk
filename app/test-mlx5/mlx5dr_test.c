@@ -10,9 +10,101 @@
 #include "../../drivers/net/mlx5/steering/mlx5dr.h"
 #include "/usr/include/infiniband/mlx5dv.h"
 
-#define MAX_ITEMS 10
+#include "../../drivers/net/mlx5/steering/mlx5dr_context.h"
+#include "../../drivers/net/mlx5/steering/mlx5dr_send.h"
+#include "../../drivers/net/mlx5/steering/mlx5dr_rule.h"
 
-char dev_name[] = "mlx5_0";
+#define MAX_ITEMS 10
+#define NUM_POSTS 5
+
+char def_dev_name[] = "mlx5_0";
+
+static int __mlx5dr_run_test_post(struct mlx5dr_context *ctx)
+{
+	struct mlx5dr_send_engine *queue = &ctx->send_queue[0];
+	struct mlx5dr_send_engine_post_attr attr = {0};
+	struct mlx5dr_rule *poll_rule[NUM_POSTS + 1] = {0};
+	struct mlx5dr_send_engine_post_ctrl ctrl;
+	struct mlx5dr_rule rule[NUM_POSTS] = {0};
+	size_t len;
+	char *buf;
+	int ret = 0;
+	int i;
+
+
+	attr.user_comp = 1;
+	for (i = 0; i < NUM_POSTS -1; i++) {
+		ctrl = mlx5dr_send_engine_post_start(queue);
+		mlx5dr_send_engine_post_req_wqe(&ctrl, &buf, &len);
+		attr.rule = &rule[i];
+		mlx5dr_send_engine_post_end(&ctrl, &attr);
+	}
+
+	attr.rule = &rule[i];
+	attr.notify_hw = 1;
+	ctrl = mlx5dr_send_engine_post_start(queue);
+	mlx5dr_send_engine_post_req_wqe(&ctrl, &buf, &len);
+	mlx5dr_send_engine_post_end(&ctrl, &attr);
+
+	i = 0;
+	ret = -1;
+	while (ret && i < 2000) {
+		ret = mlx5dr_send_engine_poll(ctrl.send_ring, poll_rule, NUM_POSTS);
+		i++;
+	}
+	if (ret || i >= 2000)
+		return -1;
+
+	for (i = 0; i < NUM_POSTS && poll_rule[i]; i++) {
+		if (poll_rule[i]->rule_status != MLX5DR_RULE_COMPLETED_SUCC)
+			return -1;
+	}
+
+	return 0;
+}
+
+static int mlx5dr_run_test_post(struct mlx5dr_context *ctx)
+{
+	int ret;
+	int i;
+
+	for (i = 0; i < 5000; i++) {
+		ret = __mlx5dr_run_test_post(ctx);
+		if (ret)
+			return ret;
+	}
+
+	return 0;
+}
+static int run_test_post_send(struct ibv_context *ibv_ctx)
+{
+	struct mlx5dr_context *ctx;
+	struct mlx5dr_context_attr dr_ctx_attr = {0};
+	int ret;
+
+	dr_ctx_attr.initial_log_ste_memory = 0;
+	dr_ctx_attr.pd = NULL;
+	dr_ctx_attr.queues = 16;
+	dr_ctx_attr.queue_size = 256;
+
+	ctx = mlx5dr_context_open(ibv_ctx, &dr_ctx_attr);
+	if (!ctx) {
+		printf("%s - Failed to create context\n", __func__);
+		goto out_err;
+	}
+	ret = mlx5dr_run_test_post(ctx);
+	if (ret) {
+		printf("%s Failed to run post test\n", __func__);
+		goto close_ctx;
+	}
+
+	return ret;
+
+close_ctx:
+	mlx5dr_context_close(ctx);
+out_err:
+	return -1;
+}
 
 static void set_mask_and_value(struct rte_ipv4_hdr *mask,
 			       struct rte_ipv4_hdr *value,
@@ -34,7 +126,7 @@ static void set_mask_and_value(struct rte_ipv4_hdr *mask,
 	items[1].type = RTE_FLOW_ITEM_TYPE_END;
 }
 
-static int run_test(struct ibv_context *ibv_ctx)
+static int run_test_rule_insert(struct ibv_context *ibv_ctx)
 {
 	struct mlx5dr_context *ctx;
 	struct mlx5dr_table *root_tbl, *hws_tbl;
@@ -54,7 +146,7 @@ static int run_test(struct ibv_context *ibv_ctx)
 	dr_ctx_attr.initial_log_ste_memory = 0;
 	dr_ctx_attr.pd = NULL;
 	dr_ctx_attr.queues = 16;
-	dr_ctx_attr.queue_size = 512;
+	dr_ctx_attr.queue_size = 256;
 
 	ctx = mlx5dr_context_open(ibv_ctx, &dr_ctx_attr);
 	if (!ctx) {
@@ -145,6 +237,7 @@ static int run_test(struct ibv_context *ibv_ctx)
 	mlx5dr_context_close(ctx);
 
 	return 0;
+
 free_connect_rule:
 	free(connect_rule);
 destroy_action_to_hws_tbl:
@@ -207,12 +300,19 @@ int main(int argc, char **argv)
 	}
 	fprintf(stderr, "IB device %s Context found\n", dev_name);
 
-	ret = run_test(ibv_ctx);
+	ret = run_test_post_send(ibv_ctx);
 	if (ret) {
-		fprintf(stderr,"Fail to run test\n");
+		fprintf(stderr,"Fail to run test rule insert\n");
 		goto close_ib_dev;
 	}
-	fprintf(stderr, "Test done\n");
+	fprintf(stderr, "Test done: post send\n");
+
+	ret = run_test_rule_insert(ibv_ctx);
+	if (ret) {
+		fprintf(stderr,"Fail to run test rule insert\n");
+		goto close_ib_dev;
+	}
+	fprintf(stderr, "Test done: rule insert\n");
 
 	ibv_close_device(ibv_ctx);
 	ibv_free_device_list(dev_list);
