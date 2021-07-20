@@ -63,6 +63,7 @@ static const struct {
 	{ .name = "net", .drv_class = MLX5_CLASS_ETH },
 	{ .name = "regex", .drv_class = MLX5_CLASS_REGEX },
 	{ .name = "compress", .drv_class = MLX5_CLASS_COMPRESS },
+	{ .name = "crypto", .drv_class = MLX5_CLASS_CRYPTO },
 };
 
 static int
