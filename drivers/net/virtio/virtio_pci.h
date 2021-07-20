@@ -252,6 +252,7 @@ struct virtio_hw {
 	uint16_t	max_mtu;
 	uint16_t    vtnet_hdr_size;
 	uint8_t	    vlan_strip;
+	bool	    rx_ol_scatter;
 	uint8_t	    use_msix;
 	uint8_t     modern;
 	uint8_t     use_vec_rx;
@@ -268,6 +269,7 @@ struct virtio_hw {
 	uint8_t     duplex;
 	uint8_t     *isr;
 	uint16_t    *notify_base;
+	size_t	    max_rx_pkt_len;
 	struct virtio_pci_common_cfg *common_cfg;
 	struct virtio_net_config *dev_cfg;
 	void	    *virtio_user_dev;
