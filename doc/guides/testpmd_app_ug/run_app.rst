@@ -385,6 +385,11 @@ The command line options are:
 
     Generate multiple flows in txonly mode.
 
+*   ``--rxq-share``
+
+    Create all queues in shared RX queue mode, queues in same switch
+    domain are shared according queue ID.
+
 *   ``--disable-link-check``
 
     Disable check on link status when starting/stopping ports.

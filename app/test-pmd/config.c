@@ -2942,7 +2942,11 @@ rxtx_config_display(void)
 			printf("      RX threshold registers: pthresh=%d hthresh=%d "
 				" wthresh=%d\n",
 				pthresh_tmp, hthresh_tmp, wthresh_tmp);
-			printf("      RX Offloads=0x%"PRIx64"\n", offloads_tmp);
+			printf("      RX Offloads=0x%"PRIx64, offloads_tmp);
+			if (rx_conf->offloads & RTE_ETH_RX_OFFLOAD_SHARED_RXQ)
+				printf(" share group=%u",
+				       rx_conf->shared_group);
+			printf("\n");
 		}
 
 		/* per tx queue config only for first queue to be less verbose */

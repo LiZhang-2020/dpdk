@@ -218,6 +218,9 @@ uint8_t  rx_pkt_nb_segs; /**< Number of segments to split */
 uint16_t rx_pkt_seg_offsets[MAX_SEGS_BUFFER_SPLIT];
 uint8_t  rx_pkt_nb_offs; /**< Number of specified offsets */
 
+uint8_t rxq_share;
+/**< Create shared rxq for PF and representors. */
+
 /*
  * Configuration of packet segments used by the "txonly" processing engine.
  */
@@ -1471,6 +1474,12 @@ init_config(void)
 			}
 		}
 
+		if (rxq_share &&
+		    (port->dev_info.rx_offload_capa &
+		     RTE_ETH_RX_OFFLOAD_SHARED_RXQ))
+			port->dev_conf.rxmode.offloads |=
+					RTE_ETH_RX_OFFLOAD_SHARED_RXQ;
+
 		/* Apply Rx offloads configuration */
 		for (k = 0; k < port->dev_info.max_rx_queues; k++)
 			port->rx_conf[k].offloads =
@@ -1616,6 +1625,9 @@ reconfig(portid_t new_port_id, unsigned socket_id)
 	if (!(port->dev_info.tx_offload_capa & DEV_TX_OFFLOAD_MBUF_FAST_FREE))
 		port->dev_conf.txmode.offloads &=
 					~DEV_TX_OFFLOAD_MBUF_FAST_FREE;
+	if (rxq_share &&
+	    (port->dev_info.rx_offload_capa & RTE_ETH_RX_OFFLOAD_SHARED_RXQ))
+		port->dev_conf.rxmode.offloads |= RTE_ETH_RX_OFFLOAD_SHARED_RXQ;
 
 	/* Apply Rx offloads configuration */
 	for (i = 0; i < port->dev_info.max_rx_queues; i++)
@@ -3302,6 +3314,12 @@ rxtx_port_config(struct rte_port *port)
 	for (qid = 0; qid < nb_rxq; qid++) {
 		offloads = port->rx_conf[qid].offloads;
 		port->rx_conf[qid] = port->dev_info.default_rxconf;
+
+		if (rxq_share > 0 &&
+		    (port->dev_info.rx_offload_capa &
+		     RTE_ETH_RX_OFFLOAD_SHARED_RXQ))
+			offloads |= RTE_ETH_RX_OFFLOAD_SHARED_RXQ;
+
 		if (offloads != 0)
 			port->rx_conf[qid].offloads = offloads;
 
