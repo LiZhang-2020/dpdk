@@ -13892,6 +13892,20 @@ test_cryptodev_cpu_aesni_gcm(void)
 }
 
 static int
+test_cryptodev_mlx5(void)
+{
+	gbl_driver_id = rte_cryptodev_driver_id_get(
+			RTE_STR(CRYPTODEV_NAME_MLX5_PMD));
+
+	if (gbl_driver_id == -1) {
+		RTE_LOG(ERR, USER1, "CRYPTO MLX5 PMD must be loaded.\n");
+		return TEST_SKIPPED;
+	}
+
+	return unit_test_suite_runner(&cryptodev_testsuite);
+}
+
+static int
 test_cryptodev_null(void)
 {
 	gbl_driver_id = rte_cryptodev_driver_id_get(
@@ -14138,6 +14152,7 @@ REGISTER_TEST_COMMAND(cryptodev_openssl_autotest, test_cryptodev_openssl);
 REGISTER_TEST_COMMAND(cryptodev_aesni_gcm_autotest, test_cryptodev_aesni_gcm);
 REGISTER_TEST_COMMAND(cryptodev_cpu_aesni_gcm_autotest,
 	test_cryptodev_cpu_aesni_gcm);
+REGISTER_TEST_COMMAND(cryptodev_mlx5_autotest, test_cryptodev_mlx5);
 REGISTER_TEST_COMMAND(cryptodev_null_autotest, test_cryptodev_null);
 REGISTER_TEST_COMMAND(cryptodev_sw_snow3g_autotest, test_cryptodev_sw_snow3g);
 REGISTER_TEST_COMMAND(cryptodev_sw_kasumi_autotest, test_cryptodev_sw_kasumi);
