@@ -87,6 +87,8 @@ struct blockcipher_test_data {
 
 	unsigned int cipher_offset;
 	unsigned int auth_offset;
+	uint16_t xts_dataunit_len;
+	bool wrapped_key;
 };
 
 int
