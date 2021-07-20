@@ -20,6 +20,7 @@
 #define MLX5_CRYPTO_DRIVER_NAME crypto_mlx5
 #define MLX5_CRYPTO_LOG_NAME pmd.crypto.mlx5
 #define MLX5_CRYPTO_MAX_QPS 1024
+#define MLX5_CRYPTO_MAX_SEGS 56
 
 #define MLX5_CRYPTO_FEATURE_FLAGS \
 	(RTE_CRYPTODEV_FF_SYMMETRIC_CRYPTO | RTE_CRYPTODEV_FF_HW_ACCELERATED | \
@@ -493,14 +494,24 @@ mlx5_crypto_args_check_handler(const char *key, const char *val, void *opaque)
 		DRV_LOG(WARNING, "%s: \"%s\" is an invalid integer.", key, val);
 		return -errno;
 	}
-	if (strcmp(key, "import_kek_id") == 0)
+	if (strcmp(key, "max_segs_num") == 0) {
+		if (!tmp || tmp > MLX5_CRYPTO_MAX_SEGS) {
+			DRV_LOG(WARNING, "Invalid max_segs_num: %d, should"
+				" be less than %d.",
+				(uint32_t)tmp, MLX5_CRYPTO_MAX_SEGS);
+			rte_errno = EINVAL;
+			return -rte_errno;
+		}
+		devarg_prms->max_segs_num = (uint32_t)tmp;
+	} else if (strcmp(key, "import_kek_id") == 0) {
 		attr->session_import_kek_ptr = (uint32_t)tmp;
-	else if (strcmp(key, "credential_id") == 0)
+	} else if (strcmp(key, "credential_id") == 0) {
 		attr->credential_pointer = (uint32_t)tmp;
-	else if (strcmp(key, "keytag") == 0)
+	} else if (strcmp(key, "keytag") == 0) {
 		devarg_prms->keytag = tmp;
-	else
+	} else {
 		DRV_LOG(WARNING, "Invalid key %s.", key);
+	}
 	return 0;
 }
 
@@ -515,6 +526,7 @@ mlx5_crypto_parse_devargs(struct rte_devargs *devargs,
 	attr->credential_pointer = 0;
 	attr->session_import_kek_ptr = 0;
 	devarg_prms->keytag = 0;
+	devarg_prms->max_segs_num = 8;
 	if (devargs == NULL) {
 		DRV_LOG(ERR,
 	"No login devargs in order to enable crypto operations in the device.");
@@ -596,6 +608,7 @@ mlx5_crypto_dev_probe(struct rte_device *dev)
 		.max_nb_queue_pairs =
 				RTE_CRYPTODEV_PMD_DEFAULT_MAX_NB_QUEUE_PAIRS,
 	};
+	uint16_t rdmw_wqe_size;
 	int ret;
 
 	if (rte_eal_process_type() != RTE_PROC_PRIMARY) {
@@ -666,6 +679,18 @@ mlx5_crypto_dev_probe(struct rte_device *dev)
 	priv->mr_scache.reg_mr_cb = mlx5_common_verbs_reg_mr;
 	priv->mr_scache.dereg_mr_cb = mlx5_common_verbs_dereg_mr;
 	priv->keytag = rte_cpu_to_be_64(devarg_prms.keytag);
+	priv->max_segs_num = devarg_prms.max_segs_num;
+	priv->umr_wqe_size = sizeof(struct mlx5_wqe_umr_bsf_seg) +
+			     sizeof(struct mlx5_umr_wqe) +
+			     RTE_ALIGN(priv->max_segs_num, 4) *
+			     sizeof(struct mlx5_wqe_dseg);
+	rdmw_wqe_size = sizeof(struct mlx5_rdma_write_wqe) +
+			      sizeof(struct mlx5_wqe_dseg) *
+			      (priv->max_segs_num <= 2 ? 2 : 2 +
+			       RTE_ALIGN(priv->max_segs_num - 2, 4));
+	priv->wqe_set_size = priv->umr_wqe_size + rdmw_wqe_size;
+	priv->umr_wqe_stride = priv->umr_wqe_size / MLX5_SEND_WQE_BB;
+	priv->max_rdmar_ds = rdmw_wqe_size / sizeof(struct mlx5_wqe_dseg);
 	/* Register callback function for global shared MR cache management. */
 	if (TAILQ_EMPTY(&mlx5_crypto_priv_list))
 		rte_mem_event_callback_register("MLX5_MEM_EVENT_CB",
