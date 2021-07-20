@@ -16,13 +16,13 @@
 
 #define MLX5_CRYPTO_DEK_HTABLE_SZ (1 << 11)
 #define MLX5_CRYPTO_KEY_LENGTH 80
-#define MLX5_CRYPTO_WQE_SET_SIZE 1024
 
 struct mlx5_crypto_priv {
 	TAILQ_ENTRY(mlx5_crypto_priv) next;
 	struct ibv_context *ctx; /* Device context. */
 	struct rte_cryptodev *crypto_dev;
 	void *uar; /* User Access Region. */
+	volatile uint64_t *uar_addr;
 	uint32_t pdn; /* Protection Domain number. */
 	uint32_t max_segs_num; /* Maximum supported data segs. */
 	struct ibv_pd *pd;
@@ -38,13 +38,21 @@ struct mlx5_crypto_priv {
 };
 
 struct mlx5_crypto_qp {
+	struct mlx5_crypto_priv *priv;
 	struct mlx5_devx_cq cq_obj;
 	struct mlx5_devx_obj *qp_obj;
+	struct rte_cryptodev_stats stats;
 	struct mlx5dv_devx_umem *umem_obj;
 	void *umem_buf;
 	volatile uint32_t *db_rec;
 	struct rte_crypto_op **ops;
+	struct mlx5_devx_obj **mkey; /* WQE's indirect mekys. */
 	struct mlx5_mr_ctrl mr_ctrl;
+	uint8_t *wqe;
+	uint16_t entries_n;
+	uint16_t pi;
+	uint16_t ci;
+	uint16_t db_pi;
 };
 
 struct mlx5_crypto_dek {
