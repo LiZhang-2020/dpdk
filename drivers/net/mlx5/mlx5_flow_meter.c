@@ -55,7 +55,7 @@ mlx5_flow_meter_action_create(struct mlx5_priv *priv,
 	MLX5_SET(flow_meter_parameters, fmp, cbs_exponent, val);
 	val = (cbs_cir >> ASO_DSEG_CBS_MAN_OFFSET) & ASO_DSEG_MAN_MASK;
 	MLX5_SET(flow_meter_parameters, fmp, cbs_mantissa, val);
-	val = (cbs_cir >> ASO_DSEG_CIR_EXP_OFFSET) & ASO_DSEG_EXP_MASK;
+	val = (cbs_cir >> ASO_DSEG_XIR_EXP_OFFSET) & ASO_DSEG_EXP_MASK;
 	MLX5_SET(flow_meter_parameters, fmp, cir_exponent, val);
 	val = (cbs_cir & ASO_DSEG_MAN_MASK);
 	MLX5_SET(flow_meter_parameters, fmp, cir_mantissa, val);
@@ -130,6 +130,11 @@ mlx5_flow_meter_profile_validate(struct rte_eth_dev *dev,
 {
 	struct mlx5_priv *priv = dev->data->dev_private;
 	struct mlx5_flow_meter_profile *fmp;
+	uint32_t ls_factor;
+	int ret;
+	uint64_t cir, cbs;
+	uint64_t eir, ebs;
+	uint64_t pir, pbs;
 
 	/* Profile must not be NULL. */
 	if (profile == NULL)
@@ -148,76 +153,115 @@ mlx5_flow_meter_profile_validate(struct rte_eth_dev *dev,
 					  RTE_MTR_ERROR_TYPE_METER_PROFILE_ID,
 					  NULL,
 					  "Meter profile already exists.");
-	if (profile->alg == RTE_MTR_SRTCM_RFC2697) {
-		if (priv->config.hca_attr.qos.srtcm_sup) {
-			/* Verify support for flow meter parameters. */
-			if (priv->sh->meter_aso_en && profile->packet_mode) {
-				if (profile->srtcm_rfc2697.cir > 0 &&
-					(profile->srtcm_rfc2697.cir <<
-					MLX5_MTRS_PPS_MAP_BPS_SHIFT)
-					<= MLX5_SRTCM_CIR_MAX &&
-					profile->srtcm_rfc2697.cbs > 0 &&
-					(profile->srtcm_rfc2697.cbs <<
-					MLX5_MTRS_PPS_MAP_BPS_SHIFT)
-					<= MLX5_SRTCM_CBS_MAX &&
-					(profile->srtcm_rfc2697.ebs <<
-					MLX5_MTRS_PPS_MAP_BPS_SHIFT)
-					<= MLX5_SRTCM_EBS_MAX)
-					return 0;
-				return -rte_mtr_error_set
-					     (error, ENOTSUP,
-					      RTE_MTR_ERROR_TYPE_MTR_PARAMS,
-					      NULL,
-					      profile->srtcm_rfc2697.ebs ?
-					      "Metering value ebs must be 0." :
-					      "Invalid metering parameters.");
-			}
-			if (profile->srtcm_rfc2697.cir > 0 &&
-				profile->srtcm_rfc2697.cir <=
-						MLX5_SRTCM_CIR_MAX &&
-				profile->srtcm_rfc2697.cbs > 0 &&
-				profile->srtcm_rfc2697.cbs <=
-						MLX5_SRTCM_CBS_MAX &&
-				profile->srtcm_rfc2697.ebs <=
-						MLX5_SRTCM_EBS_MAX)
-				return 0;
+	if (!priv->sh->meter_aso_en) {
+		/* Old version is even not supported. */
+		if (!priv->config.hca_attr.qos.srtcm_sup)
 			return -rte_mtr_error_set(error, ENOTSUP,
-					RTE_MTR_ERROR_TYPE_MTR_PARAMS,
-					NULL,
-					profile->srtcm_rfc2697.ebs ?
-					"Metering value ebs must be 0." :
-					"Invalid metering parameters.");
+				RTE_MTR_ERROR_TYPE_METER_PROFILE,
+				NULL, "Metering is not supported.");
+		/* Old FW metering only supports srTCM. */
+		if (profile->alg != RTE_MTR_SRTCM_RFC2697) {
+			return -rte_mtr_error_set(error, ENOTSUP,
+				RTE_MTR_ERROR_TYPE_METER_PROFILE,
+				NULL, "Metering algorithm is not supported.");
+		} else if (profile->srtcm_rfc2697.ebs) {
+			/* EBS is not supported for old metering. */
+			return -rte_mtr_error_set(error, ENOTSUP,
+				RTE_MTR_ERROR_TYPE_METER_PROFILE,
+				NULL, "EBS is not supported.");
 		}
+		if (profile->packet_mode)
+			return -rte_mtr_error_set(error, ENOTSUP,
+				RTE_MTR_ERROR_TYPE_METER_PROFILE, NULL,
+				"Metering algorithm packet mode is not supported.");
 	}
-	return -rte_mtr_error_set(error, ENOTSUP,
-				  RTE_MTR_ERROR_TYPE_METER_PROFILE,
-				  NULL, "Metering algorithm not supported.");
+	ls_factor = profile->packet_mode ? MLX5_MTRS_PPS_MAP_BPS_SHIFT : 0;
+	switch (profile->alg) {
+	case RTE_MTR_SRTCM_RFC2697:
+		cir = profile->srtcm_rfc2697.cir << ls_factor;
+		cbs = profile->srtcm_rfc2697.cbs << ls_factor;
+		ebs = profile->srtcm_rfc2697.ebs << ls_factor;
+		/* EBS could be zero for old metering. */
+		if (cir > 0 && cir <= MLX5_SRTCM_XIR_MAX &&
+		    cbs > 0 && cbs <= MLX5_SRTCM_XBS_MAX &&
+		    ebs <= MLX5_SRTCM_XBS_MAX) {
+			ret = 0;
+		} else {
+			ret = -rte_mtr_error_set(error, ENOTSUP,
+					RTE_MTR_ERROR_TYPE_MTR_PARAMS, NULL,
+					"Profile values out of range.");
+		}
+		break;
+	case RTE_MTR_TRTCM_RFC2698:
+		cir = profile->trtcm_rfc2698.cir << ls_factor;
+		cbs = profile->trtcm_rfc2698.cbs << ls_factor;
+		pir = profile->trtcm_rfc2698.pir << ls_factor;
+		pbs = profile->trtcm_rfc2698.pbs << ls_factor;
+		if (cir > 0 && cir <= MLX5_SRTCM_XIR_MAX &&
+		    cbs > 0 && cbs <= MLX5_SRTCM_XBS_MAX &&
+		    pir >= cir && pir <= (MLX5_SRTCM_XIR_MAX * 2) &&
+		    pbs >= cbs && pbs <= (MLX5_SRTCM_XBS_MAX * 2)) {
+			ret = 0;
+		} else {
+			ret = -rte_mtr_error_set(error, ENOTSUP,
+					RTE_MTR_ERROR_TYPE_MTR_PARAMS, NULL,
+					"Profile values out of range.");
+		}
+		break;
+	case RTE_MTR_TRTCM_RFC4115:
+		cir = profile->trtcm_rfc4115.cir << ls_factor;
+		cbs = profile->trtcm_rfc4115.cbs << ls_factor;
+		eir = profile->trtcm_rfc4115.eir << ls_factor;
+		ebs = profile->trtcm_rfc4115.ebs << ls_factor;
+		if (cir > 0 && cir <= MLX5_SRTCM_XIR_MAX &&
+		    cbs > 0 && cbs <= MLX5_SRTCM_XBS_MAX &&
+		    eir <= MLX5_SRTCM_XIR_MAX && ebs <= MLX5_SRTCM_XBS_MAX) {
+			ret = 0;
+		} else {
+			ret = -rte_mtr_error_set(error, ENOTSUP,
+					RTE_MTR_ERROR_TYPE_MTR_PARAMS, NULL,
+					"Profile values out of range.");
+		}
+		break;
+	default:
+		ret = -rte_mtr_error_set(error, ENOTSUP,
+					 RTE_MTR_ERROR_TYPE_MTR_PARAMS, NULL,
+					 "Unknown metering algorithm.");
+		break;
+	}
+	return ret;
 }
 
-/**
- * Calculate mantissa and exponent for cir.
+/*
+ * Calculate mantissa and exponent for cir / eir.
  *
- * @param[in] cir
+ * @param[in] xir
  *   Value to be calculated.
  * @param[out] man
  *   Pointer to the mantissa.
  * @param[out] exp
  *   Pointer to the exp.
  */
-static void
-mlx5_flow_meter_cir_man_exp_calc(int64_t cir, uint8_t *man, uint8_t *exp)
+static inline void
+mlx5_flow_meter_xir_man_exp_calc(int64_t xir, uint8_t *man, uint8_t *exp)
 {
-	int64_t _cir;
+	int64_t _xir;
 	int64_t delta = INT64_MAX;
 	uint8_t _man = 0;
 	uint8_t _exp = 0;
 	uint64_t m, e;
 
+	/* Special case xir == 0 ? both exp and matissa are 0. */
+	if (xir == 0) {
+		*man = 0;
+		*exp = 0;
+		return;
+	}
 	for (m = 0; m <= 0xFF; m++) { /* man width 8 bit */
 		for (e = 0; e <= 0x1F; e++) { /* exp width 5bit */
-			_cir = (1000000000ULL * m) >> e;
-			if (llabs(cir - _cir) <= delta) {
-				delta = llabs(cir - _cir);
+			_xir = (1000000000ULL * m) >> e;
+			if (llabs(xir - _xir) <= delta) {
+				delta = llabs(xir - _xir);
 				_man = m;
 				_exp = e;
 			}
@@ -227,7 +271,7 @@ mlx5_flow_meter_cir_man_exp_calc(int64_t cir, uint8_t *man, uint8_t *exp)
 	*exp = _exp;
 }
 
-/**
+/*
  * Calculate mantissa and exponent for xbs.
  *
  * @param[in] xbs
@@ -237,7 +281,7 @@ mlx5_flow_meter_cir_man_exp_calc(int64_t cir, uint8_t *man, uint8_t *exp)
  * @param[out] exp
  *   Pointer to the exp.
  */
-static void
+static inline void
 mlx5_flow_meter_xbs_man_exp_calc(uint64_t xbs, uint8_t *man, uint8_t *exp)
 {
 	int _exp;
@@ -270,42 +314,57 @@ mlx5_flow_meter_xbs_man_exp_calc(uint64_t xbs, uint8_t *man, uint8_t *exp)
  */
 static int
 mlx5_flow_meter_param_fill(struct mlx5_flow_meter_profile *fmp,
-			struct mlx5_priv *priv, struct rte_mtr_error *error)
+			   struct rte_mtr_error *error)
 {
 	struct mlx5_flow_meter_srtcm_rfc2697_prm *srtcm = &fmp->srtcm_prm;
 	uint8_t man, exp;
 	uint32_t cbs_exp, cbs_man, cir_exp, cir_man;
-	uint32_t ebs_exp, ebs_man;
-	uint64_t cir, cbs, ebs;
+	uint32_t eir_exp, eir_man, ebs_exp, ebs_man;
+	uint64_t cir, cbs, eir, ebs;
 
-	if (fmp->profile.alg != RTE_MTR_SRTCM_RFC2697)
-		return -rte_mtr_error_set(error, ENOTSUP,
-				RTE_MTR_ERROR_TYPE_METER_PROFILE,
-				NULL, "Metering algorithm not supported.");
-	if (!priv->sh->meter_aso_en && fmp->profile.packet_mode)
-		return -rte_mtr_error_set(error, ENOTSUP,
-			RTE_MTR_ERROR_TYPE_METER_PROFILE,
-			NULL, "Metering algorithm packet mode not supported.");
-	if (priv->sh->meter_aso_en && fmp->profile.packet_mode) {
-		cir = fmp->profile.srtcm_rfc2697.cir <<
-				MLX5_MTRS_PPS_MAP_BPS_SHIFT;
-		cbs = fmp->profile.srtcm_rfc2697.cbs <<
-				MLX5_MTRS_PPS_MAP_BPS_SHIFT;
-		ebs = fmp->profile.srtcm_rfc2697.ebs <<
-				MLX5_MTRS_PPS_MAP_BPS_SHIFT;
-	} else {
+	switch (fmp->profile.alg) {
+	case RTE_MTR_SRTCM_RFC2697:
 		cir = fmp->profile.srtcm_rfc2697.cir;
 		cbs = fmp->profile.srtcm_rfc2697.cbs;
+		eir = 0;
 		ebs = fmp->profile.srtcm_rfc2697.ebs;
+		break;
+	case RTE_MTR_TRTCM_RFC2698:
+		MLX5_ASSERT(fmp->profile.trtcm_rfc2698.pir >
+			    fmp->profile.trtcm_rfc2698.cir &&
+			    fmp->profile.trtcm_rfc2698.pbs >
+			    fmp->profile.trtcm_rfc2698.cbs);
+		cir = fmp->profile.trtcm_rfc2698.cir;
+		cbs = fmp->profile.trtcm_rfc2698.cbs;
+		/* EIR / EBS are filled with PIR / PBS. */
+		eir = fmp->profile.trtcm_rfc2698.pir;
+		ebs = fmp->profile.trtcm_rfc2698.pbs;
+		break;
+	case RTE_MTR_TRTCM_RFC4115:
+		cir = fmp->profile.trtcm_rfc4115.cir;
+		cbs = fmp->profile.trtcm_rfc4115.cbs;
+		eir = fmp->profile.trtcm_rfc4115.eir;
+		ebs = fmp->profile.trtcm_rfc4115.ebs;
+		break;
+	default:
+		return -rte_mtr_error_set(error, EINVAL,
+				RTE_MTR_ERROR_TYPE_METER_PROFILE, NULL,
+				"Metering algorithm mode is invalid");
+	}
+	/* Adjust the values for PPS mode. */
+	if (fmp->profile.packet_mode) {
+		cir <<= MLX5_MTRS_PPS_MAP_BPS_SHIFT;
+		cbs <<= MLX5_MTRS_PPS_MAP_BPS_SHIFT;
+		eir <<= MLX5_MTRS_PPS_MAP_BPS_SHIFT;
+		ebs <<= MLX5_MTRS_PPS_MAP_BPS_SHIFT;
 	}
 	/* cir = 8G * cir_mantissa * 1/(2^cir_exponent)) Bytes/Sec */
-	mlx5_flow_meter_cir_man_exp_calc(cir, &man, &exp);
+	mlx5_flow_meter_xir_man_exp_calc(cir, &man, &exp);
 	/* Check if cir mantissa is too large. */
-	if (exp > ASO_DSEG_CIR_EXP_MASK)
+	if (exp > ASO_DSEG_XIR_EXP_MASK)
 		return -rte_mtr_error_set(error, ENOTSUP,
 					  RTE_MTR_ERROR_TYPE_MTR_PARAMS, NULL,
-					  "meter profile parameter cir is"
-					  " not supported.");
+					  "meter profile parameter cir is not supported.");
 	cir_man = man;
 	cir_exp = exp;
 	 /* cbs = cbs_mantissa * 2^cbs_exponent */
@@ -314,25 +373,33 @@ mlx5_flow_meter_param_fill(struct mlx5_flow_meter_profile *fmp,
 	if (exp > ASO_DSEG_EXP_MASK)
 		return -rte_mtr_error_set(error, ENOTSUP,
 					  RTE_MTR_ERROR_TYPE_MTR_PARAMS, NULL,
-					  "meter profile parameter cbs is"
-					  " not supported.");
+					  "meter profile parameter cbs is not supported.");
 	cbs_man = man;
 	cbs_exp = exp;
 	srtcm->cbs_cir = rte_cpu_to_be_32(cbs_exp << ASO_DSEG_CBS_EXP_OFFSET |
 					  cbs_man << ASO_DSEG_CBS_MAN_OFFSET |
-					  cir_exp << ASO_DSEG_CIR_EXP_OFFSET |
+					  cir_exp << ASO_DSEG_XIR_EXP_OFFSET |
 					  cir_man);
+	mlx5_flow_meter_xir_man_exp_calc(eir, &man, &exp);
+	/* Check if eir mantissa is too large. */
+	if (exp > ASO_DSEG_XIR_EXP_MASK)
+		return -rte_mtr_error_set(error, ENOTSUP,
+					  RTE_MTR_ERROR_TYPE_MTR_PARAMS, NULL,
+					  "meter profile parameter eir is not supported.");
+	eir_man = man;
+	eir_exp = exp;
 	mlx5_flow_meter_xbs_man_exp_calc(ebs, &man, &exp);
 	/* Check if ebs mantissa is too large. */
 	if (exp > ASO_DSEG_EXP_MASK)
 		return -rte_mtr_error_set(error, ENOTSUP,
 					  RTE_MTR_ERROR_TYPE_MTR_PARAMS, NULL,
-					  "meter profile parameter ebs is"
-					  " not supported.");
+					  "meter profile parameter ebs is not supported.");
 	ebs_man = man;
 	ebs_exp = exp;
 	srtcm->ebs_eir = rte_cpu_to_be_32(ebs_exp << ASO_DSEG_EBS_EXP_OFFSET |
-					  ebs_man << ASO_DSEG_EBS_MAN_OFFSET);
+					  ebs_man << ASO_DSEG_EBS_MAN_OFFSET |
+					  eir_exp << ASO_DSEG_XIR_EXP_OFFSET |
+					  eir_man);
 	if (srtcm->cbs_cir)
 		fmp->g_support = 1;
 	if (srtcm->ebs_eir)
@@ -435,7 +502,7 @@ mlx5_flow_meter_profile_add(struct rte_eth_dev *dev,
 	fmp->id = meter_profile_id;
 	fmp->profile = *profile;
 	/* Fill the flow meter parameters for the PRM. */
-	ret = mlx5_flow_meter_param_fill(fmp, priv, error);
+	ret = mlx5_flow_meter_param_fill(fmp, error);
 	if (ret)
 		goto error;
 	data.ptr = fmp;
@@ -1008,7 +1075,7 @@ mlx5_flow_meter_action_modify(struct mlx5_priv *priv,
 				cbs_mantissa, val);
 		}
 		if (modify_bits & MLX5_FLOW_METER_OBJ_MODIFY_FIELD_CIR) {
-			val = (cbs_cir >> ASO_DSEG_CIR_EXP_OFFSET) &
+			val = (cbs_cir >> ASO_DSEG_XIR_EXP_OFFSET) &
 				ASO_DSEG_EXP_MASK;
 			MLX5_SET(flow_meter_parameters, attr,
 				cir_exponent, val);
@@ -1176,6 +1243,10 @@ mlx5_flow_meter_create(struct rte_eth_dev *dev, uint32_t meter_id,
 		aso_mtr = mlx5_aso_meter_by_idx(priv, mtr_idx);
 		fm = &aso_mtr->fm;
 	} else {
+		if (fmp->y_support)
+			return -rte_mtr_error_set(error, ENOMEM,
+				RTE_MTR_ERROR_TYPE_UNSPECIFIED, NULL,
+				"Unsupported profile with yellow.");
 		legacy_fm = mlx5_ipool_zmalloc
 				(priv->sh->ipool[MLX5_IPOOL_MTR], &mtr_idx);
 		if (legacy_fm == NULL)
@@ -1389,7 +1460,7 @@ mlx5_flow_meter_modify_state(struct mlx5_priv *priv,
 				&srtcm, modify_bits, 0, 0);
 	else
 		ret = mlx5_flow_meter_action_modify(priv, fm,
-						   &fm->profile->srtcm_prm,
+						    &fm->profile->srtcm_prm,
 						    modify_bits, 0, 1);
 	if (ret)
 		return -rte_mtr_error_set(error, -ret,

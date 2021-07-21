@@ -2803,11 +2803,12 @@ struct mlx5_aso_mtr_dseg {
 #define ASO_DSEG_VALID_OFFSET 31
 #define ASO_DSEG_BO_OFFSET 30
 #define ASO_DSEG_SC_OFFSET 28
+#define ASO_DSEG_BBOG_OFFSET 27
 #define ASO_DSEG_MTR_MODE 24
 #define ASO_DSEG_CBS_EXP_OFFSET 24
 #define ASO_DSEG_CBS_MAN_OFFSET 16
-#define ASO_DSEG_CIR_EXP_MASK 0x1F
-#define ASO_DSEG_CIR_EXP_OFFSET 8
+#define ASO_DSEG_XIR_EXP_MASK 0x1F
+#define ASO_DSEG_XIR_EXP_OFFSET 8
 #define ASO_DSEG_EBS_EXP_OFFSET 24
 #define ASO_DSEG_EBS_MAN_OFFSET 16
 #define ASO_DSEG_EXP_MASK 0x1F
@@ -3543,10 +3544,9 @@ enum {
 	MLX5_FLOW_COLOR_UNDEFINED,
 };
 
-/* Maximum value of srTCM metering parameters. */
-#define MLX5_SRTCM_CBS_MAX (0xFF * (1ULL << 0x1F))
-#define MLX5_SRTCM_CIR_MAX (8 * (1ULL << 30) * 0xFF)
-#define MLX5_SRTCM_EBS_MAX 0
+/* Maximum value of srTCM & trTCM metering parameters. */
+#define MLX5_SRTCM_XBS_MAX (0xFF * (1ULL << 0x1F))
+#define MLX5_SRTCM_XIR_MAX (8 * (1ULL << 30) * 0xFF)
 
 /* The bits meter color use. */
 #define MLX5_MTR_COLOR_BITS 8
