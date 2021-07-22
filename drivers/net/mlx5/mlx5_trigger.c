@@ -137,11 +137,6 @@ mlx5_rxq_start(struct rte_eth_dev *dev)
 	unsigned int i;
 	int ret = 0;
 
-	/* Allocate/reuse/resize mempool for Multi-Packet RQ. */
-	if (mlx5_mprq_alloc_mp(dev)) {
-		/* Should not release Rx queues but return immediately. */
-		return -rte_errno;
-	}
 	DRV_LOG(DEBUG, "Port %u device_attr.max_qp_wr is %d.",
 		dev->data->port_id, priv->sh->device_attr.max_qp_wr);
 	DRV_LOG(DEBUG, "Port %u device_attr.max_sge is %d.",
@@ -152,8 +147,11 @@ mlx5_rxq_start(struct rte_eth_dev *dev)
 		if (!rxq_ctrl)
 			continue;
 		if (rxq_ctrl->type == MLX5_RXQ_TYPE_STANDARD) {
-			/* Pre-register Rx mempools. */
 			if (mlx5_rxq_mprq_enabled(&rxq_ctrl->rxq)) {
+				/* Allocate/reuse/resize mempool for MPRQ. */
+				if (mlx5_mprq_alloc_mp(dev, rxq_ctrl) < 0)
+					goto error;
+				/* Pre-register Rx mempools. */
 				mlx5_mr_update_mp(dev, &rxq_ctrl->rxq.mr_ctrl,
 						  rxq_ctrl->rxq.mprq_mp);
 			} else {

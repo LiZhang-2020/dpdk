@@ -1156,7 +1156,7 @@ mlx5_mprq_buf_init(struct rte_mempool *mp, void *opaque_arg,
 }
 
 /**
- * Free mempool of Multi-Packet RQ.
+ * Free RXQ mempool of Multi-Packet RQ.
  *
  * @param dev
  *   Pointer to Ethernet device.
@@ -1165,16 +1165,15 @@ mlx5_mprq_buf_init(struct rte_mempool *mp, void *opaque_arg,
  *   0 on success, negative errno value on failure.
  */
 int
-mlx5_mprq_free_mp(struct rte_eth_dev *dev)
+mlx5_mprq_free_mp(struct rte_eth_dev *dev, struct mlx5_rxq_ctrl *rxq_ctrl)
 {
-	struct mlx5_priv *priv = dev->data->dev_private;
-	struct rte_mempool *mp = priv->mprq_mp;
-	unsigned int i;
+	struct mlx5_rxq_data *rxq = &rxq_ctrl->rxq;
+	struct rte_mempool *mp = rxq->mprq_mp;
 
 	if (mp == NULL)
 		return 0;
-	DRV_LOG(DEBUG, "port %u freeing mempool (%s) for Multi-Packet RQ",
-		dev->data->port_id, mp->name);
+	DRV_LOG(DEBUG, "port %u queue %hu freeing mempool (%s) for Multi-Packet RQ",
+		dev->data->port_id, rxq->idx, mp->name);
 	/*
 	 * If a buffer in the pool has been externally attached to a mbuf and it
 	 * is still in use by application, destroying the Rx queue can spoil
@@ -1192,34 +1191,28 @@ mlx5_mprq_free_mp(struct rte_eth_dev *dev)
 		return -rte_errno;
 	}
 	rte_mempool_free(mp);
-	/* Unset mempool for each Rx queue. */
-	for (i = 0; i != priv->rxqs_n; ++i) {
-		struct mlx5_rxq_data *rxq = (*priv->rxqs)[i];
-
-		if (rxq == NULL)
-			continue;
-		rxq->mprq_mp = NULL;
-	}
-	priv->mprq_mp = NULL;
+	rxq->mprq_mp = NULL;
 	return 0;
 }
 
 /**
- * Allocate a mempool for Multi-Packet RQ. All configured Rx queues share the
- * mempool. If already allocated, reuse it if there're enough elements.
+ * Allocate RXQ a mempool for Multi-Packet RQ.
+ * If already allocated, reuse it if there're enough elements.
  * Otherwise, resize it.
  *
  * @param dev
  *   Pointer to Ethernet device.
+ * @param rxq_ctrl
+ *   Pointer to RXQ.
  *
  * @return
  *   0 on success, negative errno value on failure.
  */
 int
-mlx5_mprq_alloc_mp(struct rte_eth_dev *dev)
+mlx5_mprq_alloc_mp(struct rte_eth_dev *dev, struct mlx5_rxq_ctrl *rxq_ctrl)
 {
-	struct mlx5_priv *priv = dev->data->dev_private;
-	struct rte_mempool *mp = priv->mprq_mp;
+	struct mlx5_rxq_data *rxq = &rxq_ctrl->rxq;
+	struct rte_mempool *mp = rxq->mprq_mp;
 	char name[RTE_MEMPOOL_NAMESIZE];
 	unsigned int desc = 0;
 	unsigned int buf_len;
@@ -1227,28 +1220,15 @@ mlx5_mprq_alloc_mp(struct rte_eth_dev *dev)
 	unsigned int obj_size;
 	unsigned int strd_num_n = 0;
 	unsigned int strd_sz_n = 0;
-	unsigned int i;
-	unsigned int n_ibv = 0;
 
-	if (!mlx5_mprq_enabled(dev))
+	if (rxq_ctrl == NULL || rxq_ctrl->type != MLX5_RXQ_TYPE_STANDARD)
 		return 0;
-	/* Count the total number of descriptors configured. */
-	for (i = 0; i != priv->rxqs_n; ++i) {
-		struct mlx5_rxq_data *rxq = (*priv->rxqs)[i];
-		struct mlx5_rxq_ctrl *rxq_ctrl = container_of
-			(rxq, struct mlx5_rxq_ctrl, rxq);
-
-		if (rxq == NULL || rxq_ctrl->type != MLX5_RXQ_TYPE_STANDARD)
-			continue;
-		n_ibv++;
-		desc += 1 << rxq->elts_n;
-		/* Get the max number of strides. */
-		if (strd_num_n < rxq->strd_num_n)
-			strd_num_n = rxq->strd_num_n;
-		/* Get the max size of a stride. */
-		if (strd_sz_n < rxq->strd_sz_n)
-			strd_sz_n = rxq->strd_sz_n;
-	}
+	/* Number of descriptors configured. */
+	desc = 1 << rxq->elts_n;
+	/* Get the max number of strides. */
+	strd_num_n = rxq->strd_num_n;
+	/* Get the max size of a stride. */
+	strd_sz_n = rxq->strd_sz_n;
 	MLX5_ASSERT(strd_num_n && strd_sz_n);
 	buf_len = (1 << strd_num_n) * (1 << strd_sz_n);
 	obj_size = sizeof(struct mlx5_mprq_buf) + buf_len + (1 << strd_num_n) *
@@ -1265,7 +1245,7 @@ mlx5_mprq_alloc_mp(struct rte_eth_dev *dev)
 	 * this Mempool gets available again.
 	 */
 	desc *= 4;
-	obj_num = desc + MLX5_MPRQ_MP_CACHE_SZ * n_ibv;
+	obj_num = desc + MLX5_MPRQ_MP_CACHE_SZ;
 	/*
 	 * rte_mempool_create_empty() has sanity check to refuse large cache
 	 * size compared to the number of elements.
@@ -1275,53 +1255,44 @@ mlx5_mprq_alloc_mp(struct rte_eth_dev *dev)
 	obj_num = RTE_MAX(obj_num, MLX5_MPRQ_MP_CACHE_SZ * 2);
 	/* Check a mempool is already allocated and if it can be resued. */
 	if (mp != NULL && mp->elt_size >= obj_size && mp->size >= obj_num) {
-		DRV_LOG(DEBUG, "port %u mempool %s is being reused",
-			dev->data->port_id, mp->name);
+		DRV_LOG(DEBUG, "port %u queue %hu mempool %s is being reused",
+			dev->data->port_id, rxq->idx, mp->name);
 		/* Reuse. */
-		goto exit;
-	} else if (mp != NULL) {
-		DRV_LOG(DEBUG, "port %u mempool %s should be resized, freeing it",
-			dev->data->port_id, mp->name);
+		return 0;
+	}
+	if (mp != NULL) {
+		DRV_LOG(DEBUG, "port %u queue %u mempool %s should be resized, freeing it",
+			dev->data->port_id, rxq->idx, mp->name);
 		/*
 		 * If failed to free, which means it may be still in use, no way
 		 * but to keep using the existing one. On buffer underrun,
 		 * packets will be memcpy'd instead of external buffer
 		 * attachment.
 		 */
-		if (mlx5_mprq_free_mp(dev)) {
+		if (mlx5_mprq_free_mp(dev, rxq_ctrl) != 0) {
 			if (mp->elt_size >= obj_size)
-				goto exit;
+				return 0;
 			else
 				return -rte_errno;
 		}
 	}
-	snprintf(name, sizeof(name), "port-%u-mprq", dev->data->port_id);
+	snprintf(name, sizeof(name), "port-%u-queue-%hu-mprq",
+		 dev->data->port_id, rxq->idx);
 	mp = rte_mempool_create(name, obj_num, obj_size, MLX5_MPRQ_MP_CACHE_SZ,
 				0, NULL, NULL, mlx5_mprq_buf_init,
 				(void *)(uintptr_t)(1 << strd_num_n),
-				dev->device->numa_node, 0);
+				dev->device->numa_node, MEMPOOL_F_SC_GET);
 	if (mp == NULL) {
 		DRV_LOG(ERR,
-			"port %u failed to allocate a mempool for"
+			"port %u queue %hu failed to allocate a mempool for"
 			" Multi-Packet RQ, count=%u, size=%u",
-			dev->data->port_id, obj_num, obj_size);
+			dev->data->port_id, rxq->idx, obj_num, obj_size);
 		rte_errno = ENOMEM;
 		return -rte_errno;
 	}
-	priv->mprq_mp = mp;
-exit:
-	/* Set mempool for each Rx queue. */
-	for (i = 0; i != priv->rxqs_n; ++i) {
-		struct mlx5_rxq_data *rxq = (*priv->rxqs)[i];
-		struct mlx5_rxq_ctrl *rxq_ctrl = container_of
-			(rxq, struct mlx5_rxq_ctrl, rxq);
-
-		if (rxq == NULL || rxq_ctrl->type != MLX5_RXQ_TYPE_STANDARD)
-			continue;
-		rxq->mprq_mp = mp;
-	}
-	DRV_LOG(INFO, "port %u Multi-Packet RQ is configured",
-		dev->data->port_id);
+	rxq->mprq_mp = mp;
+	DRV_LOG(INFO, "port %u queue %hu Multi-Packet RQ is configured",
+		dev->data->port_id, rxq->idx);
 	return 0;
 }
 
@@ -1786,8 +1757,10 @@ mlx5_rxq_release(struct rte_eth_dev *dev, uint16_t idx)
 		dev->data->rx_queue_state[idx] = RTE_ETH_QUEUE_STATE_STOPPED;
 	}
 	if (!__atomic_load_n(&rxq_ctrl->refcnt, __ATOMIC_RELAXED)) {
-		if (rxq_ctrl->type == MLX5_RXQ_TYPE_STANDARD)
+		if (rxq_ctrl->type == MLX5_RXQ_TYPE_STANDARD) {
 			mlx5_mr_btree_free(&rxq_ctrl->rxq.mr_ctrl.cache_bh);
+			mlx5_mprq_free_mp(dev, rxq_ctrl);
+		}
 		LIST_REMOVE(rxq_ctrl, next);
 		mlx5_free(rxq_ctrl);
 		(*priv->rxqs)[idx] = NULL;
