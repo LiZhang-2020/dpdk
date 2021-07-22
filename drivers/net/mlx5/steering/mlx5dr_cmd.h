@@ -5,11 +5,6 @@
 #ifndef MLX5DR_CMD_H_
 #define MLX5DR_CMD_H_
 
-struct mlx5dr_devx_obj {
-	struct mlx5dv_devx_obj *obj;
-	uint32_t id;
-};
-
 struct mlx5dr_cmd_ft_create_attr {
 	uint8_t type;
 	uint8_t level;
@@ -50,7 +45,6 @@ struct mlx5dr_cmd_stc_modify_attr {
 		uint32_t id; /* TIRN, TAG, FT ID, STE ID */
 		uint32_t dest_table_id;
 		uint32_t dest_tir_num;
-		uint32_t tag;
 	};
 };
 

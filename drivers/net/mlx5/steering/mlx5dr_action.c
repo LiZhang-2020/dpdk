@@ -17,7 +17,7 @@ int mlx5dr_action_root_build_attr(struct mlx5dr_rule_action rule_actions[],
 		switch (action->type) {
 		case MLX5DR_ACTION_TYP_FT:
 			attr[i].type = MLX5DV_FLOW_ACTION_DEST_DEVX;
-			attr[i].obj = action->tbl->ft->obj;
+			attr[i].obj = action->devx_obj;
 			break;
 #ifndef HAVE_MLX5_DR_CREATE_ACTION_DEFAULT_MISS
 		case MLX5DR_ACTION_TYP_MISS:
@@ -37,8 +37,149 @@ int mlx5dr_action_root_build_attr(struct mlx5dr_rule_action rule_actions[],
 	return 0;
 }
 
+static int
+mlx5dr_action_alloc_single_stc(struct mlx5dr_context *ctx,
+			       uint32_t obj_id,
+			       uint32_t table_type,
+			       uint32_t action_type,
+			       struct mlx5dr_pool_chunk *stc)
+{
+	struct mlx5dr_pool *stc_pool = ctx->stc_pool[table_type];
+	struct mlx5dr_cmd_stc_modify_attr stc_attr = {0};
+	struct mlx5dr_devx_obj *devx_obj;
+	int ret;
+
+	/* Check if valid action */
+	if (!action_type) {
+		DRV_LOG(ERR, "Unsupported action\n");
+		rte_errno = ENOTSUP;
+		return rte_errno;
+	}
+
+	ret = mlx5dr_pool_chunk_alloc(stc_pool, stc);
+	if (ret) {
+		DRV_LOG(ERR, "Failed to allocate single action STC\n");
+		return ret;
+	}
+
+	stc_attr.stc_offset = stc->offset;
+	stc_attr.action_type = action_type;
+	stc_attr.id = obj_id;
+	devx_obj = mlx5dr_pool_chunk_get_base_devx_obj(stc_pool, stc);
+
+	ret = mlx5dr_cmd_stc_modify(devx_obj, &stc_attr);
+	if (ret) {
+		DRV_LOG(ERR, "Failed to modify STC to type %d\n", action_type);
+		goto free_chunk;
+	}
+
+	return 0;
+
+free_chunk:
+       mlx5dr_pool_chunk_free(stc_pool, stc);
+       return rte_errno;
+}
+
+static void
+mlx5dr_action_free_single_stc(struct mlx5dr_context *ctx,
+			       uint32_t table_type,
+			       struct mlx5dr_pool_chunk *stc)
+{
+	struct mlx5dr_pool *stc_pool = ctx->stc_pool[table_type];
+
+	mlx5dr_pool_chunk_free(stc_pool, stc);
+}
+
+static int
+mlx5dr_action_create_stcs(struct mlx5dr_action *action,
+			  struct mlx5dr_devx_obj *obj)
+{
+	struct mlx5dr_context *ctx = action->ctx;
+	uint32_t stc_type_rx, stc_type_tx;
+	uint32_t obj_id;
+	int ret;
+
+	switch (action->type) {
+	case MLX5DR_ACTION_TYP_CTR:
+		stc_type_rx = MLX5_IFC_STC_ACTION_TYPE_COUNTER;
+		stc_type_tx = MLX5_IFC_STC_ACTION_TYPE_COUNTER;
+		break;
+	case MLX5DR_ACTION_TYP_DROP:
+		stc_type_rx = MLX5_IFC_STC_ACTION_TYPE_DROP;
+		stc_type_tx = MLX5_IFC_STC_ACTION_TYPE_DROP;
+		break;
+	case MLX5DR_ACTION_TYP_FT:
+		stc_type_rx = MLX5_IFC_STC_ACTION_TYPE_JUMP_TO_FT;
+		stc_type_tx = MLX5_IFC_STC_ACTION_TYPE_JUMP_TO_FT;
+		break;
+	case MLX5DR_ACTION_TYP_MISS:
+		stc_type_rx = MLX5_IFC_STC_ACTION_TYPE_DROP;
+		stc_type_tx = MLX5_IFC_STC_ACTION_TYPE_WIRE;
+		break;
+	case MLX5DR_ACTION_TYP_TAG:
+		stc_type_rx = MLX5_IFC_STC_ACTION_TYPE_TAG;
+		stc_type_tx = MLX5_IFC_STC_ACTION_TYPE_NONE;
+		break;
+	case MLX5DR_ACTION_TYP_QP:
+		stc_type_rx = MLX5_IFC_STC_ACTION_TYPE_JUMP_TO_TIR;
+		stc_type_tx = MLX5_IFC_STC_ACTION_TYPE_NONE;
+		break;
+	default:
+		DRV_LOG(ERR, "Invalid action type %d\n", action->type);
+		rte_errno = ENOTSUP;
+		assert(0);
+		return rte_errno;
+	}
+
+	obj_id = obj ? obj->id : 0;
+
+	/* Allocate STC for RX */
+	if (action->flags & MLX5DR_ACTION_FLAG_HWS_NIC_RX) {
+		ret = mlx5dr_action_alloc_single_stc(ctx, obj_id,
+						     MLX5DR_TABLE_TYPE_NIC_RX,
+						     stc_type_rx,
+						     &action->stc_rx);
+		if (ret)
+		      goto out_err;
+	}
+
+	/* Allocate STC for TX */
+	if (action->flags & MLX5DR_ACTION_FLAG_HWS_NIC_TX) {
+		ret = mlx5dr_action_alloc_single_stc(ctx, obj_id,
+						     MLX5DR_TABLE_TYPE_NIC_TX,
+						     stc_type_tx,
+						     &action->stc_tx);
+		if (ret)
+		       goto free_stc_rx;
+	}
+
+	/* TODO FDB */
+
+	return 0;
+
+free_stc_rx:
+	if (action->flags & MLX5DR_ACTION_FLAG_HWS_NIC_RX)
+		mlx5dr_action_free_single_stc(ctx, MLX5DR_TABLE_TYPE_NIC_RX, &action->stc_rx);
+out_err:
+	return rte_errno;
+}
+
+static void
+mlx5dr_action_destroy_stcs(struct mlx5dr_action *action)
+{
+	struct mlx5dr_context *ctx = action->ctx;
+
+	if (action->flags & MLX5DR_ACTION_FLAG_HWS_NIC_TX)
+		mlx5dr_action_free_single_stc(ctx, MLX5DR_TABLE_TYPE_NIC_TX, &action->stc_tx);
+
+	if (action->flags & MLX5DR_ACTION_FLAG_HWS_NIC_RX)
+		mlx5dr_action_free_single_stc(ctx, MLX5DR_TABLE_TYPE_NIC_RX, &action->stc_rx);
+}
+
 static struct mlx5dr_action *
-mlx5dr_action_create_generic(enum mlx5dr_action_type action_type)
+mlx5dr_action_create_generic(struct mlx5dr_context *ctx,
+			     enum mlx5dr_action_flags flags,
+			     enum mlx5dr_action_type action_type)
 {
 	struct mlx5dr_action *action;
 
@@ -49,21 +190,19 @@ mlx5dr_action_create_generic(enum mlx5dr_action_type action_type)
 		return NULL;
 	}
 
+	action->ctx = ctx;
+	action->flags = flags;
 	action->type = action_type;
 
 	return action;
 }
 
 struct mlx5dr_action *
-mlx5dr_action_create_table_dest(struct mlx5dr_table *tbl,
-				enum mlx5dr_action_flags flags)
+mlx5dr_action_create_dest_table(struct mlx5dr_context *ctx,
+				enum mlx5dr_action_flags flags,
+				struct mlx5dr_table *tbl)
 {
 	struct mlx5dr_action *action;
-
-	if (flags) {
-		rte_errno = ENOTSUP;
-		return NULL;
-	}
 
 	if (mlx5dr_table_is_root(tbl)) {
 		DRV_LOG(ERR, "Root table cannot be set as destination");
@@ -71,13 +210,47 @@ mlx5dr_action_create_table_dest(struct mlx5dr_table *tbl,
 		return NULL;
 	}
 
-	action = mlx5dr_action_create_generic(MLX5DR_ACTION_TYP_FT);
+	action = mlx5dr_action_create_generic(ctx, flags, MLX5DR_ACTION_TYP_FT);
 	if (!action)
 		return NULL;
 
-	action->tbl = tbl;
+
+	if (flags & MLX5DR_ACTION_FLAG_ROOT_ONLY) {
+		action->devx_obj = tbl->ft->obj;
+	} else {
+		/* TODO Fix to support rx/tx/fdb */
+		if (flags & MLX5DR_ACTION_FLAG_HWS_NIC_RX)
+			action->stc_rx = tbl->stc;
+	}
 
 	return action;
+}
+
+struct mlx5dr_action *
+mlx5dr_action_create_dest_tir(struct mlx5dr_context *ctx,
+			      struct mlx5dr_devx_obj *obj,
+			      enum mlx5dr_action_flags flags)
+{
+	struct mlx5dr_action *action;
+	int ret;
+
+	action = mlx5dr_action_create_generic(ctx, flags, MLX5DR_ACTION_TYP_QP);
+	if (!action)
+		return NULL;
+
+	if (flags & MLX5DR_ACTION_FLAG_ROOT_ONLY) {
+		action->devx_obj = obj->obj;
+	} else {
+		ret = mlx5dr_action_create_stcs(action, obj);
+		if (ret)
+			goto free_action;
+	}
+
+	return action;
+
+free_action:
+	simple_free(action);
+	return NULL;
 }
 
 struct mlx5dr_action *
@@ -85,21 +258,23 @@ mlx5dr_action_create_drop(struct mlx5dr_context *ctx,
 			  enum mlx5dr_action_flags flags)
 {
 	struct mlx5dr_action *action;
+	int ret;
 
-	if (flags) {
-		rte_errno = ENOTSUP;
-		return NULL;
-	}
-
-	DRV_LOG(ERR, "This is TEMP for the warn %p\n", (void *)ctx);
-
-	action = mlx5dr_action_create_generic(MLX5DR_ACTION_TYP_DROP);
+	action = mlx5dr_action_create_generic(ctx, flags, MLX5DR_ACTION_TYP_DROP);
 	if (!action)
 		return NULL;
 
-	// TODO create STC?
+	if (!(flags & MLX5DR_ACTION_FLAG_ROOT_ONLY)) {
+		ret = mlx5dr_action_create_stcs(action, NULL);
+		if (ret)
+			goto free_action;
+	}
 
 	return action;
+
+free_action:
+	simple_free(action);
+	return NULL;
 }
 
 struct mlx5dr_action *
@@ -107,24 +282,56 @@ mlx5dr_action_create_default_miss(struct mlx5dr_context *ctx,
 				  enum mlx5dr_action_flags flags)
 {
 	struct mlx5dr_action *action;
+	int ret;
 
-	if (flags) {
-		rte_errno = ENOTSUP;
-		return NULL;
-	}
-
-	DRV_LOG(ERR, "This is TEMP for the warn %p\n", (void *)ctx);
-
-	action = mlx5dr_action_create_generic(MLX5DR_ACTION_TYP_MISS);
+	action = mlx5dr_action_create_generic(ctx, flags, MLX5DR_ACTION_TYP_MISS);
 	if (!action)
 		return NULL;
 
-	// TODO create STC?
+	if (!(flags & MLX5DR_ACTION_FLAG_ROOT_ONLY)) {
+		ret = mlx5dr_action_create_stcs(action, NULL);
+		if (ret)
+			goto free_action;
+	}
 
 	return action;
+
+free_action:
+	simple_free(action);
+	return NULL;
 }
 
-void mlx5dr_action_destroy(struct mlx5dr_action *action)
+struct mlx5dr_action *
+mlx5dr_action_create_tag(struct mlx5dr_context *ctx,
+			 enum mlx5dr_action_flags flags)
 {
+	struct mlx5dr_action *action;
+	int ret;
+
+	action = mlx5dr_action_create_generic(ctx, flags, MLX5DR_ACTION_TYP_TAG);
+	if (!action)
+		return NULL;
+
+	if (!(flags & MLX5DR_ACTION_FLAG_ROOT_ONLY)) {
+		ret = mlx5dr_action_create_stcs(action, NULL);
+		if (ret)
+			goto free_action;
+	}
+
+	return action;
+
+free_action:
 	simple_free(action);
+	return NULL;
+}
+
+int mlx5dr_action_destroy(struct mlx5dr_action *action)
+{
+	/* TODO table STC is removed BUG */
+	if (!(action->flags & MLX5DR_ACTION_FLAG_ROOT_ONLY))
+		mlx5dr_action_destroy_stcs(action);
+
+	simple_free(action);
+
+	return 0;
 }

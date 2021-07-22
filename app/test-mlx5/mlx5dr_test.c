@@ -206,7 +206,7 @@ static int run_test_rule_insert(struct ibv_context *ibv_ctx)
 	}
 
 	/* Create goto table action */
-	to_hws_tbl = mlx5dr_action_create_table_dest(hws_tbl, 0);
+	to_hws_tbl = mlx5dr_action_create_dest_table(ctx, MLX5DR_ACTION_FLAG_ROOT_ONLY, hws_tbl);
 	if (!to_hws_tbl) {
 		printf("Failed to create action jump to HWS table\n");
 		goto destroy_hws_matcher2;

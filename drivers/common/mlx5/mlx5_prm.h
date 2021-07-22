@@ -2862,6 +2862,7 @@ struct mlx5_ifc_rtc_bits {
 
 // TODO PRM Values are not part of PRM
 enum mlx5_ifc_stc_action_type {
+	MLX5_IFC_STC_ACTION_TYPE_NONE = 0x0,
 	MLX5_IFC_STC_ACTION_TYPE_TAG = 0x0c,
 	MLX5_IFC_STC_ACTION_TYPE_ACC_MODIFY_LIST = 0x0e,
 	MLX5_IFC_STC_ACTION_TYPE_JUMP_TO_STE = 0x80,

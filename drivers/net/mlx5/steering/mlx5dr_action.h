@@ -32,13 +32,14 @@ enum mlx5dr_action_type {
 
 struct mlx5dr_action {
 	uint8_t type;
+	uint8_t flags;
+	struct mlx5dr_context *ctx;
 	union {
-		struct mlx5dr_table *tbl;
 		struct {
-			uint32_t rx_id;
-			uint32_t tx_id;
-		} stc;
-		uint32_t stc_id;
+			struct mlx5dr_pool_chunk stc_rx;
+			struct mlx5dr_pool_chunk stc_tx;
+		};
+		struct mlx5dv_devx_obj *devx_obj;
 	};
 };
 

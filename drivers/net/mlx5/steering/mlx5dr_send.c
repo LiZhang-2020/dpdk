@@ -64,7 +64,7 @@ void mlx5dr_send_engine_post_end(struct mlx5dr_send_engine_post_ctrl *ctrl,
 
 	wqe_ctrl->fm_ce_se = attr->notify_hw ? MLX5_WQE_CTRL_CQ_UPDATE : 0;
 	wqe_ctrl->signature = 0;
-	wqe_ctrl->dci_stream_channel_id = 0;
+	//wqe_ctrl->dci_stream_channel_id = 0;
 
 
 	sq->wr_priv[idx].rule = attr->rule;

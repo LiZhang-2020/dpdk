@@ -23,8 +23,11 @@ enum mlx5dr_matcher_insertion_mode {
 };
 
 enum mlx5dr_action_flags {
-	MLX5DR_ACTION_FLAG_ROOT,
-	MLX5DR_ACTION_FLAG_SHARED,
+	MLX5DR_ACTION_FLAG_ROOT_ONLY = 1 << 0,
+	MLX5DR_ACTION_FLAG_HWS_NIC_RX = 1 << 1,
+	MLX5DR_ACTION_FLAG_HWS_NIC_TX = 1 << 2,
+	MLX5DR_ACTION_FLAG_HWS_FDB = 1 << 3,
+	MLX5DR_ACTION_FLAG_SHARED = 1 << 4,
 };
 
 struct mlx5dr_context_attr {
@@ -51,6 +54,11 @@ struct mlx5dr_rule_attr {
 	void *user_data;
 	uint32_t requst_comp:1;
 	uint32_t burst:1;
+};
+
+struct mlx5dr_devx_obj {
+	struct mlx5dv_devx_obj *obj;
+	uint32_t id;
 };
 
 struct mlx5dr_rule_action {
@@ -98,10 +106,6 @@ int mlx5dr_rule_destroy(struct mlx5dr_rule *rule,
 			struct mlx5dr_rule_attr *attr);
 
 struct mlx5dr_action *
-mlx5dr_action_create_table_dest(struct mlx5dr_table *tbl,
-				enum mlx5dr_action_flags flags);
-
-struct mlx5dr_action *
 mlx5dr_action_create_drop(struct mlx5dr_context *ctx,
 			  enum mlx5dr_action_flags flags);
 
@@ -109,6 +113,20 @@ struct mlx5dr_action *
 mlx5dr_action_create_default_miss(struct mlx5dr_context *ctx,
 				  enum mlx5dr_action_flags flags);
 
-void mlx5dr_action_destroy(struct mlx5dr_action *action);
+struct mlx5dr_action *
+mlx5dr_action_create_tag(struct mlx5dr_context *ctx,
+			 enum mlx5dr_action_flags flags);
+
+struct mlx5dr_action *
+mlx5dr_action_create_dest_table(struct mlx5dr_context *ctx,
+				enum mlx5dr_action_flags flags,
+				struct mlx5dr_table *tbl);
+
+struct mlx5dr_action *
+mlx5dr_action_create_dest_tir(struct mlx5dr_context *ctx,
+			      struct mlx5dr_devx_obj *obj,
+			      enum mlx5dr_action_flags flags);
+
+int mlx5dr_action_destroy(struct mlx5dr_action *action);
 
 #endif
