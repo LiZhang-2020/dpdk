@@ -2829,9 +2829,10 @@ struct mlx5_ifc_geneve_tlv_option_bits {
 	u8 reserved_at_80[0x180];
 };
 
+// TODO below values are different from PRM
 enum mlx5_ifc_rtc_update_mode {
-	MLX5_IFC_RTC_STE_UPDATE_MODE_BY_HASH = 0x0,
-	MLX5_IFC_RTC_STE_UPDATE_MODE_BY_OFFSET = 0x1,
+	MLX5_IFC_RTC_STE_UPDATE_MODE_BY_HASH = 0x1,
+	MLX5_IFC_RTC_STE_UPDATE_MODE_BY_OFFSET = 0x2,
 };
 
 enum mlx5_ifc_rtc_ste_format {
@@ -2903,15 +2904,26 @@ enum {
 	MLX5_IFC_MODIFY_STC_FIELD_SELECT_STC_PARAM = 1 << 2,
 };
 
+// TODO this it the REAL PRM format
+//struct mlx5_ifc_stc_bits {
+//	u8 modify_field_select[0x40];
+//	u8 reserved_at_40[0x48];
+//	u8 table_type[0x8];
+//	u8 ste_action_offset[0x8];
+//	u8 action_type[0x8];
+//	u8 reserved_at_a0[0x60];
+//	union mlx5_ifc_stc_param_bits stc_param;
+//	u8 reserved_at_180[0x280];
+//};
+
+// TODO this it the "FW" PRM format
 struct mlx5_ifc_stc_bits {
-	u8 modify_field_select[0x40];
-	u8 reserved_at_40[0x48];
-	u8 table_type[0x8];
+	u8 reserved_0[0x10];
 	u8 ste_action_offset[0x8];
 	u8 action_type[0x8];
-	u8 reserved_at_a0[0x60];
 	union mlx5_ifc_stc_param_bits stc_param;
-	u8 reserved_at_180[0x280];
+	u8 table_type[0x8]; // just for compilation
+	u8 modify_field_select[0x40]; // just for compilation
 };
 
 struct mlx5_ifc_ste_bits {
