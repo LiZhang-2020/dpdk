@@ -66,7 +66,6 @@ void mlx5dr_send_engine_post_end(struct mlx5dr_send_engine_post_ctrl *ctrl,
 	wqe_ctrl->signature = 0;
 	//wqe_ctrl->dci_stream_channel_id = 0;
 
-
 	sq->wr_priv[idx].rule = attr->rule;
 	sq->wr_priv[idx].user_comp = attr->user_comp;
 	sq->wr_priv[idx].num_wqebbs = ctrl->num_wqebbs;

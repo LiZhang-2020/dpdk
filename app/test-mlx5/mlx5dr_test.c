@@ -76,6 +76,7 @@ static int mlx5dr_run_test_post(struct mlx5dr_context *ctx)
 
 	return 0;
 }
+
 static int run_test_post_send(struct ibv_context *ibv_ctx)
 {
 	struct mlx5dr_context *ctx;
@@ -130,10 +131,12 @@ static int run_test_rule_insert(struct ibv_context *ibv_ctx)
 {
 	struct mlx5dr_context *ctx;
 	struct mlx5dr_table *root_tbl, *hws_tbl;
-	struct mlx5dr_matcher *root_matcher, *hws_matcher1, *hws_matcher2;
+	struct mlx5dr_matcher *root_matcher, *hws_matcher1;
 	struct mlx5dr_rule_action rule_actions[10];
 	struct mlx5dr_action *to_hws_tbl;
+	struct mlx5dr_action *drop;
 	struct mlx5dr_rule *connect_rule;
+	struct mlx5dr_rule *hws_rule;
 	struct mlx5dr_context_attr dr_ctx_attr = {0};
 	struct mlx5dr_table_attr dr_tbl_attr = {0};
 	struct mlx5dr_matcher_attr matcher_attr = {0};
@@ -186,39 +189,37 @@ static int run_test_rule_insert(struct ibv_context *ibv_ctx)
 	/* Create HWS matcher1 */
 	matcher_attr.priority = 0;
 	matcher_attr.insertion_mode = MLX5DR_MATCHER_INSERTION_MODE_BEST_EFFORT;
-	matcher_attr.size_hint_column_log = 4;
-	matcher_attr.size_hint_rows_log = 4;
+	matcher_attr.size_hint_column_log = 1;
+	matcher_attr.size_hint_rows_log = 1;
 	hws_matcher1 = mlx5dr_matcher_create(hws_tbl, items, &matcher_attr);
 	if (!hws_matcher1) {
 		printf("Failed to create HWS matcher 1\n");
 		goto destroy_root_matcher;
 	}
 
-	/* Create HWS matcher2 */
-	matcher_attr.priority = 1;
-	matcher_attr.insertion_mode = MLX5DR_MATCHER_INSERTION_MODE_BEST_EFFORT;
-	matcher_attr.size_hint_column_log = 4;
-	matcher_attr.size_hint_rows_log = 4;
-	hws_matcher2 = mlx5dr_matcher_create(hws_tbl, items, &matcher_attr);
-	if (!hws_matcher2) {
-		printf("Failed to create HWS matcher 2\n");
-		goto destroy_hws_matcher1;
-	}
-
 	/* Create goto table action */
 	to_hws_tbl = mlx5dr_action_create_dest_table(ctx, MLX5DR_ACTION_FLAG_ROOT_ONLY, hws_tbl);
 	if (!to_hws_tbl) {
 		printf("Failed to create action jump to HWS table\n");
-		goto destroy_hws_matcher2;
+		goto destroy_hws_matcher1;
 	}
 
-	/* Create connecting rule to HWS */
-	connect_rule = calloc(1, mlx5dr_rule_get_handle_size());
-	if (!connect_rule) {
-		printf("Failed to allocate memory for connect rule\n");
+
+	/* Create drop action */
+	drop = mlx5dr_action_create_drop(ctx, MLX5DR_ACTION_FLAG_HWS_NIC_RX);
+	if (!drop) {
+		printf("Failed to create action drop\n");
 		goto destroy_action_to_hws_tbl;
 	}
 
+	/* Allocate connecting rule to HWS */
+	connect_rule = calloc(1, mlx5dr_rule_get_handle_size());
+	if (!connect_rule) {
+		printf("Failed to allocate memory for connect rule\n");
+		goto destroy_action_drop;
+	}
+
+	/* Create connecting rule to HWS */
 	rule_actions[0].action = to_hws_tbl;
 	ret = mlx5dr_rule_create(root_matcher, items, rule_actions, 1, &rule_attr, connect_rule);
 	if (ret) {
@@ -226,10 +227,31 @@ static int run_test_rule_insert(struct ibv_context *ibv_ctx)
 		goto free_connect_rule;
 	}
 
+	/* Allocate HWS rules */
+	hws_rule = calloc(1, mlx5dr_rule_get_handle_size());
+	if (!hws_rule) {
+		printf("Failed to allocate memory for hws_rule\n");
+		goto destroy_connect_rule;
+	}
+
+	/* Create HWS rules */
+	rule_attr.queue_id = 0;
+	rule_attr.burst = 0;
+	rule_attr.requst_comp = 1;
+
+	rule_actions[0].action = drop;
+	ret = mlx5dr_rule_create(hws_matcher1, items, rule_actions, 1, &rule_attr, hws_rule);
+	if (ret) {
+		printf("Failed to create hws rule\n");
+		goto free_hws_rules;
+	}
+
+	mlx5dr_rule_destroy(hws_rule, &rule_attr);
+	free(hws_rule);
 	mlx5dr_rule_destroy(connect_rule, &rule_attr);
 	free(connect_rule);
+	mlx5dr_action_destroy(drop);
 	mlx5dr_action_destroy(to_hws_tbl);
-	mlx5dr_matcher_destroy(hws_matcher2);
 	mlx5dr_matcher_destroy(hws_matcher1);
 	mlx5dr_matcher_destroy(root_matcher);
 	mlx5dr_table_destroy(hws_tbl);
@@ -238,12 +260,16 @@ static int run_test_rule_insert(struct ibv_context *ibv_ctx)
 
 	return 0;
 
+free_hws_rules:
+	free(hws_rule);
+destroy_connect_rule:
+	mlx5dr_rule_destroy(connect_rule, &rule_attr);
 free_connect_rule:
 	free(connect_rule);
+destroy_action_drop:
+	mlx5dr_action_destroy(drop);
 destroy_action_to_hws_tbl:
 	mlx5dr_action_destroy(to_hws_tbl);
-destroy_hws_matcher2:
-	mlx5dr_matcher_destroy(hws_matcher2);
 destroy_hws_matcher1:
 	mlx5dr_matcher_destroy(hws_matcher1);
 destroy_root_matcher:
