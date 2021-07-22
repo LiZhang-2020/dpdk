@@ -285,6 +285,10 @@ typedef int (*eth_rx_disable_intr_t)(struct rte_eth_dev *dev,
 typedef void (*eth_queue_release_t)(void *queue);
 /**< @internal Release memory resources allocated by given RX/TX queue. */
 
+typedef void (*eth_queue_release_ex_t)(struct rte_eth_dev *dev,
+				       uint16_t rx_queue_id);
+/**< @internal Release memory resources allocated by given RX/TX queue ID. */
+
 typedef int (*eth_fw_version_get_t)(struct rte_eth_dev *dev,
 				     char *fw_version, size_t fw_size);
 /**< @internal Get firmware information of an Ethernet device. */
@@ -847,6 +851,7 @@ struct eth_dev_ops {
 	eth_queue_stop_t           tx_queue_stop; /**< Stop TX for a queue. */
 	eth_rx_queue_setup_t       rx_queue_setup;/**< Set up device RX queue. */
 	eth_queue_release_t        rx_queue_release; /**< Release RX queue. */
+	eth_queue_release_ex_t     rx_queue_release_ex; /**< Release RX queue by ID. */
 
 	eth_rx_enable_intr_t       rx_queue_intr_enable;  /**< Enable Rx queue interrupt. */
 	eth_rx_disable_intr_t      rx_queue_intr_disable; /**< Disable Rx queue interrupt. */

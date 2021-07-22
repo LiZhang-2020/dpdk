@@ -895,6 +895,17 @@ eth_err(uint16_t port_id, int ret)
 	return ret;
 }
 
+static inline void
+eth_dev_rx_queue_release(struct rte_eth_dev *dev, uint16_t queue)
+{
+	void **rxqs = dev->data->rx_queues;
+
+	if (dev->dev_ops->rx_queue_release_ex != NULL)
+		(*dev->dev_ops->rx_queue_release_ex)(dev, queue);
+	else
+		(*dev->dev_ops->rx_queue_release)(rxqs[queue]);
+}
+
 static int
 eth_dev_rx_queue_config(struct rte_eth_dev *dev, uint16_t nb_queues)
 {
@@ -911,12 +922,13 @@ eth_dev_rx_queue_config(struct rte_eth_dev *dev, uint16_t nb_queues)
 			return -(ENOMEM);
 		}
 	} else if (dev->data->rx_queues != NULL && nb_queues != 0) { /* re-configure */
-		RTE_FUNC_PTR_OR_ERR_RET(*dev->dev_ops->rx_queue_release, -ENOTSUP);
-
-		rxq = dev->data->rx_queues;
+		if (dev->dev_ops->rx_queue_release_ex == NULL)
+			RTE_FUNC_PTR_OR_ERR_RET(*dev->dev_ops->rx_queue_release,
+						-ENOTSUP);
 
 		for (i = nb_queues; i < old_nb_queues; i++)
-			(*dev->dev_ops->rx_queue_release)(rxq[i]);
+			eth_dev_rx_queue_release(dev, i);
+		rxq = dev->data->rx_queues;
 		rxq = rte_realloc(rxq, sizeof(rxq[0]) * nb_queues,
 				RTE_CACHE_LINE_SIZE);
 		if (rxq == NULL)
@@ -931,12 +943,12 @@ eth_dev_rx_queue_config(struct rte_eth_dev *dev, uint16_t nb_queues)
 		dev->data->rx_queues = rxq;
 
 	} else if (dev->data->rx_queues != NULL && nb_queues == 0) {
-		RTE_FUNC_PTR_OR_ERR_RET(*dev->dev_ops->rx_queue_release, -ENOTSUP);
-
-		rxq = dev->data->rx_queues;
+		if (dev->dev_ops->rx_queue_release_ex == NULL)
+			RTE_FUNC_PTR_OR_ERR_RET(*dev->dev_ops->rx_queue_release,
+						-ENOTSUP);
 
 		for (i = nb_queues; i < old_nb_queues; i++)
-			(*dev->dev_ops->rx_queue_release)(rxq[i]);
+			eth_dev_rx_queue_release(dev, i);
 
 		rte_free(dev->data->rx_queues);
 		dev->data->rx_queues = NULL;
@@ -2103,9 +2115,10 @@ rte_eth_rx_queue_setup(uint16_t port_id, uint16_t rx_queue_id,
 
 	rxq = dev->data->rx_queues;
 	if (rxq[rx_queue_id]) {
-		RTE_FUNC_PTR_OR_ERR_RET(*dev->dev_ops->rx_queue_release,
-					-ENOTSUP);
-		(*dev->dev_ops->rx_queue_release)(rxq[rx_queue_id]);
+		if (dev->dev_ops->rx_queue_release_ex == NULL)
+			RTE_FUNC_PTR_OR_ERR_RET(*dev->dev_ops->rx_queue_release,
+						-ENOTSUP);
+		eth_dev_rx_queue_release(dev, rx_queue_id);
 		rxq[rx_queue_id] = NULL;
 	}
 
@@ -2239,9 +2252,10 @@ rte_eth_rx_hairpin_queue_setup(uint16_t port_id, uint16_t rx_queue_id,
 		return -EBUSY;
 	rxq = dev->data->rx_queues;
 	if (rxq[rx_queue_id] != NULL) {
-		RTE_FUNC_PTR_OR_ERR_RET(*dev->dev_ops->rx_queue_release,
-					-ENOTSUP);
-		(*dev->dev_ops->rx_queue_release)(rxq[rx_queue_id]);
+		if (dev->dev_ops->rx_queue_release_ex == NULL)
+			RTE_FUNC_PTR_OR_ERR_RET(*dev->dev_ops->rx_queue_release,
+						-ENOTSUP);
+		eth_dev_rx_queue_release(dev, rx_queue_id);
 		rxq[rx_queue_id] = NULL;
 	}
 	ret = (*dev->dev_ops->rx_hairpin_queue_setup)(dev, rx_queue_id,
