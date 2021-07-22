@@ -91,6 +91,31 @@ mlx5dr_uar_write64_relaxed(uint64_t val, void *addr)
 #endif
 }
 
+struct gta_wqe_ctrl_seg {
+	__be32 op_dirix;
+	__be32 stc_ix[5];
+	__be32 rsvd0[6];
+};
+
+struct gta_wqe_data_seg_ste {
+	__be32 rsvd0_ctr_id;
+	__be32 rsvd1[4];
+	__be32 action[3];
+	__be32 tag[8];
+};
+
+struct gta_wqe_data_seg_arg {
+	__be32 action_args[8];
+};
+
+struct gta_wqe {
+	struct gta_wqe_ctrl_seg gta_ctrl;
+	union {
+		struct gta_wqe_data_seg_ste seg_ste;
+		struct gta_wqe_data_seg_arg seg_arg;
+	};
+};
+
 void mlx5dr_send_queues_close(struct mlx5dr_context *ctx);
 int mlx5dr_send_queues_open(struct mlx5dr_context *ctx,
 			    uint16_t queues,
