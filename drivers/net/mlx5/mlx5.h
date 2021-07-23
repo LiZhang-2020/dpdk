@@ -1214,6 +1214,7 @@ struct mlx5_dev_ctx_shared {
 	struct mlx5_flex_parser_profiles fp[MLX5_FLEX_PARSER_MAX];
 	/* Flex parser profiles information. */
 	void *devx_rx_uar; /* DevX UAR for Rx. */
+	struct mlx5_dbr_page_list dbrpgs; /* Door-bell pages. */
 	struct mlx5_aso_age_mng *aso_age_mng;
 	/* Management data for aging mechanism using ASO Flow Hit. */
 	struct mlx5_geneve_tlv_option_resource *geneve_tlv_option_resource;
@@ -1474,7 +1475,6 @@ struct mlx5_priv {
 	/* Context for Verbs allocator. */
 	int nl_socket_rdma; /* Netlink socket (NETLINK_RDMA). */
 	int nl_socket_route; /* Netlink socket (NETLINK_ROUTE). */
-	struct mlx5_dbr_page_list dbrpgs; /* Door-bell pages. */
 	struct mlx5_nl_vlan_vmwa_context *vmwa_context; /* VLAN WA context. */
 	struct mlx5_hlist *mreg_cp_tbl;
 	/* Hash table of Rx metadata register copy table. */

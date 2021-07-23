@@ -163,7 +163,7 @@ mlx5_rxq_release_devx_rq_resources(struct mlx5_rxq_ctrl *rxq_ctrl)
 		rxq_ctrl->rxq.wqes = NULL;
 	}
 	if (dbr_page) {
-		claim_zero(mlx5_release_dbr(&rxq_ctrl->priv->dbrpgs,
+		claim_zero(mlx5_release_dbr(&rxq_ctrl->sh->dbrpgs,
 					    mlx5_os_get_umem_id(dbr_page->umem),
 					    rxq_ctrl->rq_dbr_offset));
 		rxq_ctrl->rq_dbrec_page = NULL;
@@ -190,7 +190,7 @@ mlx5_rxq_release_devx_cq_resources(struct mlx5_rxq_ctrl *rxq_ctrl)
 		rxq_ctrl->rxq.cqes = NULL;
 	}
 	if (dbr_page) {
-		claim_zero(mlx5_release_dbr(&rxq_ctrl->priv->dbrpgs,
+		claim_zero(mlx5_release_dbr(&rxq_ctrl->sh->dbrpgs,
 					    mlx5_os_get_umem_id(dbr_page->umem),
 					    rxq_ctrl->cq_dbr_offset));
 		rxq_ctrl->cq_dbrec_page = NULL;
@@ -381,7 +381,7 @@ mlx5_rxq_create_devx_rq_resources(struct rte_eth_dev *dev,
 	if (!rxq_ctrl->wq_umem)
 		goto error;
 	/* Allocate RQ door-bell. */
-	dbr_offset = mlx5_get_dbr(priv->sh->ctx, &priv->dbrpgs, &dbr_page);
+	dbr_offset = mlx5_get_dbr(priv->sh->ctx, &priv->sh->dbrpgs, &dbr_page);
 	if (dbr_offset < 0) {
 		DRV_LOG(ERR, "Failed to allocate RQ door-bell.");
 		goto error;
@@ -505,7 +505,7 @@ mlx5_rxq_create_devx_cq_resources(struct rte_eth_dev *dev,
 		goto error;
 	}
 	/* Allocate CQ door-bell. */
-	dbr_offset = mlx5_get_dbr(priv->sh->ctx, &priv->dbrpgs, &dbr_page);
+	dbr_offset = mlx5_get_dbr(priv->sh->ctx, &priv->sh->dbrpgs, &dbr_page);
 	if (dbr_offset < 0) {
 		DRV_LOG(ERR, "Failed to allocate CQ door-bell.");
 		goto error;
@@ -1292,10 +1292,11 @@ mlx5_txq_release_devx_sq_resources(struct mlx5_txq_obj *txq_obj)
 		txq_obj->sq_buf = NULL;
 	}
 	if (txq_obj->sq_dbrec_page) {
-		claim_zero(mlx5_release_dbr(&txq_obj->txq_ctrl->priv->dbrpgs,
-					    mlx5_os_get_umem_id
-						 (txq_obj->sq_dbrec_page->umem),
-					    txq_obj->sq_dbrec_offset));
+		claim_zero(mlx5_release_dbr
+				(&txq_obj->txq_ctrl->priv->sh->dbrpgs,
+				 mlx5_os_get_umem_id
+						(txq_obj->sq_dbrec_page->umem),
+				 txq_obj->sq_dbrec_offset));
 		txq_obj->sq_dbrec_page = NULL;
 	}
 }
@@ -1316,10 +1317,11 @@ mlx5_txq_release_devx_cq_resources(struct mlx5_txq_obj *txq_obj)
 	if (txq_obj->cq_buf)
 		mlx5_free(txq_obj->cq_buf);
 	if (txq_obj->cq_dbrec_page)
-		claim_zero(mlx5_release_dbr(&txq_obj->txq_ctrl->priv->dbrpgs,
-					    mlx5_os_get_umem_id
-						 (txq_obj->cq_dbrec_page->umem),
-					    txq_obj->cq_dbrec_offset));
+		claim_zero(mlx5_release_dbr
+				(&txq_obj->txq_ctrl->priv->sh->dbrpgs,
+				 mlx5_os_get_umem_id
+						(txq_obj->cq_dbrec_page->umem),
+				 txq_obj->cq_dbrec_offset));
 }
 
 /**
@@ -1413,7 +1415,7 @@ mlx5_txq_create_devx_cq_resources(struct rte_eth_dev *dev, uint16_t idx)
 	}
 	/* Allocate doorbell record for completion queue. */
 	txq_obj->cq_dbrec_offset = mlx5_get_dbr(priv->sh->ctx,
-						&priv->dbrpgs,
+						&priv->sh->dbrpgs,
 						&txq_obj->cq_dbrec_page);
 	if (txq_obj->cq_dbrec_offset < 0) {
 		rte_errno = errno;
@@ -1514,7 +1516,7 @@ mlx5_txq_create_devx_sq_resources(struct rte_eth_dev *dev, uint16_t idx,
 	}
 	/* Allocate doorbell record for send queue. */
 	txq_obj->sq_dbrec_offset = mlx5_get_dbr(priv->sh->ctx,
-						&priv->dbrpgs,
+						&priv->sh->dbrpgs,
 						&txq_obj->sq_dbrec_page);
 	if (txq_obj->sq_dbrec_offset < 0) {
 		rte_errno = errno;
