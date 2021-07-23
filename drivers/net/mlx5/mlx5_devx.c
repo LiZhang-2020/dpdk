@@ -950,15 +950,16 @@ mlx5_devx_tir_attr_set(struct rte_eth_dev *dev, const uint8_t *rss_key,
 
 	/* NULL queues designate drop queue. */
 	if (ind_tbl->queues != NULL) {
-		struct mlx5_rxq_data *rxq_data =
-					(*priv->rxqs)[ind_tbl->queues[0]];
-		struct mlx5_rxq_ctrl *rxq_ctrl =
-			container_of(rxq_data, struct mlx5_rxq_ctrl, rxq);
-		rxq_obj_type = rxq_ctrl->type;
+		struct mlx5_rxq_priv *rxq = mlx5_rxq_get(dev,
+							 ind_tbl->queues[0]);
 
+		rxq_obj_type = rxq->ctrl->type;
 		/* Enable TIR LRO only if all the queues were configured for. */
 		for (i = 0; i < ind_tbl->queues_n; ++i) {
-			if (!(*priv->rxqs)[ind_tbl->queues[i]]->lro) {
+			struct mlx5_rxq_data *rxq_i =
+				mlx5_rxq_data_get(dev, ind_tbl->queues[i]);
+
+			if (rxq_i != NULL && !rxq_i->lro) {
 				lro = false;
 				break;
 			}

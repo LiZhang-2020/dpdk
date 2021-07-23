@@ -540,26 +540,24 @@ void
 mlx5_rxq_info_get(struct rte_eth_dev *dev, uint16_t rx_queue_id,
 		  struct rte_eth_rxq_info *qinfo)
 {
-	struct mlx5_priv *priv = dev->data->dev_private;
-	struct mlx5_rxq_data *rxq = (*priv->rxqs)[rx_queue_id];
-	struct mlx5_rxq_ctrl *rxq_ctrl =
-		container_of(rxq, struct mlx5_rxq_ctrl, rxq);
+	struct mlx5_rxq_ctrl *rxq_ctrl = mlx5_rxq_ctrl_get(dev, rx_queue_id);
+	struct mlx5_rxq_data *rxq_data = &rxq_ctrl->rxq;
 
-	if (!rxq)
+	if (rxq_ctrl == NULL)
 		return;
-	qinfo->mp = mlx5_rxq_mprq_enabled(rxq) ?
-					rxq->mprq_mp : rxq->mp;
+	qinfo->mp = mlx5_rxq_mprq_enabled(rxq_data) ?
+					rxq_data->mprq_mp : rxq_data->mp;
 	qinfo->conf.rx_thresh.pthresh = 0;
 	qinfo->conf.rx_thresh.hthresh = 0;
 	qinfo->conf.rx_thresh.wthresh = 0;
-	qinfo->conf.rx_free_thresh = rxq->rq_repl_thresh;
+	qinfo->conf.rx_free_thresh = rxq_data->rq_repl_thresh;
 	qinfo->conf.rx_drop_en = 1;
-	qinfo->conf.rx_deferred_start = rxq_ctrl ? 0 : 1;
+	qinfo->conf.rx_deferred_start = rxq_ctrl->obj != NULL ? 0 : 1;
 	qinfo->conf.offloads = dev->data->dev_conf.rxmode.offloads;
 	qinfo->scattered_rx = dev->data->scattered_rx;
-	qinfo->nb_desc = mlx5_rxq_mprq_enabled(rxq) ?
-		(1 << rxq->elts_n) * (1 << rxq->strd_num_n) :
-		(1 << rxq->elts_n);
+	qinfo->nb_desc = mlx5_rxq_mprq_enabled(rxq_data) ?
+		(1 << rxq_data->elts_n) * (1 << rxq_data->strd_num_n) :
+		(1 << rxq_data->elts_n);
 }
 
 /**
@@ -584,10 +582,8 @@ mlx5_rx_burst_mode_get(struct rte_eth_dev *dev,
 		       struct rte_eth_burst_mode *mode)
 {
 	eth_rx_burst_t pkt_burst = dev->rx_pkt_burst;
-	struct mlx5_priv *priv = dev->data->dev_private;
-	struct mlx5_rxq_data *rxq;
+	struct mlx5_rxq_priv *rxq = mlx5_rxq_get(dev, rx_queue_id);
 
-	rxq = (*priv->rxqs)[rx_queue_id];
 	if (!rxq) {
 		rte_errno = EINVAL;
 		return -rte_errno;
@@ -638,15 +634,13 @@ mlx5_rx_burst_mode_get(struct rte_eth_dev *dev,
 uint32_t
 mlx5_rx_queue_count(struct rte_eth_dev *dev, uint16_t rx_queue_id)
 {
-	struct mlx5_priv *priv = dev->data->dev_private;
-	struct mlx5_rxq_data *rxq;
+	struct mlx5_rxq_data *rxq = mlx5_rxq_data_get(dev, rx_queue_id);
 
 	if (dev->rx_pkt_burst == NULL ||
 	    dev->rx_pkt_burst == removed_rx_burst) {
 		rte_errno = ENOTSUP;
 		return -rte_errno;
 	}
-	rxq = (*priv->rxqs)[rx_queue_id];
 	if (!rxq) {
 		rte_errno = EINVAL;
 		return -rte_errno;
