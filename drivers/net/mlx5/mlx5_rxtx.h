@@ -202,8 +202,6 @@ struct mlx5_rxq_ctrl {
 	/* Storing CQ door-bell information, needed when freeing door-bell. */
 	void *wq_umem; /* WQ buffer registration info. */
 	void *cq_umem; /* CQ buffer registration info. */
-	struct rte_eth_hairpin_conf hairpin_conf; /* Hairpin configuration. */
-	uint32_t hairpin_status; /* Hairpin binding status. */
 };
 
 /* RX queue private data. */
@@ -213,6 +211,8 @@ struct mlx5_rxq_priv {
 	struct mlx5_rxq_ctrl *ctrl; /* Shared Rx Queue. */
 	LIST_ENTRY(mlx5_rxq_priv) owner_entry; /* Entry in shared rxq_ctrl. */
 	struct mlx5_priv *priv; /* Back pointer to private data. */
+	struct rte_eth_hairpin_conf hairpin_conf; /* Hairpin configuration. */
+	uint32_t hairpin_status; /* Hairpin binding status. */
 };
 
 /* TX queue send local data. */
