@@ -25,8 +25,8 @@ void mlx5dr_send_engine_post_req_wqe(struct mlx5dr_send_engine_post_ctrl *ctrl,
 	*len = MLX5_SEND_WQE_BB;
 
 	if (!ctrl->num_wqebbs) {
-		*buf += sizeof(struct mlx5_wqe_ctrl_seg);
-		*len -= sizeof(struct mlx5_wqe_ctrl_seg);
+		*buf += sizeof(struct mlx5dr_wqe_ctrl_seg);
+		*len -= sizeof(struct mlx5dr_wqe_ctrl_seg);
 	}
 
 	ctrl->num_wqebbs++;
@@ -34,7 +34,7 @@ void mlx5dr_send_engine_post_req_wqe(struct mlx5dr_send_engine_post_ctrl *ctrl,
 
 static void mlx5dr_send_engine_post_ring(struct mlx5dr_send_ring_sq *sq,
 					 struct mlx5dv_devx_uar *uar,
-					 struct mlx5_wqe_ctrl_seg *wqe_ctrl)
+					 struct mlx5dr_wqe_ctrl_seg *wqe_ctrl)
 {
 	rte_compiler_barrier();
 	sq->db[MLX5_SND_DBR] = rte_cpu_to_be_32(sq->cur_post);
@@ -47,7 +47,7 @@ static void mlx5dr_send_engine_post_ring(struct mlx5dr_send_ring_sq *sq,
 void mlx5dr_send_engine_post_end(struct mlx5dr_send_engine_post_ctrl *ctrl,
 				 struct mlx5dr_send_engine_post_attr *attr)
 {
-	struct mlx5_wqe_ctrl_seg *wqe_ctrl;
+	struct mlx5dr_wqe_ctrl_seg *wqe_ctrl;
 	struct mlx5dr_send_ring_sq *sq;
 	unsigned idx;
 
@@ -58,13 +58,11 @@ void mlx5dr_send_engine_post_end(struct mlx5dr_send_engine_post_ctrl *ctrl,
 
 	wqe_ctrl->opmod_idx_opcode =
 		rte_cpu_to_be_32(((sq->cur_post & 0xffff) << 8) | attr->opcode);
-	wqe_ctrl->qpn_ds = rte_cpu_to_be_32((attr->len + sizeof(struct mlx5_wqe_ctrl_seg)) / 16 |
+	wqe_ctrl->qpn_ds = rte_cpu_to_be_32((attr->len + sizeof(struct mlx5dr_wqe_ctrl_seg)) / 16 |
 			       sq->sqn << 8);
 	wqe_ctrl->imm = rte_cpu_to_be_32(attr->id);
 
-	wqe_ctrl->fm_ce_se = attr->notify_hw ? MLX5_WQE_CTRL_CQ_UPDATE : 0;
-	wqe_ctrl->signature = 0;
-	//wqe_ctrl->dci_stream_channel_id = 0;
+	wqe_ctrl->flags = rte_cpu_to_be_32(attr->notify_hw ? MLX5_WQE_CTRL_CQ_UPDATE : 0);
 
 	sq->wr_priv[idx].rule = attr->rule;
 	sq->wr_priv[idx].user_comp = attr->user_comp;

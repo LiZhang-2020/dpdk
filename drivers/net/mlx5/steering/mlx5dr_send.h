@@ -91,6 +91,14 @@ mlx5dr_uar_write64_relaxed(uint64_t val, void *addr)
 #endif
 }
 
+/* WQE Control segment. */
+struct mlx5dr_wqe_ctrl_seg {
+        __be32 opmod_idx_opcode;
+        __be32 qpn_ds;
+        __be32 flags;
+        __be32 imm;
+};
+
 struct gta_wqe_ctrl_seg {
 	__be32 op_dirix;
 	__be32 stc_ix[5];
