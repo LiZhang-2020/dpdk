@@ -34,9 +34,9 @@ static int mlx5dr_rule_create_hws(struct mlx5dr_rule *rule,
 {
 	struct mlx5dr_context *ctx = rule->matcher->tbl->ctx;
 	struct mlx5dr_send_engine_post_attr send_attr = {0};
+	struct mlx5dr_wqe_gta_data_seg_ste *wqe_data;
+	struct mlx5dr_wqe_gta_ctrl_seg *wqe_ctrl;
 	struct mlx5dr_send_engine_post_ctrl ctrl;
-	struct gta_wqe_data_seg_ste *wqe_data;
-	struct gta_wqe_ctrl_seg *wqe_ctrl;
 	size_t wqe_len;
 
 	/* Build tag + actions attr */
@@ -68,9 +68,9 @@ static int mlx5dr_rule_destroy_hws(struct mlx5dr_rule *rule,
 {
 	struct mlx5dr_context *ctx = rule->matcher->tbl->ctx;
 	struct mlx5dr_send_engine_post_attr send_attr = {0};
+	struct mlx5dr_wqe_gta_data_seg_ste *wqe_data;
+	struct mlx5dr_wqe_gta_ctrl_seg *wqe_ctrl;
 	struct mlx5dr_send_engine_post_ctrl ctrl;
-	struct gta_wqe_data_seg_ste *wqe_data;
-	struct gta_wqe_ctrl_seg *wqe_ctrl;
 	size_t wqe_len;
 
 	ctrl = mlx5dr_send_engine_post_start(&ctx->send_queue[attr->queue_id]);

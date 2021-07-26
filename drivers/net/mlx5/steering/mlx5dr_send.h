@@ -99,28 +99,28 @@ struct mlx5dr_wqe_ctrl_seg {
         __be32 imm;
 };
 
-struct gta_wqe_ctrl_seg {
+struct mlx5dr_wqe_gta_ctrl_seg {
 	__be32 op_dirix;
 	__be32 stc_ix[5];
 	__be32 rsvd0[6];
 };
 
-struct gta_wqe_data_seg_ste {
+struct mlx5dr_wqe_gta_data_seg_ste {
 	__be32 rsvd0_ctr_id;
 	__be32 rsvd1[4];
 	__be32 action[3];
 	__be32 tag[8];
 };
 
-struct gta_wqe_data_seg_arg {
+struct mlx5dr_wqe_gta_data_seg_arg {
 	__be32 action_args[8];
 };
 
-struct gta_wqe {
-	struct gta_wqe_ctrl_seg gta_ctrl;
+struct mlx5dr_wqe_gta {
+	struct mlx5dr_wqe_gta_ctrl_seg gta_ctrl;
 	union {
-		struct gta_wqe_data_seg_ste seg_ste;
-		struct gta_wqe_data_seg_arg seg_arg;
+		struct mlx5dr_wqe_gta_data_seg_ste seg_ste;
+		struct mlx5dr_wqe_gta_data_seg_arg seg_arg;
 	};
 };
 
