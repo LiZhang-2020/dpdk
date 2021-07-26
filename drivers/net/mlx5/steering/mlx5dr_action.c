@@ -218,9 +218,13 @@ mlx5dr_action_create_dest_table(struct mlx5dr_context *ctx,
 	if (flags & MLX5DR_ACTION_FLAG_ROOT_ONLY) {
 		action->devx_obj = tbl->ft->obj;
 	} else {
-		/* TODO Fix to support rx/tx/fdb */
 		if (flags & MLX5DR_ACTION_FLAG_HWS_NIC_RX)
-			action->stc_rx = tbl->stc;
+			action->stc_rx = tbl->rx.stc;
+
+		if (flags & MLX5DR_ACTION_FLAG_HWS_NIC_TX)
+			action->stc_tx = tbl->tx.stc;
+
+		/* TODO Add support for FDB */
 	}
 
 	return action;
@@ -327,11 +331,23 @@ free_action:
 
 int mlx5dr_action_destroy(struct mlx5dr_action *action)
 {
-	/* TODO table STC is removed BUG */
-	if (!(action->flags & MLX5DR_ACTION_FLAG_ROOT_ONLY))
+	if (action->flags & MLX5DR_ACTION_FLAG_ROOT_ONLY)
+		goto free_action;
+
+	switch (action->type) {
+	case MLX5DR_ACTION_TYP_MISS:
+	case MLX5DR_ACTION_TYP_TAG:
+	case MLX5DR_ACTION_TYP_DROP:
+	case MLX5DR_ACTION_TYP_QP:
 		mlx5dr_action_destroy_stcs(action);
+		break;
+	default:
+		rte_errno = ENOTSUP;
+		assert(0);
+		return rte_errno;
+	}
 
+free_action:
 	simple_free(action);
-
 	return 0;
 }

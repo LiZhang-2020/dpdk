@@ -178,7 +178,8 @@ static int mlx5dr_matcher_disconnect(struct mlx5dr_matcher *matcher)
 }
 
 static int mlx5dr_matcher_create_rtc_nic(struct mlx5dr_matcher *matcher,
-				   	 struct mlx5dr_matcher_nic *nic_matcher)
+					 struct mlx5dr_matcher_nic *nic_matcher,
+					 struct mlx5dr_table_nic *nic_tbl)
 {
 	struct mlx5dr_cmd_rtc_create_attr rtc_attr = {0};
 	struct mlx5dr_table *tbl = matcher->tbl;
@@ -209,7 +210,7 @@ static int mlx5dr_matcher_create_rtc_nic(struct mlx5dr_matcher *matcher,
 	rtc_attr.table_type = tbl->fw_ft_type;
 	rtc_attr.pd = ctx->pd_num;
 
-	devx_obj = mlx5dr_pool_chunk_get_base_devx_obj(stc_pool, &tbl->stc);
+	devx_obj = mlx5dr_pool_chunk_get_base_devx_obj(stc_pool, &nic_tbl->stc);
 	rtc_attr.stc_base = devx_obj->id;
 
 	nic_matcher->rtc = mlx5dr_cmd_rtc_create(ctx->ibv_ctx, &rtc_attr);
@@ -232,13 +233,14 @@ static void mlx5dr_matcher_destroy_rtc_nic(struct mlx5dr_matcher *matcher,
 
 static int mlx5dr_matcher_init_fdb(struct mlx5dr_matcher *matcher)
 {
+	struct mlx5dr_table *tbl = matcher->tbl;
 	int ret;
 
-	ret = mlx5dr_matcher_create_rtc_nic(matcher, &matcher->rx);
+	ret = mlx5dr_matcher_create_rtc_nic(matcher, &matcher->rx, &tbl->rx);
 	if (ret)
 		return ret;
 
-	ret = mlx5dr_matcher_create_rtc_nic(matcher, &matcher->tx);
+	ret = mlx5dr_matcher_create_rtc_nic(matcher, &matcher->tx, &tbl->tx);
 	if (ret)
 		goto cleanup_rx;
 
@@ -258,14 +260,15 @@ static int mlx5dr_matcher_uninit_fdb(struct mlx5dr_matcher *matcher)
 
 static int mlx5dr_matcher_create_rtc(struct mlx5dr_matcher *matcher)
 {
+	struct mlx5dr_table *tbl = matcher->tbl;
 	int ret;
 
-	switch (matcher->tbl->type) {
+	switch (tbl->type) {
 	case MLX5DR_TABLE_TYPE_NIC_RX:
-		ret = mlx5dr_matcher_create_rtc_nic(matcher, &matcher->rx);
+		ret = mlx5dr_matcher_create_rtc_nic(matcher, &matcher->rx, &tbl->rx);
 		break;
 	case MLX5DR_TABLE_TYPE_NIC_TX:
-		ret = mlx5dr_matcher_create_rtc_nic(matcher, &matcher->tx);
+		ret = mlx5dr_matcher_create_rtc_nic(matcher, &matcher->tx, &tbl->tx);
 		break;
 	case MLX5DR_TABLE_TYPE_FDB:
 		ret = mlx5dr_matcher_init_fdb(matcher);

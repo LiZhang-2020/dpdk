@@ -4,13 +4,53 @@
 
 #include "mlx5dr_internal.h"
 
-static int mlx5dr_table_init(struct mlx5dr_table *tbl)
+static int mlx5dr_table_init_nic(struct mlx5dr_table *tbl,
+				 struct mlx5dr_table_nic *nic_tbl)
 {
 	struct mlx5dr_cmd_stc_modify_attr stc_attr = {0};
-	struct mlx5dr_cmd_ft_create_attr ft_attr = {0};
-	struct mlx5dr_context *ctx = tbl->ctx;
 	struct mlx5dr_devx_obj *devx_obj;
 	struct mlx5dr_pool *stc_pool;
+	int ret;
+
+	stc_pool = tbl->ctx->stc_pool[tbl->type];
+	ret = mlx5dr_pool_chunk_alloc(stc_pool, &nic_tbl->stc);
+	if (ret) {
+		DRV_LOG(ERR, "Failed to allocate go to FT STC\n");
+		return rte_errno;
+	}
+
+	stc_attr.stc_offset = nic_tbl->stc.offset;
+	stc_attr.action_type = MLX5_IFC_STC_ACTION_TYPE_JUMP_TO_FT;
+	stc_attr.dest_table_id = tbl->ft->id;
+	devx_obj = mlx5dr_pool_chunk_get_base_devx_obj(stc_pool, &nic_tbl->stc);
+
+	ret = mlx5dr_cmd_stc_modify(devx_obj, &stc_attr);
+	if (ret) {
+		DRV_LOG(ERR, "Failed to modify STC to jump for FT\n");
+		 goto free_chunk;
+	}
+
+	return 0;
+
+free_chunk:
+	mlx5dr_pool_chunk_free(stc_pool, &nic_tbl->stc);
+	return rte_errno;
+}
+
+static void mlx5dr_table_uninit_nic(struct mlx5dr_table *tbl,
+				    struct mlx5dr_table_nic *nic_tbl)
+{
+	struct mlx5dr_pool *stc_pool;
+
+	stc_pool = tbl->ctx->stc_pool[tbl->type];
+	mlx5dr_pool_chunk_free(stc_pool, &nic_tbl->stc);
+}
+
+static int mlx5dr_table_init(struct mlx5dr_table *tbl)
+{
+	struct mlx5dr_cmd_ft_create_attr ft_attr = {0};
+	struct mlx5dr_context *ctx = tbl->ctx;
+	struct mlx5dr_table_nic *nic_tbl;
 	int ret;
 
 	if (mlx5dr_table_is_root(tbl))
@@ -24,62 +64,59 @@ static int mlx5dr_table_init(struct mlx5dr_table *tbl)
 	switch (tbl->type) {
 	case MLX5DR_TABLE_TYPE_NIC_RX:
 		tbl->fw_ft_type = FS_FT_NIC_RX;
+		nic_tbl = &tbl->rx;
 		break;
 	case MLX5DR_TABLE_TYPE_NIC_TX:
 		tbl->fw_ft_type = FS_FT_NIC_TX;
-		break;
-	case MLX5DR_TABLE_TYPE_FDB:
-		tbl->fw_ft_type = FS_FT_FDB;
+		nic_tbl = &tbl->tx;
 		break;
 	default:
 		assert(0);
 		break;
 	}
 
+	ret = mlx5dr_table_init_nic(tbl, nic_tbl);
+	if (ret)
+		return rte_errno;
+
 	ft_attr.type = tbl->fw_ft_type;
 	ft_attr.wqe_based_flow_update = true;
 	ft_attr.level = MLX5DR_DEFAULT_LEVEL;
 	// TODO Need to support default miss behaviour for FDB
 
-	tbl->ft = mlx5dr_cmd_flow_table_create(tbl->ctx->ibv_ctx, &ft_attr);
+	tbl->ft = mlx5dr_cmd_flow_table_create(ctx->ibv_ctx, &ft_attr);
 	if (!tbl->ft) {
 		DRV_LOG(ERR, "Failed to create flow table devx object\n");
-		return rte_errno;
-	}
-
-	stc_pool = ctx->stc_pool[tbl->type];
-	ret = mlx5dr_pool_chunk_alloc(stc_pool, &tbl->stc);
-	if (ret) {
-		DRV_LOG(ERR, "Failed to allocate go to FT STC\n");
-		goto flow_table_destroy;
-	}
-
-	stc_attr.stc_offset = tbl->stc.offset;
-	stc_attr.action_type = MLX5_IFC_STC_ACTION_TYPE_JUMP_TO_FT;
-	stc_attr.dest_table_id = tbl->ft->id;
-	devx_obj = mlx5dr_pool_chunk_get_base_devx_obj(stc_pool, &tbl->stc);
-
-	ret = mlx5dr_cmd_stc_modify(devx_obj, &stc_attr);
-	if (ret) {
-		DRV_LOG(ERR, "Failed to modify STC to jump for FT\n");
-		 goto free_chunk;
+		goto uninit_nic_tbl;
 	}
 
 	return 0;
 
-free_chunk:
-	mlx5dr_pool_chunk_free(stc_pool, &tbl->stc);
-flow_table_destroy:
-	mlx5dr_cmd_destroy_obj(tbl->ft);
+uninit_nic_tbl:
+	mlx5dr_table_uninit_nic(tbl, nic_tbl);
 	return rte_errno;
 }
 
 static void mlx5dr_table_uninit(struct mlx5dr_table *tbl)
 {
+	struct mlx5dr_table_nic *nic_tbl;
+
 	if (mlx5dr_table_is_root(tbl))
 		return;
 
-	mlx5dr_pool_chunk_free(tbl->ctx->stc_pool[tbl->type], &tbl->stc);
+	switch (tbl->type) {
+	case MLX5DR_TABLE_TYPE_NIC_RX:
+		nic_tbl = &tbl->rx;
+		break;
+	case MLX5DR_TABLE_TYPE_NIC_TX:
+		nic_tbl = &tbl->tx;
+		break;
+	default:
+		assert(0);
+		break;
+	}
+
+	mlx5dr_table_uninit_nic(tbl, nic_tbl);
 	mlx5dr_cmd_destroy_obj(tbl->ft);
 }
 
