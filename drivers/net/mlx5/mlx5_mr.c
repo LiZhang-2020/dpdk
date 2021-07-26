@@ -80,10 +80,11 @@ mlx5_rx_addr2mr_bh(struct mlx5_rxq_data *rxq, uintptr_t addr)
 	struct mlx5_rxq_ctrl *rxq_ctrl =
 		container_of(rxq, struct mlx5_rxq_ctrl, rxq);
 	struct mlx5_mr_ctrl *mr_ctrl = &rxq->mr_ctrl;
-	struct mlx5_priv *priv = rxq_ctrl->priv;
+	struct mlx5_priv *priv = RXQ_PORT(rxq_ctrl);
+	struct mlx5_dev_ctx_shared *sh = rxq_ctrl->sh;
 
-	return mlx5_mr_addr2mr_bh(priv->sh->pd, &priv->mp_id,
-				  &priv->sh->share_cache, mr_ctrl, addr,
+	return mlx5_mr_addr2mr_bh(sh->pd, &priv->mp_id,
+				  &sh->share_cache, mr_ctrl, addr,
 				  priv->config.mr_ext_memseg_en);
 }
 

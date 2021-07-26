@@ -33,6 +33,10 @@
 /* Support tunnel matching. */
 #define MLX5_FLOW_TUNNEL 10
 
+#define RXQ_PORT(rxq_ctrl) LIST_FIRST(&(rxq_ctrl)->owners)->priv
+#define RXQ_DEV(rxq_ctrl) ETH_DEV(RXQ_PORT(rxq_ctrl))
+#define RXQ_PORT_ID(rxq_ctrl) PORT_ID(RXQ_PORT(rxq_ctrl))
+
 /* Mbuf dynamic flag offset for inline. */
 extern uint64_t rte_net_mlx5_dynf_inline_mask;
 
@@ -186,7 +190,6 @@ struct mlx5_rxq_ctrl {
 	LIST_HEAD(priv, mlx5_rxq_priv) owners; /* Owner rxq list. */
 	struct mlx5_rxq_obj *obj; /* Verbs/DevX elements. */
 	struct mlx5_dev_ctx_shared *sh; /* Shared context. */
-	struct mlx5_priv *priv; /* Back pointer to private data. */
 	enum mlx5_rxq_type type; /* Rxq type. */
 	unsigned int socket; /* CPU socket ID for allocations. */
 	unsigned int irq:1; /* Whether IRQ is enabled. */

@@ -218,7 +218,7 @@ rxq_alloc_elts_sprq(struct mlx5_rxq_ctrl *rxq_ctrl)
 		buf = rte_pktmbuf_alloc(seg->mp);
 		if (buf == NULL) {
 			DRV_LOG(ERR, "port %u empty mbuf pool",
-				PORT_ID(rxq_ctrl->priv));
+				RXQ_PORT_ID(rxq_ctrl));
 			rte_errno = ENOMEM;
 			goto error;
 		}
@@ -265,7 +265,7 @@ rxq_alloc_elts_sprq(struct mlx5_rxq_ctrl *rxq_ctrl)
 	DRV_LOG(DEBUG,
 		"port %u SPRQ queue %u allocated and configured %u segments"
 		" (max %u packets)",
-		PORT_ID(rxq_ctrl->priv), rxq_ctrl->rxq.idx, elts_n,
+		RXQ_PORT_ID(rxq_ctrl), rxq_ctrl->rxq.idx, elts_n,
 		elts_n / (1 << rxq_ctrl->rxq.sges_n));
 	return 0;
 error:
@@ -277,7 +277,7 @@ error:
 		(*rxq_ctrl->rxq.elts)[i] = NULL;
 	}
 	DRV_LOG(DEBUG, "port %u SPRQ queue %u failed, freed everything",
-		PORT_ID(rxq_ctrl->priv), rxq_ctrl->rxq.idx);
+		RXQ_PORT_ID(rxq_ctrl), rxq_ctrl->rxq.idx);
 	rte_errno = err; /* Restore rte_errno. */
 	return -rte_errno;
 }
@@ -352,7 +352,7 @@ rxq_free_elts_sprq(struct mlx5_rxq_ctrl *rxq_ctrl)
 	uint16_t i;
 
 	DRV_LOG(DEBUG, "port %u Rx queue %u freeing %d WRs",
-		PORT_ID(rxq_ctrl->priv), rxq->idx, q_n);
+		RXQ_PORT_ID(rxq_ctrl), rxq->idx, q_n);
 	if (rxq->elts == NULL)
 		return;
 	/**
@@ -1653,7 +1653,6 @@ mlx5_rxq_new(struct rte_eth_dev *dev, struct mlx5_rxq_priv *rxq,
 		(!!(dev->data->dev_conf.rxmode.mq_mode & ETH_MQ_RX_RSS));
 	tmpl->rxq.port_id = dev->data->port_id;
 	tmpl->sh = priv->sh;
-	tmpl->priv = priv;
 	tmpl->rxq.mp = rx_seg[0].mp;
 	tmpl->rxq.elts_n = log2above(desc);
 	tmpl->rxq.rq_repl_thresh =
@@ -1713,7 +1712,6 @@ mlx5_rxq_hairpin_new(struct rte_eth_dev *dev, struct mlx5_rxq_priv *rxq,
 	tmpl->rxq.rss_hash = 0;
 	tmpl->rxq.port_id = dev->data->port_id;
 	tmpl->sh = priv->sh;
-	tmpl->priv = priv;
 	tmpl->rxq.mp = NULL;
 	tmpl->rxq.elts_n = log2above(desc);
 	tmpl->rxq.elts = NULL;
