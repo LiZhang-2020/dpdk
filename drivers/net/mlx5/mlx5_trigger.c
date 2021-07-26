@@ -179,7 +179,7 @@ mlx5_rxq_start(struct rte_eth_dev *dev)
 			rte_errno = ENOMEM;
 			goto error;
 		}
-		ret = priv->obj_ops.rxq_obj_new(dev, i);
+		ret = priv->obj_ops.rxq_res_new(rxq);
 		if (ret) {
 			mlx5_free(rxq_ctrl->obj);
 			goto error;
@@ -279,7 +279,7 @@ mlx5_hairpin_auto_bind(struct rte_eth_dev *dev)
 				i, txq_ctrl->hairpin_conf.peers[0].queue);
 			goto error;
 		}
-		rq = rxq_ctrl->obj->rq;
+		rq = rxq->devx_rq;
 		if (!rq) {
 			rte_errno = ENOMEM;
 			DRV_LOG(ERR, "port %u hairpin no matching rxq: %d",
@@ -397,13 +397,13 @@ mlx5_hairpin_queue_peer_update(struct rte_eth_dev *dev, uint16_t peer_queue,
 				dev->data->port_id, peer_queue);
 			return -rte_errno;
 		}
-		if (rxq_ctrl->obj == NULL || rxq_ctrl->obj->rq == NULL) {
+		if (rxq->devx_rq == NULL) {
 			rte_errno = ENOMEM;
 			DRV_LOG(ERR, "port %u no Rxq object found: %d",
 				dev->data->port_id, peer_queue);
 			return -rte_errno;
 		}
-		peer_info->qp_id = rxq_ctrl->obj->rq->id;
+		peer_info->qp_id = rxq->devx_rq->id;
 		peer_info->vhca_id = priv->config.hca_attr.vhca_id;
 		peer_info->peer_q = rxq->hairpin_conf.peers[0].queue;
 		peer_info->tx_explicit = rxq->hairpin_conf.tx_explicit;
@@ -523,7 +523,7 @@ mlx5_hairpin_queue_peer_bind(struct rte_eth_dev *dev, uint16_t cur_queue,
 				dev->data->port_id, cur_queue);
 			return -rte_errno;
 		}
-		if (rxq_ctrl->obj == NULL || rxq_ctrl->obj->rq == NULL) {
+		if (rxq->devx_rq == NULL) {
 			rte_errno = ENOMEM;
 			DRV_LOG(ERR, "port %u no Rxq object found: %d",
 				dev->data->port_id, cur_queue);
@@ -552,7 +552,7 @@ mlx5_hairpin_queue_peer_bind(struct rte_eth_dev *dev, uint16_t cur_queue,
 		rq_attr.rq_state = MLX5_SQC_STATE_RST;
 		rq_attr.hairpin_peer_sq = peer_info->qp_id;
 		rq_attr.hairpin_peer_vhca = peer_info->vhca_id;
-		ret = mlx5_devx_cmd_modify_rq(rxq_ctrl->obj->rq, &rq_attr);
+		ret = mlx5_devx_cmd_modify_rq(rxq->devx_rq, &rq_attr);
 		if (ret == 0)
 			rxq->hairpin_status = 1;
 	}
@@ -641,7 +641,7 @@ mlx5_hairpin_queue_peer_unbind(struct rte_eth_dev *dev, uint16_t cur_queue,
 				dev->data->port_id, cur_queue);
 			return 0;
 		}
-		if (rxq_ctrl->obj == NULL || rxq_ctrl->obj->rq == NULL) {
+		if (rxq->devx_rq == NULL) {
 			rte_errno = ENOMEM;
 			DRV_LOG(ERR, "port %u no Rxq object found: %d",
 				dev->data->port_id, cur_queue);
@@ -649,7 +649,7 @@ mlx5_hairpin_queue_peer_unbind(struct rte_eth_dev *dev, uint16_t cur_queue,
 		}
 		rq_attr.state = MLX5_SQC_STATE_RST;
 		rq_attr.rq_state = MLX5_SQC_STATE_RST;
-		ret = mlx5_devx_cmd_modify_rq(rxq_ctrl->obj->rq, &rq_attr);
+		ret = mlx5_devx_cmd_modify_rq(rxq->devx_rq, &rq_attr);
 		if (ret == 0)
 			rxq->hairpin_status = 0;
 	}

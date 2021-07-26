@@ -310,7 +310,7 @@ struct mlx5_vf_vlan {
 /* Flow drop context necessary due to Verbs API. */
 struct mlx5_drop {
 	struct mlx5_hrxq *hrxq; /* Hash Rx queue queue. */
-	struct mlx5_rxq_obj *rxq; /* Rx queue object. */
+	struct mlx5_rxq_priv *rxq; /* Rx queue. */
 };
 
 /* Loopback dummy queue necessary due to Verbs API. */
@@ -1278,7 +1278,6 @@ struct mlx5_rxq_obj {
 			void *ibv_channel;
 		};
 		struct {
-			struct mlx5_devx_obj *rq; /* DevX Rx Queue object. */
 			struct mlx5_devx_obj *devx_cq; /* DevX CQ object. */
 			void *devx_channel;
 		};
@@ -1366,11 +1365,11 @@ struct mlx5_rxq_priv;
 
 /* HW objects operations structure. */
 struct mlx5_obj_ops {
-	int (*rxq_obj_modify_vlan_strip)(struct mlx5_rxq_obj *rxq_obj, int on);
-	int (*rxq_obj_new)(struct rte_eth_dev *dev, uint16_t idx);
+	int (*rxq_modify_vlan_strip)(struct mlx5_rxq_priv *rxq, int on);
+	int (*rxq_res_new)(struct mlx5_rxq_priv *rxq);
 	int (*rxq_event_get)(struct mlx5_rxq_obj *rxq_obj);
-	int (*rxq_obj_modify)(struct mlx5_rxq_obj *rxq_obj, uint8_t type);
-	void (*rxq_obj_release)(struct mlx5_rxq_obj *rxq_obj);
+	int (*rxq_res_modify)(struct mlx5_rxq_priv *rxq, uint8_t type);
+	void (*rxq_res_release)(struct mlx5_rxq_priv *rxq);
 	int (*ind_table_new)(struct rte_eth_dev *dev, const unsigned int log_n,
 			     struct mlx5_ind_table_obj *ind_tbl);
 	int (*ind_table_modify)(struct rte_eth_dev *dev,
