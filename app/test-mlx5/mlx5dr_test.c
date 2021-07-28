@@ -284,6 +284,58 @@ out_err:
 	return -1;
 }
 
+struct test_structs test;
+
+struct test_structs {
+	int (*run_test)(struct ibv_context *);
+	const char *test_name;
+};
+
+#define MLX5DR_INIT_TEST(str, func) \
+	{ .test_name = #str, .run_test = func}
+
+static struct test_structs tests[] = {
+	MLX5DR_INIT_TEST(rule_insert, run_test_rule_insert),
+	MLX5DR_INIT_TEST(post_send, run_test_post_send),
+};
+
+static int test_run(struct ibv_context *ibv_ctx)
+{
+	int ret;
+
+	ret = test.run_test(ibv_ctx);
+	if (ret)
+		printf("Test %s: Failed\n", test.test_name);
+        else
+		printf("Test %s: Passed\n", test.test_name);
+
+        return ret;
+}
+
+#ifndef min
+#define min(a,b)            (((a) < (b)) ? (a) : (b))
+#endif
+
+static void test_selection(void)
+{
+	const char *s = getenv("MLX5DR_TEST");
+	size_t i;
+
+	test = tests[0];
+
+	printf("Avalible tests (selected by setting MLX5DR_TEST=\"test_name\"):\n");
+	for (i = 0; i < sizeof(tests)/ sizeof(tests[0]); i++)
+		printf("\tTest: %s\n", tests[i].test_name);
+
+	for (i = 0; i < sizeof(tests)/ sizeof(tests[0]); i++) {
+		if (memcmp(tests[i].test_name, s, min(strlen(s), strlen(tests[i].test_name))))
+			continue;
+		test = tests[i];
+		break;
+	}
+	printf("Test selected: %s\n", test.test_name);
+}
+
 int main(int argc, char **argv)
 {
 	struct mlx5dv_context_attr dv_ctx_attr = {};
@@ -326,19 +378,10 @@ int main(int argc, char **argv)
 	}
 	fprintf(stderr, "IB device %s Context found\n", dev_name);
 
-	ret = run_test_post_send(ibv_ctx);
-	if (ret) {
-		fprintf(stderr,"Fail to run test rule insert\n");
+	test_selection();
+	ret = test_run(ibv_ctx);
+	if (ret)
 		goto close_ib_dev;
-	}
-	fprintf(stderr, "Test done: post send\n");
-
-	ret = run_test_rule_insert(ibv_ctx);
-	if (ret) {
-		fprintf(stderr,"Fail to run test rule insert\n");
-		goto close_ib_dev;
-	}
-	fprintf(stderr, "Test done: rule insert\n");
 
 	ibv_close_device(ibv_ctx);
 	ibv_free_device_list(dev_list);
