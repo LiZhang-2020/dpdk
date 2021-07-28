@@ -316,16 +316,70 @@ static void
 mlx5_devx_wq_attr_fill(struct mlx5_priv *priv, struct mlx5_rxq_ctrl *rxq_ctrl,
 		       struct mlx5_devx_wq_attr *wq_attr)
 {
+	struct mlx5_rxq_data *rxq_data = &rxq_ctrl->rxq;
+	uint32_t wqe_size = 0;
+	uint32_t log_wqe_size = 0;
+
 	wq_attr->end_padding_mode = priv->config.hw_padding ?
 					MLX5_WQ_END_PAD_MODE_ALIGN :
 					MLX5_WQ_END_PAD_MODE_NONE;
-	wq_attr->pd = priv->sh->pdn;
+	wq_attr->pd = rxq_ctrl->sh->pdn;
+	if (mlx5_rxq_mprq_enabled(rxq_data)) {
+		wq_attr->wq_type = MLX5_WQ_TYPE_CYCLIC_STRIDING_RQ;
+		/*
+		 * Number of strides in each WQE:
+		 * 512*2^single_wqe_log_num_of_strides.
+		 */
+		wq_attr->single_wqe_log_num_of_strides =
+				rxq_data->strd_num_n -
+				MLX5_MIN_SINGLE_WQE_LOG_NUM_STRIDES;
+		/* Stride size = (2^single_stride_log_num_of_bytes)*64B. */
+		wq_attr->single_stride_log_num_of_bytes =
+				rxq_data->strd_sz_n -
+				MLX5_MIN_SINGLE_STRIDE_LOG_NUM_BYTES;
+		wqe_size = sizeof(struct mlx5_wqe_mprq);
+	} else {
+		wq_attr->wq_type = MLX5_WQ_TYPE_CYCLIC;
+		wqe_size = sizeof(struct mlx5_wqe_data_seg);
+	}
+	log_wqe_size = log2above(wqe_size) + rxq_data->sges_n;
+	wq_attr->log_wq_stride = log_wqe_size;
+	wq_attr->log_wq_sz = rxq_data->elts_n - rxq_data->sges_n;
 	wq_attr->dbr_addr = rxq_ctrl->rq_dbr_offset;
 	wq_attr->dbr_umem_id =
 			mlx5_os_get_umem_id(rxq_ctrl->rq_dbrec_page->umem);
 	wq_attr->dbr_umem_valid = 1;
 	wq_attr->wq_umem_id = mlx5_os_get_umem_id(rxq_ctrl->wq_umem);
 	wq_attr->wq_umem_valid = 1;
+}
+
+/**
+ * Initialize a receive mempool object using DevX.
+ *
+ * @param rxq
+ *   Pointer to Rx queue.
+ *
+ * @return
+ *   The DevX RMP object initialized, NULL otherwise and rte_errno is set.
+ */
+static struct mlx5_devx_obj *
+mlx5_rxq_create_devx_rmp(struct mlx5_rxq_priv *rxq)
+{
+	struct mlx5_priv *priv = rxq->priv;
+	struct mlx5_rxq_ctrl *rxq_ctrl = rxq->ctrl;
+	struct mlx5_devx_create_rmp_attr rmp_attr = { 0 };
+	struct mlx5_devx_obj *rmp;
+
+	/* Fill RMP attributes. */
+	rmp_attr.state = MLX5_RMPC_STATE_RDY;
+	rmp_attr.basic_cyclic_rcv_wqe = mlx5_rxq_mprq_enabled(&rxq_ctrl->rxq) ?
+					0 : 1;
+	/* Fill WQ attributes. */
+	mlx5_devx_wq_attr_fill(priv, rxq_ctrl, &rmp_attr.wq_attr);
+	/* Create RMP using DevX API. */
+	rmp = mlx5_devx_cmd_create_rmp(priv->sh->ctx, &rmp_attr,
+				       rxq_ctrl->socket);
+	return rmp;
 }
 
 /**
@@ -414,46 +468,20 @@ mlx5_rxq_create_devx_rq(struct mlx5_rxq_priv *rxq)
 	struct mlx5_rxq_data *rxq_data = &rxq->ctrl->rxq;
 	struct mlx5_devx_create_rq_attr rq_attr = { 0 };
 	uint32_t cqn = rxq_ctrl->obj->devx_cq->id;
-	uint32_t wqe_size = 0;
-	uint32_t log_wqe_size = 0;
 	struct mlx5_devx_obj *rq;
 
 	/* Fill RQ attributes. */
-	rq_attr.mem_rq_type = MLX5_RQC_MEM_RQ_TYPE_MEMORY_RQ_INLINE;
-	rq_attr.flush_in_error_en = 1;
 	mlx5_devx_create_rq_attr_fill(rxq_data, cqn, &rq_attr);
 	rq_attr.ts_format = mlx5_ts_format_conv(priv->sh->rq_ts_format);
-	/* Fill WQ attributes for this RQ. */
-	if (mlx5_rxq_mprq_enabled(rxq_data)) {
-		rq_attr.wq_attr.wq_type = MLX5_WQ_TYPE_CYCLIC_STRIDING_RQ;
-		/*
-		 * Number of strides in each WQE:
-		 * 512*2^single_wqe_log_num_of_strides.
-		 */
-		rq_attr.wq_attr.single_wqe_log_num_of_strides =
-				rxq_data->strd_num_n -
-				MLX5_MIN_SINGLE_WQE_LOG_NUM_STRIDES;
-		/* Stride size = (2^single_stride_log_num_of_bytes)*64B. */
-		rq_attr.wq_attr.single_stride_log_num_of_bytes =
-				rxq_data->strd_sz_n -
-				MLX5_MIN_SINGLE_STRIDE_LOG_NUM_BYTES;
-		wqe_size = sizeof(struct mlx5_wqe_mprq);
+	if (rxq_data->shared) {
+		rq_attr.mem_rq_type = MLX5_RQC_MEM_RQ_TYPE_MEMORY_RQ_RMP;
+		rq_attr.rmpn = rxq_ctrl->obj->devx_rmp->id;
+		rq_attr.flush_in_error_en = 0;
 	} else {
-		rq_attr.wq_attr.wq_type = MLX5_WQ_TYPE_CYCLIC;
-		wqe_size = sizeof(struct mlx5_wqe_data_seg);
+		rq_attr.mem_rq_type = MLX5_RQC_MEM_RQ_TYPE_MEMORY_RQ_INLINE;
+		rq_attr.flush_in_error_en = 1;
+		mlx5_devx_wq_attr_fill(priv, rxq_ctrl, &rq_attr.wq_attr);
 	}
-	log_wqe_size = log2above(wqe_size) + rxq_data->sges_n;
-	rq_attr.wq_attr.log_wq_stride = log_wqe_size;
-	rq_attr.wq_attr.log_wq_sz = rxq_data->elts_n - rxq_data->sges_n;
-	/* Calculate and allocate WQ memory space. */
-	size_t alignment = MLX5_WQE_BUF_ALIGNMENT;
-	if (alignment == (size_t)-1) {
-		DRV_LOG(ERR, "Failed to get mem page size");
-		rte_errno = ENOMEM;
-		return NULL;
-	}
-	/* Create RQ using DevX API. */
-	mlx5_devx_wq_attr_fill(priv, rxq_ctrl, &rq_attr.wq_attr);
 	rq_attr.counter_set_id = priv->counter_set_id;
 	rq = mlx5_devx_cmd_create_rq(priv->sh->ctx, &rq_attr, rxq_ctrl->socket);
 	return rq;
@@ -712,8 +740,16 @@ mlx5_rxq_devx_obj_new(struct mlx5_rxq_priv *rxq)
 	if (ret != 0) {
 		DRV_LOG(ERR, "Port %u Rx queue %u RQ resources creation failure.",
 			priv->dev_data->port_id, rxq->idx);
-		rte_errno = ENOMEM;
 		goto error;
+	}
+	if (rxq_data->shared) {
+		/* Create receive memory pool. */
+		tmpl->devx_rmp = mlx5_rxq_create_devx_rmp(rxq);
+		if (tmpl->devx_rmp == NULL) {
+			DRV_LOG(ERR, "Port %u Rx queue %u RMP creation failure.",
+				priv->dev_data->port_id, rxq->idx);
+			goto error;
+		}
 	}
 	rxq_data->cq_arm_sn = 0;
 	mlx5_rxq_initialize(rxq_data);
@@ -721,6 +757,8 @@ mlx5_rxq_devx_obj_new(struct mlx5_rxq_priv *rxq)
 	return 0;
 error:
 	ret = rte_errno; /* Save rte_errno before cleanup. */
+	if (tmpl->devx_rmp != NULL)
+		claim_zero(mlx5_devx_cmd_destroy(tmpl->devx_rmp));
 	if (tmpl->devx_cq)
 		claim_zero(mlx5_devx_cmd_destroy(tmpl->devx_cq));
 	if (tmpl->devx_channel)

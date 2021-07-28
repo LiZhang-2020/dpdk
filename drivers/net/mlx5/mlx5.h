@@ -1279,6 +1279,7 @@ struct mlx5_rxq_obj {
 			void *ibv_channel;
 		};
 		struct {
+			struct mlx5_devx_obj *devx_rmp; /* DevX RMP object. */
 			struct mlx5_devx_obj *devx_cq; /* DevX CQ object. */
 			void *devx_channel;
 		};
