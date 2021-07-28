@@ -3,6 +3,8 @@
 
 sources = files(
 	'mlx5dr_test.c',
+	'mlx5dr_test_rule_insert.c',
+	'mlx5dr_test_post_send.c',
 )
 
 deps += ['ethdev']
