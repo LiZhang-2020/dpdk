@@ -25,6 +25,8 @@ struct mlx5dr_rule {
 		struct ibv_flow *flow;
 	};
 	enum mlx5dr_rule_status rule_status;
+	TAILQ_ENTRY(mlx5dr_rule) list;
+	void *user_id;
 };
 
 #endif

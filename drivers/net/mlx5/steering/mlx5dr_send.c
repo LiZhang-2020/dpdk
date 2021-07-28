@@ -3,6 +3,7 @@
  */
 
 #include "mlx5dr_internal.h"
+#include <rte_tailq.h>
 
 struct mlx5dr_send_engine_post_ctrl
 mlx5dr_send_engine_post_start(struct mlx5dr_send_engine *queue)
@@ -74,26 +75,33 @@ void mlx5dr_send_engine_post_end(struct mlx5dr_send_engine_post_ctrl *ctrl,
 		mlx5dr_send_engine_post_ring(sq, ctrl->queue->uar, wqe_ctrl);
 }
 
-static void mlx5dr_send_engine_update_rule(struct mlx5dr_send_ring_priv *priv,
+static void mlx5dr_send_engine_update_rule(struct mlx5dr_send_engine *queue,
+					   struct mlx5dr_send_ring_priv *priv,
 					   struct mlx5dr_rule *rule[],
-					   size_t *i)
+					   size_t *i,
+					   size_t rule_sz)
 {
 	// TODO: Add check for cqe status i,j values for error
 	priv->rule->rule_status = MLX5DR_RULE_COMPLETED_SUCC;
 	if (priv->user_comp) {
-		rule[*i] = priv->rule;
-		(*i)++;
+		if (*i < rule_sz) {
+			rule[*i] = priv->rule;
+			(*i)++;
+		} else {
+			TAILQ_INSERT_TAIL(&queue->completed, priv->rule, list);
+		}
 	}
 }
 
-static int __mlx5dr_send_engine_poll(struct mlx5dr_send_ring *send_ring,
+static int __mlx5dr_send_engine_poll(struct mlx5dr_send_engine *queue,
+				     struct mlx5dr_send_ring *send_ring,
 				     struct mlx5dr_rule *rule[],
 				     size_t *i,
 				     size_t rule_sz)
 {
 	struct mlx5dr_send_ring_cq *cq = &send_ring->send_cq;
 	struct mlx5dr_send_ring_sq *sq = &send_ring->send_sq;
-	uint32_t cq_idx = cq->cons_index & ( cq->buf_mask);
+	uint32_t cq_idx = cq->cons_index & (cq->ncqe_mask);
 	struct mlx5dr_send_ring_priv *priv;
 	struct mlx5_cqe64 *cqe;
 	uint8_t cqe_opcode;
@@ -103,7 +111,7 @@ static int __mlx5dr_send_engine_poll(struct mlx5dr_send_ring *send_ring,
 
 	cqe = (void *)(cq->buf + (cq_idx << cq->cqe_log_sz));
 
-	sw_own = (cq->cons_index & cq->buf_sz) ? 1 : 0;
+	sw_own = (cq->cons_index & cq->ncqe) ? 1 : 0;
 	cqe_opcode = mlx5dv_get_cqe_opcode(cqe);
 	cqe_owner = mlx5dv_get_cqe_owner(cqe);
 
@@ -111,48 +119,54 @@ static int __mlx5dr_send_engine_poll(struct mlx5dr_send_ring *send_ring,
 	    cqe_owner != sw_own)
 		return -1;
 
-	if (cqe_opcode != MLX5_CQE_REQ) //TODO debug
-                printf("CQE Error op=0x%x\n", cqe_opcode);
-
 	rte_io_rmb();
 
 	wqe_cnt = be16toh(cqe->wqe_counter) & sq->buf_mask;
 
-	while (cq->poll_wqe != wqe_cnt && *i < rule_sz) {
+	while (cq->poll_wqe != wqe_cnt) {
 		priv = &sq->wr_priv[cq->poll_wqe];
-		mlx5dr_send_engine_update_rule(priv, rule ,i);
+		mlx5dr_send_engine_update_rule(queue, priv, rule, i, rule_sz);
 		cq->poll_wqe = (cq->poll_wqe + priv->num_wqebbs) & sq->buf_mask;
 	}
 
 	priv = &sq->wr_priv[wqe_cnt];
 	cq->poll_wqe = (wqe_cnt + priv->num_wqebbs) & sq->buf_mask;
-	if (*i >= rule_sz)
-		return 0;
-	mlx5dr_send_engine_update_rule(priv, rule ,i);
+	mlx5dr_send_engine_update_rule(queue, priv, rule, i, rule_sz);
+	cq->cons_index++;
 
-	return 0;
+	return 1;
 }
 
-int mlx5dr_send_engine_poll(struct mlx5dr_send_ring *send_ring,
+int mlx5dr_send_engine_poll(struct mlx5dr_send_engine *queue,
 			    struct mlx5dr_rule *rule[], //TODO: Maybe should be rte flow res?
 			    size_t rule_sz)
 {
+	struct mlx5dr_rule *completed;
+	struct mlx5dr_rule *tmp;
 	size_t i = 0;
-	int ret = 0;
+	int ret = 1;
+	int j;
 
-	//TODO: Check completed list first
-
-	for (; i < rule_sz && !ret;) {
-		ret = __mlx5dr_send_engine_poll(send_ring, &rule[i], &i, rule_sz);
-		if (ret)
-			goto out;
-		send_ring->send_cq.cons_index++;
+	TAILQ_FOREACH_SAFE(completed, &queue->completed, list, tmp) {
+		if (i < rule_sz) {
+			rule[i] = completed;
+			TAILQ_REMOVE(&queue->completed, completed, list);
+			i++;
+		} else {
+			return i;
+		}
 	}
 
-out:
-	*send_ring->send_cq.db = htobe32(send_ring->send_cq.cons_index & 0xffffffff);
+	if (i >= rule_sz)
+		return i;
 
-	return ret;
+	for (j = 0; j < MLX5DR_NUM_SEND_RINGS; j++) {
+		while (i < rule_sz && ret > 0)
+			ret = __mlx5dr_send_engine_poll(queue, &queue->send_ring[j], &rule[i], &i, rule_sz);
+		*(queue->send_ring[j].send_cq.db) = htobe32(queue->send_ring[j].send_cq.cons_index & 0xffffff);
+	}
+
+	return i;
 }
 
 static inline uint64_t roundup_pow_of_two(uint64_t n)
@@ -319,7 +333,7 @@ static int mlx5dr_send_ring_open_cq(struct mlx5dr_context *ctx,
 			queue->queue_num_entries); /* TODO - Debug test */
 	cq->cqe_sz = mlx5_cq.cqe_size;
 	cq->cqe_log_sz = log2above(cq->cqe_sz);
-	cq->buf_mask = cq->ncqe - 1;
+	cq->ncqe_mask = cq->ncqe - 1;
 	cq->buf_sz = cq->cqe_sz * cq->ncqe;
         cq->cqn = mlx5_cq.cqn;
 	cq->ibv_cq = ibv_cq;
@@ -418,6 +432,7 @@ static int mlx5dr_send_queue_open(struct mlx5dr_context *ctx,
 
 	queue->rings = MLX5DR_NUM_SEND_RINGS;
 	queue->queue_num_entries = roundup_pow_of_two(queue_size); /* TODO */
+	TAILQ_INIT(&queue->completed);
 
 	err = mlx5dr_send_rings_open(ctx, queue);
 	if (err)

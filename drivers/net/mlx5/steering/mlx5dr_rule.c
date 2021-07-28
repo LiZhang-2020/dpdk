@@ -39,6 +39,8 @@ static int mlx5dr_rule_create_hws(struct mlx5dr_rule *rule,
 	struct mlx5dr_send_engine_post_ctrl ctrl;
 	size_t wqe_len;
 
+	rule->rule_status = MLX5DR_RULE_IN_QUEUE;
+
 	/* Build tag + actions attr */
 	ctrl = mlx5dr_send_engine_post_start(&ctx->send_queue[attr->queue_id]);
 	mlx5dr_send_engine_post_req_wqe(&ctrl, (void *)&wqe_ctrl, &wqe_len);
