@@ -27,6 +27,7 @@
 #include "mlx5_rxtx.h"
 #include "mlx5_utils.h"
 #include "mlx5_autoconf.h"
+#include "mlx5_devx.h"
 
 
 /* Default RSS hash key also used for ConnectX-3. */
@@ -419,6 +420,9 @@ mlx5_get_rx_queue_offloads(struct rte_eth_dev *dev)
 		offloads |= DEV_RX_OFFLOAD_VLAN_STRIP;
 	if (MLX5_LRO_SUPPORTED(dev))
 		offloads |= DEV_RX_OFFLOAD_TCP_LRO;
+	if (priv->config.hca_attr.mem_rq_rmp &&
+	    priv->obj_ops.rxq_res_new == devx_obj_ops.rxq_res_new)
+		offloads |= RTE_ETH_RX_OFFLOAD_SHARED_RXQ;
 	return offloads;
 }
 
@@ -716,6 +720,114 @@ mlx5_rx_queue_pre_setup(struct rte_eth_dev *dev, uint16_t idx, uint16_t *desc)
 }
 
 /**
+ * Get the shared Rx queue object that matches group and queue index.
+ *
+ * @param dev
+ *   Pointer to Ethernet device structure.
+ * @param group
+ *   Shared RXQ group.
+ * @param idx
+ *   RX queue index.
+ *
+ * @return
+ *   Shared RXQ object that matching, or NULL if not found.
+ */
+static struct mlx5_rxq_ctrl *
+mlx5_shared_rxq_get(struct rte_eth_dev *dev, uint32_t group, uint16_t idx)
+{
+	struct mlx5_rxq_ctrl *rxq_ctrl;
+	struct mlx5_priv *priv = dev->data->dev_private;
+
+	LIST_FOREACH(rxq_ctrl, &priv->sh->shared_rxqs, share_entry) {
+		if (rxq_ctrl->share_group == group && rxq_ctrl->rxq.idx == idx)
+			return rxq_ctrl;
+	}
+	return NULL;
+}
+
+/**
+ * Check whether requested Rx queue configuration matches shared RXQ.
+ *
+ * @param rxq_ctrl
+ *   Pointer to shared RXQ.
+ * @param dev
+ *   Pointer to Ethernet device structure.
+ * @param idx
+ *   Queue index.
+ * @param desc
+ *   Number of descriptors to configure in queue.
+ * @param socket
+ *   NUMA socket on which memory must be allocated.
+ * @param[in] conf
+ *   Thresholds parameters.
+ * @param mp
+ *   Memory pool for buffer allocations.
+ *
+ * @return
+ *   0 on success, a negative errno value otherwise and rte_errno is set.
+ */
+static bool
+mlx5_shared_rxq_match(struct mlx5_rxq_ctrl *rxq_ctrl, struct rte_eth_dev *dev,
+		      uint16_t idx, uint16_t desc, unsigned int socket,
+		      const struct rte_eth_rxconf *conf,
+		      struct rte_mempool *mp)
+{
+	struct mlx5_priv *spriv = LIST_FIRST(&rxq_ctrl->owners)->priv;
+	struct mlx5_priv *priv = dev->data->dev_private;
+	unsigned int mprq_stride_nums = priv->config.mprq.stride_num_n ?
+		priv->config.mprq.stride_num_n : MLX5_MPRQ_STRIDE_NUM_N;
+
+	RTE_SET_USED(conf);
+	if (rxq_ctrl->socket != socket) {
+		DRV_LOG(ERR, "port %u queue index %u failed to join shared group: socket mismatch",
+			dev->data->port_id, idx);
+		return false;
+	}
+	if (priv->config.mprq.enabled)
+		desc >>= mprq_stride_nums;
+	if (rxq_ctrl->rxq.elts_n != log2above(desc)) {
+		DRV_LOG(ERR, "port %u queue index %u failed to join shared group: descriptor number mismatch",
+			dev->data->port_id, idx);
+		return false;
+	}
+	if (priv->mtu != spriv->mtu) {
+		DRV_LOG(ERR, "port %u queue index %u failed to join shared group: mtu mismatch",
+			dev->data->port_id, idx);
+		return false;
+	}
+	if (priv->dev_data->dev_conf.intr_conf.rxq !=
+	    spriv->dev_data->dev_conf.intr_conf.rxq) {
+		DRV_LOG(ERR, "port %u queue index %u failed to join shared group: interrupt mismatch",
+			dev->data->port_id, idx);
+		return false;
+	}
+	if (!spriv->config.mprq.enabled && rxq_ctrl->rxq.mp != mp) {
+		DRV_LOG(ERR, "port %u queue index %u failed to join shared group: mempool mismatch",
+			dev->data->port_id, idx);
+		return false;
+	}
+	if (priv->config.hw_padding != spriv->config.hw_padding) {
+		DRV_LOG(ERR, "port %u queue index %u failed to join shared group: padding mismatch",
+			dev->data->port_id, idx);
+		return false;
+	}
+	if (memcmp(&priv->config.mprq, &spriv->config.mprq,
+		   sizeof(priv->config.mprq)) != 0) {
+		DRV_LOG(ERR, "port %u queue index %u failed to join shared group: MPRQ mismatch",
+			dev->data->port_id, idx);
+		return false;
+	}
+	if (priv->config.cqe_comp != spriv->config.cqe_comp ||
+	    (priv->config.cqe_comp &&
+	     priv->config.cqe_comp_fmt != spriv->config.cqe_comp_fmt)) {
+		DRV_LOG(ERR, "port %u queue index %u failed to join shared group: CQE compression mismatch",
+			dev->data->port_id, idx);
+		return false;
+	}
+	return true;
+}
+
+/**
  *
  * @param dev
  *   Pointer to Ethernet device structure.
@@ -740,12 +852,14 @@ mlx5_rx_queue_setup(struct rte_eth_dev *dev, uint16_t idx, uint16_t desc,
 {
 	struct mlx5_priv *priv = dev->data->dev_private;
 	struct mlx5_rxq_priv *rxq;
-	struct mlx5_rxq_ctrl *rxq_ctrl;
+	struct mlx5_rxq_ctrl *rxq_ctrl = NULL;
 	struct rte_eth_rxseg_split *rx_seg =
 				(struct rte_eth_rxseg_split *)conf->rx_seg;
 	struct rte_eth_rxseg_split rx_single = {.mp = mp};
 	uint16_t n_seg = conf->rx_nseg;
 	int res;
+	uint64_t offloads = conf->offloads |
+			    dev->data->dev_conf.rxmode.offloads;
 
 	if (mp) {
 		/*
@@ -757,9 +871,6 @@ mlx5_rx_queue_setup(struct rte_eth_dev *dev, uint16_t idx, uint16_t desc,
 		n_seg = 1;
 	}
 	if (n_seg > 1) {
-		uint64_t offloads = conf->offloads |
-				    dev->data->dev_conf.rxmode.offloads;
-
 		/* The offloads should be checked on rte_eth_dev layer. */
 		MLX5_ASSERT(offloads & DEV_RX_OFFLOAD_SCATTER);
 		if (!(offloads & RTE_ETH_RX_OFFLOAD_BUFFER_SPLIT)) {
@@ -771,9 +882,32 @@ mlx5_rx_queue_setup(struct rte_eth_dev *dev, uint16_t idx, uint16_t desc,
 		}
 		MLX5_ASSERT(n_seg < MLX5_MAX_RXQ_NSEG);
 	}
+	if (offloads & RTE_ETH_RX_OFFLOAD_SHARED_RXQ) {
+		if (!priv->config.hca_attr.mem_rq_rmp) {
+			DRV_LOG(ERR, "port %u queue index %u shared Rx queue not supported by fw",
+				     dev->data->port_id, idx);
+			rte_errno = EINVAL;
+			return -rte_errno;
+		}
+		if (priv->obj_ops.rxq_res_new != devx_obj_ops.rxq_res_new) {
+			DRV_LOG(ERR, "port %u queue index %u shared Rx queue needs DevX api",
+				     dev->data->port_id, idx);
+			rte_errno = EINVAL;
+			return -rte_errno;
+		}
+		/* Try to reuse shared RXQ. */
+		rxq_ctrl = mlx5_shared_rxq_get(dev, conf->shared_group, idx);
+		if (rxq_ctrl != NULL &&
+		    !mlx5_shared_rxq_match(rxq_ctrl, dev, idx, desc, socket,
+					   conf, mp)) {
+			rte_errno = EINVAL;
+			return -rte_errno;
+		}
+	}
 	res = mlx5_rx_queue_pre_setup(dev, idx, &desc);
 	if (res)
 		return res;
+	/* Allocate RXQ. */
 	rxq = mlx5_malloc(MLX5_MEM_ANY | MLX5_MEM_ZERO, sizeof(*rxq), 0,
 			  SOCKET_ID_ANY);
 	if (!rxq) {
@@ -785,14 +919,22 @@ mlx5_rx_queue_setup(struct rte_eth_dev *dev, uint16_t idx, uint16_t desc,
 	rxq->priv = priv;
 	rxq->idx = idx;
 	(*priv->rxq_privs)[idx] = rxq;
-	rxq_ctrl = mlx5_rxq_new(dev, rxq, desc, socket, conf, rx_seg, n_seg);
-	if (!rxq_ctrl) {
-		DRV_LOG(ERR, "port %u unable to allocate rx queue index %u",
-			dev->data->port_id, idx);
-		mlx5_free(rxq);
-		(*priv->rxq_privs)[idx] = NULL;
-		rte_errno = ENOMEM;
-		return -rte_errno;
+	if (rxq_ctrl != NULL) {
+		/* Join owner list of shared RXQ. */
+		LIST_INSERT_HEAD(&rxq_ctrl->owners, rxq, owner_entry);
+		rxq->ctrl = rxq_ctrl;
+	} else {
+		/* Create new shared RXQ. */
+		rxq_ctrl = mlx5_rxq_new(dev, rxq, desc, socket, conf, rx_seg,
+					n_seg);
+		if (rxq_ctrl == NULL) {
+			DRV_LOG(ERR, "port %u unable to allocate rx queue index %u",
+				dev->data->port_id, idx);
+			mlx5_free(rxq);
+			(*priv->rxq_privs)[idx] = NULL;
+			rte_errno = ENOMEM;
+			return -rte_errno;
+		}
 	}
 	DRV_LOG(DEBUG, "port %u adding Rx queue %u to list",
 		dev->data->port_id, idx);
@@ -1139,6 +1281,9 @@ mlx5_rxq_obj_verify(struct rte_eth_dev *dev)
 	struct mlx5_rxq_obj *rxq_obj;
 
 	LIST_FOREACH(rxq_obj, &priv->rxqsobj, next) {
+		if (rxq_obj->rxq_ctrl->rxq.shared &&
+		    !LIST_EMPTY(&rxq_obj->rxq_ctrl->owners))
+			continue;
 		DRV_LOG(DEBUG, "port %u Rx queue %u still referenced",
 			dev->data->port_id, rxq_obj->rxq_ctrl->rxq.idx);
 		++ret;
@@ -1416,6 +1561,10 @@ mlx5_rxq_new(struct rte_eth_dev *dev, struct mlx5_rxq_priv *rxq,
 		return NULL;
 	}
 	LIST_INIT(&tmpl->owners);
+	if (offloads & RTE_ETH_RX_OFFLOAD_SHARED_RXQ) {
+		tmpl->rxq.shared = 1;
+		LIST_INSERT_HEAD(&priv->sh->shared_rxqs, tmpl, share_entry);
+	}
 	rxq->ctrl = tmpl;
 	LIST_INSERT_HEAD(&tmpl->owners, rxq, owner_entry);
 	MLX5_ASSERT(n_seg && n_seg <= MLX5_MAX_RXQ_NSEG);
@@ -1839,6 +1988,7 @@ mlx5_rxq_release(struct rte_eth_dev *dev, uint16_t idx)
 	struct mlx5_priv *priv = dev->data->dev_private;
 	struct mlx5_rxq_priv *rxq;
 	struct mlx5_rxq_ctrl *rxq_ctrl;
+	bool free_ctrl;
 
 	if (priv->rxq_privs == NULL)
 		return 0;
@@ -1848,24 +1998,36 @@ mlx5_rxq_release(struct rte_eth_dev *dev, uint16_t idx)
 	if (mlx5_rxq_deref(dev, idx) > 1)
 		return 1;
 	rxq_ctrl = rxq->ctrl;
-	if (rxq->devx_rq != NULL) {
+	/* If the last entry in share RXQ. */
+	free_ctrl = RXQ_CTRL_LAST(rxq);
+	if (rxq->devx_rq != NULL)
 		priv->obj_ops.rxq_res_release(rxq);
-		LIST_REMOVE(rxq_ctrl->obj, next);
-		mlx5_free(rxq_ctrl->obj);
-		rxq_ctrl->obj = NULL;
+	if (free_ctrl) {
+		if (rxq_ctrl->obj != NULL) {
+			LIST_REMOVE(rxq_ctrl->obj, next);
+			mlx5_free(rxq_ctrl->obj);
+			rxq_ctrl->obj = NULL;
+		}
+		rxq_ctrl->started = false;
 	}
 	if (rxq_ctrl->type == MLX5_RXQ_TYPE_STANDARD) {
-		rxq_free_elts(rxq_ctrl);
+		if (free_ctrl)
+			rxq_free_elts(rxq_ctrl);
 		dev->data->rx_queue_state[idx] = RTE_ETH_QUEUE_STATE_STOPPED;
 	}
 	if (!__atomic_load_n(&rxq->refcnt, __ATOMIC_RELAXED)) {
-		if (rxq_ctrl->type == MLX5_RXQ_TYPE_STANDARD) {
-			mlx5_mr_btree_free(&rxq_ctrl->rxq.mr_ctrl.cache_bh);
-			mlx5_mprq_free_mp(dev, rxq_ctrl);
-		}
 		LIST_REMOVE(rxq, owner_entry);
-		LIST_REMOVE(rxq_ctrl, next);
-		mlx5_free(rxq_ctrl);
+		if (free_ctrl) {
+			if (rxq_ctrl->type == MLX5_RXQ_TYPE_STANDARD) {
+				mlx5_mr_btree_free
+					(&rxq_ctrl->rxq.mr_ctrl.cache_bh);
+				mlx5_mprq_free_mp(dev, rxq_ctrl);
+			}
+			if (rxq_ctrl->rxq.shared)
+				LIST_REMOVE(rxq_ctrl, share_entry);
+			LIST_REMOVE(rxq_ctrl, next);
+			mlx5_free(rxq_ctrl);
+		}
 		dev->data->rx_queues[idx] = NULL;
 		mlx5_free(rxq);
 		(*priv->rxq_privs)[idx] = NULL;

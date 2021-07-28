@@ -121,6 +121,46 @@ mlx5_rxq_stop(struct rte_eth_dev *dev)
 		mlx5_rxq_release(dev, i);
 }
 
+static int
+mlx5_rxq_ctrl_prepare(struct rte_eth_dev *dev, struct mlx5_rxq_ctrl *rxq_ctrl,
+		      unsigned int idx)
+{
+	int ret = 0;
+
+	if (rxq_ctrl->type == MLX5_RXQ_TYPE_STANDARD) {
+		if (mlx5_rxq_mprq_enabled(&rxq_ctrl->rxq)) {
+			/* Allocate/reuse/resize mempool for MPRQ. */
+			if (mlx5_mprq_alloc_mp(dev, rxq_ctrl) < 0)
+				return -rte_errno;
+
+			/* Pre-register Rx mempools. */
+			mlx5_mr_update_mp(dev, &rxq_ctrl->rxq.mr_ctrl,
+					  rxq_ctrl->rxq.mprq_mp);
+		} else {
+			uint32_t s;
+			for (s = 0; s < rxq_ctrl->rxq.rxseg_n; s++)
+				mlx5_mr_update_mp(dev, &rxq_ctrl->rxq.mr_ctrl,
+						  rxq_ctrl->rxq.rxseg[s].mp);
+		}
+		ret = rxq_alloc_elts(rxq_ctrl);
+		if (ret)
+			return ret;
+	}
+	MLX5_ASSERT(!rxq_ctrl->obj);
+	rxq_ctrl->obj = mlx5_malloc(MLX5_MEM_RTE | MLX5_MEM_ZERO,
+				    sizeof(*rxq_ctrl->obj), 0,
+				    rxq_ctrl->socket);
+	if (!rxq_ctrl->obj) {
+		DRV_LOG(ERR, "Port %u Rx queue %u can't allocate resources.",
+			dev->data->port_id, idx);
+		rte_errno = ENOMEM;
+		return -rte_errno;
+	}
+	DRV_LOG(DEBUG, "Port %u rxq %u updated with %p.", dev->data->port_id,
+		idx, (void *)&rxq_ctrl->obj);
+	return 0;
+}
+
 /**
  * Start traffic on Rx queues.
  *
@@ -148,45 +188,17 @@ mlx5_rxq_start(struct rte_eth_dev *dev)
 		if (rxq == NULL)
 			continue;
 		rxq_ctrl = rxq->ctrl;
-		if (rxq_ctrl->type == MLX5_RXQ_TYPE_STANDARD) {
-			if (mlx5_rxq_mprq_enabled(&rxq_ctrl->rxq)) {
-				/* Allocate/reuse/resize mempool for MPRQ. */
-				if (mlx5_mprq_alloc_mp(dev, rxq_ctrl) < 0)
-					goto error;
-				/* Pre-register Rx mempools. */
-				mlx5_mr_update_mp(dev, &rxq_ctrl->rxq.mr_ctrl,
-						  rxq_ctrl->rxq.mprq_mp);
-			} else {
-				uint32_t s;
-
-				for (s = 0; s < rxq_ctrl->rxq.rxseg_n; s++)
-					mlx5_mr_update_mp
-						(dev, &rxq_ctrl->rxq.mr_ctrl,
-						rxq_ctrl->rxq.rxseg[s].mp);
-			}
-			ret = rxq_alloc_elts(rxq_ctrl);
-			if (ret)
+		if (!rxq_ctrl->started) {
+			if (mlx5_rxq_ctrl_prepare(dev, rxq_ctrl, i) < 0)
 				goto error;
-		}
-		MLX5_ASSERT(!rxq_ctrl->obj);
-		rxq_ctrl->obj = mlx5_malloc(MLX5_MEM_RTE | MLX5_MEM_ZERO,
-					    sizeof(*rxq_ctrl->obj), 0,
-					    rxq_ctrl->socket);
-		if (!rxq_ctrl->obj) {
-			DRV_LOG(ERR,
-				"Port %u Rx queue %u can't allocate resources.",
-				dev->data->port_id, i);
-			rte_errno = ENOMEM;
-			goto error;
+			LIST_INSERT_HEAD(&priv->rxqsobj, rxq_ctrl->obj, next);
+			rxq_ctrl->started = true;
 		}
 		ret = priv->obj_ops.rxq_res_new(rxq);
 		if (ret) {
 			mlx5_free(rxq_ctrl->obj);
 			goto error;
 		}
-		DRV_LOG(DEBUG, "Port %u rxq %u updated with %p.",
-			dev->data->port_id, i, (void *)&rxq_ctrl->obj);
-		LIST_INSERT_HEAD(&priv->rxqsobj, rxq_ctrl->obj, next);
 	}
 	return 0;
 error:

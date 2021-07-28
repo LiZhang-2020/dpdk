@@ -1215,6 +1215,7 @@ struct mlx5_dev_ctx_shared {
 	/* Flex parser profiles information. */
 	void *devx_rx_uar; /* DevX UAR for Rx. */
 	struct mlx5_dbr_page_list dbrpgs; /* Door-bell pages. */
+	LIST_HEAD(shared_rxqs, mlx5_rxq_ctrl) shared_rxqs; /* Shared RXQs. */
 	struct mlx5_aso_age_mng *aso_age_mng;
 	/* Management data for aging mechanism using ASO Flow Hit. */
 	struct mlx5_geneve_tlv_option_resource *geneve_tlv_option_resource;

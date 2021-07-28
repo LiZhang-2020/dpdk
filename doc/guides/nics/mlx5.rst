@@ -107,6 +107,7 @@ Features
 - Flow metering, including meter policy API.
 - SubFunction and SubFunction representor
 - Flow integrity offload API.
+- Shared Rx queue.
 
 Limitations
 -----------
@@ -429,6 +430,11 @@ Limitations
       flow create 0 ingress pattern integrity level is 0 value mask l3_ok value spec l3_ok / eth / ipv6 / end …
       or
       flow create 0 ingress pattern integrity level is 0 value mask l4_ok value spec 0 / eth / ipv4 proto is udp / end …
+
+- Shared Rx queue:
+
+  - Counter of received packets and bytes number of devices in same share group are same.
+  - Counter of received packets and bytes number of queues in same group and queue ID are same.
 
 Statistics
 ----------

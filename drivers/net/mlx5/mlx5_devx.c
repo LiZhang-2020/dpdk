@@ -229,6 +229,8 @@ mlx5_rxq_devx_res_release(struct mlx5_rxq_priv *rxq)
 			claim_zero(mlx5_devx_cmd_destroy(rxq->devx_rq));
 			rxq->devx_rq = NULL;
 		}
+		if (!RXQ_CTRL_LAST(rxq))
+			return;
 		if (rxq_obj->devx_cq) {
 			claim_zero(mlx5_devx_cmd_destroy(rxq_obj->devx_cq));
 			rxq_obj->devx_cq = NULL;
@@ -748,9 +750,11 @@ mlx5_rxq_devx_res_new(struct mlx5_rxq_priv *rxq)
 	if (rxq->ctrl->type == MLX5_RXQ_TYPE_HAIRPIN)
 		return mlx5_rxq_obj_hairpin_new(rxq);
 	/* Create shared resources. */
-	ret = mlx5_rxq_devx_obj_new(rxq);
-	if (ret != 0)
-		goto error;
+	if (rxq->ctrl->obj->devx_cq == NULL) {
+		ret = mlx5_rxq_devx_obj_new(rxq);
+		if (ret != 0)
+			goto error;
+	}
 	/* Create RQ using DevX API. */
 	rxq->devx_rq = mlx5_rxq_create_devx_rq(rxq);
 	if (!rxq->devx_rq) {

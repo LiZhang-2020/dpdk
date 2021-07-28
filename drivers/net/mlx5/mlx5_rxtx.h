@@ -36,6 +36,9 @@
 #define RXQ_PORT(rxq_ctrl) LIST_FIRST(&(rxq_ctrl)->owners)->priv
 #define RXQ_DEV(rxq_ctrl) ETH_DEV(RXQ_PORT(rxq_ctrl))
 #define RXQ_PORT_ID(rxq_ctrl) PORT_ID(RXQ_PORT(rxq_ctrl))
+#define RXQ_CTRL_LAST(rxq) \
+	(LIST_FIRST(&(rxq)->ctrl->owners) == (rxq) && \
+	LIST_NEXT(rxq, owner_entry) == NULL)
 
 /* Mbuf dynamic flag offset for inline. */
 extern uint64_t rte_net_mlx5_dynf_inline_mask;
@@ -130,6 +133,7 @@ struct mlx5_rxq_data {
 	unsigned int lro:1; /* Enable LRO. */
 	unsigned int dynf_meta:1; /* Dynamic metadata is configured. */
 	unsigned int mcqe_format:3; /* CQE compression format. */
+	unsigned int shared:1; /* Shared RXQ. */
 	volatile uint32_t *rq_db;
 	volatile uint32_t *cq_db;
 	uint16_t port_id;
@@ -192,6 +196,9 @@ struct mlx5_rxq_ctrl {
 	struct mlx5_dev_ctx_shared *sh; /* Shared context. */
 	enum mlx5_rxq_type type; /* Rxq type. */
 	unsigned int socket; /* CPU socket ID for allocations. */
+	LIST_ENTRY(mlx5_rxq_ctrl) share_entry; /* Entry in shared RXQ list. */
+	uint32_t share_group; /* Group ID of shared RXQ. */
+	unsigned int started:1; /* Whether (shared) RXQ has been started. */
 	unsigned int irq:1; /* Whether IRQ is enabled. */
 	uint32_t flow_mark_n; /* Number of Mark/Flag flows using this Queue. */
 	uint32_t flow_tunnels_n[MLX5_FLOW_TUNNEL]; /* Tunnels counters. */
