@@ -16,6 +16,7 @@
 
 #define MAX_ITEMS 10
 #define NUM_POSTS 5
+#define POLL_ONCE 3
 
 char def_dev_name[] = "mlx5_0";
 
@@ -33,7 +34,7 @@ static int __mlx5dr_run_test_post(struct mlx5dr_context *ctx)
 
 
 	attr.user_comp = 1;
-	for (i = 0; i < NUM_POSTS -1; i++) {
+	for (i = 0; i < NUM_POSTS - 1; i++) {
 		ctrl = mlx5dr_send_engine_post_start(queue);
 		mlx5dr_send_engine_post_req_wqe(&ctrl, &buf, &len);
 		attr.rule = &rule[i];
@@ -48,17 +49,32 @@ static int __mlx5dr_run_test_post(struct mlx5dr_context *ctx)
 
 	i = 0;
 	ret = -1;
-	while (ret && i < 2000) {
-		ret = mlx5dr_send_engine_poll(ctrl.send_ring, poll_rule, NUM_POSTS);
+	while (ret <= 0 && i < 2000) {
+		ret = mlx5dr_send_engine_poll(ctrl.queue, poll_rule, POLL_ONCE);
 		i++;
 	}
-	if (ret || i >= 2000)
+	if (ret <= 0 || i >= 2000) {
 		return -1;
+	}
 
 	for (i = 0; i < NUM_POSTS && poll_rule[i]; i++) {
 		if (poll_rule[i]->rule_status != MLX5DR_RULE_COMPLETED_SUCC)
 			return -1;
 	}
+	if (i != POLL_ONCE) {
+		return -1;
+	}
+
+	memset(poll_rule, 0, sizeof(poll_rule));
+	ret = mlx5dr_send_engine_poll(ctrl.queue, poll_rule, POLL_ONCE);
+	if (ret <= 0)
+		return -1;
+	for (i = 0; i < NUM_POSTS && poll_rule[i]; i++) {
+		if (poll_rule[i]->rule_status != MLX5DR_RULE_COMPLETED_SUCC)
+			return -1;
+	}
+	if (i != NUM_POSTS - POLL_ONCE)
+		return -1;
 
 	return 0;
 }
@@ -98,6 +114,8 @@ static int run_test_post_send(struct ibv_context *ibv_ctx)
 		printf("%s Failed to run post test\n", __func__);
 		goto close_ctx;
 	}
+
+	mlx5dr_context_close(ctx);
 
 	return ret;
 
