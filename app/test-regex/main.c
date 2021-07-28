@@ -122,7 +122,7 @@ args_parse(int argc, char **argv, char *rules_file, char *data_file,
 		}
 	}
 
-	if (!perf_mode)
+	if (!*perf_mode)
 		*nb_iterations = 1;
 }
 
