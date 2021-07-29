@@ -125,7 +125,6 @@ struct mlx5_vdpa_priv {
 	TAILQ_ENTRY(mlx5_vdpa_priv) next;
 	uint8_t configured;
 	pthread_mutex_t vq_config_lock;
-	uint64_t no_traffic_counter;
 	pthread_t timer_tid;
 	int event_mode;
 	int event_core; /* Event thread cpu affinity core. */

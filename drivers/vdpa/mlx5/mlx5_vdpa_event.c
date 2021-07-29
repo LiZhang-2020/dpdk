@@ -13,6 +13,7 @@
 #include <rte_common.h>
 #include <rte_io.h>
 #include <rte_alarm.h>
+#include <rte_cycles.h>
 
 #include <mlx5_common.h>
 #include <mlx5_glue.h>
@@ -313,6 +314,8 @@ mlx5_vdpa_event_handle(void *arg)
 	struct mlx5_vdpa_priv *priv = arg;
 	struct mlx5_vdpa_cq *cq;
 	uint32_t max;
+	uint64_t max_tics = (rte_get_tsc_hz() / 1000000) * priv->no_traffic_max;
+	uint64_t first_tic = 0;
 
 	switch (priv->event_mode) {
 	case MLX5_VDPA_EVENT_MODE_DYNAMIC_TIMER:
@@ -321,8 +324,15 @@ mlx5_vdpa_event_handle(void *arg)
 		while (1) {
 			pthread_mutex_lock(&priv->vq_config_lock);
 			max = mlx5_vdpa_queues_complete(priv);
-			if (max == 0 && priv->no_traffic_counter++ >=
-			    priv->no_traffic_max) {
+			if (max == 0) {
+				uint64_t tic = rte_get_tsc_cycles();
+
+				if (first_tic == 0) {
+					first_tic = tic;
+					goto unlock;
+				} else if (tic - first_tic < max_tics) {
+					goto unlock;
+				}
 				DRV_LOG(DEBUG, "Device %s traffic was stopped.",
 					priv->vdev->device->name);
 				mlx5_vdpa_arm_all_cqs(priv);
@@ -337,10 +347,9 @@ mlx5_vdpa_event_handle(void *arg)
 						break;
 				} while (1);
 				priv->timer_delay_us = priv->event_us;
-				priv->no_traffic_counter = 0;
-			} else if (max != 0) {
-				priv->no_traffic_counter = 0;
 			}
+			first_tic = 0;
+unlock:
 			pthread_mutex_unlock(&priv->vq_config_lock);
 			mlx5_vdpa_timer_sleep(priv, max);
 		}

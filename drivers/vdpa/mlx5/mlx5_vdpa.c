@@ -44,7 +44,7 @@
 
 #define MLX5_VDPA_MAX_RETRIES 20
 #define MLX5_VDPA_USEC 1000
-#define MLX5_VDPA_DEFAULT_NO_TRAFFIC_MAX 16LLU
+#define MLX5_VDPA_DEFAULT_NO_TRAFFIC_MAX 4000000LLU
 
 TAILQ_HEAD(mlx5_vdpa_privs, mlx5_vdpa_priv) priv_list =
 					      TAILQ_HEAD_INITIALIZER(priv_list);
