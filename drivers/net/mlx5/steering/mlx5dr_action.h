@@ -12,6 +12,7 @@ enum mlx5dr_action_type {
 	MLX5DR_ACTION_TYP_L2_TO_TNL_L3,
 	MLX5DR_ACTION_TYP_DROP,
 	MLX5DR_ACTION_TYP_QP,
+	MLX5DR_ACTION_TYP_TIR,
 	MLX5DR_ACTION_TYP_FT,
 	MLX5DR_ACTION_TYP_CTR,
 	MLX5DR_ACTION_TYP_TAG,
@@ -22,7 +23,6 @@ enum mlx5dr_action_type {
 	MLX5DR_ACTION_TYP_POP_VLAN,
 	MLX5DR_ACTION_TYP_PUSH_VLAN,
 	MLX5DR_ACTION_TYP_SAMPLER,
-	MLX5DR_ACCELERATED_MODIFY_ACTION_LIST,
 	MLX5DR_ACTION_TYP_DEST_ARRAY,
 	MLX5DR_ACTION_TYP_ASO_FIRST_HIT,
 	MLX5DR_ACTION_TYP_ASO_FLOW_METER,
@@ -39,7 +39,9 @@ struct mlx5dr_action {
 			struct mlx5dr_pool_chunk stc_rx;
 			struct mlx5dr_pool_chunk stc_tx;
 		};
+		struct ibv_flow_action *flow_action;
 		struct mlx5dv_devx_obj *devx_obj;
+		struct ibv_qp *qp;
 	};
 };
 
