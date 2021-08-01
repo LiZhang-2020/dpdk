@@ -327,7 +327,7 @@ static int mlx5dr_send_ring_open_cq(struct mlx5dr_context *ctx,
 	cq->db = mlx5_cq.dbrec;
 	cq->ncqe = mlx5_cq.cqe_cnt;
 	if (cq->ncqe < queue->queue_num_entries)
-		DRV_LOG(ERR, "%s - (ncqe: %u quque_num_entries: %u) Bug?!\n",
+		DRV_LOG(ERR, "%s - (ncqe: %u quque_num_entries: %u) Bug?!",
 			__func__,
 			cq->ncqe,
 			queue->queue_num_entries); /* TODO - Debug test */

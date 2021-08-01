@@ -16,7 +16,7 @@ static int mlx5dr_onesize_db_get_chunk(struct mlx5dr_pool *pool,
 	__rte_bitmap_scan_init(pool->db.bitmap);
 
 	if (!rte_bitmap_scan(pool->db.bitmap, &iidx, &slab)) {
-		DRV_LOG(ERR, "no more objects in db\n");
+		DRV_LOG(ERR, "no more objects in db");
 		return rte_errno;
 	}
 
@@ -51,7 +51,7 @@ static int mlx5dr_one_size_db_init(struct mlx5dr_pool *pool, uint32_t log_range)
 	bmp_size = rte_bitmap_get_memory_footprint(1 << log_range);
 	mem = rte_zmalloc("create_stc_bmap", bmp_size, RTE_CACHE_LINE_SIZE);
 	if (!mem) {
-		DRV_LOG(ERR, "no mem for bitmap\n");
+		DRV_LOG(ERR, "no mem for bitmap");
 		return rte_errno;
 	}
 
@@ -83,7 +83,7 @@ static void mlx5dr_buddy_db_put_chunk(struct mlx5dr_pool *pool,
 	if (!buddy ||
 	    chunk->resource_idx > pool->db.buddy_manager->num_of_buddies) {
 		assert(false);
-		DRV_LOG(ERR, "no shuch buddy (%d)\n", chunk->resource_idx);
+		DRV_LOG(ERR, "no shuch buddy (%d)", chunk->resource_idx);
 		return;
 	}
 
@@ -121,7 +121,7 @@ static int mlx5dr_pool_buddy_get_mem_chunk(struct mlx5dr_pool *pool,
 			if (new_mem) {
 				/* We have new memory pool, should be place for us */
 				assert(false);
-				DRV_LOG(ERR, "No memory for order: %d with buddy no: %d\n",
+				DRV_LOG(ERR, "No memory for order: %d with buddy no: %d",
 					order, i);
 				rte_errno = ENOMEM;
 				err = ENOMEM;
@@ -146,7 +146,7 @@ static int mlx5dr_buddy_db_get_chunk(struct mlx5dr_pool *pool,
 					      &chunk->resource_idx,
 					      &chunk->offset);
 	if (ret)
-		DRV_LOG(ERR, "failed to get free slot for chunk with order: %d\n",
+		DRV_LOG(ERR, "failed to get free slot for chunk with order: %d",
 			chunk->order);
 
 	return ret;
@@ -171,7 +171,7 @@ static int mlx5dr_buddy_db_init(struct mlx5dr_pool *pool, uint32_t log_range)
 {
 	pool->db.buddy_manager = simple_calloc(1, sizeof(*pool->db.buddy_manager));
 	if (!pool->db.buddy_manager) {
-		DRV_LOG(ERR, "no mem for buddy_manager with log_range: %d\n",
+		DRV_LOG(ERR, "no mem for buddy_manager with log_range: %d",
 			log_range);
 		return rte_errno;
 	}
@@ -179,7 +179,7 @@ static int mlx5dr_buddy_db_init(struct mlx5dr_pool *pool, uint32_t log_range)
 	/* init the first buddy object */
 	pool->db.buddy_manager->buddies[0] = mlx5dr_buddy_create(log_range);
 	if (!pool->db.buddy_manager->buddies[0]) {
-		DRV_LOG(ERR, "failed create first buddy log_range: %d\n",
+		DRV_LOG(ERR, "failed create first buddy log_range: %d",
 			log_range);
 		goto free_buddy_manager;
 	}
@@ -203,13 +203,13 @@ static int mlx5dr_pool_db_init(struct mlx5dr_pool *pool,
 	if (db_type == MLX5DR_DB_TYPE_ONE_SIZE) {
 		ret = mlx5dr_one_size_db_init(pool, pool->alloc_log_sz);
 		if (ret) {
-			DRV_LOG(ERR, "failed to init db (ret: %d)\n", ret);
+			DRV_LOG(ERR, "failed to init db (ret: %d)", ret);
 			return ret;
 		}
 	} else {
 		ret = mlx5dr_buddy_db_init(pool, pool->alloc_log_sz);
 		if (ret) {
-			DRV_LOG(ERR, "failed to init buddy db (ret: %d)\n", ret);
+			DRV_LOG(ERR, "failed to init buddy db (ret: %d)", ret);
 			return ret;
 		}
 	}
@@ -288,7 +288,7 @@ mlx5dr_pool_resource_alloc(struct mlx5dr_pool *pool, uint32_t log_range)
 	}
 
 	if (!devx_obj) {
-		DRV_LOG(ERR, "Failed to allocate resource objects\n");
+		DRV_LOG(ERR, "Failed to allocate resource objects");
 		goto free_resource;
 	}
 
@@ -335,7 +335,7 @@ mlx5dr_pool_create(struct mlx5dr_context *ctx, struct mlx5dr_pool_attr *pool_att
 		pool->fw_ft_type = MLX5DR_POOL_TYPE_NONE;
 		break;
 	default:
-		DRV_LOG(ERR, "Unsupported memory pool type\n");
+		DRV_LOG(ERR, "Unsupported memory pool type");
 		rte_errno = ENOTSUP;
 		goto free_pool;
 	}

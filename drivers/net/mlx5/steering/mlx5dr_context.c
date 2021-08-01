@@ -20,7 +20,7 @@ static int mlx5dr_context_pools_init(struct mlx5dr_context *ctx,
 		pool_attr.table_type = i;
 		ctx->stc_pool[i] = mlx5dr_pool_create(ctx, &pool_attr);
 		if (!ctx->stc_pool[i]) {
-			DRV_LOG(ERR, "Failed to allocate STC pool [%d]\n" ,i);
+			DRV_LOG(ERR, "Failed to allocate STC pool [%d]" ,i);
 			goto free_stc_pools;
 		}
 	}
@@ -35,7 +35,7 @@ static int mlx5dr_context_pools_init(struct mlx5dr_context *ctx,
 		pool_attr.table_type = i;
 		ctx->ste_pool[i] = mlx5dr_pool_create(ctx, &pool_attr);
 		if (!ctx->ste_pool[i]) {
-			DRV_LOG(ERR, "Failed to allocate STE pool [%d]\n" ,i);
+			DRV_LOG(ERR, "Failed to allocate STE pool [%d]" ,i);
 			goto free_ste_pools;
 		}
 	}
@@ -78,7 +78,7 @@ static int mlx5dr_context_init_pd(struct mlx5dr_context *ctx,
 	} else {
 		ctx->pd = mlx5_glue->alloc_pd(ctx->ibv_ctx);
 		if (!ctx->pd) {
-			DRV_LOG(ERR, "Failed to allocate PD\n");
+			DRV_LOG(ERR, "Failed to allocate PD");
 			rte_errno = errno;
 			return rte_errno;
 		}
@@ -118,7 +118,7 @@ static int mlx5dr_context_hws_supp(struct mlx5dr_context *ctx)
 
 	ret = mlx5_devx_cmd_query_hca_attr(ctx->ibv_ctx, &attr);
 	if (ret) {
-		DRV_LOG(ERR, "Failed to query hca attributes\n");
+		DRV_LOG(ERR, "Failed to query hca attributes");
 		return ret;
 	}
 

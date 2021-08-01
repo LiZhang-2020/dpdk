@@ -15,7 +15,7 @@ static int mlx5dr_table_init_nic(struct mlx5dr_table *tbl,
 	stc_pool = tbl->ctx->stc_pool[tbl->type];
 	ret = mlx5dr_pool_chunk_alloc(stc_pool, &nic_tbl->stc);
 	if (ret) {
-		DRV_LOG(ERR, "Failed to allocate go to FT STC\n");
+		DRV_LOG(ERR, "Failed to allocate go to FT STC");
 		return rte_errno;
 	}
 
@@ -26,7 +26,7 @@ static int mlx5dr_table_init_nic(struct mlx5dr_table *tbl,
 
 	ret = mlx5dr_cmd_stc_modify(devx_obj, &stc_attr);
 	if (ret) {
-		DRV_LOG(ERR, "Failed to modify STC to jump for FT\n");
+		DRV_LOG(ERR, "Failed to modify STC to jump for FT");
 		 goto free_chunk;
 	}
 
@@ -86,7 +86,7 @@ static int mlx5dr_table_init(struct mlx5dr_table *tbl)
 
 	tbl->ft = mlx5dr_cmd_flow_table_create(ctx->ibv_ctx, &ft_attr);
 	if (!tbl->ft) {
-		DRV_LOG(ERR, "Failed to create flow table devx object\n");
+		DRV_LOG(ERR, "Failed to create flow table devx object");
 		goto uninit_nic_tbl;
 	}
 
@@ -127,7 +127,7 @@ struct mlx5dr_table *mlx5dr_table_create(struct mlx5dr_context *ctx,
 	int ret;
 
 	if (attr->type >= MLX5DR_TABLE_TYPE_FDB) {
-		DRV_LOG(ERR, "Invalid table type %d\n", attr->type);
+		DRV_LOG(ERR, "Invalid table type %d", attr->type);
 		return NULL;
 	}
 
@@ -144,7 +144,7 @@ struct mlx5dr_table *mlx5dr_table_create(struct mlx5dr_context *ctx,
 
 	ret = mlx5dr_table_init(tbl);
 	if (ret) {
-		DRV_LOG(ERR, "Failed to initialise table\n");
+		DRV_LOG(ERR, "Failed to initialise table");
 		goto free_tbl;
 	}
 

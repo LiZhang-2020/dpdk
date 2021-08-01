@@ -16,14 +16,14 @@ static struct rte_bitmap *bitmap_alloc0(int s)
 	bmp_size = rte_bitmap_get_memory_footprint(s);
 	mem = rte_zmalloc("create_bmap", bmp_size, RTE_CACHE_LINE_SIZE);
 	if (!mem) {
-		DRV_LOG(ERR, "no mem for bitmap\n");
+		DRV_LOG(ERR, "no mem for bitmap");
 		rte_errno = ENOMEM;
 		return NULL;
 	}
 
 	bitmap = rte_bitmap_init(s, mem, bmp_size);
 	if (!bitmap) {
-		DRV_LOG(ERR, "%s Failed to initialize bitmap\n", __func__);
+		DRV_LOG(ERR, "%s Failed to initialize bitmap", __func__);
 		rte_errno = EINVAL;
 		goto err_mem_alloc;
 	}
@@ -58,13 +58,13 @@ static unsigned long bitmap_ffs(struct rte_bitmap *bmap,
 
 	__rte_bitmap_scan_init(bmap);
 	if (!rte_bitmap_scan(bmap, &pos, &out_slab)) {
-		DRV_LOG(ERR, "Failed to get slab from bitmap.\n");
+		DRV_LOG(ERR, "Failed to get slab from bitmap.");
 		return m;
 	}
 	pos = pos + __builtin_ctzll(out_slab);
 
 	if (pos < n) {
-		DRV_LOG(ERR, "got unexpected bit (%d < %ld) from bitmap.\n", pos, n);
+		DRV_LOG(ERR, "got unexpected bit (%d < %ld) from bitmap", pos, n);
 		return m;
 	}
 	return pos;

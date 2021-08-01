@@ -16,7 +16,7 @@ static int mlx5dr_matcher_create_end_ft(struct mlx5dr_matcher *matcher)
 
 	matcher->end_ft = mlx5dr_cmd_flow_table_create(tbl->ctx->ibv_ctx, &ft_attr);
 	if (!matcher->end_ft) {
-		DRV_LOG(ERR, "Failed to create matcher end flow table\n");
+		DRV_LOG(ERR, "Failed to create matcher end flow table");
 		return errno;
 	}
 	return 0;
@@ -56,7 +56,7 @@ static int mlx5dr_matcher_set_builders(struct mlx5dr_matcher *matcher,
 	def_attr.match_mask = match_mask;
 	matcher->definer = mlx5dr_cmd_definer_create(tbl->ctx->ibv_ctx, &def_attr);
 	if (!matcher->definer) {
-		DRV_LOG(ERR, "Failed to create matcher definer\n");
+		DRV_LOG(ERR, "Failed to create matcher definer");
 		return rte_errno;
 	}
 
@@ -111,7 +111,7 @@ connect:
 
 		ret = mlx5dr_cmd_flow_table_modify(matcher->end_ft, &ft_attr);
 		if (ret) {
-			DRV_LOG(ERR, "Failed to connect new matcher to next RTC\n");
+			DRV_LOG(ERR, "Failed to connect new matcher to next RTC");
 			goto remove_from_list;
 		}
 	}
@@ -129,7 +129,7 @@ connect:
 
 	ret = mlx5dr_cmd_flow_table_modify(ft, &ft_attr);
 	if (ret) {
-		DRV_LOG(ERR, "Failed to connect new matcher to previous FT\n");
+		DRV_LOG(ERR, "Failed to connect new matcher to previous FT");
 		goto remove_from_list;
 	}
 
@@ -168,7 +168,7 @@ static int mlx5dr_matcher_disconnect(struct mlx5dr_matcher *matcher)
 
 	ret = mlx5dr_cmd_flow_table_modify(prev_ft, &ft_attr);
 	if (ret) {
-		DRV_LOG(ERR, "Failed to disconnect matcher\n");
+		DRV_LOG(ERR, "Failed to disconnect matcher");
 		return ret;
 	}
 
@@ -194,7 +194,7 @@ static int mlx5dr_matcher_create_rtc_nic(struct mlx5dr_matcher *matcher,
 
 	ret = mlx5dr_pool_chunk_alloc(ste_pool, &nic_matcher->ste);
 	if (ret) {
-		DRV_LOG(ERR, "Failed to allocate STE for matcher RTC\n");
+		DRV_LOG(ERR, "Failed to allocate STE for matcher RTC");
 		return ret;
 	}
 
@@ -215,7 +215,7 @@ static int mlx5dr_matcher_create_rtc_nic(struct mlx5dr_matcher *matcher,
 
 	nic_matcher->rtc = mlx5dr_cmd_rtc_create(ctx->ibv_ctx, &rtc_attr);
 	if (!nic_matcher->rtc) {
-		DRV_LOG(ERR, "Failed to create matcher RTC\n");
+		DRV_LOG(ERR, "Failed to create matcher RTC");
 		return errno;
 	}
 	return 0;
@@ -490,7 +490,7 @@ struct mlx5dr_matcher *mlx5dr_matcher_create(struct mlx5dr_table *tbl,
 		ret = mlx5dr_matcher_init(matcher, items);
 
 	if (ret) {
-		DRV_LOG(ERR, "Failed to initialise matcher: %d\n", ret);
+		DRV_LOG(ERR, "Failed to initialise matcher: %d", ret);
 		goto free_matcher;
 	}
 
