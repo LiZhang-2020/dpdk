@@ -4,7 +4,6 @@
 
 #include "mlx5dr_test.h"
 
-#define MAX_ITEMS 10
 #define NUM_POSTS 5
 #define POLL_ONCE 3
 
@@ -14,7 +13,7 @@ static int __mlx5dr_run_test_post(struct mlx5dr_context *ctx)
 	struct mlx5dr_send_engine_post_attr attr = {0};
 	struct mlx5dr_rule *poll_rule[NUM_POSTS + 1] = {0};
 	struct mlx5dr_send_engine_post_ctrl ctrl;
-	struct mlx5dr_rule rule[NUM_POSTS] = {0};
+	struct mlx5dr_rule rule[NUM_POSTS] = {{0}};
 	size_t len;
 	char *buf;
 	int ret = 0;

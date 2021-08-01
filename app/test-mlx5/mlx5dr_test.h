@@ -17,6 +17,8 @@
 #include "../../drivers/net/mlx5/steering/mlx5dr_send.h"
 #include "../../drivers/net/mlx5/steering/mlx5dr_rule.h"
 
+#define MAX_ITEMS 10
+
 /* Tests */
 
 int run_test_post_send(struct ibv_context *ibv_ctx);

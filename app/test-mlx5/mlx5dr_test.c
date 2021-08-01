@@ -38,7 +38,7 @@ static int test_run(struct ibv_context *ibv_ctx)
 #define min(a,b)            (((a) < (b)) ? (a) : (b))
 #endif
 
-static void test_selection(void)
+static int test_selection(void)
 {
 	const char *s = getenv("MLX5DR_TEST");
 	size_t i;
@@ -49,6 +49,11 @@ static void test_selection(void)
 	for (i = 0; i < sizeof(tests)/ sizeof(tests[0]); i++)
 		printf("\tTest: %s\n", tests[i].test_name);
 
+	if (!s) {
+		printf("Error MLX5DR_TEST not set\n");
+		return -1;
+	}
+
 	for (i = 0; i < sizeof(tests)/ sizeof(tests[0]); i++) {
 		if (memcmp(tests[i].test_name, s, min(strlen(s), strlen(tests[i].test_name))))
 			continue;
@@ -56,6 +61,7 @@ static void test_selection(void)
 		break;
 	}
 	printf("Test selected: %s\n", test.test_name);
+	return 0;
 }
 
 int main(int argc, char **argv)
@@ -100,7 +106,10 @@ int main(int argc, char **argv)
 	}
 	fprintf(stderr, "IB device %s Context found\n", dev_name);
 
-	test_selection();
+	ret = test_selection();
+	if (ret)
+		goto close_ib_dev;
+
 	ret = test_run(ibv_ctx);
 	if (ret)
 		goto close_ib_dev;
