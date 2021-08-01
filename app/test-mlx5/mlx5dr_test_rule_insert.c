@@ -31,6 +31,7 @@ int run_test_rule_insert(struct ibv_context *ibv_ctx)
 	struct mlx5dr_matcher *root_matcher, *hws_matcher1;
 	struct mlx5dr_rule_action rule_actions[10];
 	struct mlx5dr_action *to_hws_tbl;
+	struct mlx5dr_action *decap;
 	struct mlx5dr_action *drop;
 	struct mlx5dr_rule *connect_rule;
 	struct mlx5dr_rule *hws_rule;
@@ -95,18 +96,24 @@ int run_test_rule_insert(struct ibv_context *ibv_ctx)
 	}
 
 	/* Create goto table action */
-	to_hws_tbl = mlx5dr_action_create_dest_table(ctx, MLX5DR_ACTION_FLAG_ROOT_ONLY, hws_tbl);
+	to_hws_tbl = mlx5dr_action_create_dest_table(ctx, hws_tbl, MLX5DR_ACTION_FLAG_ROOT_RX);
 	if (!to_hws_tbl) {
 		printf("Failed to create action jump to HWS table\n");
 		goto destroy_hws_matcher1;
 	}
 
+	decap = mlx5dr_action_create_reformat(ctx, MLX5DR_ACTION_REFORMAT_TYPE_TNL_L2_TO_L2,
+					      0, NULL, 0, MLX5DR_ACTION_FLAG_ROOT_RX);
+	if (!decap) {
+		printf("Failed to create decap action\n");
+		goto destroy_action_to_hws_tbl;
+	}
 
 	/* Create drop action */
-	drop = mlx5dr_action_create_drop(ctx, MLX5DR_ACTION_FLAG_HWS_NIC_RX);
+	drop = mlx5dr_action_create_drop(ctx, MLX5DR_ACTION_FLAG_HWS_RX);
 	if (!drop) {
 		printf("Failed to create action drop\n");
-		goto destroy_action_to_hws_tbl;
+		goto destroy_action_decap;
 	}
 
 	/* Allocate connecting rule to HWS */
@@ -148,6 +155,7 @@ int run_test_rule_insert(struct ibv_context *ibv_ctx)
 	mlx5dr_rule_destroy(connect_rule, &rule_attr);
 	free(connect_rule);
 	mlx5dr_action_destroy(drop);
+	mlx5dr_action_destroy(decap);
 	mlx5dr_action_destroy(to_hws_tbl);
 	mlx5dr_matcher_destroy(hws_matcher1);
 	mlx5dr_matcher_destroy(root_matcher);
@@ -165,6 +173,8 @@ free_connect_rule:
 	free(connect_rule);
 destroy_action_drop:
 	mlx5dr_action_destroy(drop);
+destroy_action_decap:
+	mlx5dr_action_destroy(decap);
 destroy_action_to_hws_tbl:
 	mlx5dr_action_destroy(to_hws_tbl);
 destroy_hws_matcher1:
