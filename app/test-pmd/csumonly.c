@@ -762,7 +762,7 @@ pkt_copy_split(const struct rte_mbuf *pkt)
 }
 
 /*
- * Receive a burst of packets, and for each packet:
+ * For each packet in received mbuf:
  *  - parse packet, and try to recognize a supported packet type (1)
  *  - if it's not a supported packet type, don't touch the packet, else:
  *  - reprocess the checksum of all supported layers. This is done in SW
@@ -791,9 +791,9 @@ pkt_copy_split(const struct rte_mbuf *pkt)
  * OUTER_IP is only useful for tunnel packets.
  */
 static void
-pkt_burst_checksum_forward(struct fwd_stream *fs)
+checksum_forward_stream(struct fwd_stream *fs, uint16_t nb_rx,
+		struct rte_mbuf **pkts_burst)
 {
-	struct rte_mbuf *pkts_burst[MAX_PKT_BURST];
 	struct rte_mbuf *gso_segments[GSO_MAX_PKT_BURST];
 	struct rte_gso_ctx *gso_ctx;
 	struct rte_mbuf **tx_pkts_burst;
@@ -804,7 +804,6 @@ pkt_burst_checksum_forward(struct fwd_stream *fs)
 	void **gro_ctx;
 	uint16_t gro_pkts_num;
 	uint8_t gro_enable;
-	uint16_t nb_rx;
 	uint16_t nb_tx;
 	uint16_t nb_prep;
 	uint16_t i;
@@ -818,18 +817,6 @@ pkt_burst_checksum_forward(struct fwd_stream *fs)
 	uint16_t nb_segments = 0;
 	int ret;
 
-	uint64_t start_tsc = 0;
-
-	get_start_cycles(&start_tsc);
-
-	/* receive a burst of packet */
-	nb_rx = rte_eth_rx_burst(fs->rx_port, fs->rx_queue, pkts_burst,
-				 nb_pkt_per_burst);
-	inc_rx_burst_stats(fs, nb_rx);
-	if (unlikely(nb_rx == 0))
-		return;
-
-	fs->rx_packets += nb_rx;
 	rx_bad_ip_csum = 0;
 	rx_bad_l4_csum = 0;
 	rx_bad_outer_l4_csum = 0;
@@ -1132,8 +1119,15 @@ tunnel_update:
 			rte_pktmbuf_free(tx_pkts_burst[nb_tx]);
 		} while (++nb_tx < nb_rx);
 	}
+}
 
-	get_end_cycles(fs, start_tsc);
+/*
+ * Wrapper of real fwd engine.
+ */
+static void
+pkt_burst_checksum_forward(struct fwd_stream *fs)
+{
+	return do_burst_fwd(fs, checksum_forward_stream);
 }
 
 struct fwd_engine csum_fwd_engine = {
