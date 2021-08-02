@@ -54,8 +54,8 @@ struct mlx5dr_table_attr {
 struct mlx5dr_matcher_attr {
 	uint32_t priority;
 	enum mlx5dr_matcher_insertion_mode insertion_mode;
-	uint32_t size_hint_rows_log;
-	uint32_t size_hint_column_log;
+	uint32_t sz_hint_row_log;
+	uint32_t sz_hint_col_log;
 };
 
 struct mlx5dr_rule_attr {

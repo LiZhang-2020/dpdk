@@ -192,6 +192,9 @@ static int mlx5dr_matcher_create_rtc_nic(struct mlx5dr_matcher *matcher,
 	ste_pool = ctx->ste_pool[tbl->type];
 	stc_pool = ctx->stc_pool[tbl->type];
 
+	nic_matcher->ste.order = matcher->attr.sz_hint_col_log +
+				 matcher->attr.sz_hint_row_log;
+
 	ret = mlx5dr_pool_chunk_alloc(ste_pool, &nic_matcher->ste);
 	if (ret) {
 		DRV_LOG(ERR, "Failed to allocate STE for matcher RTC");
@@ -205,8 +208,8 @@ static int mlx5dr_matcher_create_rtc_nic(struct mlx5dr_matcher *matcher,
 	rtc_attr.definer_id = matcher->definer->id;
 	rtc_attr.miss_ft_id = matcher->end_ft->id;
 	rtc_attr.update_index_mode = MLX5_IFC_RTC_STE_UPDATE_MODE_BY_HASH;
-	rtc_attr.log_depth = matcher->attr.size_hint_column_log;
-	rtc_attr.log_size = matcher->attr.size_hint_rows_log;
+	rtc_attr.log_depth = matcher->attr.sz_hint_col_log;
+	rtc_attr.log_size = matcher->attr.sz_hint_row_log;
 	rtc_attr.table_type = tbl->fw_ft_type;
 	rtc_attr.pd = ctx->pd_num;
 
