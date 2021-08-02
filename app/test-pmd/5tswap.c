@@ -82,18 +82,16 @@ swap_udp(struct rte_udp_hdr *udp_hdr)
  * Parses each layer and swaps it. When the next layer doesn't match it stops.
  */
 static void
-pkt_burst_5tuple_swap(struct fwd_stream *fs)
+_5tuple_swap_stream(struct fwd_stream *fs, uint16_t nb_rx,
+		struct rte_mbuf **pkts_burst)
 {
-	struct rte_mbuf  *pkts_burst[MAX_PKT_BURST];
 	struct rte_port  *txp;
 	struct rte_mbuf *mb;
 	uint16_t next_proto;
 	uint64_t ol_flags;
 	uint16_t proto;
-	uint16_t nb_rx;
 	uint16_t nb_tx;
 	uint32_t retry;
-
 	int i;
 	union {
 		struct rte_ether_hdr *eth;
@@ -105,20 +103,6 @@ pkt_burst_5tuple_swap(struct fwd_stream *fs)
 		uint8_t *byte;
 	} h;
 
-	uint64_t start_tsc = 0;
-
-	get_start_cycles(&start_tsc);
-
-	/*
-	 * Receive a burst of packets and forward them.
-	 */
-	nb_rx = rte_eth_rx_burst(fs->rx_port, fs->rx_queue, pkts_burst,
-				 nb_pkt_per_burst);
-	inc_rx_burst_stats(fs, nb_rx);
-	if (unlikely(nb_rx == 0))
-		return;
-
-	fs->rx_packets += nb_rx;
 	txp = &ports[fs->tx_port];
 	ol_flags = ol_flags_init(txp->dev_conf.txmode.offloads);
 	vlan_qinq_set(pkts_burst, nb_rx, ol_flags,
@@ -182,7 +166,15 @@ pkt_burst_5tuple_swap(struct fwd_stream *fs)
 			rte_pktmbuf_free(pkts_burst[nb_tx]);
 		} while (++nb_tx < nb_rx);
 	}
-	get_end_cycles(fs, start_tsc);
+}
+
+/*
+ * Wrapper of real fwd engine.
+ */
+static void
+pkt_burst_5tuple_swap(struct fwd_stream *fs)
+{
+	return do_burst_fwd(fs, _5tuple_swap_stream);
 }
 
 struct fwd_engine five_tuple_swap_fwd_engine = {
