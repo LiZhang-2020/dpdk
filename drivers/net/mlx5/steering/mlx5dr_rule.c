@@ -14,7 +14,6 @@ static int mlx5dr_rule_build_tag(uint8_t *tag, struct rte_flow_item *items)
 
 			MLX5_SET(ste_def22, tag, outer_ip_src_addr, v->src_addr);
 			MLX5_SET(ste_def22, tag, outer_ip_dst_addr, v->dst_addr);
-
 			break;
 		}
 		default:
@@ -39,16 +38,21 @@ static int mlx5dr_rule_create_hws(struct mlx5dr_rule *rule,
 	struct mlx5dr_send_engine_post_ctrl ctrl;
 	size_t wqe_len;
 
+	/* Check if there are pending work completions */
+
+	/* Check if there is room in queue */
+
 	rule->status = MLX5DR_RULE_STATUS_CREATING;
 
-	/* Build tag + actions attr */
+	/* Allocate WQE */
 	ctrl = mlx5dr_send_engine_post_start(&ctx->send_queue[attr->queue_id]);
 	mlx5dr_send_engine_post_req_wqe(&ctrl, (void *)&wqe_ctrl, &wqe_len);
 	mlx5dr_send_engine_post_req_wqe(&ctrl, (void *)&wqe_data, &wqe_len);
 
-	wqe_ctrl->op_dirix = 0;
-	wqe_ctrl->stc_ix[0] = htobe32(num_actions << 29);
-	wqe_ctrl->stc_ix[0] |= htobe32(rule_actions->action->stc_rx.offset);
+	/* Prepare rule insert WQE */
+	wqe_ctrl->op_dirix = htobe32(MLX5DR_WQR_GTA_OP_ACTIVATE << 28);
+	wqe_ctrl->stc_ix[0] = htobe32(num_actions << 29 |
+				      rule_actions->action->stc_rx.offset);
 
 	/* Create tag directly on WQE and backup it on the rule for deletion */
 	mlx5dr_rule_build_tag((uint8_t *)wqe_data->tag, items);
@@ -75,11 +79,24 @@ static int mlx5dr_rule_destroy_hws(struct mlx5dr_rule *rule,
 	struct mlx5dr_send_engine_post_ctrl ctrl;
 	size_t wqe_len;
 
+	/* Check if there are pending work completions */
+
+	/* In case the rule is not completed */
+	if (rule->status != MLX5DR_RULE_STATUS_CREATED) {
+		rte_errno = EBUSY;
+		return rte_errno;
+	}
+
+	rule->status = MLX5DR_RULE_STATUS_DELETING;
+
+	/* Check if there is room in queue */
+
+	/* Allocate WQE */
 	ctrl = mlx5dr_send_engine_post_start(&ctx->send_queue[attr->queue_id]);
 	mlx5dr_send_engine_post_req_wqe(&ctrl, (void *)&wqe_ctrl, &wqe_len);
 	mlx5dr_send_engine_post_req_wqe(&ctrl, (void *)&wqe_data, &wqe_len);
 
-	wqe_ctrl->op_dirix = htobe32(0x1 << 28); /* Destroy */
+	wqe_ctrl->op_dirix = htobe32(MLX5DR_WQR_GTA_OP_DEACTIVATE << 28);
 
 	memcpy(wqe_data->tag, rule->match_tag, MLX5DR_MATCH_TAG_SZ);
 
@@ -155,11 +172,6 @@ static int mlx5dr_rule_destroy_root(struct mlx5dr_rule *rule)
 	return ibv_destroy_flow(rule->flow);
 }
 
-size_t mlx5dr_rule_get_handle_size(void)
-{
-	return sizeof(struct mlx5dr_rule);
-}
-
 int mlx5dr_rule_create(struct mlx5dr_matcher *matcher,
 		       struct rte_flow_item items[],
 		       struct mlx5dr_rule_action rule_actions[],
@@ -174,15 +186,12 @@ int mlx5dr_rule_create(struct mlx5dr_matcher *matcher,
 					       items,
 					       rule_actions,
 					       num_of_actions);
-	else
-		return mlx5dr_rule_create_hws(rule_handle,
-					      items,
-					      attr,
-					      rule_actions,
-					      num_of_actions);
 
-	rte_errno = ENOTSUP;
-	return rte_errno;
+	return mlx5dr_rule_create_hws(rule_handle,
+				      items,
+				      attr,
+				      rule_actions,
+				      num_of_actions);
 }
 
 int mlx5dr_rule_destroy(struct mlx5dr_rule *rule,
@@ -190,9 +199,11 @@ int mlx5dr_rule_destroy(struct mlx5dr_rule *rule,
 {
 	if (mlx5dr_table_is_root(rule->matcher->tbl))
 		return mlx5dr_rule_destroy_root(rule);
-	else
-		return mlx5dr_rule_destroy_hws(rule, attr);
 
-	rte_errno = ENOTSUP;
-	return rte_errno;
+	return mlx5dr_rule_destroy_hws(rule, attr);
+}
+
+size_t mlx5dr_rule_get_handle_size(void)
+{
+	return sizeof(struct mlx5dr_rule);
 }

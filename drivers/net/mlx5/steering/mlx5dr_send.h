@@ -101,6 +101,11 @@ struct mlx5dr_wqe_ctrl_seg {
         __be32 imm;
 };
 
+enum mlx5dr_wqe_gta_op {
+	MLX5DR_WQR_GTA_OP_ACTIVATE = 0,
+	MLX5DR_WQR_GTA_OP_DEACTIVATE = 1,
+};
+
 struct mlx5dr_wqe_gta_ctrl_seg {
 	__be32 op_dirix;
 	__be32 stc_ix[5];
