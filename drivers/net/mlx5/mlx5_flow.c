@@ -6414,12 +6414,15 @@ flow_list_create(struct rte_eth_dev *dev, enum mlx5_flow_type type,
 		goto error_before_hairpin_split;
 	flow = mlx5_ipool_zmalloc(priv->flows[type], &idx);
 	if (!flow) {
-		rte_errno = ENOMEM;
+		rte_flow_error_set(error, ENOMEM, RTE_FLOW_ERROR_TYPE_HANDLE,
+				   NULL, "not enough memory for rte_flow");
 		goto error_before_hairpin_split;
 	}
 	if (hairpin_flow > 0) {
 		if (hairpin_flow > MLX5_MAX_SPLIT_ACTIONS) {
-			rte_errno = EINVAL;
+			rte_flow_error_set(error, EINVAL,
+					   RTE_FLOW_ERROR_TYPE_ACTION_NUM, NULL,
+					   "too many hairpin Tx actions");
 			goto error_before_hairpin_split;
 		}
 		flow_hairpin_split(dev, actions, actions_rx.actions,
@@ -6567,8 +6570,6 @@ error:
 			rss_desc->shared_rss))->refcnt, 1, __ATOMIC_RELAXED);
 	mlx5_ipool_free(priv->flows[type], idx);
 	rte_errno = ret; /* Restore rte_errno. */
-	ret = rte_errno;
-	rte_errno = ret;
 error_before_hairpin_split:
 	if (unlikely((uintptr_t)translated_actions !=
 		     (uintptr_t)actions_translate.actions))
