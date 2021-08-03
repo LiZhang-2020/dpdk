@@ -90,23 +90,17 @@ port_ieee1588_tx_timestamp_check(portid_t pi)
 }
 
 static void
-ieee1588_packet_fwd(struct fwd_stream *fs)
+ieee1588_fwd_stream(struct fwd_stream *fs, uint16_t nb_rx,
+		struct rte_mbuf **pkt)
 {
-	struct rte_mbuf  *mb;
+	struct rte_mbuf *mb = (*pkt);
 	struct rte_ether_hdr *eth_hdr;
 	struct rte_ether_addr addr;
 	struct ptpv2_msg *ptp_hdr;
 	uint16_t eth_type;
 	uint32_t timesync_index;
 
-	/*
-	 * Receive 1 packet at a time.
-	 */
-	if (rte_eth_rx_burst(fs->rx_port, fs->rx_queue, &mb, 1) == 0)
-		return;
-
-	fs->rx_packets += 1;
-
+	RTE_SET_USED(nb_rx);
 	/*
 	 * Check that the received packet is a PTP packet that was detected
 	 * by the hardware.
@@ -196,6 +190,22 @@ ieee1588_packet_fwd(struct fwd_stream *fs)
 	 * Check the TX timestamp.
 	 */
 	port_ieee1588_tx_timestamp_check(fs->rx_port);
+}
+
+/*
+ * Wrapper of real fwd ingine.
+ */
+static void
+ieee1588_packet_fwd(struct fwd_stream *fs)
+{
+	struct rte_mbuf *mb;
+
+	if (rte_eth_rx_burst(fs->rx_port, fs->rx_queue, &mb, 1) == 0)
+		return;
+	if (unlikely(rxq_share > 0))
+		forward_shared_rxq(fs, 1, &mb, ieee1588_fwd_stream);
+	else
+		ieee1588_fwd_stream(fs, 1, &mb);
 }
 
 static void
