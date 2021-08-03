@@ -2,9 +2,52 @@
  * Copyright (c) 2021 NVIDIA CORPORATION. All rights reserved.
  */
 
+#include <time.h>
 #include "mlx5dr_test.h"
 
 #define MAX_ITEMS 10
+#define BIG_LOOP 10
+#define MAX_ITEMS 10
+#define QUEUE_SIZE 256
+#define NUM_OF_RULES (QUEUE_SIZE * 3906) // Almost 1M
+#define BURST_TH (QUEUE_SIZE / 8)
+#define CPU_FREQ 3200000000
+
+static int poll_for_comp(struct mlx5dr_context *ctx,
+			 uint16_t queue_id,
+			 uint32_t *pending_rules,
+			 bool drain)
+{
+	bool queue_full = *pending_rules == QUEUE_SIZE;
+	bool got_comp = *pending_rules >= BURST_TH;
+	struct rte_flow_q_op_res comp[BURST_TH];
+	int ret;
+
+	/* Check if there are any completions at all */
+	if (!got_comp)
+		return 0;
+
+	while (queue_full || ((got_comp || drain) && *pending_rules)) {
+		ret = mlx5dr_send_queue_poll(ctx, queue_id, comp, BURST_TH);
+		if (ret < 0) {
+			printf("Failed during poll queue\n");
+			return -1;
+		}
+
+		if (ret) {
+			if (ret != BURST_TH) {
+				printf("BUG in QP ret=%d\n", ret);
+				return -1;
+			}
+			queue_full = false;
+			(*pending_rules) -= ret;
+		}
+
+		got_comp = !!ret;
+	}
+
+	return 0;
+}
 
 static void set_mask_and_value(struct rte_ipv4_hdr *mask,
 			       struct rte_ipv4_hdr *value,
@@ -17,7 +60,6 @@ static void set_mask_and_value(struct rte_ipv4_hdr *mask,
 	value->version = 0x4;
 
 	mask->dst_addr = 0xffffffff;
-	value->dst_addr = 0x01010102;
 
 	items[0].type = RTE_FLOW_ITEM_TYPE_IPV4;
 	items[0].mask = mask;
@@ -44,12 +86,18 @@ int run_test_rule_insert(struct ibv_context *ibv_ctx)
 	struct rte_flow_item items[MAX_ITEMS] = {{0}};
 	struct rte_ipv4_hdr ipv_mask;
 	struct rte_ipv4_hdr ipv_value;
-	int ret;
+	uint32_t pending_rules = 0;
+	/* Measure time way 1 */
+	uint64_t start, end;
+	/* Measure time way 2 */
+	// clock_t start2, end2;
+	// double cpu_time_used;
+	int ret, i, j;
 
 	dr_ctx_attr.initial_log_ste_memory = 0;
 	dr_ctx_attr.pd = NULL;
 	dr_ctx_attr.queues = 16;
-	dr_ctx_attr.queue_size = 256;
+	dr_ctx_attr.queue_size = QUEUE_SIZE;
 
 	ctx = mlx5dr_context_open(ibv_ctx, &dr_ctx_attr);
 	if (!ctx) {
@@ -126,7 +174,9 @@ int run_test_rule_insert(struct ibv_context *ibv_ctx)
 	}
 
 	/* Create connecting rule to HWS */
+	ipv_value.dst_addr = 0x01010102;
 	rule_actions[0].action = to_hws_tbl;
+
 	ret = mlx5dr_rule_create(root_matcher, items, rule_actions, 1, &rule_attr, connect_rule);
 	if (ret) {
 		printf("Failed to create connect rule\n");
@@ -134,25 +184,69 @@ int run_test_rule_insert(struct ibv_context *ibv_ctx)
 	}
 
 	/* Allocate HWS rules */
-	hws_rule = calloc(1, mlx5dr_rule_get_handle_size());
+	hws_rule = calloc(NUM_OF_RULES, mlx5dr_rule_get_handle_size());
 	if (!hws_rule) {
 		printf("Failed to allocate memory for hws_rule\n");
 		goto destroy_connect_rule;
 	}
 
-	/* Create HWS rules */
-	rule_attr.queue_id = 0;
-	rule_attr.burst = 0;
-	rule_attr.user_data = hws_rule;
+	for (j = 0; j < BIG_LOOP; j++) {
+		start = rte_rdtsc();
 
-	rule_actions[0].action = drop;
-	ret = mlx5dr_rule_create(hws_matcher1, items, rule_actions, 1, &rule_attr, hws_rule);
-	if (ret) {
-		printf("Failed to create hws rule\n");
-		goto free_hws_rules;
+		/* Create HWS rules */
+		for (i = 0; i < NUM_OF_RULES; i++) {
+			rule_attr.queue_id = 0;
+			rule_attr.user_data = &hws_rule[i];
+
+			/* Ring doorbell */
+			rule_attr.burst = ((i + 1) % BURST_TH == 0);
+
+			ipv_value.dst_addr = i;
+			rule_actions[0].action = drop;
+
+			ret = mlx5dr_rule_create(hws_matcher1, items, rule_actions, 1, &rule_attr, &hws_rule[i]);
+			if (ret) {
+				printf("Failed to create hws rule\n");
+				goto free_hws_rules;
+			}
+
+			pending_rules++;
+
+			poll_for_comp(ctx, rule_attr.queue_id, &pending_rules, false);
+		}
+
+		end = rte_rdtsc();
+		printf("K-Rules/Sec: %lf Insertion\n", (double) ((double) NUM_OF_RULES / 1000) / ((double) (end - start) / CPU_FREQ));
+
+		/* Drain the queue */
+		poll_for_comp(ctx, rule_attr.queue_id, &pending_rules, true);
+
+		start = rte_rdtsc();
+
+		/* Delete HWS rules */
+		for (i = 0; i < NUM_OF_RULES; i++) {
+			rule_attr.queue_id = 0;
+			rule_attr.user_data = &hws_rule[i];
+
+			/* Ring doorbell */
+			rule_attr.burst = ((i + 1) % (BURST_TH) == 0);
+
+			rule_actions[0].action = drop;
+			ret = mlx5dr_rule_destroy(&hws_rule[i], &rule_attr);
+			if (ret) {
+				printf("Failed to destroy hws rule\n");
+				goto free_hws_rules;
+			}
+
+			pending_rules++;
+
+			poll_for_comp(ctx, rule_attr.queue_id, &pending_rules, false);
+		}
+
+		end = rte_rdtsc();
+		printf("K-Rules/Sec: %lf Deletion\n", (double) ((double) NUM_OF_RULES / 1000) / ((double) (end - start) / CPU_FREQ));
 	}
 
-	mlx5dr_rule_destroy(hws_rule, &rule_attr);
 	free(hws_rule);
 	mlx5dr_rule_destroy(connect_rule, &rule_attr);
 	free(connect_rule);

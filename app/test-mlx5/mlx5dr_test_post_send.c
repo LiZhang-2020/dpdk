@@ -11,7 +11,7 @@ static int __mlx5dr_run_test_post(struct mlx5dr_context *ctx)
 {
 	struct mlx5dr_send_engine *queue = &ctx->send_queue[0];
 	struct mlx5dr_send_engine_post_attr attr = {0};
-	struct rte_flow_q_op_res res[NUM_POSTS + 1] = {0};
+	struct rte_flow_q_op_res res[NUM_POSTS + 1] = {{0}};
 	struct mlx5dr_send_engine_post_ctrl ctrl;
 	struct mlx5dr_rule rule[NUM_POSTS] = {{0}};
 	size_t len;
