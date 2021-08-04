@@ -4,6 +4,8 @@
 
 #include "mlx5dr_test.h"
 
+#define MAX_ITEMS 10
+
 static void set_mask_and_value(struct rte_ipv4_hdr *mask,
 			       struct rte_ipv4_hdr *value,
 			       struct rte_flow_item *items)
@@ -141,7 +143,7 @@ int run_test_rule_insert(struct ibv_context *ibv_ctx)
 	/* Create HWS rules */
 	rule_attr.queue_id = 0;
 	rule_attr.burst = 0;
-	rule_attr.requst_comp = 1;
+	rule_attr.user_data = hws_rule;
 
 	rule_actions[0].action = drop;
 	ret = mlx5dr_rule_create(hws_matcher1, items, rule_actions, 1, &rule_attr, hws_rule);

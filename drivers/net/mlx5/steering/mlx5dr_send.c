@@ -69,7 +69,7 @@ void mlx5dr_send_engine_post_end(struct mlx5dr_send_engine_post_ctrl *ctrl,
 	wqe_ctrl->flags = rte_cpu_to_be_32(attr->notify_hw ? MLX5_WQE_CTRL_CQ_UPDATE : 0);
 
 	sq->wr_priv[idx].rule = attr->rule;
-	sq->wr_priv[idx].user_comp = attr->user_comp;
+	sq->wr_priv[idx].rule->user_data = attr->user_data;
 	sq->wr_priv[idx].num_wqebbs = ctrl->num_wqebbs;
 
 	sq->cur_post += ctrl->num_wqebbs;
@@ -80,27 +80,33 @@ void mlx5dr_send_engine_post_end(struct mlx5dr_send_engine_post_ctrl *ctrl,
 
 static void mlx5dr_send_engine_update_rule(struct mlx5dr_send_engine *queue,
 					   struct mlx5dr_send_ring_priv *priv,
-					   struct mlx5dr_rule *rule[],
+					   struct rte_flow_q_op_res res[],
 					   size_t *i,
-					   size_t rule_sz)
+					   uint32_t res_nb)
 {
 	// TODO: Add check for cqe status i,j values for error
-	priv->rule->rule_status = MLX5DR_RULE_COMPLETED_SUCC;
-	if (priv->user_comp) {
-		if (*i < rule_sz) {
-			rule[*i] = priv->rule;
+
+	/* Increase the status, this only works on good flow as the enum
+	 * is arrange it away creating -> created -> deleting -> deleted
+	 */
+	priv->rule->status++;
+	if (priv->rule->user_data) {
+		if (*i < res_nb) {
+			res[*i].user_data = priv->rule->user_data;
+			res[*i].status = RTE_FLOW_Q_OP_RES_SUCCESS;
 			(*i)++;
 		} else {
 			TAILQ_INSERT_TAIL(&queue->completed, priv->rule, list);
+			/* TODO store SUCCESS OR FAILURE status */
 		}
 	}
 }
 
-static int __mlx5dr_send_engine_poll(struct mlx5dr_send_engine *queue,
-				     struct mlx5dr_send_ring *send_ring,
-				     struct mlx5dr_rule *rule[],
-				     size_t *i,
-				     size_t rule_sz)
+static int mlx5dr_send_engine_poll_cq(struct mlx5dr_send_engine *queue,
+				      struct mlx5dr_send_ring *send_ring,
+				      struct rte_flow_q_op_res res[],
+				      size_t *i,
+				      uint32_t res_nb)
 {
 	struct mlx5dr_send_ring_cq *cq = &send_ring->send_cq;
 	struct mlx5dr_send_ring_sq *sq = &send_ring->send_sq;
@@ -128,48 +134,78 @@ static int __mlx5dr_send_engine_poll(struct mlx5dr_send_engine *queue,
 
 	while (cq->poll_wqe != wqe_cnt) {
 		priv = &sq->wr_priv[cq->poll_wqe];
-		mlx5dr_send_engine_update_rule(queue, priv, rule, i, rule_sz);
+		mlx5dr_send_engine_update_rule(queue, priv, res, i, res_nb);
 		cq->poll_wqe = (cq->poll_wqe + priv->num_wqebbs) & sq->buf_mask;
 	}
 
 	priv = &sq->wr_priv[wqe_cnt];
 	cq->poll_wqe = (wqe_cnt + priv->num_wqebbs) & sq->buf_mask;
-	mlx5dr_send_engine_update_rule(queue, priv, rule, i, rule_sz);
+	mlx5dr_send_engine_update_rule(queue, priv, res, i, res_nb);
 	cq->cons_index++;
 
 	return 1;
 }
 
-int mlx5dr_send_engine_poll(struct mlx5dr_send_engine *queue,
-			    struct mlx5dr_rule *rule[], //TODO: Maybe should be rte flow res?
-			    size_t rule_sz)
+static int mlx5dr_send_engine_poll_cqs(struct mlx5dr_send_engine *queue,
+				       struct rte_flow_q_op_res res[],
+				       size_t *polled,
+				       uint32_t res_nb)
+{
+	int ret;
+	int j;
+
+	for (j = 0; j < MLX5DR_NUM_SEND_RINGS; j++) {
+		ret = mlx5dr_send_engine_poll_cq(queue, &queue->send_ring[j],
+						 &res[*polled], polled, res_nb);
+		*queue->send_ring[j].send_cq.db = htobe32(queue->send_ring[j].send_cq.cons_index & 0xffffff);
+	}
+
+	return ret;
+}
+
+static void mlx5dr_send_engine_poll_list(struct mlx5dr_send_engine *queue,
+					 struct rte_flow_q_op_res res[],
+					  size_t *polled,
+					  uint32_t res_nb)
 {
 	struct mlx5dr_rule *completed;
 	struct mlx5dr_rule *tmp;
-	size_t i = 0;
-	int ret = 1;
-	int j;
 
 	TAILQ_FOREACH_SAFE(completed, &queue->completed, list, tmp) {
-		if (i < rule_sz) {
-			rule[i] = completed;
+		if (*polled < res_nb) {
+			res[*polled].status = RTE_FLOW_Q_OP_RES_SUCCESS; /* Store real status */
+			res[*polled].user_data = completed->user_data;
 			TAILQ_REMOVE(&queue->completed, completed, list);
-			i++;
+			(*polled)++;
 		} else {
-			return i;
+			return;;
 		}
 	}
+}
 
-	if (i >= rule_sz)
-		return i;
+static int mlx5dr_send_engine_poll(struct mlx5dr_send_engine *queue,
+				   struct rte_flow_q_op_res res[],
+				   uint32_t res_nb)
+{
+	size_t polled = 0;
 
-	for (j = 0; j < MLX5DR_NUM_SEND_RINGS; j++) {
-		while (i < rule_sz && ret > 0)
-			ret = __mlx5dr_send_engine_poll(queue, &queue->send_ring[j], &rule[i], &i, rule_sz);
-		*(queue->send_ring[j].send_cq.db) = htobe32(queue->send_ring[j].send_cq.cons_index & 0xffffff);
-	}
+	mlx5dr_send_engine_poll_list(queue, res, &polled, res_nb);
 
-	return i;
+	if (polled >= res_nb)
+		return polled;
+
+	mlx5dr_send_engine_poll_cqs(queue, res, &polled, res_nb);
+
+	return polled;
+}
+
+int mlx5dr_send_queue_poll(struct mlx5dr_context *ctx,
+			   uint16_t queue_id,
+			   struct rte_flow_q_op_res res[],
+			   uint32_t res_nb)
+{
+	return mlx5dr_send_engine_poll(&ctx->send_queue[queue_id],
+				       res, res_nb);
 }
 
 static inline uint64_t roundup_pow_of_two(uint64_t n)

@@ -11,11 +11,12 @@ enum {
 };
 
 enum mlx5dr_rule_status {
-	MLX5DR_RULE_UNKNOWN,
-	MLX5DR_RULE_IN_QUEUE,
-	MLX5DR_RULE_COMPLETED_SUCC,
-	MLX5DR_RULE_COMPLETED_ERR,
-	MLX5DR_RULE_DELETED,
+	MLX5DR_RULE_STATUS_UNKNOWN,
+	MLX5DR_RULE_STATUS_CREATING,
+	MLX5DR_RULE_STATUS_CREATED,
+	MLX5DR_RULE_STATUS_DELETING,
+	MLX5DR_RULE_STATUS_DELETED,
+	MLX5DR_RULE_STATUS_FAILED,
 };
 
 struct mlx5dr_rule {
@@ -24,9 +25,9 @@ struct mlx5dr_rule {
 		uint8_t match_tag[MLX5DR_MATCH_TAG_SZ];
 		struct ibv_flow *flow;
 	};
-	enum mlx5dr_rule_status rule_status;
+	enum mlx5dr_rule_status status;
 	TAILQ_ENTRY(mlx5dr_rule) list;
-	void *user_id;
+	void *user_data;
 };
 
 #endif

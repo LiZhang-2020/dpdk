@@ -39,7 +39,7 @@ static int mlx5dr_rule_create_hws(struct mlx5dr_rule *rule,
 	struct mlx5dr_send_engine_post_ctrl ctrl;
 	size_t wqe_len;
 
-	rule->rule_status = MLX5DR_RULE_IN_QUEUE;
+	rule->status = MLX5DR_RULE_STATUS_CREATING;
 
 	/* Build tag + actions attr */
 	ctrl = mlx5dr_send_engine_post_start(&ctx->send_queue[attr->queue_id]);
@@ -58,7 +58,7 @@ static int mlx5dr_rule_create_hws(struct mlx5dr_rule *rule,
 	send_attr.opcode = 0x2c;
 	send_attr.len = 48 + 64;
 	send_attr.notify_hw = 1;
-	send_attr.user_comp = attr->requst_comp;
+	send_attr.user_data = attr->user_data;
 	send_attr.id = rule->matcher->rx.rtc->id;
 	mlx5dr_send_engine_post_end(&ctrl, &send_attr);
 
@@ -87,7 +87,7 @@ static int mlx5dr_rule_destroy_hws(struct mlx5dr_rule *rule,
 	send_attr.opcode = 0x2c;
 	send_attr.len = 48 + 64;
 	send_attr.notify_hw = 1;
-	send_attr.user_comp = attr->requst_comp;
+	send_attr.user_data = attr->user_data;
 
 	mlx5dr_send_engine_post_end(&ctrl, &send_attr);
 

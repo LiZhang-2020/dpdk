@@ -24,7 +24,6 @@ struct mlx5dr_send_ring_cq {
 struct mlx5dr_send_ring_priv {
 	struct mlx5dr_rule *rule;
 	uint32_t num_wqebbs;
-	uint8_t user_comp;
 };
 
 struct mlx5dr_send_ring_sq {
@@ -67,7 +66,7 @@ struct mlx5dr_send_engine_post_attr {
 	size_t len;
 	struct mlx5dr_rule *rule;
 	uint32_t id;
-	uint8_t user_comp;
+	void *user_data;
 	uint8_t notify_hw;
 };
 
@@ -138,9 +137,5 @@ void mlx5dr_send_engine_post_req_wqe(struct mlx5dr_send_engine_post_ctrl *ctrl,
 				     char **buf, size_t *len);
 void mlx5dr_send_engine_post_end(struct mlx5dr_send_engine_post_ctrl *ctrl,
 				 struct mlx5dr_send_engine_post_attr *attr);
-
-int mlx5dr_send_engine_poll(struct mlx5dr_send_engine *queue,
-			    struct mlx5dr_rule *rule[],
-			    size_t rule_sz);
 
 #endif

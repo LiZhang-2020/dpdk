@@ -61,7 +61,6 @@ struct mlx5dr_matcher_attr {
 struct mlx5dr_rule_attr {
 	uint16_t queue_id;
 	void *user_data;
-	uint32_t requst_comp:1;
 	uint32_t burst:1;
 };
 
@@ -150,5 +149,11 @@ mlx5dr_action_create_reformat(struct mlx5dr_context *ctx,
 			      uint32_t flags);
 
 int mlx5dr_action_destroy(struct mlx5dr_action *action);
+
+
+int mlx5dr_send_queue_poll(struct mlx5dr_context *ctx,
+			   uint16_t queue_id,
+			   struct rte_flow_q_op_res res[],
+			   uint32_t res_nb);
 
 #endif
