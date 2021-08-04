@@ -21,8 +21,11 @@ void mlx5dr_send_engine_post_req_wqe(struct mlx5dr_send_engine_post_ctrl *ctrl,
 				     char **buf, size_t *len)
 {
 	struct mlx5dr_send_ring_sq *send_sq = &ctrl->send_ring->send_sq;
+	unsigned int idx;
 
-	*buf = send_sq->buf + ((send_sq->cur_post + (ctrl->num_wqebbs << MLX5_SEND_WQE_SHIFT)) & send_sq->buf_mask);
+	idx = (send_sq->cur_post + ctrl->num_wqebbs) & send_sq->buf_mask;
+
+	*buf = send_sq->buf + (idx << MLX5_SEND_WQE_SHIFT);
 	*len = MLX5_SEND_WQE_BB;
 
 	if (!ctrl->num_wqebbs) {
@@ -117,7 +120,7 @@ static int __mlx5dr_send_engine_poll(struct mlx5dr_send_engine *queue,
 
 	if (cqe_opcode == MLX5_CQE_INVALID ||
 	    cqe_owner != sw_own)
-		return -1;
+		return 0;
 
 	rte_io_rmb();
 
@@ -240,6 +243,7 @@ static int mlx5dr_send_ring_open_sq(struct mlx5dr_context *ctx,
 		rte_errno = ENOMEM;
 		return err;
 	}
+	memset(sq->buf, 0, buf_aligned);
 
 	err = posix_memalign((void **)&sq->db, 8, 8);
 	if (err)
