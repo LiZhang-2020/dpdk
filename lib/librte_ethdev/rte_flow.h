@@ -39,6 +39,39 @@ extern "C" {
 #endif
 
 /**
+ * Result status enum.
+ */
+enum rte_flow_q_op_res_status {
+	/**
+	 * The operation was completed successfully.
+	 */
+	RTE_FLOW_Q_OP_RES_SUCCESS,
+	/**
+	 * The operation was not completed successfully.
+	 */
+	RTE_FLOW_Q_OP_RES_ERROR,
+};
+
+/**
+ * Op enqueue structure.
+ */
+struct rte_flow_q_op_res {
+	/**
+         * Returns the status of the job that this completion signals.
+         */
+	enum rte_flow_q_op_res_status status;
+	/**
+         * The pointer supplied during op submission.
+         * This pointer will hold the result of the operation.
+         */
+	void *data_out;
+	/**
+         * User data that was supplied during op submission.
+         */
+	void *user_data;
+};
+
+/**
  * Flow rule attributes.
  *
  * Priorities are set on a per rule based within groups.
