@@ -17,7 +17,7 @@ static int mlx5dr_matcher_create_end_ft(struct mlx5dr_matcher *matcher)
 	matcher->end_ft = mlx5dr_cmd_flow_table_create(tbl->ctx->ibv_ctx, &ft_attr);
 	if (!matcher->end_ft) {
 		DRV_LOG(ERR, "Failed to create matcher end flow table");
-		return errno;
+		return rte_errno;
 	}
 	return 0;
 }
@@ -463,12 +463,19 @@ free_mask:
 static int mlx5dr_matcher_uninit_root(struct mlx5dr_matcher *matcher)
 {
 	struct mlx5dr_context *ctx = matcher->tbl->ctx;
+	int ret;
 
 	pthread_spin_lock(&ctx->ctrl_lock);
 	LIST_REMOVE(matcher, next);
 	pthread_spin_unlock(&ctx->ctrl_lock);
 
-	return mlx5dv_destroy_flow_matcher(matcher->dv_matcher);
+	ret = mlx5dv_destroy_flow_matcher(matcher->dv_matcher);
+	if (ret) {
+		DRV_LOG(ERR, "Failed to Destroy DV flow matcher");
+		rte_errno = errno;
+	}
+
+	return ret;
 }
 
 struct mlx5dr_matcher *mlx5dr_matcher_create(struct mlx5dr_table *tbl,
