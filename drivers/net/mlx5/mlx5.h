@@ -1132,6 +1132,8 @@ struct mlx5_aso_ct_pool {
 	uint32_t index; /* Pool index in pools array. */
 	struct mlx5_devx_obj *devx_obj;
 	/* The first devx object in the bulk, used for freeing (not yet). */
+	void *dummy_action;
+	/* Dummy action to increase the reference count in the driver. */
 	struct mlx5_aso_ct_action actions[MLX5_ASO_CT_ACTIONS_PER_POOL];
 	/* CT action structures bulk. */
 };

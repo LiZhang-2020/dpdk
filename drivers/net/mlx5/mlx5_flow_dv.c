@@ -13173,6 +13173,18 @@ flow_dv_ct_pool_create(struct rte_eth_dev *dev,
 		mlx5_free(pool);
 		return NULL;
 	}
+#ifdef HAVE_MLX5_DR_ACTION_ASO_CT
+	pool->dummy_action = mlx5_glue->dv_create_flow_action_aso
+			(priv->sh->rx_domain, pool->devx_obj->obj, 0,
+			 MLX5DV_DR_ACTION_FLAGS_ASO_CT_DIRECTION_INITIATOR,
+			 REG_C_3 - REG_C_0);
+	if (!pool->dummy_action) {
+		rte_errno = errno;
+		claim_zero(mlx5_devx_cmd_destroy(obj));
+		mlx5_free(pool);
+		return NULL;
+	}
+#endif
 	mng->pools[pool->index] = pool;
 	mng->next++;
 	/* Assign the first action in the new pool, the rest go to free list. */

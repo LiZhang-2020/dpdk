@@ -792,6 +792,8 @@ mlx5_flow_aso_ct_mng_close(struct mlx5_dev_ctx_shared *sh)
 				claim_zero(mlx5_glue->destroy_flow_action
 							(ct->dr_action_rply));
 		}
+		claim_zero(mlx5_glue->destroy_flow_action
+						(ct_pool->dummy_action));
 		claim_zero(mlx5_devx_cmd_destroy(ct_pool->devx_obj));
 		if (cnt) {
 			DRV_LOG(DEBUG, "%u ASO CT objects are being used in the pool %u",
