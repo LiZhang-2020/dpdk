@@ -519,6 +519,7 @@ mlx5_alloc_dbr_page(void *ctx)
 			   RTE_CACHE_LINE_SIZE, SOCKET_ID_ANY);
 	if (!page) {
 		DRV_LOG(ERR, "cannot allocate dbr page");
+		rte_errno = ENOMEM;
 		return NULL;
 	}
 	/* Register allocated memory. */
@@ -526,6 +527,7 @@ mlx5_alloc_dbr_page(void *ctx)
 					      MLX5_DBR_PAGE_SIZE, 0);
 	if (!page->umem) {
 		DRV_LOG(ERR, "cannot umem reg dbr page");
+		rte_errno = errno;
 		mlx5_free(page);
 		return NULL;
 	}
