@@ -66,7 +66,6 @@ mlx5_vdpa_event_qp_global_prepare(struct mlx5_vdpa_priv *priv)
 	 */
 	priv->uar = mlx5_devx_alloc_uar(priv->ctx, -1);
 	if (!priv->uar) {
-		rte_errno = errno;
 		DRV_LOG(ERR, "Failed to allocate UAR.");
 		goto error;
 	}
