@@ -6299,14 +6299,17 @@ flow_rss_workspace_adjust(struct mlx5_flow_workspace *wks,
 			  struct mlx5_flow_rss_desc *rss_desc,
 			  uint32_t nrssq_num)
 {
+	uint16_t *new_q;
+
 	if (likely(nrssq_num <= wks->rssq_num))
 		return 0;
-	rss_desc->queue = realloc(rss_desc->queue,
-			  sizeof(*rss_desc->queue) * RTE_ALIGN(nrssq_num, 2));
-	if (!rss_desc->queue) {
+	new_q = realloc(rss_desc->queue,
+			sizeof(*rss_desc->queue) * RTE_ALIGN(nrssq_num, 2));
+	if (!new_q) {
 		rte_errno = ENOMEM;
 		return -1;
 	}
+	rss_desc->queue = new_q;
 	wks->rssq_num = RTE_ALIGN(nrssq_num, 2);
 	return 0;
 }
