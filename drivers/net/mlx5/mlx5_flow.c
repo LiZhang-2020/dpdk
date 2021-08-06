@@ -6486,8 +6486,10 @@ flow_list_create(struct rte_eth_dev *dev, enum mlx5_flow_type type,
 					      buf->entry[i].pattern,
 					      p_actions_rx, &flow_split_info,
 					      error);
-		if (ret < 0)
+		if (ret) {
+			MLX5_ASSERT(ret < 0);
 			goto error;
+		}
 		if (is_flow_tunnel_steer_rule(wks->flows[0].tof_type)) {
 			ret = flow_tunnel_add_default_miss(dev, flow, attr,
 							   p_actions_rx,
@@ -6518,8 +6520,10 @@ flow_list_create(struct rte_eth_dev *dev, enum mlx5_flow_type type,
 		ret = flow_drv_translate(dev, dev_flow, &attr_tx,
 					 items_tx.items,
 					 actions_hairpin_tx.actions, error);
-		if (ret < 0)
+		if (ret) {
+			MLX5_ASSERT(ret < 0);
 			goto error;
+		}
 	}
 	/*
 	 * Update the metadata register copy table. If extensive

@@ -13588,7 +13588,7 @@ flow_dv_translate(struct rte_eth_dev *dev,
 			if (dev_flow->dv.actions[actions_n])
 				++actions_n;
 			else
-				return rte_errno;
+				return -rte_errno;
 			break;
 		case RTE_FLOW_ACTION_TYPE_SET_META:
 			if (flow_dv_convert_action_set_meta
