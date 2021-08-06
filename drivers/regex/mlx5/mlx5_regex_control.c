@@ -105,7 +105,6 @@ regex_ctrl_create_cq(struct mlx5_regex_priv *priv, struct mlx5_regex_cq *cq)
 	cq->dbr_offset = mlx5_get_dbr(priv->ctx, &priv->dbrpgs, &dbr_page);
 	if (cq->dbr_offset < 0) {
 		DRV_LOG(ERR, "Can't allocate cq door bell record.");
-		rte_errno  = ENOMEM;
 		goto error;
 	}
 	cq->dbr_umem = mlx5_os_get_umem_id(dbr_page->umem);
@@ -188,7 +187,6 @@ regex_ctrl_create_sq(struct mlx5_regex_priv *priv, struct mlx5_regex_qp *qp,
 	sq->dbr_offset = mlx5_get_dbr(priv->ctx, &priv->dbrpgs, &dbr_page);
 	if (sq->dbr_offset < 0) {
 		DRV_LOG(ERR, "Can't allocate sq door bell record.");
-		rte_errno  = ENOMEM;
 		goto error;
 	}
 	sq->dbr_umem = mlx5_os_get_umem_id(dbr_page->umem);
