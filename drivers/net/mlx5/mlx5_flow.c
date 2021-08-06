@@ -7919,7 +7919,6 @@ mlx5_flow_create_counter_stat_mem_mng(struct mlx5_dev_ctx_shared *sh)
 	mem_mng->dm = mlx5_devx_cmd_mkey_create(sh->ctx, &mkey_attr);
 	if (!mem_mng->dm) {
 		claim_zero(mlx5_glue->devx_umem_dereg(mem_mng->umem));
-		rte_errno = errno;
 		mlx5_free(mem);
 		return -rte_errno;
 	}

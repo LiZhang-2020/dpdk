@@ -124,7 +124,6 @@ mlx5_devx_modify_sq(struct mlx5_txq_obj *obj, enum mlx5_txq_modify_type type,
 		if (ret) {
 			DRV_LOG(ERR, "Cannot change the Tx SQ state to RESET"
 				" %s", strerror(errno));
-			rte_errno = errno;
 			return ret;
 		}
 	}
@@ -136,7 +135,6 @@ mlx5_devx_modify_sq(struct mlx5_txq_obj *obj, enum mlx5_txq_modify_type type,
 		if (ret) {
 			DRV_LOG(ERR, "Cannot change the Tx SQ state to READY"
 				" %s", strerror(errno));
-			rte_errno = errno;
 			return ret;
 		}
 	}
@@ -686,12 +684,11 @@ mlx5_rxq_obj_hairpin_new(struct mlx5_rxq_priv *rxq)
 			MLX5_HAIRPIN_QUEUE_STRIDE;
 	attr.counter_set_id = priv->counter_set_id;
 	rxq->devx_rq = mlx5_devx_cmd_create_rq(priv->sh->ctx, &attr,
-					  rxq_ctrl->socket);
+					       rxq_ctrl->socket);
 	if (!rxq->devx_rq) {
 		DRV_LOG(ERR,
 			"Port %u Rx hairpin queue %u can't create rq object.",
 			priv->dev_data->port_id, idx);
-		rte_errno = errno;
 		return -rte_errno;
 	}
 	priv->dev_data->rx_queue_state[idx] = RTE_ETH_QUEUE_STATE_HAIRPIN;
@@ -853,7 +850,7 @@ mlx5_devx_ind_table_create_rqt_attr(struct rte_eth_dev *dev,
 	unsigned int i, j;
 
 	rqt_attr = mlx5_malloc(MLX5_MEM_ZERO, sizeof(*rqt_attr) +
-			      rqt_n * sizeof(uint32_t), 0, SOCKET_ID_ANY);
+			       rqt_n * sizeof(uint32_t), 0, SOCKET_ID_ANY);
 	if (!rqt_attr) {
 		DRV_LOG(ERR, "Port %u cannot allocate RQT resources.",
 			dev->data->port_id);
@@ -902,8 +899,8 @@ mlx5_devx_ind_table_new(struct rte_eth_dev *dev, const unsigned int log_n,
 
 	MLX5_ASSERT(ind_tbl);
 	rqt_attr = mlx5_devx_ind_table_create_rqt_attr(dev, log_n,
-							ind_tbl->queues,
-							ind_tbl->queues_n);
+						       ind_tbl->queues,
+						       ind_tbl->queues_n);
 	if (!rqt_attr)
 		return -rte_errno;
 	ind_tbl->rqt = mlx5_devx_cmd_create_rqt(priv->sh->ctx, rqt_attr);
@@ -911,7 +908,6 @@ mlx5_devx_ind_table_new(struct rte_eth_dev *dev, const unsigned int log_n,
 	if (!ind_tbl->rqt) {
 		DRV_LOG(ERR, "Port %u cannot create DevX RQT.",
 			dev->data->port_id);
-		rte_errno = errno;
 		return -rte_errno;
 	}
 	return 0;
@@ -1088,7 +1084,6 @@ mlx5_devx_hrxq_new(struct rte_eth_dev *dev, struct mlx5_hrxq *hrxq,
 	if (!hrxq->tir) {
 		DRV_LOG(ERR, "Port %u cannot create DevX TIR.",
 			dev->data->port_id);
-		rte_errno = errno;
 		goto error;
 	}
 #ifdef HAVE_IBV_FLOW_DV_SUPPORT
@@ -1164,7 +1159,6 @@ mlx5_devx_hrxq_modify(struct rte_eth_dev *dev, struct mlx5_hrxq *hrxq,
 	if (mlx5_devx_cmd_modify_tir(hrxq->tir, &modify_tir)) {
 		DRV_LOG(ERR, "port %u cannot modify DevX TIR",
 			dev->data->port_id);
-		rte_errno = errno;
 		return -rte_errno;
 	}
 	return 0;
@@ -1414,7 +1408,6 @@ mlx5_txq_obj_hairpin_new(struct rte_eth_dev *dev, uint16_t idx)
 		DRV_LOG(ERR,
 			"Port %u tx hairpin queue %u can't create SQ object.",
 			dev->data->port_id, idx);
-		rte_errno = errno;
 		return -rte_errno;
 	}
 	return 0;
@@ -1569,7 +1562,6 @@ mlx5_txq_create_devx_cq_resources(struct rte_eth_dev *dev, uint16_t idx)
 						&priv->sh->dbrpgs,
 						&txq_obj->cq_dbrec_page);
 	if (txq_obj->cq_dbrec_offset < 0) {
-		rte_errno = errno;
 		DRV_LOG(ERR, "Failed to allocate CQ door-bell.");
 		goto error;
 	}
@@ -1586,7 +1578,6 @@ mlx5_txq_create_devx_cq_resources(struct rte_eth_dev *dev, uint16_t idx)
 	/* Create completion queue object with DevX. */
 	txq_obj->cq_devx = mlx5_devx_cmd_create_cq(priv->sh->ctx, &cq_attr);
 	if (!txq_obj->cq_devx) {
-		rte_errno = errno;
 		DRV_LOG(ERR, "Port %u Tx queue %u CQ creation failure.",
 			dev->data->port_id, idx);
 		goto error;
@@ -1670,7 +1661,6 @@ mlx5_txq_create_devx_sq_resources(struct rte_eth_dev *dev, uint16_t idx,
 						&priv->sh->dbrpgs,
 						&txq_obj->sq_dbrec_page);
 	if (txq_obj->sq_dbrec_offset < 0) {
-		rte_errno = errno;
 		DRV_LOG(ERR, "Failed to allocate SQ door-bell.");
 		goto error;
 	}
@@ -1699,7 +1689,6 @@ mlx5_txq_create_devx_sq_resources(struct rte_eth_dev *dev, uint16_t idx,
 	/* Create Send Queue object with DevX. */
 	txq_obj->sq_devx = mlx5_devx_cmd_create_sq(priv->sh->ctx, &sq_attr);
 	if (!txq_obj->sq_devx) {
-		rte_errno = errno;
 		DRV_LOG(ERR, "Port %u Tx queue %u SQ creation failure.",
 			dev->data->port_id, idx);
 		goto error;
@@ -1753,7 +1742,6 @@ mlx5_txq_devx_obj_new(struct rte_eth_dev *dev, uint16_t idx)
 	txq_obj->dev = dev;
 	cqe_n = mlx5_txq_create_devx_cq_resources(dev, idx);
 	if (!cqe_n) {
-		rte_errno = errno;
 		goto error;
 	}
 	txq_data->cqe_n = log2above(cqe_n);
@@ -1789,7 +1777,6 @@ mlx5_txq_devx_obj_new(struct rte_eth_dev *dev, uint16_t idx)
 	log_desc_n = log2above((1UL << txq_data->elts_n) * wqe_size);
 	wqe_n = mlx5_txq_create_devx_sq_resources(dev, idx, log_desc_n);
 	if (!wqe_n) {
-		rte_errno = errno;
 		goto error;
 	}
 	/* Create the Work Queue. */
@@ -1811,7 +1798,6 @@ mlx5_txq_devx_obj_new(struct rte_eth_dev *dev, uint16_t idx)
 	/* Change Send Queue state to Ready-to-Send. */
 	ret = mlx5_devx_modify_sq(txq_obj, MLX5_TXQ_MOD_RST2RDY, 0);
 	if (ret) {
-		rte_errno = errno;
 		DRV_LOG(ERR,
 			"Port %u Tx queue %u SQ state to SQC_STATE_RDY failed.",
 			dev->data->port_id, idx);

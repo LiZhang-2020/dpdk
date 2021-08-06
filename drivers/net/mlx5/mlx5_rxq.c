@@ -622,7 +622,6 @@ mlx5_rx_queue_start_primary(struct rte_eth_dev *dev, uint16_t idx)
 	ret = rxq_alloc_elts(rxq->ctrl);
 	if (ret) {
 		DRV_LOG(ERR, "Cannot reallocate buffers for Rx WQ");
-		rte_errno = errno;
 		return ret;
 	}
 	rte_io_wmb();

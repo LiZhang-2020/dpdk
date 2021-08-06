@@ -287,7 +287,6 @@ mlx5_txpp_create_rearm_queue(struct mlx5_dev_ctx_shared *sh)
 	cq_attr.log_page_size = rte_log2_u32(page_size);
 	wq->cq = mlx5_devx_cmd_create_cq(sh->ctx, &cq_attr);
 	if (!wq->cq) {
-		rte_errno = errno;
 		DRV_LOG(ERR, "Failed to create CQ for Rearm Queue.");
 		goto error;
 	}
@@ -342,7 +341,6 @@ mlx5_txpp_create_rearm_queue(struct mlx5_dev_ctx_shared *sh)
 	sq_attr.ts_format = mlx5_ts_format_conv(sh->sq_ts_format),
 	wq->sq = mlx5_devx_cmd_create_sq(sh->ctx, &sq_attr);
 	if (!wq->sq) {
-		rte_errno = errno;
 		DRV_LOG(ERR, "Failed to create SQ for Rearm Queue.");
 		goto error;
 	}
@@ -526,7 +524,6 @@ mlx5_txpp_create_clock_queue(struct mlx5_dev_ctx_shared *sh)
 	cq_attr.log_page_size = rte_log2_u32(page_size);
 	wq->cq = mlx5_devx_cmd_create_cq(sh->ctx, &cq_attr);
 	if (!wq->cq) {
-		rte_errno = errno;
 		DRV_LOG(ERR, "Failed to create CQ for Clock Queue.");
 		goto error;
 	}
@@ -594,7 +591,6 @@ mlx5_txpp_create_clock_queue(struct mlx5_dev_ctx_shared *sh)
 	sq_attr.ts_format = mlx5_ts_format_conv(sh->sq_ts_format);
 	wq->sq = mlx5_devx_cmd_create_sq(sh->ctx, &sq_attr);
 	if (!wq->sq) {
-		rte_errno = errno;
 		DRV_LOG(ERR, "Failed to create SQ for Clock Queue.");
 		goto error;
 	}

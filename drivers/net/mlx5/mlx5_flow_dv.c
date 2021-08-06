@@ -13240,10 +13240,10 @@ flow_dv_aso_ct_alloc(struct rte_eth_dev *dev, struct rte_flow_error *error)
 		RTE_SET_USED(reg_c);
 #endif
 		if (!ct->dr_action_orig) {
-			flow_dv_aso_ct_dev_release(dev, ct_idx);
-			rte_flow_error_set(error, rte_errno,
+			rte_flow_error_set(error, errno,
 					   RTE_FLOW_ERROR_TYPE_ACTION, NULL,
 					   "failed to create ASO CT action");
+			flow_dv_aso_ct_dev_release(dev, ct_idx);
 			return 0;
 		}
 	}
@@ -13256,10 +13256,10 @@ flow_dv_aso_ct_alloc(struct rte_eth_dev *dev, struct rte_flow_error *error)
 			 reg_c - REG_C_0);
 #endif
 		if (!ct->dr_action_rply) {
-			flow_dv_aso_ct_dev_release(dev, ct_idx);
-			rte_flow_error_set(error, rte_errno,
+			rte_flow_error_set(error, errno,
 					   RTE_FLOW_ERROR_TYPE_ACTION, NULL,
 					   "failed to create ASO CT action");
+			flow_dv_aso_ct_dev_release(dev, ct_idx);
 			return 0;
 		}
 	}
@@ -13816,7 +13816,7 @@ flow_dv_translate(struct rte_eth_dev *dev,
 						       0, error);
 			if (!tbl)
 				return rte_flow_error_set
-						(error, errno,
+						(error, rte_errno,
 						 RTE_FLOW_ERROR_TYPE_ACTION,
 						 NULL,
 						 "cannot create jump action.");
@@ -13824,7 +13824,7 @@ flow_dv_translate(struct rte_eth_dev *dev,
 			    (dev, tbl, dev_flow, error)) {
 				flow_dv_tbl_resource_release(MLX5_SH(dev), tbl);
 				return rte_flow_error_set
-						(error, errno,
+						(error, EFAULT,
 						 RTE_FLOW_ERROR_TYPE_ACTION,
 						 NULL,
 						 "cannot create jump action.");
