@@ -313,7 +313,8 @@ prep_regex_umr_wqe_set(struct mlx5_regex_priv *priv, struct mlx5_regex_qp *qp,
 	struct mlx5_regex_job *job = NULL;
 	size_t hw_qpid = qp_obj->qpn, mkey_job_id = 0;
 	size_t left_ops = nb_ops;
-	uint32_t klm_num = 0, len;
+	uint32_t klm_num = 0;
+	uint32_t len = 0;
 	struct mlx5_klm *mkey_klm = NULL;
 	struct mlx5_klm klm;
 
