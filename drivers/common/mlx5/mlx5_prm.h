@@ -2808,6 +2808,7 @@ enum {
 	MLX5_GENERAL_OBJ_TYPE_FLOW_METER_ASO = 0x0024,
 	MLX5_GENERAL_OBJ_TYPE_FLOW_HIT_ASO = 0x0025,
 	MLX5_GENERAL_OBJ_TYPE_CONN_TRACK_OFFLOAD = 0x0031,
+	MLX5_GENERAL_OBJ_TYPE_ARG = 0x0023,
 	MLX5_GENERAL_OBJ_TYPE_STC = 0x0024, // TODO PRM valex value not from PRM and already taken
 	MLX5_GENERAL_OBJ_TYPE_STE = 0x0025, // TODO PRM valex value not from PRM and already taken
 	MLX5_GENERAL_OBJ_TYPE_RTC = 0x0026, // TODO PRM valex value not from PRM and already taken
@@ -2973,6 +2974,11 @@ struct mlx5_ifc_definer_bits {
 	u8 match_mask_dw_7_0[0x100];
 };
 
+struct mlx5_ifc_arg_bits {
+	u8 rsvd0[0x88];
+	u8 access_pd[0x18];
+};
+
 struct mlx5_ifc_create_virtio_q_counters_in_bits {
 	struct mlx5_ifc_general_obj_in_cmd_hdr_bits hdr;
 	struct mlx5_ifc_virtio_q_counters_bits virtio_q_counters;
@@ -3006,6 +3012,11 @@ struct mlx5_ifc_create_ste_in_bits {
 struct mlx5_ifc_create_definer_in_bits {
         struct mlx5_ifc_general_obj_in_cmd_hdr_bits hdr;
         struct mlx5_ifc_definer_bits definer;
+};
+
+struct mlx5_ifc_create_arg_in_bits {
+        struct mlx5_ifc_general_obj_in_cmd_hdr_bits hdr;
+        struct mlx5_ifc_arg_bits arg;
 };
 
 enum {

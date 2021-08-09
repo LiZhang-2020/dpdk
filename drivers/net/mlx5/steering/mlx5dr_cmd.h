@@ -109,6 +109,11 @@ struct mlx5dr_devx_obj *
 mlx5dr_cmd_sq_create(struct ibv_context *ctx,
 		     struct mlx5dr_cmd_sq_create_attr *attr);
 
+struct mlx5dr_devx_obj *
+mlx5dr_cmd_arg_create(struct ibv_context *ctx,
+		      uint16_t log_obj_range,
+		      uint32_t pd);
+
 int mlx5dr_cmd_sq_modify_rdy(struct mlx5dr_devx_obj *devx_obj);
 
 int mlx5dr_cmd_query_caps(struct ibv_context *ctx,

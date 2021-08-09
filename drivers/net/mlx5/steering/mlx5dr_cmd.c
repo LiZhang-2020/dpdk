@@ -212,6 +212,47 @@ mlx5dr_cmd_stc_modify(struct mlx5dr_devx_obj *devx_obj,
 }
 
 struct mlx5dr_devx_obj *
+mlx5dr_cmd_arg_create(struct ibv_context *ctx,
+		      uint16_t log_obj_range,
+		      uint32_t pd)
+{
+	uint32_t out[MLX5_ST_SZ_DW(general_obj_out_cmd_hdr)] = {0};
+	uint32_t in[MLX5_ST_SZ_DW(create_arg_in)] = {0};
+	struct mlx5dr_devx_obj *devx_obj;
+	void *attr;
+
+	devx_obj = simple_malloc(sizeof(*devx_obj));
+	if (!devx_obj) {
+		DRV_LOG(ERR, "Failed to allocate memory for ARG object");
+		rte_errno = ENOMEM;
+		return NULL;
+	}
+
+	attr = MLX5_ADDR_OF(create_arg_in, in, hdr);
+	MLX5_SET(general_obj_in_cmd_hdr,
+		 attr, opcode, MLX5_CMD_OP_CREATE_GENERAL_OBJECT);
+	MLX5_SET(general_obj_in_cmd_hdr,
+		 attr, obj_type, MLX5_GENERAL_OBJ_TYPE_ARG);
+	MLX5_SET(general_obj_in_cmd_hdr,
+		 attr, log_obj_range, log_obj_range);
+
+	attr = MLX5_ADDR_OF(create_arg_in, in, arg);
+	MLX5_SET(arg, attr, access_pd, pd);
+
+	devx_obj->obj = mlx5_glue->devx_obj_create(ctx, in, sizeof(in), out, sizeof(out));
+	if (!devx_obj->obj) {
+		DRV_LOG(ERR, "Failed to create ARG");
+		simple_free(devx_obj);
+		rte_errno = errno;
+		return NULL;
+	}
+
+	devx_obj->id = MLX5_GET(general_obj_out_cmd_hdr, out, obj_id);
+
+	return devx_obj;
+}
+
+struct mlx5dr_devx_obj *
 mlx5dr_cmd_ste_create(struct ibv_context *ctx,
 		      struct mlx5dr_cmd_ste_create_attr *ste_attr)
 {
