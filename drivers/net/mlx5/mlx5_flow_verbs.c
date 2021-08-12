@@ -1193,6 +1193,7 @@ flow_verbs_validate(struct rte_eth_dev *dev,
 	uint8_t next_protocol = 0xff;
 	uint16_t ether_type = 0;
 	bool is_empty_vlan = false;
+	uint16_t udp_dport = 0;
 
 	if (items == NULL)
 		return -1;
@@ -1300,8 +1301,19 @@ flow_verbs_validate(struct rte_eth_dev *dev,
 			ret = mlx5_flow_validate_item_udp(items, item_flags,
 							  next_protocol,
 							  error);
+			const struct rte_flow_item_udp *spec;
+			const struct rte_flow_item_udp *mask;
+
 			if (ret < 0)
 				return ret;
+			spec = items->spec;
+			mask = items->mask;
+			if (!mask)
+				mask = &rte_flow_item_udp_mask;
+			if (spec != NULL)
+				udp_dport = rte_be_to_cpu_16
+						(spec->hdr.dst_port &
+						 mask->hdr.dst_port);
 			last_item = tunnel ? MLX5_FLOW_LAYER_INNER_L4_UDP :
 					     MLX5_FLOW_LAYER_OUTER_L4_UDP;
 			break;
@@ -1317,9 +1329,9 @@ flow_verbs_validate(struct rte_eth_dev *dev,
 					     MLX5_FLOW_LAYER_OUTER_L4_TCP;
 			break;
 		case RTE_FLOW_ITEM_TYPE_VXLAN:
-			ret = mlx5_flow_validate_item_vxlan(dev, items,
-							    item_flags, attr,
-							    error);
+			ret = mlx5_flow_validate_item_vxlan(dev, udp_dport,
+							    items, item_flags,
+							    attr, error);
 			if (ret < 0)
 				return ret;
 			last_item = MLX5_FLOW_LAYER_VXLAN;

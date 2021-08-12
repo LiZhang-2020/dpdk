@@ -7128,6 +7128,7 @@ flow_dv_validate(struct rte_eth_dev *dev, const struct rte_flow_attr *attr,
 	bool def_policy = false;
 	const struct rte_flow_action *count = NULL;
 	const struct rte_flow_action_age *non_indirect_age = NULL;
+	uint16_t udp_dport = 0;
 
 	if (items == NULL)
 		return -1;
@@ -7312,8 +7313,19 @@ flow_dv_validate(struct rte_eth_dev *dev, const struct rte_flow_attr *attr,
 			ret = mlx5_flow_validate_item_udp(items, item_flags,
 							  next_protocol,
 							  error);
+			const struct rte_flow_item_udp *spec;
+			const struct rte_flow_item_udp *mask;
+
 			if (ret < 0)
 				return ret;
+			mask = items->mask;
+			spec = items->spec;
+			if (!mask)
+				mask = &rte_flow_item_udp_mask;
+			if (spec != NULL)
+				udp_dport = rte_be_to_cpu_16
+						(spec->hdr.dst_port &
+						 mask->hdr.dst_port);
 			last_item = tunnel ? MLX5_FLOW_LAYER_INNER_L4_UDP :
 					     MLX5_FLOW_LAYER_OUTER_L4_UDP;
 			break;
@@ -7341,9 +7353,9 @@ flow_dv_validate(struct rte_eth_dev *dev, const struct rte_flow_attr *attr,
 			last_item = MLX5_FLOW_LAYER_GRE_KEY;
 			break;
 		case RTE_FLOW_ITEM_TYPE_VXLAN:
-			ret = mlx5_flow_validate_item_vxlan(dev, items,
-							    item_flags, attr,
-							    error);
+			ret = mlx5_flow_validate_item_vxlan(dev, udp_dport,
+							    items, item_flags,
+							    attr, error);
 			if (ret < 0)
 				return ret;
 			last_item = MLX5_FLOW_LAYER_VXLAN;
@@ -9235,6 +9247,7 @@ flow_dv_translate_item_vxlan(struct rte_eth_dev *dev,
 		MLX5_SET(fte_match_set_lyr_2_4, headers_m, udp_dport, 0xFFFF);
 		MLX5_SET(fte_match_set_lyr_2_4, headers_v, udp_dport, dport);
 	}
+	dport = MLX5_GET16(fte_match_set_lyr_2_4, headers_v, udp_dport);
 	if (!vxlan_v)
 		return;
 	if (!vxlan_m) {
@@ -9244,7 +9257,10 @@ flow_dv_translate_item_vxlan(struct rte_eth_dev *dev,
 		else
 			vxlan_m = &nic_mask;
 	}
-	if ((!attr->group && !attr->transfer && !priv->sh->tunnel_header_0_1) ||
+	if ((priv->sh->steering_format_version ==
+	    MLX5_STEERING_LOGIC_FORMAT_CONNECTX_5 &&
+	    dport != MLX5_UDP_PORT_VXLAN) ||
+	    (!attr->group && !attr->transfer && !priv->sh->tunnel_header_0_1) ||
 	    ((attr->group || attr->transfer) && !priv->sh->misc5_cap)) {
 		misc_m = MLX5_ADDR_OF(fte_match_param,
 				      matcher, misc_parameters);
