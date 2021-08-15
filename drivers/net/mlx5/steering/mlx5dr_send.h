@@ -23,6 +23,7 @@ struct mlx5dr_send_ring_cq {
 
 struct mlx5dr_send_ring_priv {
 	struct mlx5dr_rule *rule;
+	void *user_data;
 	uint32_t num_wqebbs;
 };
 
@@ -45,12 +46,22 @@ struct mlx5dr_send_ring {
 	struct mlx5dr_send_ring_sq send_sq;
 };
 
-TAILQ_HEAD(completed_rules_list, mlx5dr_rule);
+struct mlx5dr_completed_poll_entry {
+	void *user_data;
+	enum rte_flow_q_op_res_status status;
+};
+
+struct mlx5dr_completed_poll {
+	struct mlx5dr_completed_poll_entry *entries;
+	uint16_t ci;
+	uint16_t pi;
+	uint16_t mask;
+};
 
 struct mlx5dr_send_engine {
 	struct mlx5dr_send_ring send_ring[MLX5DR_NUM_SEND_RINGS]; /* For now 1:1 mapping */
 	struct mlx5dv_devx_uar *uar; /* Uar is shared between rings of a queue */
-	struct completed_rules_list completed;
+	struct mlx5dr_completed_poll completed;
 	uint16_t rings;
 	uint16_t queue_num_entries;
 };

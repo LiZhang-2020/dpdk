@@ -3,7 +3,6 @@
  */
 
 #include "mlx5dr_internal.h"
-#include <rte_tailq.h>
 
 struct mlx5dr_send_engine_post_ctrl
 mlx5dr_send_engine_post_start(struct mlx5dr_send_engine *queue)
@@ -69,7 +68,7 @@ void mlx5dr_send_engine_post_end(struct mlx5dr_send_engine_post_ctrl *ctrl,
 	wqe_ctrl->flags = rte_cpu_to_be_32(attr->notify_hw ? MLX5_WQE_CTRL_CQ_UPDATE : 0);
 
 	sq->wr_priv[idx].rule = attr->rule;
-	sq->wr_priv[idx].rule->user_data = attr->user_data;
+	sq->wr_priv[idx].user_data = attr->user_data;
 	sq->wr_priv[idx].num_wqebbs = ctrl->num_wqebbs;
 
 	sq->cur_post += ctrl->num_wqebbs;
@@ -84,20 +83,26 @@ static void mlx5dr_send_engine_update_rule(struct mlx5dr_send_engine *queue,
 					   size_t *i,
 					   uint32_t res_nb)
 {
+
+	struct mlx5dr_completed_poll *comp = &queue->completed;
+	enum rte_flow_q_op_res_status status;
+
 	// TODO: Add check for cqe status i,j values for error
+	status = RTE_FLOW_Q_OP_RES_SUCCESS;
 
 	/* Increase the status, this only works on good flow as the enum
 	 * is arrange it away creating -> created -> deleting -> deleted
 	 */
 	priv->rule->status++;
-	if (priv->rule->user_data) {
+	if (priv->user_data) {
 		if (*i < res_nb) {
-			res[*i].user_data = priv->rule->user_data;
-			res[*i].status = RTE_FLOW_Q_OP_RES_SUCCESS;
+			res[*i].user_data = priv->user_data;
+			res[*i].status = status;
 			(*i)++;
 		} else {
-			TAILQ_INSERT_TAIL(&queue->completed, priv->rule, list);
-			/* TODO store SUCCESS OR FAILURE status */
+			comp->entries[comp->pi].status = status;
+			comp->entries[comp->pi].user_data = priv->user_data;
+			comp->pi = (comp->pi + 1) & comp->mask;
 		}
 	}
 }
@@ -165,20 +170,21 @@ static int mlx5dr_send_engine_poll_cqs(struct mlx5dr_send_engine *queue,
 
 static void mlx5dr_send_engine_poll_list(struct mlx5dr_send_engine *queue,
 					 struct rte_flow_q_op_res res[],
-					  size_t *polled,
-					  uint32_t res_nb)
+					 size_t *polled,
+					 uint32_t res_nb)
 {
-	struct mlx5dr_rule *completed;
-	struct mlx5dr_rule *tmp;
+	struct mlx5dr_completed_poll *comp = &queue->completed;
 
-	TAILQ_FOREACH_SAFE(completed, &queue->completed, list, tmp) {
+	while (comp->ci != comp->pi) {
 		if (*polled < res_nb) {
-			res[*polled].status = RTE_FLOW_Q_OP_RES_SUCCESS; /* Store real status */
-			res[*polled].user_data = completed->user_data;
-			TAILQ_REMOVE(&queue->completed, completed, list);
+			res[*polled].status =
+				comp->entries[comp->ci].status;
+			res[*polled].user_data =
+				comp->entries[comp->ci].user_data;
 			(*polled)++;
-		} else {
-			return;;
+			comp->ci = (comp->ci + 1) & comp->mask;;
+                } else {
+			return;
 		}
 	}
 }
@@ -454,6 +460,7 @@ free_rings:
 static void mlx5dr_send_queue_close(struct mlx5dr_send_engine *queue)
 {
 	mlx5dr_send_rings_close(queue);
+	simple_free(queue->completed.entries);
 	mlx5_glue->devx_free_uar(queue->uar);
 }
 
@@ -472,14 +479,25 @@ static int mlx5dr_send_queue_open(struct mlx5dr_context *ctx,
 
 	queue->rings = MLX5DR_NUM_SEND_RINGS;
 	queue->queue_num_entries = roundup_pow_of_two(queue_size); /* TODO */
-	TAILQ_INIT(&queue->completed);
+
+	queue->completed.entries = simple_calloc(queue->queue_num_entries,
+						 sizeof(queue->completed.entries[0]));
+	if (!queue->completed.entries) {
+		rte_errno = -ENOMEM;
+		goto free_uar;
+	}
+	queue->completed.pi = 0;
+	queue->completed.ci = 0;
+	queue->completed.mask = queue->queue_num_entries - 1;
 
 	err = mlx5dr_send_rings_open(ctx, queue);
 	if (err)
-		goto free_uar;
+		goto free_completed_entries;
 
 	return 0;
 
+free_completed_entries:
+	simple_free(queue->completed.entries);
 free_uar:
 	mlx5_glue->devx_free_uar(uar);
 
