@@ -49,10 +49,8 @@ static int test_selection(void)
 	for (i = 0; i < sizeof(tests)/ sizeof(tests[0]); i++)
 		printf("\tTest: %s\n", tests[i].test_name);
 
-	if (!s) {
-		printf("Error MLX5DR_TEST not set\n");
-		return -1;
-	}
+	if (!s)
+		goto out;
 
 	for (i = 0; i < sizeof(tests)/ sizeof(tests[0]); i++) {
 		if (memcmp(tests[i].test_name, s, min(strlen(s), strlen(tests[i].test_name))))
@@ -60,6 +58,7 @@ static int test_selection(void)
 		test = tests[i];
 		break;
 	}
+out:
 	printf("Test selected: %s\n", test.test_name);
 	return 0;
 }
