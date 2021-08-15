@@ -75,10 +75,6 @@ static int mlx5dr_table_init(struct mlx5dr_table *tbl)
 		break;
 	}
 
-	ret = mlx5dr_table_init_nic(tbl, nic_tbl);
-	if (ret)
-		return rte_errno;
-
 	ft_attr.type = tbl->fw_ft_type;
 	ft_attr.wqe_based_flow_update = true;
 	ft_attr.level = MLX5DR_DEFAULT_LEVEL;
@@ -87,13 +83,17 @@ static int mlx5dr_table_init(struct mlx5dr_table *tbl)
 	tbl->ft = mlx5dr_cmd_flow_table_create(ctx->ibv_ctx, &ft_attr);
 	if (!tbl->ft) {
 		DRV_LOG(ERR, "Failed to create flow table devx object");
-		goto uninit_nic_tbl;
+		return rte_errno;
 	}
+
+	ret = mlx5dr_table_init_nic(tbl, nic_tbl);
+	if (ret)
+		goto tbl_destroy;
 
 	return 0;
 
-uninit_nic_tbl:
-	mlx5dr_table_uninit_nic(tbl, nic_tbl);
+tbl_destroy:
+	mlx5dr_cmd_destroy_obj(tbl->ft);
 	return rte_errno;
 }
 
@@ -116,8 +116,8 @@ static void mlx5dr_table_uninit(struct mlx5dr_table *tbl)
 		break;
 	}
 
-	mlx5dr_table_uninit_nic(tbl, nic_tbl);
 	mlx5dr_cmd_destroy_obj(tbl->ft);
+	mlx5dr_table_uninit_nic(tbl, nic_tbl);
 }
 
 struct mlx5dr_table *mlx5dr_table_create(struct mlx5dr_context *ctx,
