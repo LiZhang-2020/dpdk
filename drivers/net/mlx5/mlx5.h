@@ -34,7 +34,7 @@
 #include "mlx5_utils.h"
 #include "mlx5_os.h"
 #include "mlx5_autoconf.h"
-
+#include "steering/mlx5dr.h"
 
 #define MLX5_SH(dev) (((struct mlx5_priv *)(dev)->data->dev_private)->sh)
 
@@ -319,6 +319,25 @@ struct mlx5_lb_ctx {
 	struct ibv_qp *qp; /* QP object. */
 	void *ibv_cq; /* Completion Queue. */
 	uint16_t refcnt; /* Reference count for representors. */
+};
+
+enum {
+	MLX5_HW_Q_JOB_TYPE_CREATE,
+	MLX5_HW_Q_JOB_TYPE_DESTROY,
+};
+
+/* HW steering flow management job descriptor. */
+struct mlx5_hw_q_job {
+	uint32_t type; /* Job type. */
+	struct rte_flow *flow; /* Flow attached to the job. */
+	void *user_data; /* Job user data. */
+};
+
+/* HW steering job descriptor LIFO header . */
+struct mlx5_hw_q {
+	uint32_t job_idx; /* Free job index. */
+	uint32_t size; /* LIFO size. */
+	struct mlx5_hw_q_job **job; /* LIFO pointer. */
 };
 
 #define MLX5_COUNTERS_PER_POOL 512
@@ -1510,6 +1529,9 @@ struct mlx5_priv {
 	struct mlx5_flex_item flex_item[MLX5_PORT_FLEX_ITEM_NUM];
 	/* Flex items have been created on the port. */
 	uint32_t flex_item_map; /* Map of allocated flex item elements. */
+	struct mlx5dr_context *dr_ctx; /**< HW steering DR context. */
+	struct mlx5_hw_q *hw_q;
+	/**< HW steering queue polling mechanism job descriptor LIFO. */
 };
 
 #define PORT_ID(priv) ((priv)->dev_data->port_id)

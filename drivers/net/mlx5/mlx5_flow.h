@@ -1360,6 +1360,11 @@ typedef int (*mlx5_flow_item_update_t)
 			 const struct rte_flow_item_flex_handle *handle,
 			 const struct rte_flow_item_flex_conf *conf,
 			 struct rte_flow_error *error);
+typedef int (*mlx5_flow_port_configure_t)
+			(struct rte_eth_dev *dev,
+			 const struct rte_flow_port_attr *port_attr,
+			 const struct rte_flow_queue_attr *queue_attr[],
+			 struct rte_flow_error *err);
 
 struct mlx5_flow_driver_ops {
 	mlx5_flow_validate_t validate;
@@ -1398,6 +1403,7 @@ struct mlx5_flow_driver_ops {
 	mlx5_flow_item_create_t item_create;
 	mlx5_flow_item_release_t item_release;
 	mlx5_flow_item_update_t item_update;
+	mlx5_flow_port_configure_t configure;
 };
 
 /* mlx5_flow.c */
@@ -1884,4 +1890,7 @@ int flow_dv_translate_items_hws(const struct rte_flow_item *items,
 				uint32_t key_type, uint32_t *item_flags,
 				uint8_t *match_criteria,
 				struct rte_flow_error *error);
+
+void
+flow_hw_resource_release(struct rte_eth_dev *dev);
 #endif /* RTE_PMD_MLX5_FLOW_H_ */

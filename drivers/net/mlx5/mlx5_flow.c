@@ -796,6 +796,11 @@ static int
 mlx5_flow_flex_item_release(struct rte_eth_dev *dev,
 			    const struct rte_flow_item_flex_handle *handle,
 			    struct rte_flow_error *error);
+static int
+mlx5_flow_port_configure(struct rte_eth_dev *dev,
+			 const struct rte_flow_port_attr *port_attr,
+			 const struct rte_flow_queue_attr *queue_attr[],
+			 struct rte_flow_error *err);
 
 static const struct rte_flow_ops mlx5_flow_ops = {
 	.validate = mlx5_flow_validate,
@@ -817,6 +822,7 @@ static const struct rte_flow_ops mlx5_flow_ops = {
 	.get_restore_info = mlx5_flow_tunnel_get_restore_info,
 	.flex_item_create = mlx5_flow_flex_item_create,
 	.flex_item_release = mlx5_flow_flex_item_release,
+	.configure = mlx5_flow_port_configure,
 };
 
 /* Tunnel information. */
@@ -8104,6 +8110,18 @@ mlx5_counter_query(struct rte_eth_dev *dev, uint32_t cnt,
 		"port %u counter query is not supported.",
 		 dev->data->port_id);
 	return -ENOTSUP;
+}
+
+static int
+mlx5_flow_port_configure(struct rte_eth_dev *dev,
+			 const struct rte_flow_port_attr *port_attr,
+			 const struct rte_flow_queue_attr *queue_attr[],
+			 struct rte_flow_error *err)
+{
+	const struct mlx5_flow_driver_ops *fops =
+			flow_get_drv_ops(MLX5_FLOW_TYPE_HW);
+
+	return fops->configure(dev, port_attr, queue_attr, err);
 }
 
 /**
