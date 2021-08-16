@@ -19,6 +19,7 @@ sources = files(
 	'mlx5_flow_verbs.c',
 	'mlx5_flow_aso.c',
 	'mlx5_flow_flex.c',
+	'mlx5_flow_hw.c',
 	'mlx5_mac.c',
 	'mlx5_rss.c',
 	'mlx5_rx.c',
