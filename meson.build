@@ -1,7 +1,9 @@
 # SPDX-License-Identifier: BSD-3-Clause
 # Copyright(c) 2017-2019 Intel Corporation
 
-project('DPDK', 'C',
+project('DPDK',
+	run_command('meson', '--version').stdout().version_compare('< 0.59.0') or \
+		not find_program('cython', required:false).found() ? 'C' : ['C', 'Cython'],
 	# Get version number from file.
 	# Fallback to "more" for Windows compatibility.
 	version: run_command(find_program('cat', 'more'),
@@ -48,6 +50,9 @@ subdir('config')
 subdir('buildtools/pmdinfogen')
 subdir('lib')
 subdir('drivers')
+
+# build pydiru
+subdir('pydiru')
 
 # build binaries and installable tools
 subdir('usertools')
