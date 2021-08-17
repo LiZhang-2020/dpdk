@@ -99,6 +99,7 @@ static void mlx5dr_send_engine_update_rule(struct mlx5dr_send_engine *queue,
 			res[*i].user_data = priv->user_data;
 			res[*i].status = status;
 			(*i)++;
+			mlx5dr_send_engine_dec_rule(queue);
 		} else {
 			comp->entries[comp->pi].status = status;
 			comp->entries[comp->pi].user_data = priv->user_data;
@@ -183,6 +184,7 @@ static void mlx5dr_send_engine_poll_list(struct mlx5dr_send_engine *queue,
 				comp->entries[comp->ci].user_data;
 			(*polled)++;
 			comp->ci = (comp->ci + 1) & comp->mask;;
+			mlx5dr_send_engine_dec_rule(queue);
                 } else {
 			return;
 		}
@@ -274,7 +276,7 @@ static int mlx5dr_send_ring_open_sq(struct mlx5dr_context *ctx,
 	size_t buf_sz;
 	int err;
 
-	buf_sz = queue->queue_num_entries * MAX_WQES_PER_RULE;
+	buf_sz = queue->num_entries * MAX_WQES_PER_RULE;
 	sq_log_buf_sz = log2above(buf_sz);
 	sq_buf_sz = 1 << (sq_log_buf_sz + log2above(MLX5_SEND_WQE_BB));
 	sq->reg_addr = queue->uar->reg_addr;
@@ -353,7 +355,7 @@ static int mlx5dr_send_ring_open_cq(struct mlx5dr_context *ctx,
 	size_t cq_size;
 	int err;
 
-	cq_size = queue->queue_num_entries;
+	cq_size = queue->num_entries;
 	ibv_cq = mlx5_glue->create_cq(ctx->ibv_ctx, cq_size, NULL, NULL, 0);
 	if (!ibv_cq) {
 		DRV_LOG(ERR, "Failed to create CQ");
@@ -372,11 +374,11 @@ static int mlx5dr_send_ring_open_cq(struct mlx5dr_context *ctx,
 	cq->buf = mlx5_cq.buf;
 	cq->db = mlx5_cq.dbrec;
 	cq->ncqe = mlx5_cq.cqe_cnt;
-	if (cq->ncqe < queue->queue_num_entries)
+	if (cq->ncqe < queue->num_entries)
 		DRV_LOG(ERR, "%s - (ncqe: %u quque_num_entries: %u) Bug?!",
 			__func__,
 			cq->ncqe,
-			queue->queue_num_entries); /* TODO - Debug test */
+			queue->num_entries); /* TODO - Debug test */
 	cq->cqe_sz = mlx5_cq.cqe_size;
 	cq->cqe_log_sz = log2above(cq->cqe_sz);
 	cq->ncqe_mask = cq->ncqe - 1;
@@ -478,9 +480,11 @@ static int mlx5dr_send_queue_open(struct mlx5dr_context *ctx,
 	queue->uar = uar;
 
 	queue->rings = MLX5DR_NUM_SEND_RINGS;
-	queue->queue_num_entries = roundup_pow_of_two(queue_size); /* TODO */
+	queue->num_entries = roundup_pow_of_two(queue_size); /* TODO */
+	queue->used_entries = 0;
+	queue->th_entries = queue->num_entries;
 
-	queue->completed.entries = simple_calloc(queue->queue_num_entries,
+	queue->completed.entries = simple_calloc(queue->num_entries,
 						 sizeof(queue->completed.entries[0]));
 	if (!queue->completed.entries) {
 		rte_errno = -ENOMEM;
@@ -488,7 +492,7 @@ static int mlx5dr_send_queue_open(struct mlx5dr_context *ctx,
 	}
 	queue->completed.pi = 0;
 	queue->completed.ci = 0;
-	queue->completed.mask = queue->queue_num_entries - 1;
+	queue->completed.mask = queue->num_entries - 1;
 
 	err = mlx5dr_send_rings_open(ctx, queue);
 	if (err)

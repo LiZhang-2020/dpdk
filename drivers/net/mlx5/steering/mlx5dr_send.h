@@ -62,8 +62,10 @@ struct mlx5dr_send_engine {
 	struct mlx5dr_send_ring send_ring[MLX5DR_NUM_SEND_RINGS]; /* For now 1:1 mapping */
 	struct mlx5dv_devx_uar *uar; /* Uar is shared between rings of a queue */
 	struct mlx5dr_completed_poll completed;
+	uint16_t used_entries;
+	uint16_t th_entries;
 	uint16_t rings;
-	uint16_t queue_num_entries;
+	uint16_t num_entries;
 };
 
 struct mlx5dr_send_engine_post_ctrl {
@@ -153,5 +155,20 @@ void mlx5dr_send_engine_post_req_wqe(struct mlx5dr_send_engine_post_ctrl *ctrl,
 				     char **buf, size_t *len);
 void mlx5dr_send_engine_post_end(struct mlx5dr_send_engine_post_ctrl *ctrl,
 				 struct mlx5dr_send_engine_post_attr *attr);
+
+static inline bool mlx5dr_send_engine_full(struct mlx5dr_send_engine *queue)
+{
+	return queue->used_entries >= queue->th_entries;
+}
+
+static inline void mlx5dr_send_engine_inc_rule(struct mlx5dr_send_engine *queue)
+{
+	queue->used_entries++;
+}
+
+static inline void mlx5dr_send_engine_dec_rule(struct mlx5dr_send_engine *queue)
+{
+	queue->used_entries--;
+}
 
 #endif

@@ -5,10 +5,10 @@
 #include "mlx5dr_internal.h"
 
 static int mlx5dr_rule_create_hws(struct mlx5dr_rule *rule,
-				  struct rte_flow_item items[],
-				  struct mlx5dr_rule_attr *attr,
-				  struct mlx5dr_rule_action rule_actions[],
-				  uint8_t num_actions)
+				   struct rte_flow_item items[],
+				   struct mlx5dr_rule_attr *attr,
+				   struct mlx5dr_rule_action rule_actions[],
+				   uint8_t num_actions)
 {
 	struct mlx5dr_send_engine_post_attr send_attr = {0};
 	struct mlx5dr_matcher *matcher = rule->matcher;
@@ -17,6 +17,13 @@ static int mlx5dr_rule_create_hws(struct mlx5dr_rule *rule,
 	struct mlx5dr_wqe_gta_ctrl_seg *wqe_ctrl;
 	struct mlx5dr_send_engine_post_ctrl ctrl;
 	size_t wqe_len;
+
+	if (unlikely(mlx5dr_send_engine_full(&ctx->send_queue[attr->queue_id]))) {
+		rte_errno = -EBUSY;
+		return rte_errno;
+	}
+
+	mlx5dr_send_engine_inc_rule(&ctx->send_queue[attr->queue_id]);
 
 	/* Check if there are pending work completions */
 
@@ -54,7 +61,7 @@ static int mlx5dr_rule_create_hws(struct mlx5dr_rule *rule,
 }
 
 static int mlx5dr_rule_destroy_hws(struct mlx5dr_rule *rule,
-				   struct mlx5dr_rule_attr *attr)
+				    struct mlx5dr_rule_attr *attr)
 {
 	struct mlx5dr_context *ctx = rule->matcher->tbl->ctx;
 	struct mlx5dr_send_engine_post_attr send_attr = {0};
@@ -63,7 +70,6 @@ static int mlx5dr_rule_destroy_hws(struct mlx5dr_rule *rule,
 	struct mlx5dr_send_engine_post_ctrl ctrl;
 	size_t wqe_len;
 
-	/* Check if there are pending work completions */
 
 	/* In case the rule is not completed */
 	if (rule->status != MLX5DR_RULE_STATUS_CREATED) {
@@ -78,6 +84,15 @@ static int mlx5dr_rule_destroy_hws(struct mlx5dr_rule *rule,
 			return 0;
 		}
 	}
+
+	if (unlikely(mlx5dr_send_engine_full(&ctx->send_queue[attr->queue_id]))) {
+		rte_errno = EBUSY;
+		return rte_errno;
+	}
+
+	mlx5dr_send_engine_inc_rule(&ctx->send_queue[attr->queue_id]);
+
+	/* Check if there are pending work completions */
 
 	rule->status = MLX5DR_RULE_STATUS_DELETING;
 
