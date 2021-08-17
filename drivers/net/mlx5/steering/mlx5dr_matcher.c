@@ -27,47 +27,6 @@ static int mlx5dr_matcher_destroy_end_ft(struct mlx5dr_matcher *matcher)
 	return mlx5dr_cmd_destroy_obj(matcher->end_ft);
 }
 
-static int mlx5dr_matcher_set_builders(struct mlx5dr_matcher *matcher,
-				       struct rte_flow_item *items)
-{
-	struct mlx5dr_cmd_definer_create_attr def_attr = {0};
-	struct mlx5dr_table *tbl = matcher->tbl;
-	uint8_t match_mask[32] = {0};
-
-	/* TODO Temp code for testing */
-	for (; items->type != RTE_FLOW_ITEM_TYPE_END; items++) {
-		switch (items->type) {
-		case RTE_FLOW_ITEM_TYPE_IPV4:
-		{
-			const struct rte_ipv4_hdr *v = items->mask;
-
-			MLX5_SET(ste_def22, match_mask, outer_ip_dst_addr, v->dst_addr);
-			MLX5_SET(ste_def22, match_mask, outer_ip_src_addr, v->src_addr);
-			break;
-		}
-		default:
-			rte_errno = ENOTSUP;
-			return rte_errno;
-		}
-	}
-
-	/* TODO hard coded definer creation for testing */
-	def_attr.format_id = 22;
-	def_attr.match_mask = match_mask;
-	matcher->definer = mlx5dr_cmd_definer_create(tbl->ctx->ibv_ctx, &def_attr);
-	if (!matcher->definer) {
-		DRV_LOG(ERR, "Failed to create matcher definer");
-		return rte_errno;
-	}
-
-	return 0;
-}
-
-static int mlx5dr_matcher_clear_builders(struct mlx5dr_matcher *matcher)
-{
-	return mlx5dr_cmd_destroy_obj(matcher->definer);
-}
-
 static int mlx5dr_matcher_connect(struct mlx5dr_matcher *matcher)
 {
 	struct mlx5dr_cmd_ft_modify_attr ft_attr = {0};
@@ -310,7 +269,7 @@ static int mlx5dr_matcher_init(struct mlx5dr_matcher *matcher,
 	pthread_spin_lock(&ctx->ctrl_lock);
 
 	/* Select and create the definers for current matcher */
-	ret = mlx5dr_matcher_set_builders(matcher, items);
+	ret = mlx5dr_definer_create(matcher, items);
 	if (ret)
 		goto unlock_err;
 
@@ -338,7 +297,7 @@ destroy_rtc:
 destroy_end_ft:
 	mlx5dr_matcher_destroy_end_ft(matcher);
 clear_builders:
-	mlx5dr_matcher_clear_builders(matcher);
+	mlx5dr_definer_destroy(matcher);
 unlock_err:
 	pthread_spin_unlock(&ctx->ctrl_lock);
 	return ret;
@@ -352,7 +311,7 @@ static int mlx5dr_matcher_uninit(struct mlx5dr_matcher *matcher)
 	mlx5dr_matcher_disconnect(matcher);
 	mlx5dr_matcher_destroy_rtc(matcher);
 	mlx5dr_matcher_destroy_end_ft(matcher);
-	mlx5dr_matcher_clear_builders(matcher);
+	mlx5dr_definer_destroy(matcher);
 	pthread_spin_unlock(&ctx->ctrl_lock);
 
 	return 0;

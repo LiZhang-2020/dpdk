@@ -15,6 +15,8 @@ struct mlx5dr_matcher {
 	struct mlx5dr_matcher_attr attr;
 	struct mlx5dv_flow_matcher *dv_matcher;
 	struct mlx5dr_devx_obj *definer;
+	struct mlx5dr_definer_fc *fc;
+	uint32_t fc_sz;
 	struct mlx5dr_devx_obj *end_ft;
 	struct mlx5dr_matcher_nic rx;
 	struct mlx5dr_matcher_nic tx;

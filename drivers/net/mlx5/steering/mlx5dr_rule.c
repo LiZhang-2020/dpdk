@@ -4,35 +4,15 @@
 
 #include "mlx5dr_internal.h"
 
-static int mlx5dr_rule_build_tag(uint8_t *tag, struct rte_flow_item *items)
-{
-	for (; items->type != RTE_FLOW_ITEM_TYPE_END; items++) {
-		switch (items->type) {
-		case RTE_FLOW_ITEM_TYPE_IPV4:
-		{
-			const struct rte_ipv4_hdr *v =  items->spec;
-
-			MLX5_SET(ste_def22, tag, outer_ip_src_addr, v->src_addr);
-			MLX5_SET(ste_def22, tag, outer_ip_dst_addr, v->dst_addr);
-			break;
-		}
-		default:
-			rte_errno = ENOTSUP;
-			return rte_errno;
-		}
-	}
-
-	return 0;
-}
-
 static int mlx5dr_rule_create_hws(struct mlx5dr_rule *rule,
 				  struct rte_flow_item items[],
 				  struct mlx5dr_rule_attr *attr,
 				  struct mlx5dr_rule_action rule_actions[],
 				  uint8_t num_actions)
 {
-	struct mlx5dr_context *ctx = rule->matcher->tbl->ctx;
 	struct mlx5dr_send_engine_post_attr send_attr = {0};
+	struct mlx5dr_matcher *matcher = rule->matcher;
+	struct mlx5dr_context *ctx = matcher->tbl->ctx;
 	struct mlx5dr_wqe_gta_data_seg_ste *wqe_data;
 	struct mlx5dr_wqe_gta_ctrl_seg *wqe_ctrl;
 	struct mlx5dr_send_engine_post_ctrl ctrl;
@@ -55,7 +35,11 @@ static int mlx5dr_rule_create_hws(struct mlx5dr_rule *rule,
 				      rule_actions->action->stc_rx.offset);
 
 	/* Create tag directly on WQE and backup it on the rule for deletion */
-	mlx5dr_rule_build_tag((uint8_t *)wqe_data->tag, items);
+	mlx5dr_definer_create_tag(items,
+				  matcher->fc,
+				  matcher->fc_sz,
+				  (uint8_t *)wqe_data->tag);
+
 	memcpy(rule->match_tag, wqe_data->tag, MLX5DR_MATCH_TAG_SZ);
 
 	send_attr.rule = rule;
@@ -83,8 +67,16 @@ static int mlx5dr_rule_destroy_hws(struct mlx5dr_rule *rule,
 
 	/* In case the rule is not completed */
 	if (rule->status != MLX5DR_RULE_STATUS_CREATED) {
-		rte_errno = EBUSY;
-		return rte_errno;
+		if (rule->status == MLX5DR_RULE_STATUS_CREATING) {
+			rte_errno = EBUSY;
+			return rte_errno;
+		}
+
+		/* In case the rule is not completed */
+		if (rule->status == MLX5DR_RULE_STATUS_FAILED) {
+			// TODO generate comp / free resources
+			return 0;
+		}
 	}
 
 	rule->status = MLX5DR_RULE_STATUS_DELETING;

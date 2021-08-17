@@ -276,6 +276,7 @@ mlx5dr_cmd_definer_create(struct ibv_context *ctx,
 	ptr = MLX5_ADDR_OF(create_definer_in, in, definer);
 	MLX5_SET(definer, ptr, format_id, def_attr->format_id);
 
+	/* Current support match and not jumbo */
 	ptr = MLX5_ADDR_OF(definer, ptr, match_mask_dw_7_0);
 	memcpy(ptr, def_attr->match_mask, MLX5_FLD_SZ_BYTES(definer, match_mask_dw_7_0));
 
