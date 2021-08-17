@@ -276,6 +276,7 @@ int run_test_rule_insert(struct ibv_context *ibv_ctx)
 	/* Create connecting rule to HWS */
 	ipv_value_conn.dst_addr = 0x01010102;
 	rule_actions[0].action = to_hws_tbl;
+	rule_attr.user_data = connect_rule;
 
 	ret = mlx5dr_rule_create(root_matcher, items_conn, rule_actions, 1, &rule_attr, connect_rule);
 	if (ret) {

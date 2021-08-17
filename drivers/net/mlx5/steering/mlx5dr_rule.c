@@ -192,6 +192,11 @@ int mlx5dr_rule_create(struct mlx5dr_matcher *matcher,
 {
 	rule_handle->matcher = matcher;
 
+	if (unlikely(!attr->user_data)) {
+		rte_errno = EINVAL;
+		return rte_errno;
+	}
+
 	if (mlx5dr_table_is_root(matcher->tbl))
 		return mlx5dr_rule_create_root(rule_handle,
 					       items,
@@ -208,6 +213,11 @@ int mlx5dr_rule_create(struct mlx5dr_matcher *matcher,
 int mlx5dr_rule_destroy(struct mlx5dr_rule *rule,
 			struct mlx5dr_rule_attr *attr)
 {
+	if (unlikely(!attr->user_data)) {
+		rte_errno = EINVAL;
+		return rte_errno;
+	}
+
 	if (mlx5dr_table_is_root(rule->matcher->tbl))
 		return mlx5dr_rule_destroy_root(rule);
 
