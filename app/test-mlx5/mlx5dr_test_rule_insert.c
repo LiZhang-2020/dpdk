@@ -238,7 +238,7 @@ int run_test_rule_insert(struct ibv_context *ibv_ctx)
 	matcher_attr.priority = 0;
 	matcher_attr.insertion_mode = MLX5DR_MATCHER_INSERTION_MODE_BEST_EFFORT;
 	matcher_attr.sz_hint_col_log = 0;
-	matcher_attr.sz_hint_row_log = 20;
+	matcher_attr.sz_hint_row_log = 22;
 	hws_matcher1 = mlx5dr_matcher_create(hws_tbl, items, &matcher_attr);
 	if (!hws_matcher1) {
 		printf("Failed to create HWS matcher 1\n");
