@@ -9250,9 +9250,9 @@ flow_dv_translate_item_vxlan(struct rte_eth_dev *dev,
 			vxlan_m = &nic_mask;
 	}
 	if ((priv->sh->steering_format_version ==
-	    MLX5_STEERING_LOGIC_FORMAT_CONNECTX_5 &&
-	    dport != MLX5_UDP_PORT_VXLAN) ||
-	    (!attr->group && !attr->transfer && !priv->sh->tunnel_header_0_1) ||
+	     MLX5_STEERING_LOGIC_FORMAT_CONNECTX_5 &&
+	     dport != MLX5_UDP_PORT_VXLAN) ||
+	    (!attr->group && !attr->transfer) ||
 	    ((attr->group || attr->transfer) && !priv->sh->misc5_cap)) {
 		misc_m = MLX5_ADDR_OF(fte_match_param,
 				      matcher, misc_parameters);

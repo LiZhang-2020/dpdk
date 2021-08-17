@@ -2496,10 +2496,6 @@ mlx5_flow_validate_item_vxlan(struct rte_eth_dev *dev,
 		/* FDB domain & NIC domain non-zero group */
 		if ((attr->transfer || attr->group) && priv->sh->misc5_cap)
 			valid_mask = &nic_mask;
-		/* Group zero in NIC domain */
-		if (!attr->group && !attr->transfer &&
-		    priv->sh->tunnel_header_0_1)
-			valid_mask = &nic_mask;
 	}
 	ret = mlx5_flow_item_acceptable
 		(item, (const uint8_t *)mask,
