@@ -26,6 +26,7 @@ struct mlx5dr_rule {
 		struct ibv_flow *flow;
 	};
 	enum mlx5dr_rule_status status;
+	uint8_t wait_on_wqes; // TODO see if can be moved out of mlx5dr_rule struct
 };
 
 #endif

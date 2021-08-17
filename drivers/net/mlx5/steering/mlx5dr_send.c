@@ -68,6 +68,7 @@ void mlx5dr_send_engine_post_end(struct mlx5dr_send_engine_post_ctrl *ctrl,
 	wqe_ctrl->flags = rte_cpu_to_be_32(attr->notify_hw ? MLX5_WQE_CTRL_CQ_UPDATE : 0);
 
 	sq->wr_priv[idx].rule = attr->rule;
+	attr->rule->wait_on_wqes++;
 	sq->wr_priv[idx].user_data = attr->user_data;
 	sq->wr_priv[idx].num_wqebbs = ctrl->num_wqebbs;
 
@@ -93,6 +94,7 @@ static void mlx5dr_send_engine_update_rule(struct mlx5dr_send_engine *queue,
 	 */
 	if (!cqe || likely(rte_be_to_cpu_32(cqe->byte_cnt) >> 24 != 0xff)) {
 		status = RTE_FLOW_Q_OP_RES_SUCCESS;
+		--priv->rule->wait_on_wqes;
 	} else {
 		status = RTE_FLOW_Q_OP_RES_ERROR;
 	}
