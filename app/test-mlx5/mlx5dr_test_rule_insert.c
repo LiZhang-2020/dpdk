@@ -11,7 +11,6 @@
 #define QUEUE_SIZE 256
 #define NUM_OF_RULES (QUEUE_SIZE * 3906) // Almost 1M
 #define BURST_TH (QUEUE_SIZE / 8)
-#define CPU_FREQ 3200000000
 
 static int poll_for_comp(struct mlx5dr_context *ctx,
 			 uint16_t queue_id,
@@ -87,11 +86,7 @@ int run_test_rule_insert(struct ibv_context *ibv_ctx)
 	struct rte_ipv4_hdr ipv_mask;
 	struct rte_ipv4_hdr ipv_value;
 	uint32_t pending_rules = 0;
-	/* Measure time way 1 */
 	uint64_t start, end;
-	/* Measure time way 2 */
-	// clock_t start2, end2;
-	// double cpu_time_used;
 	int ret, i, j;
 
 	dr_ctx_attr.initial_log_ste_memory = 0;
@@ -216,7 +211,7 @@ int run_test_rule_insert(struct ibv_context *ibv_ctx)
 		}
 
 		end = rte_rdtsc();
-		printf("K-Rules/Sec: %lf Insertion\n", (double) ((double) NUM_OF_RULES / 1000) / ((double) (end - start) / CPU_FREQ));
+		printf("K-Rules/Sec: %lf Insertion\n", (double) ((double) NUM_OF_RULES / 1000) / ((double) (end - start) / rte_get_tsc_hz()));
 
 		/* Drain the queue */
 		poll_for_comp(ctx, rule_attr.queue_id, &pending_rules, true);
@@ -244,7 +239,7 @@ int run_test_rule_insert(struct ibv_context *ibv_ctx)
 		}
 
 		end = rte_rdtsc();
-		printf("K-Rules/Sec: %lf Deletion\n", (double) ((double) NUM_OF_RULES / 1000) / ((double) (end - start) / CPU_FREQ));
+		printf("K-Rules/Sec: %lf Deletion\n", (double) ((double) NUM_OF_RULES / 1000) / ((double) (end - start) / rte_get_tsc_hz()));
 	}
 
 	free(hws_rule);
