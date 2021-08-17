@@ -73,3 +73,6 @@ endforeach
 
 # special case the autotests
 subdir('test')
+if PYDIRU_SUPPORTED
+	subdir('test-mlx5-pydiru')
+endif
