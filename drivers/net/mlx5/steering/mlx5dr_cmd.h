@@ -67,6 +67,14 @@ struct mlx5dr_cmd_sq_create_attr {
 	uint32_t log_wq_sz;
 };
 
+struct mlx5dr_cmd_query_caps {
+	uint32_t flex_protocols;
+	uint8_t flex_parser_id_gtpu_dw_0;
+	uint8_t flex_parser_id_gtpu_teid;
+	uint8_t flex_parser_id_gtpu_dw_2;
+	uint8_t flex_parser_id_gtpu_first_ext_dw_0;
+};
+
 int mlx5dr_cmd_destroy_obj(struct mlx5dr_devx_obj *devx_obj);
 
 struct mlx5dr_devx_obj *
@@ -103,4 +111,6 @@ mlx5dr_cmd_sq_create(struct ibv_context *ctx,
 
 int mlx5dr_cmd_sq_modify_rdy(struct mlx5dr_devx_obj *devx_obj);
 
+int mlx5dr_cmd_query_caps(struct ibv_context *ctx,
+			  struct mlx5dr_cmd_query_caps *caps);
 #endif

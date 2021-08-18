@@ -12,6 +12,7 @@ enum mlx5dr_context_flags {
 
 struct mlx5dr_context {
 	struct ibv_context *ibv_ctx;
+	struct mlx5dr_cmd_query_caps *caps;
 	struct ibv_pd *pd;
 	uint32_t pd_num;
 	struct mlx5dr_pool *stc_pool[MLX5DR_TABLE_TYPE_MAX];

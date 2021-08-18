@@ -138,7 +138,7 @@ struct mlx5dr_context *mlx5dr_context_open(struct ibv_context *ibv_ctx,
 	struct mlx5dr_context *ctx;
 	int ret;
 
-	ctx = simple_malloc(sizeof(*ctx));
+	ctx = simple_calloc(1, sizeof(*ctx));
 	if (!ctx) {
 		rte_errno = ENOMEM;
 		return NULL;
@@ -147,9 +147,17 @@ struct mlx5dr_context *mlx5dr_context_open(struct ibv_context *ibv_ctx,
 	ctx->ibv_ctx = ibv_ctx;
 	pthread_spin_init(&ctx->ctrl_lock, PTHREAD_PROCESS_PRIVATE);
 
+	ctx->caps = simple_calloc(1, sizeof(*ctx->caps));
+	if (!ctx->caps)
+		goto free_ctx;
+
+	ret = mlx5dr_cmd_query_caps(ibv_ctx, ctx->caps);
+	if (ret)
+		goto free_caps;
+
 	ret = mlx5dr_context_init_pd(ctx, attr->pd);
 	if (ret)
-		goto free_ctx;
+		goto free_caps;
 
 	/* Check HW steering is supported */
 	ret = mlx5dr_context_hws_supp(ctx);
@@ -171,6 +179,8 @@ pools_uninit:
 	mlx5dr_context_pools_uninit(ctx);
 uninit_pd:
 	mlx5dr_context_uninit_pd(ctx);
+free_caps:
+	simple_free(ctx->caps);
 free_ctx:
 	simple_free(ctx);
 	return NULL;
@@ -182,6 +192,7 @@ int mlx5dr_context_close(struct mlx5dr_context *ctx)
 	mlx5dr_context_pools_uninit(ctx);
 	pthread_spin_destroy(&ctx->ctrl_lock);
 	mlx5dr_context_uninit_pd(ctx);
+	simple_free(ctx->caps);
 	simple_free(ctx);
 	return 0;
 }

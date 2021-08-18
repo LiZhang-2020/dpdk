@@ -354,3 +354,52 @@ int mlx5dr_cmd_sq_modify_rdy(struct mlx5dr_devx_obj *devx_obj)
 
 	return ret;
 }
+
+int mlx5dr_cmd_query_caps(struct ibv_context *ctx,
+			  struct mlx5dr_cmd_query_caps *caps)
+{
+	uint32_t out[DEVX_ST_SZ_DW(query_hca_cap_out)] = {};
+	uint32_t in[DEVX_ST_SZ_DW(query_hca_cap_in)] = {};
+	int ret;
+
+	MLX5_SET(query_hca_cap_in, in, opcode, MLX5_CMD_OP_QUERY_HCA_CAP);
+	MLX5_SET(query_hca_cap_in, in, op_mod,
+		 MLX5_GET_HCA_CAP_OP_MOD_GENERAL_DEVICE |
+		 MLX5_HCA_CAP_OPMOD_GET_CUR);
+
+	ret = mlx5_glue->devx_general_cmd(ctx, in, sizeof(in), out, sizeof(out));
+	if (ret) {
+		DRV_LOG(ERR, "Failed to query device caps");
+		rte_errno = errno;
+		return rte_errno;
+	}
+
+	caps->flex_protocols = MLX5_GET(query_hca_cap_out, out,
+					capability.cmd_hca_cap.flex_parser_protocols);
+
+	if (caps->flex_protocols & MLX5_HCA_FLEX_GTPU_DW_0_ENABLED)
+		caps->flex_parser_id_gtpu_dw_0 =
+			DEVX_GET(query_hca_cap_out,
+				 out,
+				 capability.cmd_hca_cap.flex_parser_id_gtpu_dw_0);
+
+	if (caps->flex_protocols & MLX5_HCA_FLEX_GTPU_TEID_ENABLED)
+		caps->flex_parser_id_gtpu_teid =
+			DEVX_GET(query_hca_cap_out,
+				 out,
+				 capability.cmd_hca_cap.flex_parser_id_gtpu_teid);
+
+	if (caps->flex_protocols & MLX5_HCA_FLEX_GTPU_DW_2_ENABLED)
+		caps->flex_parser_id_gtpu_dw_2 =
+			DEVX_GET(query_hca_cap_out,
+				 out,
+				 capability.cmd_hca_cap.flex_parser_id_gtpu_dw_2);
+
+	if (caps->flex_protocols & MLX5_HCA_FLEX_GTPU_FIRST_EXT_DW_0_ENABLED)
+		caps->flex_parser_id_gtpu_first_ext_dw_0 =
+			DEVX_GET(query_hca_cap_out,
+				 out,
+				 capability.cmd_hca_cap.flex_parser_id_gtpu_first_ext_dw_0);
+
+	return ret;
+}
