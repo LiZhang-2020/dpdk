@@ -310,17 +310,17 @@ mlx5dr_cmd_sq_create(struct ibv_context *ctx,
 		return NULL;
 	}
 
-	DEVX_SET(create_sq_in, in, opcode, MLX5_CMD_OP_CREATE_SQ);
-	DEVX_SET(sqc, sqc, cqn, attr->cqn);
-	DEVX_SET(sqc, sqc, flush_in_error_en, 1);
-	DEVX_SET(sqc, sqc, non_wire, 1);
-	DEVX_SET(wq, wqc, wq_type, MLX5_WQ_TYPE_CYCLIC);
-	DEVX_SET(wq, wqc, pd, attr->pdn);
-	DEVX_SET(wq, wqc, uar_page, attr->page_id);
-	DEVX_SET(wq, wqc, log_wq_stride, log2above(MLX5_SEND_WQE_BB));
-	DEVX_SET(wq, wqc, log_wq_sz, attr->log_wq_sz);
-	DEVX_SET(wq, wqc, dbr_umem_id, attr->dbr_id);
-	DEVX_SET(wq, wqc, wq_umem_id, attr->wq_id);
+	MLX5_SET(create_sq_in, in, opcode, MLX5_CMD_OP_CREATE_SQ);
+	MLX5_SET(sqc, sqc, cqn, attr->cqn);
+	MLX5_SET(sqc, sqc, flush_in_error_en, 1);
+	MLX5_SET(sqc, sqc, non_wire, 1);
+	MLX5_SET(wq, wqc, wq_type, MLX5_WQ_TYPE_CYCLIC);
+	MLX5_SET(wq, wqc, pd, attr->pdn);
+	MLX5_SET(wq, wqc, uar_page, attr->page_id);
+	MLX5_SET(wq, wqc, log_wq_stride, log2above(MLX5_SEND_WQE_BB));
+	MLX5_SET(wq, wqc, log_wq_sz, attr->log_wq_sz);
+	MLX5_SET(wq, wqc, dbr_umem_id, attr->dbr_id);
+	MLX5_SET(wq, wqc, wq_umem_id, attr->wq_id);
 
 	devx_obj->obj = mlx5_glue->devx_obj_create(ctx, in, sizeof(in), out, sizeof(out));
 	if (!devx_obj->obj) {
@@ -341,10 +341,10 @@ int mlx5dr_cmd_sq_modify_rdy(struct mlx5dr_devx_obj *devx_obj)
 	void *sqc = DEVX_ADDR_OF(modify_sq_in, in, ctx);
 	int ret;
 
-	DEVX_SET(modify_sq_in, in, opcode, MLX5_CMD_OP_MODIFY_SQ);
-	DEVX_SET(modify_sq_in, in, sqn, devx_obj->id);
-	DEVX_SET(modify_sq_in, in, sq_state, MLX5_SQC_STATE_RST);
-	DEVX_SET(sqc, sqc, state, MLX5_SQC_STATE_RDY);
+	MLX5_SET(modify_sq_in, in, opcode, MLX5_CMD_OP_MODIFY_SQ);
+	MLX5_SET(modify_sq_in, in, sqn, devx_obj->id);
+	MLX5_SET(modify_sq_in, in, sq_state, MLX5_SQC_STATE_RST);
+	MLX5_SET(sqc, sqc, state, MLX5_SQC_STATE_RDY);
 
 	ret = mlx5_glue->devx_obj_modify(devx_obj->obj, in, sizeof(in), out, sizeof(out));
 	if (ret) {
