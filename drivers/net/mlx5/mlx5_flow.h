@@ -18,6 +18,7 @@
 #include <mlx5_prm.h>
 
 #include "mlx5.h"
+#include "steering/mlx5dr.h"
 
 /* E-Switch Manager port, used for rte_flow_item_port_id. */
 #define MLX5_PORT_ESW_MGR UINT32_MAX
@@ -53,6 +54,18 @@ enum {
 	MLX5_INDIRECT_ACTION_TYPE_CT,
 };
 
+enum MLX5_SET_MATCHER {
+	MLX5_SET_MATCHER_SW_V = 1 << 0,
+	MLX5_SET_MATCHER_SW_M = 1 << 1,
+	MLX5_SET_MATCHER_HS_V = 1 << 2,
+	MLX5_SET_MATCHER_HS_M = 1 << 3,
+};
+
+#define MLX5_SET_MATCHER_SW (MLX5_SET_MATCHER_SW_V | MLX5_SET_MATCHER_SW_M)
+#define MLX5_SET_MATCHER_HS (MLX5_SET_MATCHER_HS_V | MLX5_SET_MATCHER_HS_M)
+#define MLX5_SET_MATCHER_V (MLX5_SET_MATCHER_SW_V | MLX5_SET_MATCHER_HS_V)
+#define MLX5_SET_MATCHER_M (MLX5_SET_MATCHER_SW_M | MLX5_SET_MATCHER_HS_M)
+
 /* Now, the maximal ports will be supported is 32, action number is 32M. */
 #define MLX5_ACTION_CTX_CT_MAX_PORT 0x20
 
@@ -75,6 +88,32 @@ enum {
 
 #define MLX5_ACTION_CTX_CT_GET_IDX(index) \
 	((index) & ((1 << MLX5_ACTION_CTX_CT_OWNER_SHIFT) - 1))
+
+struct mlx5_flow_attr {
+	uint32_t port_id;
+	uint32_t group; /* Flow group. */
+	uint32_t priority; /* Original Priority. */
+	uint32_t rss_level;
+	/**< rss level, used by priority adjustment. */
+	uint32_t act_flags;
+	/**< Action flags, used by priority adjustment. */
+	enum mlx5dr_table_type tbl_type;
+};
+
+struct mlx5_dv_matcher_workspace {
+	uint8_t priority;
+	uint64_t last_item;
+	uint64_t item_flags;
+	uint64_t action_flags;
+	bool external;
+	uint32_t vlan_tag:12;
+	uint8_t next_protocol;
+	uint32_t geneve_tlv_option;
+	uint32_t group;
+	const struct rte_flow_attr *attr;
+	struct mlx5_flow_rss_desc *rss_desc;
+	const struct rte_flow_item *tunnel_item;
+};
 
 /* Matches on selected register. */
 struct mlx5_rte_flow_item_tag {
@@ -1837,4 +1876,10 @@ const struct mlx5_flow_tunnel *
 mlx5_get_tof(const struct rte_flow_item *items,
 	     const struct rte_flow_action *actions,
 	     enum mlx5_tof_rule_type *rule_type);
+
+int flow_dv_translate_items_hws(const struct rte_flow_item *items,
+				struct mlx5_flow_attr *attr, void *key,
+				uint32_t key_type, uint32_t *item_flags,
+				uint8_t *match_criteria,
+				struct rte_flow_error *error);
 #endif /* RTE_PMD_MLX5_FLOW_H_ */
