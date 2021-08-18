@@ -317,38 +317,6 @@ static int mlx5dr_matcher_uninit(struct mlx5dr_matcher *matcher)
 	return 0;
 }
 
-// TODO Temp prm convert should be replaced by a shared DPDK func
-int mlx5dr_matcher_conv_items_to_prm(uint64_t *match_buf,
-				     struct rte_flow_item *items,
-				     uint8_t *match_criteria,
-				     bool is_value)
-{
-	for (; items->type != RTE_FLOW_ITEM_TYPE_END; items++) {
-		switch (items->type) {
-		case RTE_FLOW_ITEM_TYPE_IPV4:
-		{
-			const struct rte_ipv4_hdr *v = is_value ? items->spec : items->mask;
-			void *src_ip, *dst_ip;
-
-			MLX5_SET(fte_match_set_lyr_2_4, match_buf, ip_version, v->version);
-
-			dst_ip = MLX5_ADDR_OF(fte_match_set_lyr_2_4, match_buf,  dst_ipv4_dst_ipv6.ipv4_layout);
-			src_ip = MLX5_ADDR_OF(fte_match_set_lyr_2_4, match_buf,  src_ipv4_src_ipv6.ipv4_layout);
-			MLX5_SET(ipv4_layout, dst_ip, ipv4, v->dst_addr);
-			MLX5_SET(ipv4_layout, src_ip, ipv4, v->src_addr);
-
-			*match_criteria |= 1 << MLX5_MATCH_CRITERIA_ENABLE_OUTER_BIT;
-			break;
-		}
-		default:
-			rte_errno = ENOTSUP;
-			return rte_errno;
-		}
-	}
-
-	return 0;
-}
-
 static int mlx5dr_matcher_init_root(struct mlx5dr_matcher *matcher,
 				    struct rte_flow_item *items)
 {
@@ -356,7 +324,9 @@ static int mlx5dr_matcher_init_root(struct mlx5dr_matcher *matcher,
 	struct mlx5dr_context *ctx = matcher->tbl->ctx;
 	struct mlx5dv_flow_matcher_attr attr = {0};
 	struct mlx5dv_flow_match_parameters *mask;
+	struct mlx5_flow_attr flow_attr = {0};
 	enum mlx5dv_flow_table_type ft_type;
+	struct rte_flow_error rte_error;
 	uint8_t match_criteria;
 	int ret;
 
@@ -382,12 +352,14 @@ static int mlx5dr_matcher_init_root(struct mlx5dr_matcher *matcher,
 		return rte_errno;
 	}
 
-	ret = mlx5dr_matcher_conv_items_to_prm(mask->match_buf,
-					       items,
-					       &match_criteria,
-					       false);
+	flow_attr.tbl_type = type;
+
+	ret = flow_dv_translate_items_hws(items, &flow_attr, mask->match_buf,
+					  MLX5_SET_MATCHER_HS_M, NULL,
+					  &match_criteria,
+					  &rte_error);
 	if (ret) {
-		DRV_LOG(ERR, "Failed to convert items to PRM");
+		DRV_LOG(ERR, "Failed to convert items to PRM [%s]", rte_error.message);
 		goto free_mask;
 	}
 

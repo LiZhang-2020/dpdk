@@ -110,7 +110,9 @@ static int mlx5dr_rule_create_root(struct mlx5dr_rule *rule,
 {
 	struct mlx5dv_flow_matcher *dv_matcher = rule->matcher->dv_matcher;
 	struct mlx5dv_flow_match_parameters *value;
+	struct mlx5_flow_attr flow_attr = {0};
 	struct mlx5dv_flow_action_attr *attr;
+	struct rte_flow_error rte_error;
 	uint8_t match_criteria;
 	int ret;
 
@@ -127,12 +129,14 @@ static int mlx5dr_rule_create_root(struct mlx5dr_rule *rule,
 		goto free_attr;
 	}
 
-	ret = mlx5dr_matcher_conv_items_to_prm(value->match_buf,
-					       items,
-					       &match_criteria,
-					       true);
+	flow_attr.tbl_type = rule->matcher->tbl->type;
+
+	ret = flow_dv_translate_items_hws(items, &flow_attr, value->match_buf,
+					  MLX5_SET_MATCHER_HS_V, NULL,
+					  &match_criteria,
+					  &rte_error);
 	if (ret) {
-		DRV_LOG(ERR, "Failed to convert items to PRM");
+		DRV_LOG(ERR, "Failed to convert items to PRM [%s]", rte_error.message);
 		goto free_value;
 	}
 
