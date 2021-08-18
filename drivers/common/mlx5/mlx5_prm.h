@@ -2930,11 +2930,17 @@ struct mlx5_ifc_stc_ste_param_flow_counter_bits {
 	u8 flow_counter_id[0x20];
 };
 
+struct mlx5_ifc_stc_ste_param_header_modify_list_bits {
+	u8 header_modify_pattern_id[0x20];
+	u8 header_modify_argument_id[0x20];
+};
+
 union mlx5_ifc_stc_param_bits {
 	struct mlx5_ifc_stc_ste_param_ste_table_bits ste_table;
 	struct mlx5_ifc_stc_ste_param_tir_bits tir;
 	struct mlx5_ifc_stc_ste_param_table_bits table;
 	struct mlx5_ifc_stc_ste_param_flow_counter_bits counter;
+	struct mlx5_ifc_stc_ste_param_header_modify_list_bits modify_header;
 	u8 reserved_at_0[0x80];
 };
 
@@ -4194,6 +4200,17 @@ enum {
 	FS_FT_NIC_RX = 0x0,
 	FS_FT_NIC_TX = 0x1,
 	FS_FT_FDB = 0X4,
+};
+
+struct mlx5_ifc_double_action_add_bits {
+	u8 action_id[0x8];
+	u8 destination_dw_offset[0x8];
+	u8 reserved_at_10[0x2];
+	u8 destination_left_shifter[0x6];
+	u8 reserved_at_18[0x2];
+	u8 destination_length[0x6];
+
+	u8 add_value[0x20];
 };
 
 struct mlx5_ifc_flow_table_context_bits {

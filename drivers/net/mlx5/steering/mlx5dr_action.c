@@ -67,18 +67,16 @@ int mlx5dr_action_root_build_attr(struct mlx5dr_rule_action rule_actions[],
 
 static int
 mlx5dr_action_alloc_single_stc(struct mlx5dr_context *ctx,
-			       uint32_t obj_id,
+			       struct mlx5dr_cmd_stc_modify_attr *stc_attr,
 			       uint32_t table_type,
-			       uint32_t action_type,
 			       struct mlx5dr_pool_chunk *stc)
 {
 	struct mlx5dr_pool *stc_pool = ctx->stc_pool[table_type];
-	struct mlx5dr_cmd_stc_modify_attr stc_attr = {0};
 	struct mlx5dr_devx_obj *devx_obj;
 	int ret;
 
 	/* Check if valid action */
-	if (!action_type) {
+	if (!stc_attr->action_type) {
 		DRV_LOG(ERR, "Unsupported action");
 		rte_errno = ENOTSUP;
 		return rte_errno;
@@ -90,14 +88,13 @@ mlx5dr_action_alloc_single_stc(struct mlx5dr_context *ctx,
 		return ret;
 	}
 
-	stc_attr.stc_offset = stc->offset;
-	stc_attr.action_type = action_type;
-	stc_attr.id = obj_id;
+	stc_attr->stc_offset = stc->offset;
+
 	devx_obj = mlx5dr_pool_chunk_get_base_devx_obj(stc_pool, stc);
 
-	ret = mlx5dr_cmd_stc_modify(devx_obj, &stc_attr);
+	ret = mlx5dr_cmd_stc_modify(devx_obj, stc_attr);
 	if (ret) {
-		DRV_LOG(ERR, "Failed to modify STC to type %d", action_type);
+		DRV_LOG(ERR, "Failed to modify STC to type %d", stc_attr->action_type);
 		goto free_chunk;
 	}
 
@@ -118,13 +115,43 @@ mlx5dr_action_free_single_stc(struct mlx5dr_context *ctx,
 	mlx5dr_pool_chunk_free(stc_pool, stc);
 }
 
+static void mlx5dr_action_fill_stc_attr(struct mlx5dr_action *action,
+					struct mlx5dr_devx_obj *obj,
+					struct mlx5dr_cmd_stc_modify_attr *stc_attr)
+{
+	switch (action->type) {
+	case MLX5DR_ACTION_TYP_TAG:
+	case MLX5DR_ACTION_TYP_DROP:
+	case MLX5DR_ACTION_TYP_MISS:
+		break;
+	case MLX5DR_ACTION_TYP_CTR:
+		stc_attr->id = obj->id;
+		break;
+	case MLX5DR_ACTION_TYP_TIR:
+		stc_attr->dest_tir_num = obj->id;
+		break;
+	case MLX5DR_ACTION_TYP_MODIFY_HDR:
+		stc_attr->modify_header.arg_id =
+			action->modify_header.arg_obj->id;
+		stc_attr->modify_header.pattern_id =
+			action->modify_header.pattern_obj->id;
+		break;
+	case MLX5DR_ACTION_TYP_FT:
+		stc_attr->dest_table_id = obj->id;
+		break;
+	default:
+		DRV_LOG(ERR, "Invalid action type %d", action->type);
+		assert(false);
+	}
+}
+
 static int
 mlx5dr_action_create_stcs(struct mlx5dr_action *action,
 			  struct mlx5dr_devx_obj *obj)
 {
+	struct mlx5dr_cmd_stc_modify_attr stc_attr = {0};
 	struct mlx5dr_context *ctx = action->ctx;
 	uint32_t stc_type_rx, stc_type_tx;
-	uint32_t obj_id;
 	int ret;
 
 	switch (action->type) {
@@ -152,6 +179,10 @@ mlx5dr_action_create_stcs(struct mlx5dr_action *action,
 		stc_type_rx = MLX5_IFC_STC_ACTION_TYPE_JUMP_TO_TIR;
 		stc_type_tx = MLX5_IFC_STC_ACTION_TYPE_NONE;
 		break;
+	case MLX5DR_ACTION_TYP_MODIFY_HDR:
+		stc_type_rx = MLX5_IFC_STC_ACTION_TYPE_ACC_MODIFY_LIST;
+		stc_type_tx = MLX5_IFC_STC_ACTION_TYPE_ACC_MODIFY_LIST;
+		break;
 	default:
 		DRV_LOG(ERR, "Invalid action type %d", action->type);
 		rte_errno = ENOTSUP;
@@ -159,23 +190,23 @@ mlx5dr_action_create_stcs(struct mlx5dr_action *action,
 		return rte_errno;
 	}
 
-	obj_id = obj ? obj->id : 0;
+	mlx5dr_action_fill_stc_attr(action, obj, &stc_attr);
 
 	/* Allocate STC for RX */
 	if (action->flags & MLX5DR_ACTION_FLAG_HWS_RX) {
-		ret = mlx5dr_action_alloc_single_stc(ctx, obj_id,
+		stc_attr.action_type = stc_type_rx;
+		ret = mlx5dr_action_alloc_single_stc(ctx, &stc_attr,
 						     MLX5DR_TABLE_TYPE_NIC_RX,
-						     stc_type_rx,
 						     &action->stc_rx);
 		if (ret)
-		      goto out_err;
+			goto out_err;
 	}
 
 	/* Allocate STC for TX */
 	if (action->flags & MLX5DR_ACTION_FLAG_HWS_TX) {
-		ret = mlx5dr_action_alloc_single_stc(ctx, obj_id,
+		stc_attr.action_type = stc_type_tx;
+		ret = mlx5dr_action_alloc_single_stc(ctx, &stc_attr,
 						     MLX5DR_TABLE_TYPE_NIC_TX,
-						     stc_type_tx,
 						     &action->stc_tx);
 		if (ret)
 		       goto free_stc_rx;
@@ -526,6 +557,84 @@ free_action:
 	return NULL;
 }
 
+
+static int
+mlx5dr_action_create_modify_header_root(struct mlx5dr_action *action,
+					size_t actions_sz,
+					__be64 *actions)
+{
+	enum mlx5dv_flow_table_type ft_type;
+
+	mlx5dr_action_conv_flags_to_ft_type(action->flags, &ft_type);
+
+	action->flow_action =
+		mlx5dv_create_flow_action_modify_header(action->ctx->ibv_ctx,
+							actions_sz,
+							(uint64_t *)actions,
+							ft_type);
+	if (!action->flow_action) {
+		rte_errno = errno;
+		return rte_errno;
+	}
+
+	return 0;
+}
+
+struct mlx5dr_action *
+mlx5dr_action_create_modify_header(struct mlx5dr_context *ctx,
+				   size_t pattern_sz,
+				   __be64 pattern[],
+				   uint32_t bulk_size,
+				   uint32_t flags)
+{
+	struct mlx5dr_action *action;
+	int ret;
+
+	action = mlx5dr_action_create_generic(ctx, flags, MLX5DR_ACTION_TYP_MODIFY_HDR);
+	if (!action)
+		return NULL;
+
+	if (mlx5dr_action_is_root_flags(flags)) {
+		if (bulk_size) {
+			DRV_LOG(ERR, "Bulk modify-header not supported over root");
+			rte_errno = ENOTSUP;
+			goto free_action;
+		}
+		ret = mlx5dr_action_create_modify_header_root(action, pattern_sz, pattern);
+		if (ret)
+			goto free_action;
+
+		return action;
+	}
+
+	if (!mlx5dr_action_is_hws_flags(flags) ||
+	    ((flags & MLX5DR_ACTION_FLAG_INLINE) && bulk_size)) {
+		DRV_LOG(ERR, "flags don't fit hws (flags: %x0x, bulk_size: %d)\n",
+			flags, bulk_size);
+		rte_errno = EINVAL;
+		goto free_action;
+	}
+
+	ret = mlx5dr_pat_arg_create_modify_header(ctx, action, pattern_sz,
+						  pattern, bulk_size);
+	if (ret) {
+		DRV_LOG(ERR, "Failed allocating modify-header\n");
+		goto free_action;
+	}
+
+	ret = mlx5dr_action_create_stcs(action, NULL);
+	if (ret)
+		goto free_mh_obj;
+
+	return action;
+
+free_mh_obj:
+	mlx5dr_pat_arg_destroy_modify_header(ctx, action);
+free_action:
+	simple_free(action);
+	return NULL;
+}
+
 static void mlx5dr_action_destroy_hws(struct mlx5dr_action *action)
 {
 	switch (action->type) {
@@ -533,6 +642,10 @@ static void mlx5dr_action_destroy_hws(struct mlx5dr_action *action)
 	case MLX5DR_ACTION_TYP_TAG:
 	case MLX5DR_ACTION_TYP_DROP:
 	case MLX5DR_ACTION_TYP_QP:
+		mlx5dr_action_destroy_stcs(action);
+		break;
+	case MLX5DR_ACTION_TYP_MODIFY_HDR:
+		mlx5dr_pat_arg_destroy_modify_header(action->ctx, action);
 		mlx5dr_action_destroy_stcs(action);
 		break;
 	}
@@ -545,6 +658,7 @@ static void mlx5dr_action_destroy_root(struct mlx5dr_action *action)
 	case MLX5DR_ACTION_TYP_L2_TO_TNL_L2:
 	case MLX5DR_ACTION_TYP_TNL_L3_TO_L2:
 	case MLX5DR_ACTION_TYP_L2_TO_TNL_L3:
+	case MLX5DR_ACTION_TYP_MODIFY_HDR:
 		ibv_destroy_flow_action(action->flow_action);
 		break;
 	}

@@ -1,0 +1,47 @@
+/* SPDX-License-Identifier: BSD-3-Clause
+ * Copyright (c) 2021 NVIDIA CORPORATION. All rights reserved.
+ */
+#ifndef MLX5DR_PAT_ARG_H_
+#define MLX5DR_PAT_ARG_H_
+
+/* modify-header arg pool */
+enum mlx5dr_arg_chunk_size {
+	MLX5DR_ARG_CHUNK_SIZE_1,
+	MLX5DR_ARG_CHUNK_SIZE_MIN = MLX5DR_ARG_CHUNK_SIZE_1, /* keep updated when changing */
+	MLX5DR_ARG_CHUNK_SIZE_2,
+	MLX5DR_ARG_CHUNK_SIZE_3,
+	MLX5DR_ARG_CHUNK_SIZE_4,
+	MLX5DR_ARG_CHUNK_SIZE_MAX,
+};
+
+#define MLX5DR_MODIFY_ACTION_SIZE 8
+
+struct mlx5dr_pattern_cache {
+	pthread_spinlock_t lock; /* protect pattern list */
+	LIST_HEAD(pattern_head, mlx5dr_pat_cached_pattern) head;
+};
+
+struct mlx5dr_pat_cached_pattern {
+	enum mlx5dr_action_type type;
+	struct {
+		struct mlx5dr_devx_obj *pattern_obj;
+		struct dr_icm_chunk *chunk;
+		uint8_t *data;
+		uint16_t num_of_actions;
+	} mh_data;
+	rte_atomic32_t refcount;
+	LIST_ENTRY(mlx5dr_pat_cached_pattern) next;
+};
+
+int mlx5dr_pat_init_pattern_cache(struct mlx5dr_pattern_cache *cache);
+void mlx5dr_pat_uninit_pattern_cache(struct mlx5dr_pattern_cache *cache);
+
+int mlx5dr_pat_arg_create_modify_header(struct mlx5dr_context *ctx,
+					struct mlx5dr_action *action,
+					size_t pattern_sz,
+					__be64 pattern[],
+					uint32_t bulk_size);
+
+void mlx5dr_pat_arg_destroy_modify_header(struct mlx5dr_context *ctx,
+					  struct mlx5dr_action *action);
+#endif

@@ -155,6 +155,13 @@ mlx5dr_action_create_reformat(struct mlx5dr_context *ctx,
 			      uint32_t bulk_size,
 			      uint32_t flags);
 
+struct mlx5dr_action *
+mlx5dr_action_create_modify_header(struct mlx5dr_context *ctx,
+				   size_t pattern_sz,
+				   __be64 pattern[],
+				   uint32_t bulk_size,
+				   uint32_t flags);
+
 int mlx5dr_action_destroy(struct mlx5dr_action *action);
 
 int mlx5dr_send_queue_poll(struct mlx5dr_context *ctx,

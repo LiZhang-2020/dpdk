@@ -29,6 +29,7 @@
 #include "mlx5dr_cmd.h"
 #include "mlx5dr_definer.h"
 #include "mlx5dr_debug.h"
+#include "mlx5dr_pat_arg.h"
 
 #define DW_SIZE		4
 

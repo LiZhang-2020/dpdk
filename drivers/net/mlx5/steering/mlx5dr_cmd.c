@@ -288,8 +288,6 @@ mlx5dr_cmd_arg_create(struct ibv_context *ctx,
 	return devx_obj;
 }
 
-#define MLX5DR_MODIFY_ACTION_SIZE 8
-
 struct mlx5dr_devx_obj *
 mlx5dr_cmd_header_modify_pattern_create(struct ibv_context *ctx,
 					uint32_t pattern_length,

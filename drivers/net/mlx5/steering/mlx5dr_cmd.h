@@ -43,6 +43,10 @@ struct mlx5dr_cmd_stc_modify_attr {
 	enum mlx5_ifc_stc_action_type action_type;
 	union {
 		uint32_t id; /* TIRN, TAG, FT ID, STE ID */
+		struct {
+			uint32_t arg_id;
+			uint32_t pattern_id;
+		} modify_header;
 		uint32_t dest_table_id;
 		uint32_t dest_tir_num;
 	};

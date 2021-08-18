@@ -1,7 +1,6 @@
 /* SPDX-License-Identifier: BSD-3-Clause
  * Copyright (c) 2021 NVIDIA CORPORATION. All rights reserved.
  */
-
 #ifndef MLX5DR_ACTION_H_
 #define MLX5DR_ACTION_H_
 
@@ -38,7 +37,14 @@ struct mlx5dr_action {
 		struct {
 			struct mlx5dr_pool_chunk stc_rx;
 			struct mlx5dr_pool_chunk stc_tx;
+
+			struct {
+				struct mlx5dr_devx_obj *pattern_obj;
+				struct mlx5dr_devx_obj *arg_obj;
+				uint16_t num_of_actions;
+			} modify_header;
 		};
+
 		struct ibv_flow_action *flow_action;
 		struct mlx5dv_devx_obj *devx_obj;
 		struct ibv_qp *qp;
