@@ -13,6 +13,7 @@
 
 #include "mlx5_prm.h"
 #include "mlx5_glue.h"
+#include "mlx5_flow.h"
 #include "mlx5_utils.h"
 #include "mlx5_malloc.h"
 
