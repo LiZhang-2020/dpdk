@@ -270,6 +270,8 @@
 /* The alignment needed for CQ buffer. */
 #define MLX5_CQE_BUF_ALIGNMENT rte_mem_page_size()
 
+#define MAX_ACTIONS_DATA_IN_HEADER_MODIFY 512
+
 /* Completion mode. */
 enum mlx5_completion_mode {
 	MLX5_COMP_ONLY_ERR = 0x0,
@@ -2812,6 +2814,7 @@ enum {
 	MLX5_GENERAL_OBJ_TYPE_STC = 0x0024, // TODO PRM valex value not from PRM and already taken
 	MLX5_GENERAL_OBJ_TYPE_STE = 0x0025, // TODO PRM valex value not from PRM and already taken
 	MLX5_GENERAL_OBJ_TYPE_RTC = 0x0026, // TODO PRM valex value not from PRM and already taken
+	MLX5_GENERAL_OBJ_TYPE_MODIFY_HEADER_PATTERN = 0x0043,
 };
 
 struct mlx5_ifc_general_obj_in_cmd_hdr_bits {
@@ -2859,6 +2862,7 @@ struct mlx5_ifc_geneve_tlv_option_bits {
 	u8 option_data_length[0x5];
 	u8 reserved_at_80[0x180];
 };
+
 
 // TODO below values are different from PRM
 enum mlx5_ifc_rtc_update_mode {
@@ -2979,6 +2983,19 @@ struct mlx5_ifc_arg_bits {
 	u8 access_pd[0x18];
 };
 
+struct mlx5_ifc_header_modify_pattern_in_bits {
+	u8 modify_field_select[0x40];
+
+	u8 reserved_at_40[0x40];
+
+	u8 pattern_length[0x8];
+	u8 reserved_at_88[0x18];
+
+	u8 reserved_at_a0[0x60];
+
+	u8 pattern_data[MAX_ACTIONS_DATA_IN_HEADER_MODIFY * 8];
+};
+
 struct mlx5_ifc_create_virtio_q_counters_in_bits {
 	struct mlx5_ifc_general_obj_in_cmd_hdr_bits hdr;
 	struct mlx5_ifc_virtio_q_counters_bits virtio_q_counters;
@@ -3017,6 +3034,11 @@ struct mlx5_ifc_create_definer_in_bits {
 struct mlx5_ifc_create_arg_in_bits {
         struct mlx5_ifc_general_obj_in_cmd_hdr_bits hdr;
         struct mlx5_ifc_arg_bits arg;
+};
+
+struct mlx5_ifc_create_header_modify_pattern_in_bits {
+        struct mlx5_ifc_general_obj_in_cmd_hdr_bits hdr;
+        struct mlx5_ifc_header_modify_pattern_in_bits pattern;
 };
 
 enum {

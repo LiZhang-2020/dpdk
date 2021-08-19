@@ -30,6 +30,8 @@
 #include "mlx5dr_definer.h"
 #include "mlx5dr_debug.h"
 
+#define DW_SIZE		4
+
 static inline void *simple_malloc(size_t size)
 {
 	return mlx5_malloc(MLX5_MEM_SYS,

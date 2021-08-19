@@ -4,7 +4,6 @@
 
 #include "mlx5dr_internal.h"
 
-#define DW_SIZE		4
 #define BITS_IN_BYTE	8
 #define STE_IPV4	0x1
 #define STE_IPV6	0x2

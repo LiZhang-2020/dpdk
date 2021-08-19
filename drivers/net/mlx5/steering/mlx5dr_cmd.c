@@ -252,6 +252,63 @@ mlx5dr_cmd_arg_create(struct ibv_context *ctx,
 	return devx_obj;
 }
 
+#define MLX5DR_MODIFY_ACTION_SIZE 8
+
+struct mlx5dr_devx_obj *
+mlx5dr_cmd_header_modify_pattern_create(struct ibv_context *ctx,
+					uint32_t pattern_length,
+					uint8_t *actions)
+{
+	uint32_t in[MLX5_ST_SZ_DW(create_header_modify_pattern_in)] = {0};
+	uint32_t out[MLX5_ST_SZ_DW(general_obj_out_cmd_hdr)] = {0};
+	struct mlx5dr_devx_obj *devx_obj;
+	void *pattern_data;
+	void *pattern;
+	void *attr;
+
+	if (pattern_length > MAX_ACTIONS_DATA_IN_HEADER_MODIFY) {
+		DRV_LOG(ERR, "too much patterns (%d), more than %d",
+			pattern_length, MAX_ACTIONS_DATA_IN_HEADER_MODIFY);
+		rte_errno = EINVAL;
+		return NULL;
+	}
+
+	devx_obj = simple_malloc(sizeof(*devx_obj));
+	if (!devx_obj) {
+		DRV_LOG(ERR, "Failed to allocate memory for header_modify_pattern object");
+		rte_errno = ENOMEM;
+		return NULL;
+	}
+
+	attr = MLX5_ADDR_OF(create_header_modify_pattern_in, in, hdr);
+	MLX5_SET(general_obj_in_cmd_hdr,
+		 attr, opcode, MLX5_CMD_OP_CREATE_GENERAL_OBJECT);
+	MLX5_SET(general_obj_in_cmd_hdr,
+		 attr, obj_type, MLX5_GENERAL_OBJ_TYPE_MODIFY_HEADER_PATTERN);
+
+	pattern = MLX5_ADDR_OF(create_header_modify_pattern_in, in, pattern);
+	/* pattern_length is in dwords */
+	MLX5_SET(header_modify_pattern_in, pattern, pattern_length, pattern_length / DW_SIZE);
+
+	pattern_data = MLX5_ADDR_OF(header_modify_pattern_in, pattern, pattern_data);
+	memcpy(pattern_data, actions, pattern_length);
+
+	devx_obj->obj = mlx5_glue->devx_obj_create(ctx, in, sizeof(in), out, sizeof(out));
+	if (!devx_obj->obj) {
+		DRV_LOG(ERR, "Failed to create header_modify_pattern");
+		rte_errno = errno;
+		goto free_obj;
+	}
+
+	devx_obj->id = MLX5_GET(general_obj_out_cmd_hdr, out, obj_id);
+
+	return devx_obj;
+
+free_obj:
+	simple_free(devx_obj);
+	return NULL;
+}
+
 struct mlx5dr_devx_obj *
 mlx5dr_cmd_ste_create(struct ibv_context *ctx,
 		      struct mlx5dr_cmd_ste_create_attr *ste_attr)
