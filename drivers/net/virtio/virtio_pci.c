@@ -2,6 +2,7 @@
  * Copyright(c) 2010-2014 Intel Corporation
  */
 #include <stdint.h>
+#include <unistd.h>
 
 #ifdef RTE_EXEC_ENV_LINUX
  #include <dirent.h>
@@ -495,9 +496,17 @@ vtpci_negotiate_features(struct virtio_hw *hw, uint64_t host_features)
 void
 vtpci_reset(struct virtio_hw *hw)
 {
+	uint32_t retry = 0;
+
 	VTPCI_OPS(hw)->set_status(hw, VIRTIO_CONFIG_STATUS_RESET);
-	/* flush status write */
-	VTPCI_OPS(hw)->get_status(hw);
+	/* Flush status write and wait device ready. */
+	while (VTPCI_OPS(hw)->get_status(hw) != VIRTIO_CONFIG_STATUS_RESET) {
+		if (retry++ > 3000) {
+			PMD_INIT_LOG(WARNING, "device reset timeout");
+			break;
+		}
+		usleep(1000L);
+	}
 }
 
 void
