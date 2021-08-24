@@ -2,7 +2,6 @@
  * Copyright (c) 2021 NVIDIA CORPORATION. All rights reserved.
  */
 
-#include "mlx5_prm.h"
 #include "mlx5dr_internal.h"
 
 int mlx5dr_cmd_destroy_obj(struct mlx5dr_devx_obj *devx_obj)
@@ -297,8 +296,8 @@ struct mlx5dr_devx_obj *
 mlx5dr_cmd_sq_create(struct ibv_context *ctx,
 		     struct mlx5dr_cmd_sq_create_attr *attr)
 {
-	uint32_t out[DEVX_ST_SZ_DW(create_sq_out)] = {};
-	uint32_t in[DEVX_ST_SZ_DW(create_sq_in)] = {};
+	uint32_t out[DEVX_ST_SZ_DW(create_sq_out)] = {0};
+	uint32_t in[DEVX_ST_SZ_DW(create_sq_in)] = {0};
 	void *sqc = DEVX_ADDR_OF(create_sq_in, in, ctx);
 	void *wqc = DEVX_ADDR_OF(sqc, sqc, wq);
 	struct mlx5dr_devx_obj *devx_obj;
@@ -336,8 +335,8 @@ mlx5dr_cmd_sq_create(struct ibv_context *ctx,
 
 int mlx5dr_cmd_sq_modify_rdy(struct mlx5dr_devx_obj *devx_obj)
 {
-	uint32_t out[DEVX_ST_SZ_DW(modify_sq_out)] = {};
-	uint32_t in[DEVX_ST_SZ_DW(modify_sq_in)] = {};
+	uint32_t out[DEVX_ST_SZ_DW(modify_sq_out)] = {0};
+	uint32_t in[DEVX_ST_SZ_DW(modify_sq_in)] = {0};
 	void *sqc = DEVX_ADDR_OF(modify_sq_in, in, ctx);
 	int ret;
 
@@ -358,8 +357,8 @@ int mlx5dr_cmd_sq_modify_rdy(struct mlx5dr_devx_obj *devx_obj)
 int mlx5dr_cmd_query_caps(struct ibv_context *ctx,
 			  struct mlx5dr_cmd_query_caps *caps)
 {
-	uint32_t out[DEVX_ST_SZ_DW(query_hca_cap_out)] = {};
-	uint32_t in[DEVX_ST_SZ_DW(query_hca_cap_in)] = {};
+	uint32_t out[DEVX_ST_SZ_DW(query_hca_cap_out)] = {0};
+	uint32_t in[DEVX_ST_SZ_DW(query_hca_cap_in)] = {0};
 	int ret;
 
 	MLX5_SET(query_hca_cap_in, in, opcode, MLX5_CMD_OP_QUERY_HCA_CAP);
