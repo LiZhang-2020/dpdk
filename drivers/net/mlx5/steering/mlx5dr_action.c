@@ -459,8 +459,8 @@ mlx5dr_action_create_reformat_root(struct mlx5dr_action *action,
 				   size_t data_sz,
 				   void *data)
 {
-	enum mlx5dv_flow_table_type ft_type;
-	uint32_t verb_reformat_type;
+	enum mlx5dv_flow_table_type ft_type = 0;
+	uint32_t verb_reformat_type = 0;
 
 	/* Convert action to FT type and verbs reformat type */
 	mlx5dr_action_conv_flags_to_ft_type(action->flags, &ft_type);
