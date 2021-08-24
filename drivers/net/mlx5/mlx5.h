@@ -1531,6 +1531,8 @@ struct mlx5_priv {
 	uint32_t flex_item_map; /* Map of allocated flex item elements. */
 	/* Item template list. */
 	LIST_HEAD(flow_hw_itt, rte_flow_item_template) flow_hw_itt;
+	/* Action template list. */
+	LIST_HEAD(flow_hw_at, rte_flow_action_template) flow_hw_at;
 	struct mlx5dr_context *dr_ctx; /**< HW steering DR context. */
 	struct mlx5_hw_q *hw_q;
 	/**< HW steering queue polling mechanism job descriptor LIFO. */

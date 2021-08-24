@@ -8,6 +8,77 @@
 
 const struct mlx5_flow_driver_ops mlx5_flow_hw_drv_ops;
 
+static struct rte_flow_action_template *
+flow_hw_action_template_create(struct rte_eth_dev *dev,
+			       const struct rte_flow_action_template_attr *attr,
+			       const struct rte_flow_action actions[],
+			       const struct rte_flow_action masks[],
+			       struct rte_flow_error *error)
+{
+	struct mlx5_priv *priv = dev->data->dev_private;
+	int len, act_len, mask_len, i;
+	struct rte_flow_action_template *at;
+
+	act_len = rte_flow_conv(RTE_FLOW_CONV_OP_ACTIONS,
+				NULL, 0, actions, error);
+	if (act_len <= 0)
+		return NULL;
+	len = RTE_ALIGN(act_len, 16);
+	mask_len = rte_flow_conv(RTE_FLOW_CONV_OP_ACTIONS,
+				 NULL, 0, masks, error);
+	if (mask_len <= 0)
+		return NULL;
+
+	len += RTE_ALIGN(mask_len, 16);
+	at = mlx5_malloc(MLX5_MEM_ZERO | MLX5_MEM_SYS, len + sizeof(*at),
+			 64, SOCKET_ID_ANY);
+	if (!at) {
+		rte_flow_error_set(error, ENOMEM,
+				   RTE_FLOW_ERROR_TYPE_UNSPECIFIED,
+				   NULL,
+				   "cannot allocate action template");
+		return NULL;
+	}
+	at->attr = *attr;
+	at->actions = (struct rte_flow_action *)(at + 1);
+	act_len = rte_flow_conv(RTE_FLOW_CONV_OP_ACTIONS, at->actions, len,
+				actions, error);
+	if (act_len <= 0)
+		goto error;
+	at->masks = (struct rte_flow_action *)
+		    (((uint8_t *)at->actions) + act_len);
+	mask_len = rte_flow_conv(RTE_FLOW_CONV_OP_ACTIONS, at->masks,
+				 len - act_len, masks, error);
+	if (mask_len <= 0)
+		goto error;
+	for (i = 0; actions->type != RTE_FLOW_ACTION_TYPE_END;
+	     actions++, masks++, i++) {
+		if (actions->type == RTE_FLOW_ACTION_TYPE_INDIRECT) {
+			at->actions[i].conf = actions->conf;
+			at->masks[i].conf = masks->conf;
+		}
+	}
+	__atomic_fetch_add(&at->refcnt, 1, __ATOMIC_RELAXED);
+	LIST_INSERT_HEAD(&priv->flow_hw_at, at, next);
+	return at;
+error:
+	mlx5_free(at);
+	return NULL;
+}
+
+static int
+flow_hw_action_template_destroy(struct rte_eth_dev *dev __rte_unused,
+				struct rte_flow_action_template *template,
+				struct rte_flow_error *error __rte_unused)
+{
+	if (__atomic_load_n(&template->refcnt, __ATOMIC_RELAXED) > 1)
+		DRV_LOG(WARNING, "Acts template %p is still in use.",
+			(void *)template);
+	LIST_REMOVE(template, next);
+	mlx5_free(template);
+	return 0;
+}
+
 static struct rte_flow_item_template *
 flow_hw_item_template_create(struct rte_eth_dev *dev,
 			     const struct rte_flow_item_template_attr *attr,
@@ -114,12 +185,17 @@ flow_hw_resource_release(struct rte_eth_dev *dev)
 {
 	struct mlx5_priv *priv = dev->data->dev_private;
 	struct rte_flow_item_template *it;
+	struct rte_flow_action_template *at;
 
 	if (!priv->dr_ctx)
 		return;
 	while (!LIST_EMPTY(&priv->flow_hw_itt)) {
 		it = LIST_FIRST(&priv->flow_hw_itt);
 		flow_hw_item_template_destroy(dev, it, NULL);
+	}
+	while (!LIST_EMPTY(&priv->flow_hw_at)) {
+		at = LIST_FIRST(&priv->flow_hw_at);
+		flow_hw_action_template_destroy(dev, at, NULL);
 	}
 	mlx5_free(priv->hw_q);
 	claim_zero(mlx5dr_context_close(priv->dr_ctx));
@@ -129,4 +205,6 @@ const struct mlx5_flow_driver_ops mlx5_flow_hw_drv_ops = {
 	.configure = flow_hw_configure,
 	.item_template_create = flow_hw_item_template_create,
 	.item_template_destroy = flow_hw_item_template_destroy,
+	.action_template_create = flow_hw_action_template_create,
+	.action_template_destroy = flow_hw_action_template_destroy,
 };

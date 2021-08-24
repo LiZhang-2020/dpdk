@@ -812,6 +812,16 @@ static int
 mlx5_flow_item_template_destroy(struct rte_eth_dev *dev,
 				struct rte_flow_item_template *template,
 				struct rte_flow_error *error);
+static struct rte_flow_action_template *
+mlx5_flow_action_template_create(struct rte_eth_dev *dev,
+			const struct rte_flow_action_template_attr *attr,
+			const struct rte_flow_action actions[],
+			const struct rte_flow_action masks[],
+			struct rte_flow_error *error);
+static int
+mlx5_flow_action_template_destroy(struct rte_eth_dev *dev,
+				  struct rte_flow_action_template *template,
+				  struct rte_flow_error *error);
 
 static const struct rte_flow_ops mlx5_flow_ops = {
 	.validate = mlx5_flow_validate,
@@ -836,6 +846,8 @@ static const struct rte_flow_ops mlx5_flow_ops = {
 	.configure = mlx5_flow_port_configure,
 	.item_template_create = mlx5_flow_item_template_create,
 	.item_template_destroy = mlx5_flow_item_template_destroy,
+	.action_template_create = mlx5_flow_action_template_create,
+	.action_template_destroy = mlx5_flow_action_template_destroy,
 };
 
 /* Tunnel information. */
@@ -8158,6 +8170,30 @@ mlx5_flow_item_template_destroy(struct rte_eth_dev *dev,
 			flow_get_drv_ops(MLX5_FLOW_TYPE_HW);
 
 	return fops->item_template_destroy(dev, template, error);
+}
+
+static struct rte_flow_action_template *
+mlx5_flow_action_template_create(struct rte_eth_dev *dev,
+			const struct rte_flow_action_template_attr *attr,
+			const struct rte_flow_action actions[],
+			const struct rte_flow_action masks[],
+			struct rte_flow_error *error)
+{
+	const struct mlx5_flow_driver_ops *fops =
+			flow_get_drv_ops(MLX5_FLOW_TYPE_HW);
+
+	return fops->action_template_create(dev, attr, actions, masks, error);
+}
+
+static int
+mlx5_flow_action_template_destroy(struct rte_eth_dev *dev,
+				  struct rte_flow_action_template *template,
+				  struct rte_flow_error *error)
+{
+	const struct mlx5_flow_driver_ops *fops =
+			flow_get_drv_ops(MLX5_FLOW_TYPE_HW);
+
+	return fops->action_template_destroy(dev, template, error);
 }
 
 /**
