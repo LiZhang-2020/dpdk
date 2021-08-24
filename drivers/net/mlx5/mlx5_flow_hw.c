@@ -8,6 +8,48 @@
 
 const struct mlx5_flow_driver_ops mlx5_flow_hw_drv_ops;
 
+static struct rte_flow_item_template *
+flow_hw_item_template_create(struct rte_eth_dev *dev,
+			     const struct rte_flow_item_template_attr *attr,
+			     const struct rte_flow_item items[],
+			     struct rte_flow_error *error)
+{
+	struct mlx5_priv *priv = dev->data->dev_private;
+	struct rte_flow_item_template *it;
+
+	it = mlx5_malloc(MLX5_MEM_ZERO, sizeof(*it), 0, SOCKET_ID_ANY);
+	if (!it) {
+		rte_flow_error_set(error, ENOMEM,
+				   RTE_FLOW_ERROR_TYPE_UNSPECIFIED,
+				   NULL,
+				   "cannot allocate item template");
+		return NULL;
+	}
+	it->attr = *attr;
+	it->mt = mlx5dr_match_template_create(items, attr->relaxed_matching);
+	if (!it->mt) {
+		mlx5_free(it);
+		return NULL;
+	}
+	__atomic_fetch_add(&it->refcnt, 1, __ATOMIC_RELAXED);
+	LIST_INSERT_HEAD(&priv->flow_hw_itt, it, next);
+	return it;
+}
+
+static int
+flow_hw_item_template_destroy(struct rte_eth_dev *dev __rte_unused,
+			      struct rte_flow_item_template *template,
+			      struct rte_flow_error *error __rte_unused)
+{
+	if (__atomic_load_n(&template->refcnt, __ATOMIC_RELAXED) > 1)
+		DRV_LOG(WARNING, "Item template %p is still in use.",
+			(void *)template);
+	LIST_REMOVE(template, next);
+	mlx5dr_match_template_destroy(template->mt);
+	mlx5_free(template);
+	return 0;
+}
+
 static int
 flow_hw_configure(struct rte_eth_dev *dev,
 		  const struct rte_flow_port_attr *port_attr,
@@ -71,13 +113,20 @@ void
 flow_hw_resource_release(struct rte_eth_dev *dev)
 {
 	struct mlx5_priv *priv = dev->data->dev_private;
+	struct rte_flow_item_template *it;
 
 	if (!priv->dr_ctx)
 		return;
+	while (!LIST_EMPTY(&priv->flow_hw_itt)) {
+		it = LIST_FIRST(&priv->flow_hw_itt);
+		flow_hw_item_template_destroy(dev, it, NULL);
+	}
 	mlx5_free(priv->hw_q);
 	claim_zero(mlx5dr_context_close(priv->dr_ctx));
 }
 
 const struct mlx5_flow_driver_ops mlx5_flow_hw_drv_ops = {
 	.configure = flow_hw_configure,
+	.item_template_create = flow_hw_item_template_create,
+	.item_template_destroy = flow_hw_item_template_destroy,
 };
