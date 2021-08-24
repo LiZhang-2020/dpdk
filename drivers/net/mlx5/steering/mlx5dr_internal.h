@@ -10,6 +10,7 @@
 #include <infiniband/verbs.h>
 #include <infiniband/mlx5dv.h>
 #include <rte_flow.h>
+#include <rte_gtp.h>
 
 #include "mlx5_prm.h"
 #include "mlx5_glue.h"

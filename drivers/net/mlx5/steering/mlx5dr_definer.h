@@ -208,6 +208,24 @@ struct mlx5_ifc_definer_hl_ipv4_src_dst_bits {
 	uint8_t destination_address[0x20];
 };
 
+struct mlx5_ifc_definer_hl_ipv6_addr_bits {
+	uint8_t ipv6_address_127_96[0x20];
+	uint8_t ipv6_address_95_64[0x20];
+	uint8_t ipv6_address_63_32[0x20];
+	uint8_t ipv6_address_31_0[0x20];
+};
+
+struct mlx5_ifc_definer_hl_flex_parser_bits {
+	uint8_t flex_parser_7[0x20];
+	uint8_t flex_parser_6[0x20];
+	uint8_t flex_parser_5[0x20];
+	uint8_t flex_parser_4[0x20];
+	uint8_t flex_parser_3[0x20];
+	uint8_t flex_parser_2[0x20];
+	uint8_t flex_parser_1[0x20];
+	uint8_t flex_parser_0[0x20];
+};
+
 struct mlx5_ifc_definer_hl_bits {
 	struct mlx5_ifc_definer_hl_eth_l2_bits eth_l2_outer;
 	struct mlx5_ifc_definer_hl_eth_l2_bits eth_l2_inner;
@@ -226,37 +244,36 @@ struct mlx5_ifc_definer_hl_bits {
 	uint8_t reserved_at_480[0x380];
 	struct mlx5_ifc_definer_hl_ipv4_src_dst_bits ipv4_src_dest_outer;
 	struct mlx5_ifc_definer_hl_ipv4_src_dst_bits ipv4_src_dest_inner;
-
-//	TODO
-//	struct x ipv6_dest_outer;
-//	struct x ipv6_dest_inner;
-//	struct x ipv6_source_outer;
-//	struct x ipv6_source_inner;
-//	struct x dest_ib_l3;
-//	struct x source_ib_l3;
-//	struct x udp_misc_outer;
-//	struct x udp_misc_inner;
-//	struct x tcp_misc;
-//	struct x tunnel_header;
-//	struct x mpls_outer;
-//	struct x mpls_inner;
-//	struct x config_headers_outer;
-//	struct x config_headers_inner;
-//	struct x random_number;
-//	struct x ipsec;
-//	struct x metadata_to_cqe;
-//	struct x general_purpose_lookup_field;
-//	struct x accumulated_hash;
-//	struct x utc_timestamp;
-//	struct x free_running_timestamp;
-//	struct x flex_parser;
-//	struct x registers;
-//	struct x ib_l3_extended;
-//	struct x rwh;
-//	struct x dcceth;
-//	struct x dceth;
-//	/.autodirect/swgwork/maayang/repo_1/golan_fw/include/
-//	tamar_g_cr_no_aligned_expose__descsteering_headers_layout_desc_adb.h
+	struct mlx5_ifc_definer_hl_ipv6_addr_bits ipv6_dest_outer;
+	struct mlx5_ifc_definer_hl_ipv6_addr_bits ipv6_dest_inner;
+	struct mlx5_ifc_definer_hl_ipv6_addr_bits ipv6_src_outer;
+	struct mlx5_ifc_definer_hl_ipv6_addr_bits ipv6_src_inner;
+	uint8_t unsupported_dest_ib_l3[0x80];
+	uint8_t unsupported_source_ib_l3[0x80];
+	uint8_t reserved_at_b80[0x4e0];
+	//	struct x udp_misc_outer;
+	//	struct x udp_misc_inner;
+	//	struct x tcp_misc;
+	//	struct x tunnel_header;
+	//	struct x mpls_outer;
+	//	struct x mpls_inner;
+	//	struct x config_headers_outer;
+	//	struct x config_headers_inner;
+	//	struct x random_number;
+	//	struct x ipsec;
+	//	struct x metadata_to_cqe;
+	//	struct x general_purpose_lookup_field;
+	//	struct x accumulated_hash;
+	//	struct x utc_timestamp;
+	//	struct x free_running_timestamp;
+	struct mlx5_ifc_definer_hl_flex_parser_bits flex_parser;
+	//	struct x registers;
+	//	struct x ib_l3_extended;
+	//	struct x rwh;
+	//	struct x dcceth;
+	//	struct x dceth;
+	//	/.autodirect/swgwork/maayang/repo_1/golan_fw/include/
+	//	tamar_g_cr_no_aligned_expose__descsteering_headers_layout_desc_adb.h
 };
 
 void mlx5dr_definer_create_tag(struct rte_flow_item *items,
