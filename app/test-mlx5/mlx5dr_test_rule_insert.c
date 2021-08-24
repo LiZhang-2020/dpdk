@@ -48,24 +48,113 @@ static int poll_for_comp(struct mlx5dr_context *ctx,
 	return 0;
 }
 
-static void set_mask_and_value(struct rte_ipv4_hdr *mask,
-			       struct rte_ipv4_hdr *value,
-			       struct rte_flow_item *items)
+static void set_match_simple(struct rte_ipv4_hdr *ip_m,
+			     struct rte_ipv4_hdr *ip_v,
+			     struct rte_flow_item *items)
 {
-	memset(mask, 0, sizeof(*mask));
-	memset(value, 0, sizeof(*value));
+	memset(ip_m, 0, sizeof(*ip_m));
+	memset(ip_v, 0, sizeof(*ip_v));
 
-	mask->version = 0xf;
-	value->version = 0x4;
-
-	mask->dst_addr = 0xffffffff;
+	ip_m->dst_addr = 0xffffffff;
+	ip_m->version = 0xf;
+	ip_v->version = 0x4;
 
 	items[0].type = RTE_FLOW_ITEM_TYPE_IPV4;
-	items[0].mask = mask;
-	items[0].spec = value;
+	items[0].mask = ip_m;
+	items[0].spec = ip_v;
 
 	items[1].type = RTE_FLOW_ITEM_TYPE_END;
 }
+
+static void set_match_mavneir(struct rte_flow_item_eth *eth_m,
+			      struct rte_flow_item_eth *eth_v,
+			      struct rte_ipv4_hdr *ip_m,
+			      struct rte_ipv4_hdr *ip_v,
+			      struct rte_flow_item_udp *udp_m,
+			      struct rte_flow_item_udp *udp_v,
+			      struct rte_flow_item_gtp *gtp_m,
+			      struct rte_flow_item_gtp *gtp_v,
+			      struct rte_ipv4_hdr *ip_m_in,
+			      struct rte_ipv4_hdr *ip_v_in,
+			      struct rte_flow_item_tcp *tcp_m_in,
+			      struct rte_flow_item_tcp *tcp_v_in,
+			      struct rte_flow_item *items)
+
+{
+	if (eth_m) {
+		memset(eth_m, 0, sizeof(*eth_m));
+		memset(eth_v, 0, sizeof(*eth_v));
+		items->type = RTE_FLOW_ITEM_TYPE_ETH;
+		items->mask = eth_m;
+		items->spec = eth_v;
+		items++;
+	}
+
+	if (ip_m) {
+		memset(ip_m, 0, sizeof(*ip_m));
+		memset(ip_v, 0, sizeof(*ip_v));
+		ip_m->dst_addr = 0xffffffff;
+		ip_m->src_addr = 0xffffffff;
+		ip_v->dst_addr = 0x02020202;
+		ip_v->src_addr = 0x01010101;
+		ip_m->version = 0xf;
+		ip_v->version = 0x4;
+		items->type = RTE_FLOW_ITEM_TYPE_IPV4;
+		items->mask = ip_m;
+		items->spec = ip_v;
+		items++;
+	}
+	if (udp_m) {
+		memset(udp_m, 0, sizeof(*udp_m));
+		memset(udp_v, 0, sizeof(*udp_v));
+		items->type = RTE_FLOW_ITEM_TYPE_UDP;
+		items->mask = udp_m;
+		items->spec = udp_m;
+		items++;
+	}
+
+	if (gtp_m) {
+		memset(gtp_m, 0, sizeof(*gtp_m));
+		memset(gtp_v, 0, sizeof(*gtp_v));
+		gtp_m->teid = -1;
+		gtp_v->teid = 0xabcd;
+		items->type = RTE_FLOW_ITEM_TYPE_GTP;
+		items->mask = gtp_m;
+		items->spec = gtp_v;
+		items++;
+	}
+
+	if (ip_m_in) {
+		memset(ip_m_in, 0, sizeof(*ip_m_in));
+		memset(ip_v_in, 0, sizeof(*ip_v_in));
+		ip_m_in->dst_addr = 0xffffffff;
+		ip_m_in->src_addr = 0xffffffff;
+		ip_v_in->dst_addr = 0x04040404;
+		ip_v_in->src_addr = 0x03030303;
+		ip_v_in->version = 0xf;
+		ip_v_in->version = 0x4;
+		items->type = RTE_FLOW_ITEM_TYPE_IPV4;
+		items->mask = ip_m_in;
+		items->spec = ip_v_in;
+		items++;
+	}
+
+	if (tcp_m_in) {
+		memset(tcp_m_in, 0, sizeof(*tcp_m_in));
+		memset(tcp_v_in, 0, sizeof(*tcp_v_in));
+		tcp_m_in->hdr.dst_port = -1;
+		tcp_m_in->hdr.src_port = -1;
+		tcp_v_in->hdr.dst_port = 0xbbbb;
+		tcp_v_in->hdr.src_port = 0xaaaa;
+		items->type = RTE_FLOW_ITEM_TYPE_TCP;
+		items->mask = tcp_m_in;
+		items->spec = tcp_v_in;
+		items++;
+	}
+
+	items->type = RTE_FLOW_ITEM_TYPE_END;
+}
+
 
 int run_test_rule_insert(struct ibv_context *ibv_ctx)
 {
@@ -82,9 +171,17 @@ int run_test_rule_insert(struct ibv_context *ibv_ctx)
 	struct mlx5dr_table_attr dr_tbl_attr = {0};
 	struct mlx5dr_matcher_attr matcher_attr = {0};
 	struct mlx5dr_rule_attr rule_attr = {0};
+	struct rte_flow_item items_conn[MAX_ITEMS] = {{0}};
+	struct rte_ipv4_hdr ipv_mask_conn;
+	struct rte_ipv4_hdr ipv_value_conn;
 	struct rte_flow_item items[MAX_ITEMS] = {{0}};
+	struct rte_flow_item_eth eth_mask;
+	struct rte_flow_item_eth eth_value;
 	struct rte_ipv4_hdr ipv_mask;
 	struct rte_ipv4_hdr ipv_value;
+	struct rte_flow_item_udp udp_mask;
+	struct rte_flow_item_udp udp_value;
+
 	uint32_t pending_rules = 0;
 	uint64_t start, end;
 	int ret, i, j;
@@ -118,16 +215,24 @@ int run_test_rule_insert(struct ibv_context *ibv_ctx)
 		goto destroy_root_tbl;
 	}
 
-	set_mask_and_value(&ipv_mask, &ipv_value, items);
+	set_match_simple(&ipv_mask_conn, &ipv_value_conn, items_conn);
 
 	/* Create root matcher */
 	matcher_attr.priority = 0;
 	matcher_attr.insertion_mode = MLX5DR_MATCHER_INSERTION_MODE_ASSURED;
-	root_matcher = mlx5dr_matcher_create(root_tbl, items, &matcher_attr);
+	root_matcher = mlx5dr_matcher_create(root_tbl, items_conn, &matcher_attr);
 	if (!root_matcher) {
 		printf("Failed to create root matcher\n");
 		goto destroy_hws_tbl;
 	}
+
+	set_match_mavneir(&eth_mask, &eth_value,
+			  &ipv_mask, &ipv_value,
+			  &udp_mask, &udp_value,
+			  NULL, NULL,
+			  NULL, NULL,
+			  NULL, NULL,
+			  items);
 
 	/* Create HWS matcher1 */
 	matcher_attr.priority = 0;
@@ -169,10 +274,10 @@ int run_test_rule_insert(struct ibv_context *ibv_ctx)
 	}
 
 	/* Create connecting rule to HWS */
-	ipv_value.dst_addr = 0x01010102;
+	ipv_value_conn.dst_addr = 0x01010102;
 	rule_actions[0].action = to_hws_tbl;
 
-	ret = mlx5dr_rule_create(root_matcher, items, rule_actions, 1, &rule_attr, connect_rule);
+	ret = mlx5dr_rule_create(root_matcher, items_conn, rule_actions, 1, &rule_attr, connect_rule);
 	if (ret) {
 		printf("Failed to create connect rule\n");
 		goto free_connect_rule;
@@ -196,7 +301,7 @@ int run_test_rule_insert(struct ibv_context *ibv_ctx)
 			/* Ring doorbell */
 			rule_attr.burst = ((i + 1) % BURST_TH == 0);
 
-			ipv_value.dst_addr = i;
+			ipv_value.dst_addr += i;
 			rule_actions[0].action = drop;
 
 			ret = mlx5dr_rule_create(hws_matcher1, items, rule_actions, 1, &rule_attr, &hws_rule[i]);
