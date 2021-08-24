@@ -823,6 +823,19 @@ mlx5_flow_action_template_destroy(struct rte_eth_dev *dev,
 				  struct rte_flow_action_template *template,
 				  struct rte_flow_error *error);
 
+static struct rte_flow_table *
+mlx5_flow_table_create(struct rte_eth_dev *dev,
+		       const struct rte_flow_table_attr *attr,
+		       struct rte_flow_item_template *item_templates[],
+		       uint8_t nb_item_templates,
+		       struct rte_flow_action_template *action_templates[],
+		       uint8_t nb_action_templates,
+		       struct rte_flow_error *error);
+static int
+mlx5_flow_table_destroy(struct rte_eth_dev *dev,
+			struct rte_flow_table *table,
+			struct rte_flow_error *error);
+
 static const struct rte_flow_ops mlx5_flow_ops = {
 	.validate = mlx5_flow_validate,
 	.create = mlx5_flow_create,
@@ -848,6 +861,8 @@ static const struct rte_flow_ops mlx5_flow_ops = {
 	.item_template_destroy = mlx5_flow_item_template_destroy,
 	.action_template_create = mlx5_flow_action_template_create,
 	.action_template_destroy = mlx5_flow_action_template_destroy,
+	.table_create = mlx5_flow_table_create,
+	.table_destroy = mlx5_flow_table_destroy,
 };
 
 /* Tunnel information. */
@@ -8194,6 +8209,35 @@ mlx5_flow_action_template_destroy(struct rte_eth_dev *dev,
 			flow_get_drv_ops(MLX5_FLOW_TYPE_HW);
 
 	return fops->action_template_destroy(dev, template, error);
+}
+
+static struct rte_flow_table *
+mlx5_flow_table_create(struct rte_eth_dev *dev,
+		       const struct rte_flow_table_attr *attr,
+		       struct rte_flow_item_template *item_templates[],
+		       uint8_t nb_item_templates,
+		       struct rte_flow_action_template *action_templates[],
+		       uint8_t nb_action_templates,
+		       struct rte_flow_error *error)
+{
+	const struct mlx5_flow_driver_ops *fops =
+			flow_get_drv_ops(MLX5_FLOW_TYPE_HW);
+
+	return fops->table_create(dev, attr,
+				  item_templates, nb_item_templates,
+				  action_templates, nb_action_templates,
+				  error);
+}
+
+static int
+mlx5_flow_table_destroy(struct rte_eth_dev *dev,
+			struct rte_flow_table *table,
+			struct rte_flow_error *error)
+{
+	const struct mlx5_flow_driver_ops *fops =
+			flow_get_drv_ops(MLX5_FLOW_TYPE_HW);
+
+	return fops->table_destroy(dev, table, error);
 }
 
 /**

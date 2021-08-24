@@ -64,6 +64,7 @@ enum mlx5_ipool_index {
 	MLX5_IPOOL_TAG, /* Pool for tag resource. */
 	MLX5_IPOOL_PORT_ID, /* Pool for port id resource. */
 	MLX5_IPOOL_JUMP, /* Pool for jump resource. */
+	MLX5_IPOOL_HW_GRP = MLX5_IPOOL_JUMP,
 	MLX5_IPOOL_SAMPLE, /* Pool for sample resource. */
 	MLX5_IPOOL_DEST_ARRAY, /* Pool for destination array resource. */
 	MLX5_IPOOL_TUNNEL_ID, /* Pool for tunnel offload context */
@@ -257,7 +258,7 @@ struct mlx5_dev_config {
 	unsigned int l3_vxlan_en:1; /* Enable L3 VXLAN flow creation. */
 	unsigned int vf_nl_en:1; /* Enable Netlink requests in VF mode. */
 	unsigned int dv_esw_en:1; /* Enable E-Switch DV flow. */
-	unsigned int dv_flow_en:1; /* Enable DV flow. */
+	unsigned int dv_flow_en:2; /* Enable DV flow. */
 	unsigned int dv_xmeta_en:2; /* Enable extensive flow metadata. */
 	unsigned int dv_validate_mod:1; /* Validate on modify actions */
 	unsigned int lacp_by_user:1;
@@ -1210,7 +1211,10 @@ struct mlx5_dev_ctx_shared {
 	rte_spinlock_t uar_lock[MLX5_UAR_PAGE_NUM_MAX];
 	/* UAR same-page access control required in 32bit implementations. */
 #endif
-	struct mlx5_hlist *flow_tbls;
+	union {
+		struct mlx5_hlist *flow_tbls;
+		struct mlx5_hlist *groups;
+	};
 	struct mlx5_hlist *flow_sfts;
 	struct mlx5_hlist *sft_zones_hash;
 	struct mlx5_flow_tunnel_hub *tunnel_hub;
@@ -1480,6 +1484,7 @@ struct mlx5_priv {
 	unsigned int reta_idx_n; /* RETA index size. */
 	struct mlx5_drop drop_queue; /* Flow drop queues. */
 	void *root_drop_action; /* Pointer to root drop action. */
+	struct mlx5dr_action *hw_drop[2][MLX5DR_TABLE_TYPE_MAX];
 	struct mlx5_indexed_pool *flows[MLX5_FLOW_TYPE_MAXI];
 	/* RTE Flow rules. */
 	uint32_t ctrl_flows; /* Control flow rules. */
@@ -1536,6 +1541,8 @@ struct mlx5_priv {
 	struct mlx5dr_context *dr_ctx; /**< HW steering DR context. */
 	struct mlx5_hw_q *hw_q;
 	/**< HW steering queue polling mechanism job descriptor LIFO. */
+	LIST_HEAD(flow_hw_tbl, rte_flow_table) flow_hw_tbl;
+	/**< HW steering rte flow table list header. */
 };
 
 #define PORT_ID(priv) ((priv)->dev_data->port_id)
