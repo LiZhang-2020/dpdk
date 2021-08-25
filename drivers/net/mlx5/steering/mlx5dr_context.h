@@ -21,6 +21,7 @@ struct mlx5dr_context {
 	enum mlx5dr_context_flags flags;
 	struct mlx5dr_send_engine *send_queue;
 	size_t queues;
+	LIST_HEAD(table_head, mlx5dr_table) head;
 };
 
 #endif

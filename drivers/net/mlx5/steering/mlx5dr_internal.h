@@ -28,6 +28,7 @@
 #include "mlx5dr_action.h"
 #include "mlx5dr_cmd.h"
 #include "mlx5dr_definer.h"
+#include "mlx5dr_debug.h"
 
 static inline void *simple_malloc(size_t size)
 {

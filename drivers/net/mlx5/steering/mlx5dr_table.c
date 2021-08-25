@@ -148,6 +148,10 @@ struct mlx5dr_table *mlx5dr_table_create(struct mlx5dr_context *ctx,
 		goto free_tbl;
 	}
 
+	pthread_spin_lock(&ctx->ctrl_lock);
+	LIST_INSERT_HEAD(&ctx->head, tbl, next);
+	pthread_spin_unlock(&ctx->ctrl_lock);
+
 	return tbl;
 
 free_tbl:
@@ -157,6 +161,11 @@ free_tbl:
 
 int mlx5dr_table_destroy(struct mlx5dr_table *tbl)
 {
+	struct mlx5dr_context *ctx = tbl->ctx;
+
+	pthread_spin_lock(&ctx->ctrl_lock);
+	LIST_REMOVE(tbl, next);
+	pthread_spin_unlock(&ctx->ctrl_lock);
 	mlx5dr_table_uninit(tbl);
 	simple_free(tbl);
 

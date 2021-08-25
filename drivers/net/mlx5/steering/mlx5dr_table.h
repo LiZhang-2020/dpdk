@@ -21,6 +21,7 @@ struct mlx5dr_table {
 	struct mlx5dr_table_nic rx;
 	struct mlx5dr_table_nic tx;
 	LIST_HEAD(matcher_head, mlx5dr_matcher) head;
+	LIST_ENTRY(mlx5dr_table) next;
 };
 
 static inline bool mlx5dr_table_is_root(struct mlx5dr_table *tbl)

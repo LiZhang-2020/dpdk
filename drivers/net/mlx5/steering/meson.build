@@ -13,5 +13,6 @@ sources += files(
 	'mlx5dr_cmd.c',
 	'mlx5dr_send.c',
 	'mlx5dr_definer.c',
+	'mlx5dr_debug.c',
 )
 
