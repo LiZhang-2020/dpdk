@@ -505,7 +505,7 @@ static int mlx5dr_send_queue_open(struct mlx5dr_context *ctx,
 	queue->completed.entries = simple_calloc(queue->num_entries,
 						 sizeof(queue->completed.entries[0]));
 	if (!queue->completed.entries) {
-		rte_errno = -ENOMEM;
+		rte_errno = ENOMEM;
 		goto free_uar;
 	}
 	queue->completed.pi = 0;

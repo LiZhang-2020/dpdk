@@ -19,7 +19,7 @@ static int mlx5dr_rule_create_hws(struct mlx5dr_rule *rule,
 	size_t wqe_len;
 
 	if (unlikely(mlx5dr_send_engine_full(&ctx->send_queue[attr->queue_id]))) {
-		rte_errno = -EBUSY;
+		rte_errno = EBUSY;
 		return rte_errno;
 	}
 
