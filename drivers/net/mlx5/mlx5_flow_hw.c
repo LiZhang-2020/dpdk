@@ -6,6 +6,12 @@
 #include "mlx5_flow.h"
 #include "mlx5_flow_os.h"
 
+#include "mlx5dr_context.h"
+#include "mlx5dr_send.h"
+
+/* The maximum actions support in the flow. */
+#define MLX5_HW_MAX_ACTS 16
+
 const struct mlx5_flow_driver_ops mlx5_flow_hw_drv_ops;
 
 static uint32_t mlx5_hw_dr_ft_flag[2][MLX5DR_TABLE_TYPE_MAX] = {
@@ -65,6 +71,166 @@ flow_hw_actions_translate(struct rte_eth_dev *dev,
 	return 0;
 }
 
+static void
+flow_hw_actions_construct(struct mlx5_hw_actions *hw_acts,
+			  const struct rte_flow_action actions[],
+			  struct mlx5dr_rule_action *rule_acts,
+			  uint32_t *acts_num)
+{
+	bool actions_end = false;
+	uint32_t i;
+
+	for (i = 0; !actions_end || (i >= MLX5_HW_MAX_ACTS); actions++) {
+		switch (actions->type) {
+		case RTE_FLOW_ACTION_TYPE_INDIRECT:
+			break;
+		case RTE_FLOW_ACTION_TYPE_VOID:
+			break;
+		case RTE_FLOW_ACTION_TYPE_DROP:
+			rule_acts[i++].action = hw_acts->drop;
+			break;
+		case RTE_FLOW_ACTION_TYPE_END:
+			actions_end = true;
+			break;
+		default:
+			break;
+		}
+	}
+	*acts_num = i;
+}
+
+static struct rte_flow *
+flow_hw_q_flow_create(struct rte_eth_dev *dev,
+		      uint32_t queue,
+		      const struct rte_flow_q_ops_attr *attr,
+		      struct rte_flow_table *table,
+		      const struct rte_flow_item items[],
+		      uint8_t item_template_index,
+		      const struct rte_flow_action actions[],
+		      uint8_t action_template_index,
+		      struct rte_flow_error *error)
+{
+	struct mlx5_priv *priv = dev->data->dev_private;
+	struct mlx5dr_rule_attr rule_attr = {
+		.queue_id = queue,
+		.user_data = attr->user_data,
+		.burst = !attr->drain,
+	};
+	struct mlx5dr_rule_action rule_acts[MLX5_HW_MAX_ACTS];
+	struct mlx5_hw_actions *hw_acts;
+	struct rte_flow_hw *flow;
+	struct mlx5_hw_q_job *job;
+	uint32_t acts_num, flow_idx;
+	int ret;
+
+	if (unlikely(!priv->hw_q[queue].job_idx)) {
+		rte_errno = ENOMEM;
+		goto error;
+	}
+	flow = mlx5_ipool_zmalloc(table->flow, &flow_idx);
+	if (!flow)
+		goto error;
+	flow->table = table;
+	flow->idx = flow_idx;
+	job = priv->hw_q[queue].job[--priv->hw_q[queue].job_idx];
+	hw_acts = &table->ats[action_template_index].acts;
+	/* Construct the flow actions based on the input actions.*/
+	flow_hw_actions_construct(hw_acts, actions, rule_acts, &acts_num);
+	job->type = MLX5_HW_Q_JOB_TYPE_CREATE;
+	job->flow = flow;
+	job->user_data = attr->user_data;
+	rule_attr.user_data = job;
+	ret = mlx5dr_rule_create(table->matcher,
+				 item_template_index, items,
+				 rule_acts, acts_num,
+				 &rule_attr, &flow->rule);
+	if (likely(!ret))
+		return (struct rte_flow *)flow;
+	/* Flow created fail, return the descriptor and flow memory. */
+	mlx5_ipool_free(table->flow, flow_idx);
+	priv->hw_q[queue].job[priv->hw_q[queue].job_idx++] = job;
+error:
+	rte_flow_error_set(error, rte_errno,
+			   RTE_FLOW_ERROR_TYPE_UNSPECIFIED, NULL,
+			   "fail to create rte flow");
+	return NULL;
+}
+
+static int
+flow_hw_q_flow_destroy(struct rte_eth_dev *dev,
+		       uint32_t queue,
+		       const struct rte_flow_q_ops_attr *attr,
+		       struct rte_flow *flow,
+		       struct rte_flow_error *error)
+{
+	struct mlx5_priv *priv = dev->data->dev_private;
+	struct mlx5dr_rule_attr rule_attr = {
+		.queue_id = queue,
+		.user_data = attr->user_data,
+		.burst = !attr->drain,
+	};
+	struct rte_flow_hw *fh = (struct rte_flow_hw *)flow;
+	struct mlx5_hw_q_job *job;
+	int ret;
+
+	if (unlikely(!priv->hw_q[queue].job_idx)) {
+		rte_errno = ENOMEM;
+		goto error;
+	}
+	job = priv->hw_q[queue].job[--priv->hw_q[queue].job_idx];
+	job->type = MLX5_HW_Q_JOB_TYPE_DESTROY;
+	job->user_data = attr->user_data;
+	job->flow = fh;
+	rule_attr.user_data = job;
+	ret = mlx5dr_rule_destroy(&fh->rule, &rule_attr);
+	if (ret)
+		goto error;
+	return 0;
+error:
+	return rte_flow_error_set(error, rte_errno,
+			RTE_FLOW_ERROR_TYPE_UNSPECIFIED, NULL,
+			"fail to create rte flow");
+}
+
+static int
+flow_hw_q_dequeue(struct rte_eth_dev *dev,
+		  uint32_t queue,
+		  struct rte_flow_q_op_res res[],
+		  uint16_t n_res,
+		  struct rte_flow_error *error)
+{
+	struct mlx5_priv *priv = dev->data->dev_private;
+	struct mlx5_hw_q_job *job;
+	int ret, i;
+
+	ret = mlx5dr_send_queue_poll(priv->dr_ctx, queue, res, n_res);
+	if (ret < 0)
+		return rte_flow_error_set(error, rte_errno,
+				RTE_FLOW_ERROR_TYPE_UNSPECIFIED, NULL,
+				"fail to query flow queue");
+	for (i = 0; i <  ret; i++) {
+		job = (struct mlx5_hw_q_job *)res[i].user_data;
+		/* Restore user data. */
+		res[i].user_data = job->user_data;
+		if (job->type == MLX5_HW_Q_JOB_TYPE_DESTROY)
+			mlx5_ipool_free(job->flow->table->flow, job->flow->idx);
+		priv->hw_q[queue].job[priv->hw_q[queue].job_idx++] = job;
+	}
+	return ret;
+}
+
+static int
+flow_hw_q_drain(struct rte_eth_dev *dev,
+		uint32_t queue,
+		struct rte_flow_error *error __rte_unused)
+{
+	struct mlx5_priv *priv = dev->data->dev_private;
+	struct mlx5dr_context *dr_ctx = priv->dr_ctx;
+
+	mlx5dr_send_all_dep_wqe(&dr_ctx->send_queue[queue]);
+	return 0;
+}
+
 static struct rte_flow_table *
 flow_hw_table_create(struct rte_eth_dev *dev,
 		     const struct rte_flow_table_attr *attr,
@@ -86,7 +252,7 @@ flow_hw_table_create(struct rte_eth_dev *dev,
 		.data = &flow_attr,
 	};
 	struct mlx5_indexed_pool_config cfg = {
-		.size = sizeof(struct rte_flow),
+		.size = sizeof(struct rte_flow_hw),
 		.trunk_size = 1 << 12,
 		.per_core_cache = 1 << 13,
 		.need_lock = 1,
@@ -581,4 +747,8 @@ const struct mlx5_flow_driver_ops mlx5_flow_hw_drv_ops = {
 	.action_template_destroy = flow_hw_action_template_destroy,
 	.table_create = flow_hw_table_create,
 	.table_destroy = flow_hw_table_destroy,
+	.q_flow_create = flow_hw_q_flow_create,
+	.q_flow_destroy = flow_hw_q_flow_destroy,
+	.q_dequeue = flow_hw_q_dequeue,
+	.q_drain = flow_hw_q_drain,
 };

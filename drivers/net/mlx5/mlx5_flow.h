@@ -19,6 +19,7 @@
 
 #include "mlx5.h"
 #include "steering/mlx5dr.h"
+#include "steering/mlx5dr_rule.h"
 
 /* E-Switch Manager port, used for rte_flow_item_port_id. */
 #define MLX5_PORT_ESW_MGR UINT32_MAX
@@ -1115,6 +1116,12 @@ struct rte_flow {
 	uint32_t geneve_tlv_option; /**< Holds Geneve TLV option id. > */
 } __rte_packed;
 
+struct rte_flow_hw {
+	uint32_t idx;
+	struct rte_flow_table *table;
+	struct mlx5dr_rule rule;
+} __rte_packed;
+
 struct rte_flow_item_template {
 	LIST_ENTRY(rte_flow_item_template) next;
 	/* Template attributes. */
@@ -1457,6 +1464,33 @@ typedef int (*mlx5_flow_table_destroy_t)
 			(struct rte_eth_dev *dev,
 			 struct rte_flow_table *table,
 			 struct rte_flow_error *error);
+typedef struct rte_flow *(*mlx5_flow_q_flow_create_t)
+			(struct rte_eth_dev *dev,
+			 uint32_t queue,
+			 const struct rte_flow_q_ops_attr *attr,
+			 struct rte_flow_table *table,
+			 const struct rte_flow_item items[],
+			 uint8_t item_template_index,
+			 const struct rte_flow_action actions[],
+			 uint8_t action_template_index,
+			 struct rte_flow_error *error);
+typedef int (*mlx5_flow_q_flow_destroy_t)
+			(struct rte_eth_dev *dev,
+			 uint32_t queue,
+			 const struct rte_flow_q_ops_attr *attr,
+			 struct rte_flow *flow,
+			 struct rte_flow_error *error);
+typedef int (*mlx5_flow_q_dequeue_t)
+			(struct rte_eth_dev *dev,
+			 uint32_t queue,
+			 struct rte_flow_q_op_res res[],
+			 uint16_t n_res,
+			 struct rte_flow_error *error);
+
+typedef int (*mlx5_flow_q_drain_t)
+			(struct rte_eth_dev *dev,
+			 uint32_t queue,
+			 struct rte_flow_error *error);
 
 struct mlx5_flow_driver_ops {
 	mlx5_flow_validate_t validate;
@@ -1502,6 +1536,10 @@ struct mlx5_flow_driver_ops {
 	mlx5_flow_action_template_destroy_t action_template_destroy;
 	mlx5_flow_table_create_t table_create;
 	mlx5_flow_table_destroy_t table_destroy;
+	mlx5_flow_q_flow_create_t q_flow_create;
+	mlx5_flow_q_flow_destroy_t q_flow_destroy;
+	mlx5_flow_q_dequeue_t q_dequeue;
+	mlx5_flow_q_drain_t q_drain;
 };
 
 /* mlx5_flow.c */

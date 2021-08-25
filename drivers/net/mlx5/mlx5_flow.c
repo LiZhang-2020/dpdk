@@ -835,6 +835,33 @@ static int
 mlx5_flow_table_destroy(struct rte_eth_dev *dev,
 			struct rte_flow_table *table,
 			struct rte_flow_error *error);
+static struct rte_flow *
+mlx5_flow_q_flow_create(struct rte_eth_dev *dev,
+			uint32_t queue,
+			const struct rte_flow_q_ops_attr *attr,
+			struct rte_flow_table *table,
+			const struct rte_flow_item items[],
+			uint8_t item_template_index,
+			const struct rte_flow_action actions[],
+			uint8_t action_template_index,
+			struct rte_flow_error *error);
+static int
+mlx5_flow_q_flow_destroy(struct rte_eth_dev *dev,
+			 uint32_t queue,
+			 const struct rte_flow_q_ops_attr *attr,
+			 struct rte_flow *flow,
+			 struct rte_flow_error *error);
+static int
+mlx5_flow_q_dequeue(struct rte_eth_dev *dev,
+		    uint32_t queue,
+		    struct rte_flow_q_op_res res[],
+		    uint16_t n_res,
+		    struct rte_flow_error *error);
+
+static int
+mlx5_flow_q_drain(struct rte_eth_dev *dev,
+		  uint32_t queue,
+		  struct rte_flow_error *error);
 
 static const struct rte_flow_ops mlx5_flow_ops = {
 	.validate = mlx5_flow_validate,
@@ -863,6 +890,10 @@ static const struct rte_flow_ops mlx5_flow_ops = {
 	.action_template_destroy = mlx5_flow_action_template_destroy,
 	.table_create = mlx5_flow_table_create,
 	.table_destroy = mlx5_flow_table_destroy,
+	.q_flow_create = mlx5_flow_q_flow_create,
+	.q_flow_destroy = mlx5_flow_q_flow_destroy,
+	.q_dequeue = mlx5_flow_q_dequeue,
+	.q_drain = mlx5_flow_q_drain,
 };
 
 /* Tunnel information. */
@@ -8238,6 +8269,63 @@ mlx5_flow_table_destroy(struct rte_eth_dev *dev,
 			flow_get_drv_ops(MLX5_FLOW_TYPE_HW);
 
 	return fops->table_destroy(dev, table, error);
+}
+
+static struct rte_flow *
+mlx5_flow_q_flow_create(struct rte_eth_dev *dev,
+			uint32_t queue,
+			const struct rte_flow_q_ops_attr *attr,
+			struct rte_flow_table *table,
+			const struct rte_flow_item items[],
+			uint8_t item_template_index,
+			const struct rte_flow_action actions[],
+			uint8_t action_template_index,
+			struct rte_flow_error *error)
+{
+	const struct mlx5_flow_driver_ops *fops =
+			flow_get_drv_ops(MLX5_FLOW_TYPE_HW);
+
+	return fops->q_flow_create(dev, queue, attr, table,
+				   items, item_template_index,
+				   actions, action_template_index,
+				   error);
+}
+
+static int
+mlx5_flow_q_flow_destroy(struct rte_eth_dev *dev,
+			 uint32_t queue,
+			 const struct rte_flow_q_ops_attr *attr,
+			 struct rte_flow *flow,
+			 struct rte_flow_error *error)
+{
+	const struct mlx5_flow_driver_ops *fops =
+			flow_get_drv_ops(MLX5_FLOW_TYPE_HW);
+
+	return fops->q_flow_destroy(dev, queue, attr, flow, error);
+}
+
+static int
+mlx5_flow_q_dequeue(struct rte_eth_dev *dev,
+		    uint32_t queue,
+		    struct rte_flow_q_op_res res[],
+		    uint16_t n_res,
+		    struct rte_flow_error *error)
+{
+	const struct mlx5_flow_driver_ops *fops =
+			flow_get_drv_ops(MLX5_FLOW_TYPE_HW);
+
+	return fops->q_dequeue(dev, queue, res, n_res, error);
+}
+
+static int
+mlx5_flow_q_drain(struct rte_eth_dev *dev,
+		  uint32_t queue,
+		  struct rte_flow_error *error)
+{
+	const struct mlx5_flow_driver_ops *fops =
+			flow_get_drv_ops(MLX5_FLOW_TYPE_HW);
+
+	return fops->q_drain(dev, queue, error);
 }
 
 /**
