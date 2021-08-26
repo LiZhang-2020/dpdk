@@ -19,6 +19,7 @@ struct test_structs {
 static struct test_structs tests[] = {
 	MLX5DR_INIT_TEST(rule_insert, run_test_rule_insert),
 	MLX5DR_INIT_TEST(post_send, run_test_post_send),
+	MLX5DR_INIT_TEST(modify_header, run_test_modify_header_action),
 };
 
 static int test_run(struct ibv_context *ibv_ctx)
