@@ -182,6 +182,12 @@ error:
 static void
 mlx5_aso_destroy_sq(struct mlx5_aso_sq *sq)
 {
+	if (sq->sq) {
+		mlx5_devx_cmd_destroy(sq->sq);
+		sq->sq = NULL;
+	}
+	if (sq->cq.cq)
+		mlx5_aso_cq_destroy(&sq->cq);
 	if (sq->wqe_umem) {
 		claim_zero(mlx5_glue->devx_umem_dereg(sq->wqe_umem));
 		sq->wqe_umem = NULL;
@@ -190,12 +196,6 @@ mlx5_aso_destroy_sq(struct mlx5_aso_sq *sq)
 		mlx5_free((void *)(uintptr_t)sq->umem_buf);
 		sq->umem_buf = NULL;
 	}
-	if (sq->sq) {
-		mlx5_devx_cmd_destroy(sq->sq);
-		sq->sq = NULL;
-	}
-	if (sq->cq.cq)
-		mlx5_aso_cq_destroy(&sq->cq);
 	memset(sq, 0, sizeof(*sq));
 }
 
