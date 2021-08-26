@@ -4,6 +4,27 @@
 
 #include "mlx5dr_internal.h"
 
+
+static inline void mlx5dr_rule_gen_comp(struct mlx5dr_send_engine *queue,
+					struct mlx5dr_rule *rule,
+					bool err,
+					void *user_data,
+					enum mlx5dr_rule_status rule_status_on_succ)
+{
+	enum rte_flow_q_op_res_status comp_status;
+
+	if (!err){
+		comp_status = RTE_FLOW_Q_OP_RES_SUCCESS;
+		rule->status = rule_status_on_succ;
+	} else {
+		comp_status = RTE_FLOW_Q_OP_RES_ERROR;
+		rule->status = MLX5DR_RULE_STATUS_FAILED;
+	}
+
+	mlx5dr_send_engine_inc_rule(queue);
+	mlx5dr_send_engine_gen_comp(queue, user_data, comp_status);
+}
+
 static int mlx5dr_rule_create_hws(struct mlx5dr_rule *rule,
 				  uint8_t mt_idx,
 				  struct rte_flow_item items[],
@@ -61,6 +82,24 @@ static int mlx5dr_rule_create_hws(struct mlx5dr_rule *rule,
 	return 0;
 }
 
+static void mlx5dr_rule_destroy_failed_hws(struct mlx5dr_rule *rule,
+					   struct mlx5dr_rule_attr *attr)
+{
+	struct mlx5dr_context *ctx = rule->matcher->tbl->ctx;
+
+	mlx5dr_rule_gen_comp(&ctx->send_queue[attr->queue_id], rule, false,
+			     attr->user_data, MLX5DR_RULE_STATUS_DELETED);
+
+	/* If a rule that was indicated as burst (need to trigger HW) has failed
+	 * insertion we won't ring the HW as nothing is being written to the WQ.
+	 * In such case update the last WQE and ring the HW with that work
+	 */
+	if (!attr->burst)
+		return;
+
+	mlx5dr_send_engine_flush_queue(&ctx->send_queue[attr->queue_id]);
+}
+
 static int mlx5dr_rule_destroy_hws(struct mlx5dr_rule *rule,
 				    struct mlx5dr_rule_attr *attr)
 {
@@ -71,7 +110,6 @@ static int mlx5dr_rule_destroy_hws(struct mlx5dr_rule *rule,
 	struct mlx5dr_send_engine_post_ctrl ctrl;
 	size_t wqe_len;
 
-
 	/* In case the rule is not completed */
 	if (rule->status != MLX5DR_RULE_STATUS_CREATED) {
 		if (rule->status == MLX5DR_RULE_STATUS_CREATING) {
@@ -81,7 +119,7 @@ static int mlx5dr_rule_destroy_hws(struct mlx5dr_rule *rule,
 
 		/* In case the rule is not completed */
 		if (rule->status == MLX5DR_RULE_STATUS_FAILED) {
-			// TODO generate comp / free resources
+			mlx5dr_rule_destroy_failed_hws(rule, attr);
 			return 0;
 		}
 	}
@@ -120,11 +158,13 @@ static int mlx5dr_rule_destroy_hws(struct mlx5dr_rule *rule,
 }
 
 static int mlx5dr_rule_create_root(struct mlx5dr_rule *rule,
+				   struct mlx5dr_rule_attr *rule_attr,
 				   struct rte_flow_item items[],
 				   struct mlx5dr_rule_action rule_actions[],
 				   uint8_t num_actions)
 {
 	struct mlx5dv_flow_matcher *dv_matcher = rule->matcher->dv_matcher;
+	struct mlx5dr_context *ctx = rule->matcher->tbl->ctx;
 	struct mlx5dv_flow_match_parameters *value;
 	struct mlx5_flow_attr flow_attr = {0};
 	struct mlx5dv_flow_action_attr *attr;
@@ -164,8 +204,9 @@ static int mlx5dr_rule_create_root(struct mlx5dr_rule *rule,
 	/* Create verb action */
 	value->match_sz = MLX5_ST_SZ_BYTES(fte_match_param);
 	rule->flow = mlx5dv_create_flow(dv_matcher, value, num_actions, attr);
-	if (!rule->flow)
-		goto free_value;
+
+	mlx5dr_rule_gen_comp(&ctx->send_queue[rule_attr->queue_id], rule, !!rule->flow,
+			     rule_attr->user_data, MLX5DR_RULE_STATUS_CREATED);
 
 	simple_free(value);
 	simple_free(attr);
@@ -176,12 +217,22 @@ free_value:
 	simple_free(value);
 free_attr:
 	simple_free(attr);
+
 	return rte_errno;
 }
 
-static int mlx5dr_rule_destroy_root(struct mlx5dr_rule *rule)
+static int mlx5dr_rule_destroy_root(struct mlx5dr_rule *rule,
+				    struct mlx5dr_rule_attr *attr)
 {
-	return ibv_destroy_flow(rule->flow);
+	struct mlx5dr_context *ctx = rule->matcher->tbl->ctx;
+	int err;
+
+	err = ibv_destroy_flow(rule->flow);
+
+	mlx5dr_rule_gen_comp(&ctx->send_queue[attr->queue_id], rule, err,
+			     attr->user_data, MLX5DR_RULE_STATUS_DELETED);
+
+	return 0;
 }
 
 int mlx5dr_rule_create(struct mlx5dr_matcher *matcher,
@@ -203,6 +254,7 @@ int mlx5dr_rule_create(struct mlx5dr_matcher *matcher,
 
 	if (mlx5dr_table_is_root(matcher->tbl))
 		return mlx5dr_rule_create_root(rule_handle,
+					       attr,
 					       items,
 					       rule_actions,
 					       num_of_actions);
@@ -224,7 +276,7 @@ int mlx5dr_rule_destroy(struct mlx5dr_rule *rule,
 	}
 
 	if (mlx5dr_table_is_root(rule->matcher->tbl))
-		return mlx5dr_rule_destroy_root(rule);
+		return mlx5dr_rule_destroy_root(rule, attr);
 
 	return mlx5dr_rule_destroy_hws(rule, attr);
 }

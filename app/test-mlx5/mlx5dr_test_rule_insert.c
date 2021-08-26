@@ -15,10 +15,11 @@
 static int poll_for_comp(struct mlx5dr_context *ctx,
 			 uint16_t queue_id,
 			 uint32_t *pending_rules,
+			 uint32_t expected_comp,
 			 bool drain)
 {
 	bool queue_full = *pending_rules == QUEUE_SIZE;
-	bool got_comp = *pending_rules >= BURST_TH;
+	bool got_comp = *pending_rules >= expected_comp;
 	struct rte_flow_q_op_res comp[BURST_TH];
 	int ret;
 
@@ -27,19 +28,21 @@ static int poll_for_comp(struct mlx5dr_context *ctx,
 		return 0;
 
 	while (queue_full || ((got_comp || drain) && *pending_rules)) {
-		ret = mlx5dr_send_queue_poll(ctx, queue_id, comp, BURST_TH);
+		ret = mlx5dr_send_queue_poll(ctx, queue_id, comp, expected_comp);
 		if (ret < 0) {
 			printf("Failed during poll queue\n");
 			return -1;
 		}
 
 		if (ret) {
-			if (ret != BURST_TH) {
-				printf("BUG in QP ret=%d\n", ret);
+			(*pending_rules) -= ret;
+
+			if (ret != (int)expected_comp) {
+				printf("Got miss in hw, red:=%d expected_comp=%d\n",
+				       ret, expected_comp);
 				return -1;
 			}
 			queue_full = false;
-			(*pending_rules) -= ret;
 		}
 
 		got_comp = !!ret;
@@ -290,6 +293,8 @@ int run_test_rule_insert(struct ibv_context *ibv_ctx)
 	/* Create connecting rule to HWS */
 	ipv_value_conn.dst_addr = 0x01010102;
 	rule_actions[0].action = to_hws_tbl;
+
+	rule_attr.queue_id = 0;
 	rule_attr.user_data = connect_rule;
 
 	ret = mlx5dr_rule_create(root_matcher, 0, items_conn, rule_actions, 1, &rule_attr, connect_rule);
@@ -297,6 +302,8 @@ int run_test_rule_insert(struct ibv_context *ibv_ctx)
 		printf("Failed to create connect rule\n");
 		goto free_connect_rule;
 	}
+	pending_rules = 1;
+	poll_for_comp(ctx, rule_attr.queue_id, &pending_rules, 1, true);
 
 	/* Allocate HWS rules */
 	hws_rule = calloc(NUM_OF_RULES, mlx5dr_rule_get_handle_size());
@@ -327,14 +334,14 @@ int run_test_rule_insert(struct ibv_context *ibv_ctx)
 
 			pending_rules++;
 
-			poll_for_comp(ctx, rule_attr.queue_id, &pending_rules, false);
+			poll_for_comp(ctx, rule_attr.queue_id, &pending_rules, BURST_TH, false);
 		}
 
 		end = rte_rdtsc();
 		printf("K-Rules/Sec: %lf Insertion\n", (double) ((double) NUM_OF_RULES / 1000) / ((double) (end - start) / rte_get_tsc_hz()));
 
 		/* Drain the queue */
-		poll_for_comp(ctx, rule_attr.queue_id, &pending_rules, true);
+		poll_for_comp(ctx, rule_attr.queue_id, &pending_rules, BURST_TH, true);
 
 		start = rte_rdtsc();
 
@@ -355,10 +362,12 @@ int run_test_rule_insert(struct ibv_context *ibv_ctx)
 
 			pending_rules++;
 
-			poll_for_comp(ctx, rule_attr.queue_id, &pending_rules, false);
+			poll_for_comp(ctx, rule_attr.queue_id, &pending_rules, BURST_TH, false);
 		}
 
 		end = rte_rdtsc();
+		/* Drain the queue */
+		poll_for_comp(ctx, rule_attr.queue_id, &pending_rules, BURST_TH, true);
 		printf("K-Rules/Sec: %lf Deletion\n", (double) ((double) NUM_OF_RULES / 1000) / ((double) (end - start) / rte_get_tsc_hz()));
 	}
 

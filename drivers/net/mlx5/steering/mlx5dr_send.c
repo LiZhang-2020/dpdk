@@ -56,6 +56,7 @@ void mlx5dr_send_engine_post_end(struct mlx5dr_send_engine_post_ctrl *ctrl,
 
 	sq = &ctrl->send_ring->send_sq;
 	idx = sq->cur_post & sq->buf_mask;
+	sq->last_idx = idx;
 
 	wqe_ctrl = (void *)(sq->buf + (idx << MLX5_SEND_WQE_SHIFT));
 
@@ -78,6 +79,18 @@ void mlx5dr_send_engine_post_end(struct mlx5dr_send_engine_post_ctrl *ctrl,
 		mlx5dr_send_engine_post_ring(sq, ctrl->queue->uar, wqe_ctrl);
 }
 
+void mlx5dr_send_engine_flush_queue(struct mlx5dr_send_engine *queue)
+{
+	struct mlx5dr_send_ring_sq *sq = &queue->send_ring[0].send_sq;
+	struct mlx5dr_wqe_ctrl_seg *wqe_ctrl;
+
+	wqe_ctrl = (void *)(sq->buf + (sq->last_idx << MLX5_SEND_WQE_SHIFT));
+
+	wqe_ctrl->flags |= rte_cpu_to_be_32(MLX5_WQE_CTRL_CQ_UPDATE);
+
+	mlx5dr_send_engine_post_ring(sq, queue->uar, wqe_ctrl);
+}
+
 static void mlx5dr_send_engine_update_rule(struct mlx5dr_send_engine *queue,
 					   struct mlx5_cqe64 *cqe,
 					   struct mlx5dr_send_ring_priv *priv,
@@ -86,7 +99,6 @@ static void mlx5dr_send_engine_update_rule(struct mlx5dr_send_engine *queue,
 					   uint32_t res_nb)
 {
 
-	struct mlx5dr_completed_poll *comp = &queue->completed;
 	enum rte_flow_q_op_res_status status;
 
 	/* TODO: this used with fw version 3223 which isn't PRM defined.
@@ -117,9 +129,7 @@ static void mlx5dr_send_engine_update_rule(struct mlx5dr_send_engine *queue,
 			(*i)++;
 			mlx5dr_send_engine_dec_rule(queue);
 		} else {
-			comp->entries[comp->pi].status = status;
-			comp->entries[comp->pi].user_data = priv->user_data;
-			comp->pi = (comp->pi + 1) & comp->mask;
+			mlx5dr_send_engine_gen_comp(queue, priv->user_data, status);
 		}
 	}
 }
@@ -201,7 +211,7 @@ static void mlx5dr_send_engine_poll_list(struct mlx5dr_send_engine *queue,
 			res[*polled].user_data =
 				comp->entries[comp->ci].user_data;
 			(*polled)++;
-			comp->ci = (comp->ci + 1) & comp->mask;;
+			comp->ci = (comp->ci + 1) & comp->mask;
 			mlx5dr_send_engine_dec_rule(queue);
                 } else {
 			return;
@@ -576,3 +586,4 @@ close_send_queues:
 
 	return err;
 }
+

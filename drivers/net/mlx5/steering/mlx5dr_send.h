@@ -35,6 +35,7 @@ struct mlx5dr_send_ring_sq {
 	uint16_t cur_post;
 	uint16_t buf_mask;
 	struct mlx5dr_send_ring_priv *wr_priv;
+	unsigned last_idx;
 
 	struct mlx5dr_devx_obj *obj;
 	struct mlx5dv_devx_umem *buf_umem;
@@ -156,6 +157,8 @@ void mlx5dr_send_engine_post_req_wqe(struct mlx5dr_send_engine_post_ctrl *ctrl,
 void mlx5dr_send_engine_post_end(struct mlx5dr_send_engine_post_ctrl *ctrl,
 				 struct mlx5dr_send_engine_post_attr *attr);
 
+void mlx5dr_send_engine_flush_queue(struct mlx5dr_send_engine *queue);
+
 static inline bool mlx5dr_send_engine_full(struct mlx5dr_send_engine *queue)
 {
 	return queue->used_entries >= queue->th_entries;
@@ -171,4 +174,15 @@ static inline void mlx5dr_send_engine_dec_rule(struct mlx5dr_send_engine *queue)
 	queue->used_entries--;
 }
 
+static inline void mlx5dr_send_engine_gen_comp(struct mlx5dr_send_engine *queue,
+					       void *user_data,
+					       int comp_status)
+{
+	struct mlx5dr_completed_poll *comp = &queue->completed;
+
+	comp->entries[comp->pi].status = comp_status;
+	comp->entries[comp->pi].user_data = user_data;
+
+	comp->pi = (comp->pi + 1) & comp->mask;
+}
 #endif
