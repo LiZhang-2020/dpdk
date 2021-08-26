@@ -183,7 +183,7 @@ static void
 mlx5_aso_destroy_sq(struct mlx5_aso_sq *sq)
 {
 	if (sq->wqe_umem) {
-		mlx5_glue->devx_umem_dereg(sq->wqe_umem);
+		claim_zero(mlx5_glue->devx_umem_dereg(sq->wqe_umem));
 		sq->wqe_umem = NULL;
 	}
 	if (sq->umem_buf) {
