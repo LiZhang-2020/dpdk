@@ -302,7 +302,7 @@ int run_test_rule_insert(struct ibv_context *ibv_ctx)
 			/* Ring doorbell */
 			rule_attr.burst = ((i + 1) % BURST_TH == 0);
 
-			ipv_value.dst_addr += i;
+			ipv_value.dst_addr = i;
 			rule_actions[0].action = drop;
 
 			ret = mlx5dr_rule_create(hws_matcher1, items, rule_actions, 1, &rule_attr, &hws_rule[i]);
