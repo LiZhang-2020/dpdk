@@ -372,7 +372,7 @@ int mlx5dr_pool_destroy(struct mlx5dr_pool *pool)
 {
 	int i;
 
-	for (i = 0; i <= MLX5DR_POOL_RESOURCE_ARR_SZ; i++)
+	for (i = 0; i < MLX5DR_POOL_RESOURCE_ARR_SZ; i++)
 		if (pool->resource[i])
 			mlx5dr_pool_resource_free(pool->resource[i]);
 

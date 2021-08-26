@@ -53,7 +53,7 @@ static bool bitmap_test_bit(struct rte_bitmap *bmp, unsigned long n)
 static unsigned long bitmap_ffs(struct rte_bitmap *bmap,
 				unsigned long n, unsigned long m)
 {
-	uint32_t pos;
+	uint32_t pos = 0; /* compilation warn */
 	uint64_t out_slab = 0;
 
 	__rte_bitmap_scan_init(bmap);
