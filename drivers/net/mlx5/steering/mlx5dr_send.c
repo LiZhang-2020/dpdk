@@ -191,7 +191,7 @@ static void mlx5dr_send_engine_poll_cqs(struct mlx5dr_send_engine *queue,
 
 	for (j = 0; j < MLX5DR_NUM_SEND_RINGS; j++) {
 		mlx5dr_send_engine_poll_cq(queue, &queue->send_ring[j],
-					   &res[*polled], polled, res_nb);
+					   res, polled, res_nb);
 
 		*queue->send_ring[j].send_cq.db = htobe32(queue->send_ring[j].send_cq.cons_index & 0xffffff);
 	}
