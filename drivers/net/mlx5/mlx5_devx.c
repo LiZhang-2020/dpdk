@@ -235,6 +235,10 @@ mlx5_rxq_devx_res_release(struct mlx5_rxq_priv *rxq)
 			claim_zero(mlx5_devx_cmd_destroy(rxq_obj->devx_cq));
 			rxq_obj->devx_cq = NULL;
 		}
+		if (rxq_obj->devx_rmp) {
+			claim_zero(mlx5_devx_cmd_destroy(rxq_obj->devx_rmp));
+			rxq_obj->devx_rmp = NULL;
+		}
 		if (rxq_obj->devx_channel) {
 			mlx5_glue->devx_destroy_event_channel
 							(rxq_obj->devx_channel);
