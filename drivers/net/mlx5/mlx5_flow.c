@@ -3625,6 +3625,8 @@ flow_get_rss_action(struct rte_eth_dev *dev,
 			struct mlx5_flow_meter_info *fm;
 			struct mlx5_flow_meter_policy *policy;
 			const struct rte_flow_action_meter *mtr = actions->conf;
+			struct mlx5_meter_policy_action_container *acg;
+			struct mlx5_meter_policy_action_container *acy;
 
 			fm = mlx5_flow_meter_find(priv, mtr->mtr_id, &mtr_idx);
 			if (fm && !fm->def_policy) {
@@ -3645,11 +3647,18 @@ flow_get_rss_action(struct rte_eth_dev *dev,
 				 * workspace. The queues number for yellow can
 				 * be more than that for green.
 				 */
-				if (policy->is_rss)
-					rss =
-				policy->act_cnt[RTE_COLOR_GREEN].rss->conf ?
-				policy->act_cnt[RTE_COLOR_GREEN].rss->conf :
-				policy->act_cnt[RTE_COLOR_YELLOW].rss->conf;
+				if (policy->is_rss) {
+					acg =
+					&policy->act_cnt[RTE_COLOR_GREEN];
+					acy =
+					&policy->act_cnt[RTE_COLOR_YELLOW];
+					if (acg->fate_action ==
+					    MLX5_FLOW_FATE_SHARED_RSS)
+						rss = acg->rss->conf;
+					else if (acy->fate_action ==
+						 MLX5_FLOW_FATE_SHARED_RSS)
+						rss = acy->rss->conf;
+				}
 			}
 			break;
 		}
