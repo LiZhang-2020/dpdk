@@ -356,6 +356,8 @@ mlx5_alloc_shared_dr(struct mlx5_priv *priv)
 	if (!sh->flex_parsers_dv)
 		goto error;
 #endif
+	if (priv->config.dv_flow_en > 1)
+		return 0;
 #ifdef HAVE_MLX5DV_DR
 	void *domain;
 
@@ -1755,6 +1757,8 @@ err_secondary:
 		err = ENODEV;
 		goto error;
 	}
+	if (priv->config.dv_flow_en > 1)
+		return eth_dev;
 	priv->drop_queue.hrxq = mlx5_drop_action_create(eth_dev);
 	if (!priv->drop_queue.hrxq)
 		goto error;
