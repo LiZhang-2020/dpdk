@@ -1149,6 +1149,7 @@ struct mlx5_hw_jump_action {
 
 struct mlx5_hw_actions {
 	struct mlx5dr_action *drop; /* Drop action. */
+	struct mlx5_hw_jump_action *jump; /* Jump action. */
 };
 
 struct mlx5_hw_action_template {

@@ -27,9 +27,44 @@ static uint32_t mlx5_hw_dr_ft_flag[2][MLX5DR_TABLE_TYPE_MAX] = {
 	},
 };
 
-static void
-__flow_hw_action_template_destroy(struct mlx5_hw_actions *acts __rte_unused)
+static struct mlx5_hw_jump_action *
+flow_hw_register_jump_action(struct rte_eth_dev *dev,
+			     const struct rte_flow_attr *attr,
+			     uint32_t dest_group,
+			     struct rte_flow_error *error)
 {
+	struct mlx5_priv *priv = dev->data->dev_private;
+	struct rte_flow_attr jattr = *attr;
+	struct mlx5_flow_group *grp;
+	struct mlx5_flow_cb_ctx ctx = {
+		.dev = dev,
+		.error = error,
+		.data = &jattr,
+	};
+	struct mlx5_list_entry *ge;
+
+	jattr.group = dest_group;
+	ge = mlx5_hlist_register(priv->sh->flow_tbls, dest_group, &ctx);
+	if (!ge)
+		return NULL;
+	grp = container_of(ge, struct mlx5_flow_group, entry);
+	return &grp->jump;
+}
+
+static void
+__flow_hw_action_template_destroy(struct rte_eth_dev *dev,
+				 struct mlx5_hw_actions *acts)
+{
+	struct mlx5_priv *priv = dev->data->dev_private;
+
+	if (acts->jump) {
+		struct mlx5_flow_group *grp;
+
+		grp = container_of
+			(acts->jump, struct mlx5_flow_group, jump);
+		mlx5_hlist_unregister(priv->sh->flow_tbls, &grp->entry);
+		acts->jump = NULL;
+	}
 }
 
 static int
@@ -37,7 +72,7 @@ flow_hw_actions_translate(struct rte_eth_dev *dev,
 			  const struct rte_flow_table_attr *table_attr,
 			  struct mlx5_hw_actions *acts,
 			  struct rte_flow_action_template *at,
-			  struct rte_flow_error *error __rte_unused)
+			  struct rte_flow_error *error)
 {
 	struct mlx5_priv *priv = dev->data->dev_private;
 	const struct rte_flow_attr *attr = &table_attr->flow_attr;
@@ -45,6 +80,7 @@ flow_hw_actions_translate(struct rte_eth_dev *dev,
 	struct rte_flow_action *masks = at->masks;
 	bool actions_end = false;
 	uint32_t type;
+	int err;
 
 	if (attr->transfer)
 		type = MLX5DR_TABLE_TYPE_FDB;
@@ -53,6 +89,8 @@ flow_hw_actions_translate(struct rte_eth_dev *dev,
 	else
 		type = MLX5DR_TABLE_TYPE_NIC_RX;
 	for (; !actions_end; actions++, masks++) {
+		uint32_t jump_group;
+
 		switch (actions->type) {
 		case RTE_FLOW_ACTION_TYPE_INDIRECT:
 			break;
@@ -60,6 +98,14 @@ flow_hw_actions_translate(struct rte_eth_dev *dev,
 			break;
 		case RTE_FLOW_ACTION_TYPE_DROP:
 			acts->drop = priv->hw_drop[!!attr->group][type];
+			break;
+		case RTE_FLOW_ACTION_TYPE_JUMP:
+			jump_group = ((const struct rte_flow_action_jump *)
+						actions->conf)->group;
+			acts->jump = flow_hw_register_jump_action
+						(dev, attr, jump_group, error);
+			if (!acts->jump)
+				goto err;
 			break;
 		case RTE_FLOW_ACTION_TYPE_END:
 			actions_end = true;
@@ -69,10 +115,17 @@ flow_hw_actions_translate(struct rte_eth_dev *dev,
 		}
 	}
 	return 0;
+err:
+	err = rte_errno;
+	__flow_hw_action_template_destroy(dev, acts);
+	return rte_flow_error_set(error, err,
+				  RTE_FLOW_ERROR_TYPE_UNSPECIFIED, NULL,
+				  "fail to create rte table");
 }
 
 static void
-flow_hw_actions_construct(struct mlx5_hw_actions *hw_acts,
+flow_hw_actions_construct(struct rte_flow_table *table,
+			  struct mlx5_hw_actions *hw_acts,
 			  const struct rte_flow_action actions[],
 			  struct mlx5dr_rule_action *rule_acts,
 			  uint32_t *acts_num)
@@ -88,6 +141,11 @@ flow_hw_actions_construct(struct mlx5_hw_actions *hw_acts,
 			break;
 		case RTE_FLOW_ACTION_TYPE_DROP:
 			rule_acts[i++].action = hw_acts->drop;
+			break;
+		case RTE_FLOW_ACTION_TYPE_JUMP:
+			rule_acts[i++].action = table->grp->group_id ?
+						hw_acts->jump->hws_action :
+						hw_acts->jump->root_action;
 			break;
 		case RTE_FLOW_ACTION_TYPE_END:
 			actions_end = true;
@@ -135,7 +193,8 @@ flow_hw_q_flow_create(struct rte_eth_dev *dev,
 	job = priv->hw_q[queue].job[--priv->hw_q[queue].job_idx];
 	hw_acts = &table->ats[action_template_index].acts;
 	/* Construct the flow actions based on the input actions.*/
-	flow_hw_actions_construct(hw_acts, actions, rule_acts, &acts_num);
+	flow_hw_actions_construct
+		(table, hw_acts, actions, rule_acts, &acts_num);
 	job->type = MLX5_HW_Q_JOB_TYPE_CREATE;
 	job->flow = flow;
 	job->user_data = attr->user_data;
@@ -391,7 +450,7 @@ flow_hw_table_create(struct rte_eth_dev *dev,
 	return tbl;
 at_error:
 	while (i--) {
-		__flow_hw_action_template_destroy(&tbl->ats[i].acts);
+		__flow_hw_action_template_destroy(dev, &tbl->ats[i].acts);
 		__atomic_sub_fetch(&action_templates[i]->refcnt,
 				   1, __ATOMIC_RELAXED);
 	}
@@ -429,7 +488,7 @@ flow_hw_table_destroy(struct rte_eth_dev *dev,
 		__atomic_sub_fetch(&table->its[i]->refcnt,
 				   1, __ATOMIC_RELAXED);
 	for (i = 0; i < table->nb_action_templates; i++) {
-		__flow_hw_action_template_destroy(&table->ats[i].acts);
+		__flow_hw_action_template_destroy(dev, &table->ats[i].acts);
 		__atomic_sub_fetch(&table->ats[i].action_template->refcnt,
 				   1, __ATOMIC_RELAXED);
 	}
@@ -588,12 +647,14 @@ flow_hw_grp_create_cb(void *tool_ctx, void *cb_ctx)
 		goto error;
 	grp_data->tbl = tbl;
 	if (attr->group) {
+		/*
 		jump = mlx5dr_action_create_dest_table
 			(priv->dr_ctx, tbl,
 			 mlx5_hw_dr_ft_flag[!!attr->group][dr_tbl_attr.type]);
 		if (!jump)
 			goto error;
 		grp_data->jump.hws_action = jump;
+		*/
 		jump = mlx5dr_action_create_dest_table
 			(priv->dr_ctx, tbl,
 			 mlx5_hw_dr_ft_flag[0][dr_tbl_attr.type]);
