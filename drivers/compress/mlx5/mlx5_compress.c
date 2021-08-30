@@ -293,17 +293,44 @@ mlx5_compress_xform_create(struct rte_compressdev *dev,
 	struct mlx5_compress_xform *xfrm;
 	uint32_t size;
 
-	if (xform->type == RTE_COMP_COMPRESS && xform->compress.level ==
-							  RTE_COMP_LEVEL_NONE) {
-		DRV_LOG(ERR, "Non-compressed block is not supported.");
+	switch (xform->type) {
+	case RTE_COMP_COMPRESS:
+		if (xform->compress.algo == RTE_COMP_ALGO_NULL &&
+				!priv->mmo_dma_qp && !priv->mmo_dma_sq) {
+			DRV_LOG(ERR, "Not enough capabilities to support DMA operation, maybe old FW/OFED version?");
+			return -ENOTSUP;
+		} else if (!priv->mmo_comp_qp && !priv->mmo_comp_sq) {
+			DRV_LOG(ERR, "Not enough capabilities to support compress operation, maybe old FW/OFED version?");
+			return -ENOTSUP;
+		}
+		if (xform->compress.level == RTE_COMP_LEVEL_NONE) {
+			DRV_LOG(ERR, "Non-compressed block is not supported.");
+			return -ENOTSUP;
+		}
+		if (xform->compress.hash_algo != RTE_COMP_HASH_ALGO_NONE) {
+			DRV_LOG(ERR, "SHA is not supported.");
+			return -ENOTSUP;
+		}
+		break;
+	case RTE_COMP_DECOMPRESS:
+		if (xform->decompress.algo == RTE_COMP_ALGO_NULL &&
+				!priv->mmo_dma_qp && !priv->mmo_dma_sq) {
+			DRV_LOG(ERR, "Not enough capabilities to support DMA operation, maybe old FW/OFED version?");
+			return -ENOTSUP;
+		} else if (!priv->mmo_decomp_qp && !priv->mmo_decomp_sq) {
+			DRV_LOG(ERR, "Not enough capabilities to support decompress operation, maybe old FW/OFED version?");
+			return -ENOTSUP;
+		}
+		if (xform->compress.hash_algo != RTE_COMP_HASH_ALGO_NONE) {
+			DRV_LOG(ERR, "SHA is not supported.");
+			return -ENOTSUP;
+		}
+		break;
+	default:
+		DRV_LOG(ERR, "Xform type should be compress/decompress");
 		return -ENOTSUP;
 	}
-	if ((xform->type == RTE_COMP_COMPRESS && xform->compress.hash_algo !=
-	     RTE_COMP_HASH_ALGO_NONE) || (xform->type == RTE_COMP_DECOMPRESS &&
-		      xform->decompress.hash_algo != RTE_COMP_HASH_ALGO_NONE)) {
-		DRV_LOG(ERR, "SHA is not supported.");
-		return -ENOTSUP;
-	}
+
 	xfrm = rte_zmalloc_socket(__func__, sizeof(*xfrm), 0,
 						    priv->dev_config.socket_id);
 	if (xfrm == NULL)
@@ -818,12 +845,16 @@ mlx5_compress_dev_probe(struct rte_device *dev)
 		rte_errno = ENODEV;
 		return -rte_errno;
 	}
-	if (mlx5_devx_cmd_query_hca_attr(ctx, &att) != 0 ||
-	    ((att.mmo_compress_sq_en == 0 || att.mmo_decompress_sq_en == 0 ||
-		att.mmo_dma_sq_en == 0) && (att.mmo_compress_qp_en == 0 ||
-		att.mmo_decompress_qp_en == 0 || att.mmo_dma_qp_en == 0))) {
-		DRV_LOG(ERR, "Not enough capabilities to support compress "
-			"operations, maybe old FW/OFED version?");
+	if (mlx5_devx_cmd_query_hca_attr(ctx, &att) != 0) {
+		DRV_LOG(ERR, "Failed to query device capabilities");
+		claim_zero(mlx5_glue->close_device(ctx));
+		rte_errno = ENOTSUP;
+		return -ENOTSUP;
+	}
+	if (!att.mmo_decompress_qp_en && !att.mmo_decompress_sq_en
+		&& !att.mmo_compress_qp_en && !att.mmo_compress_sq_en
+		&& !att.mmo_dma_qp_en && !att.mmo_dma_sq_en) {
+		DRV_LOG(ERR, "Not enough capabilities to support compress operations, maybe old FW/OFED version?");
 		claim_zero(mlx5_glue->close_device(ctx));
 		rte_errno = ENOTSUP;
 		return -ENOTSUP;
