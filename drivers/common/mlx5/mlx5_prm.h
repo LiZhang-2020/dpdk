@@ -2926,10 +2926,15 @@ struct mlx5_ifc_stc_ste_param_table_bits {
 	u8 reserved_at_20[0x60];
 };
 
+struct mlx5_ifc_stc_ste_param_flow_counter_bits {
+	u8 flow_counter_id[0x20];
+};
+
 union mlx5_ifc_stc_param_bits {
 	struct mlx5_ifc_stc_ste_param_ste_table_bits ste_table;
 	struct mlx5_ifc_stc_ste_param_tir_bits tir;
 	struct mlx5_ifc_stc_ste_param_table_bits table;
+	struct mlx5_ifc_stc_ste_param_flow_counter_bits counter;
 	u8 reserved_at_0[0x80];
 };
 

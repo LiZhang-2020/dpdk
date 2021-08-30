@@ -168,6 +168,40 @@ mlx5dr_cmd_stc_create(struct ibv_context *ctx,
 	return devx_obj;
 }
 
+static int
+mlx5dr_cmd_stc_modify_set_stc_param(struct mlx5dr_cmd_stc_modify_attr *stc_attr,
+				    void *stc_parm)
+{
+	switch (stc_attr->action_type) {
+	case MLX5_IFC_STC_ACTION_TYPE_COUNTER:
+		MLX5_SET(stc_ste_param_flow_counter, stc_parm, flow_counter_id, stc_attr->id);
+		break;
+	case MLX5_IFC_STC_ACTION_TYPE_JUMP_TO_TIR:
+		MLX5_SET(stc_ste_param_tir, stc_parm, tirn, stc_attr->dest_tir_num);
+		break;
+	case MLX5_IFC_STC_ACTION_TYPE_JUMP_TO_FT:
+		MLX5_SET(stc_ste_param_table, stc_parm, table_id, stc_attr->dest_table_id);
+		break;
+	case MLX5_IFC_STC_ACTION_TYPE_ACC_MODIFY_LIST:
+		MLX5_SET(stc_ste_param_header_modify_list, stc_parm,
+			 header_modify_pattern_id, stc_attr->modify_header.pattern_id);
+		MLX5_SET(stc_ste_param_header_modify_list, stc_parm,
+			 header_modify_argument_id, stc_attr->modify_header.arg_id);
+		break;
+	case MLX5_IFC_STC_ACTION_TYPE_DROP:
+	case MLX5_IFC_STC_ACTION_TYPE_NONE:
+	case MLX5_IFC_STC_ACTION_TYPE_TAG:
+	case MLX5_IFC_STC_ACTION_TYPE_WIRE:
+		break;
+	default:
+		DRV_LOG(ERR, "not supported type %d", stc_attr->action_type);
+		rte_errno = EINVAL;
+		return rte_errno;
+		break;
+	}
+	return 0;
+}
+
 int
 mlx5dr_cmd_stc_modify(struct mlx5dr_devx_obj *devx_obj,
 		      struct mlx5dr_cmd_stc_modify_attr *stc_attr)
@@ -200,7 +234,9 @@ mlx5dr_cmd_stc_modify(struct mlx5dr_devx_obj *devx_obj,
 
 	/* Set destination TIRN, TAG, FT ID, STE ID */
 	stc_parm = MLX5_ADDR_OF(stc, attr, stc_param);
-	MLX5_SET(stc_ste_param_ste_table, stc_parm, obj_id, stc_attr->id);
+	ret = mlx5dr_cmd_stc_modify_set_stc_param(stc_attr, stc_parm);
+	if (ret)
+		return ret;
 
 	ret = mlx5_glue->devx_obj_modify(devx_obj->obj, in, sizeof(in), out, sizeof(out));
 	if (ret) {
