@@ -129,7 +129,8 @@ mlx5_regex_dev_probe(struct rte_device *rte_dev)
 		DRV_LOG(ERR, "Unable to read HCA capabilities.");
 		rte_errno = ENOTSUP;
 		goto dev_error;
-	} else if (!attr.regexp_params || !attr.regexp_mmo ||
+	} else if (!attr.regexp_params || ((!attr.mmo_regex_sq_en) &&
+		(!attr.mmo_regex_qp_en)) ||
 		attr.regexp_num_of_engines == 0) {
 		DRV_LOG(ERR, "Not enough capabilities to support RegEx, maybe "
 			"old FW/OFED version?");
@@ -143,10 +144,11 @@ mlx5_regex_dev_probe(struct rte_device *rte_dev)
 		rte_errno = ENOMEM;
 		goto dev_error;
 	}
-	priv->sq_ts_format = attr.sq_ts_format;
+	priv->mmo_regex_qp_cap = attr.mmo_regex_qp_en;
+	priv->mmo_regex_sq_cap = attr.mmo_regex_sq_en;
+	priv->qp_ts_format = attr.qp_ts_format;
 	priv->ctx = ctx;
 	priv->nb_engines = 2; /* attr.regexp_num_of_engines */
-	priv->regexp_sq_en = attr.regexp_mmo;
 	if (attr.regexp_version == MLX5_RXP_BF2_IDENTIFIER)
 		priv->is_bf2 = 1;
 	/* Default RXP programming mode to Shared. */
