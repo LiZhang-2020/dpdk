@@ -12,6 +12,7 @@ sources = files(
 	'mlx5dr_test_post_send.c',
 	'mlx5dr_test_pattern_args.c',
 	'mlx5dr_test_pool.c',
+	'mlx5dr_test_rte_insert.c',
 )
 else
 	sources = files('mlx5dr_test_dummy.c')
