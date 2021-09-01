@@ -750,7 +750,7 @@ mlx5_devx_cmd_query_hca_attr(void *ctx,
 	attr->steering_format_version =
 		MLX5_GET(cmd_hca_cap, hcattr, steering_format_version);
 	attr->regexp_params = MLX5_GET(cmd_hca_cap, hcattr, regexp_params);
-	attr->regexp_mmo = MLX5_GET(cmd_hca_cap, hcattr, regexp_mmo);
+	attr->regexp_mmo = MLX5_GET(cmd_hca_cap, hcattr, regexp_mmo_sq);
 	attr->regexp_version = MLX5_GET(cmd_hca_cap, hcattr, regexp_version);
 	attr->regexp_num_of_engines = MLX5_GET(cmd_hca_cap, hcattr,
 					       regexp_num_of_engines);
@@ -782,9 +782,20 @@ mlx5_devx_cmd_query_hca_attr(void *ctx,
 	attr->log_max_pd = MLX5_GET(cmd_hca_cap, hcattr, log_max_pd);
 	attr->log_max_srq = MLX5_GET(cmd_hca_cap, hcattr, log_max_srq);
 	attr->log_max_srq_sz = MLX5_GET(cmd_hca_cap, hcattr, log_max_srq_sz);
-	attr->mmo_dma_en = MLX5_GET(cmd_hca_cap, hcattr, dma_mmo);
-	attr->mmo_compress_en = MLX5_GET(cmd_hca_cap, hcattr, compress);
-	attr->mmo_decompress_en = MLX5_GET(cmd_hca_cap, hcattr, decompress);
+	attr->reg_c_preserve =
+		MLX5_GET(cmd_hca_cap, hcattr, reg_c_preserve);
+	attr->mmo_regex_qp_en = MLX5_GET(cmd_hca_cap, hcattr, regexp_mmo_qp);
+	attr->mmo_regex_sq_en = MLX5_GET(cmd_hca_cap, hcattr, regexp_mmo_sq);
+	attr->mmo_dma_sq_en = MLX5_GET(cmd_hca_cap, hcattr, dma_mmo_sq);
+	attr->mmo_compress_sq_en = MLX5_GET(cmd_hca_cap, hcattr,
+			compress_mmo_sq);
+	attr->mmo_decompress_sq_en = MLX5_GET(cmd_hca_cap, hcattr,
+			decompress_mmo_sq);
+	attr->mmo_dma_qp_en = MLX5_GET(cmd_hca_cap, hcattr, dma_mmo_qp);
+	attr->mmo_compress_qp_en = MLX5_GET(cmd_hca_cap, hcattr,
+			compress_mmo_qp);
+	attr->mmo_decompress_qp_en = MLX5_GET(cmd_hca_cap, hcattr,
+			decompress_mmo_qp);
 	attr->compress_min_block_size = MLX5_GET(cmd_hca_cap, hcattr,
 						 compress_min_block_size);
 	attr->log_max_mmo_dma = MLX5_GET(cmd_hca_cap, hcattr, log_dma_mmo_size);
