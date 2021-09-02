@@ -567,7 +567,7 @@ int mlx5dr_send_queues_open(struct mlx5dr_context *ctx,
 			goto close_send_queues;
 	}
 
-	return err;
+	return 0;
 
 close_send_queues:
 	 __mlx5dr_send_queues_close(ctx, i);
