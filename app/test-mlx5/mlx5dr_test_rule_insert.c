@@ -104,6 +104,7 @@ static void set_match_mavneir(struct rte_flow_item_eth *eth_m,
 		items->spec = ip_v;
 		items++;
 	}
+
 	if (udp_m) {
 		memset(udp_m, 0, sizeof(*udp_m));
 		memset(udp_v, 0, sizeof(*udp_v));
@@ -181,7 +182,8 @@ int run_test_rule_insert(struct ibv_context *ibv_ctx)
 	struct rte_ipv4_hdr ipv_value;
 	struct rte_flow_item_udp udp_mask;
 	struct rte_flow_item_udp udp_value;
-
+	struct mlx5dr_match_template *mt;
+	struct mlx5dr_match_template *mt_root;
 	uint32_t pending_rules = 0;
 	uint64_t start, end;
 	int ret, i, j;
@@ -217,13 +219,19 @@ int run_test_rule_insert(struct ibv_context *ibv_ctx)
 
 	set_match_simple(&ipv_mask_conn, &ipv_value_conn, items_conn);
 
+	mt_root = mlx5dr_match_template_create(items_conn);
+	if (!mt_root) {
+		printf("Failed root template\n");
+		goto destroy_hws_tbl;
+	}
+
 	/* Create root matcher */
 	matcher_attr.priority = 0;
 	matcher_attr.insertion_mode = MLX5DR_MATCHER_INSERTION_MODE_ASSURED;
-	root_matcher = mlx5dr_matcher_create(root_tbl, items_conn, &matcher_attr);
+	root_matcher = mlx5dr_matcher_create(root_tbl, &mt_root, 1, &matcher_attr);
 	if (!root_matcher) {
 		printf("Failed to create root matcher\n");
-		goto destroy_hws_tbl;
+		goto destroy_root_template;
 	}
 
 	set_match_mavneir(&eth_mask, &eth_value,
@@ -234,15 +242,21 @@ int run_test_rule_insert(struct ibv_context *ibv_ctx)
 			  NULL, NULL,
 			  items);
 
+	mt = mlx5dr_match_template_create(items);
+	if (!mt) {
+		printf("Failed HWS template\n");
+		goto destroy_root_matcher;
+	}
+
 	/* Create HWS matcher1 */
 	matcher_attr.priority = 0;
 	matcher_attr.insertion_mode = MLX5DR_MATCHER_INSERTION_MODE_BEST_EFFORT;
 	matcher_attr.sz_hint_col_log = 0;
 	matcher_attr.sz_hint_row_log = 22;
-	hws_matcher1 = mlx5dr_matcher_create(hws_tbl, items, &matcher_attr);
+	hws_matcher1 = mlx5dr_matcher_create(hws_tbl, &mt, 1, &matcher_attr);
 	if (!hws_matcher1) {
 		printf("Failed to create HWS matcher 1\n");
-		goto destroy_root_matcher;
+		goto destroy_template;
 	}
 
 	/* Create goto table action */
@@ -278,7 +292,7 @@ int run_test_rule_insert(struct ibv_context *ibv_ctx)
 	rule_actions[0].action = to_hws_tbl;
 	rule_attr.user_data = connect_rule;
 
-	ret = mlx5dr_rule_create(root_matcher, items_conn, rule_actions, 1, &rule_attr, connect_rule);
+	ret = mlx5dr_rule_create(root_matcher, 0, items_conn, rule_actions, 1, &rule_attr, connect_rule);
 	if (ret) {
 		printf("Failed to create connect rule\n");
 		goto free_connect_rule;
@@ -305,7 +319,7 @@ int run_test_rule_insert(struct ibv_context *ibv_ctx)
 			ipv_value.dst_addr = i;
 			rule_actions[0].action = drop;
 
-			ret = mlx5dr_rule_create(hws_matcher1, items, rule_actions, 1, &rule_attr, &hws_rule[i]);
+			ret = mlx5dr_rule_create(hws_matcher1, 0, items, rule_actions, 1, &rule_attr, &hws_rule[i]);
 			if (ret) {
 				printf("Failed to create hws rule\n");
 				goto free_hws_rules;
@@ -355,7 +369,9 @@ int run_test_rule_insert(struct ibv_context *ibv_ctx)
 	mlx5dr_action_destroy(decap);
 	mlx5dr_action_destroy(to_hws_tbl);
 	mlx5dr_matcher_destroy(hws_matcher1);
+	mlx5dr_match_template_destroy(mt);
 	mlx5dr_matcher_destroy(root_matcher);
+	mlx5dr_match_template_destroy(mt_root);
 	mlx5dr_table_destroy(hws_tbl);
 	mlx5dr_table_destroy(root_tbl);
 	mlx5dr_context_close(ctx);
@@ -376,8 +392,12 @@ destroy_action_to_hws_tbl:
 	mlx5dr_action_destroy(to_hws_tbl);
 destroy_hws_matcher1:
 	mlx5dr_matcher_destroy(hws_matcher1);
+destroy_template:
+	mlx5dr_match_template_destroy(mt);
 destroy_root_matcher:
 	mlx5dr_matcher_destroy(root_matcher);
+destroy_root_template:
+	mlx5dr_match_template_destroy(mt_root);
 destroy_hws_tbl:
 	mlx5dr_table_destroy(hws_tbl);
 destroy_root_tbl:
