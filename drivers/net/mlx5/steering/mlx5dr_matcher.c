@@ -164,13 +164,14 @@ static int mlx5dr_matcher_create_rtc_nic(struct mlx5dr_matcher *matcher,
 
 	rtc_attr.ste_base = devx_obj->id;
 	rtc_attr.ste_offset = nic_matcher->ste.offset;
-	rtc_attr.definer_id = matcher->definer->id;
 	rtc_attr.miss_ft_id = matcher->end_ft->id;
 	rtc_attr.update_index_mode = MLX5_IFC_RTC_STE_UPDATE_MODE_BY_HASH;
 	rtc_attr.log_depth = matcher->attr.sz_hint_col_log;
 	rtc_attr.log_size = matcher->attr.sz_hint_row_log;
 	rtc_attr.table_type = tbl->fw_ft_type;
 	rtc_attr.pd = ctx->pd_num;
+	/* The first match template is used since all share the same definer */
+	rtc_attr.definer_id = mlx5dr_definer_get_id(matcher->mt[0]->definer);
 
 	devx_obj = mlx5dr_pool_chunk_get_base_devx_obj(stc_pool, &nic_tbl->stc);
 	rtc_attr.stc_base = devx_obj->id;
@@ -260,8 +261,50 @@ static void mlx5dr_matcher_destroy_rtc(struct mlx5dr_matcher *matcher)
 	}
 }
 
-static int mlx5dr_matcher_init(struct mlx5dr_matcher *matcher,
-			       struct rte_flow_item *items)
+static int mlx5dr_matcher_bind_mt(struct mlx5dr_matcher *matcher)
+{
+	struct mlx5dr_context *ctx = matcher->tbl->ctx;
+	int i, ret, created = 0;
+
+	for (i = 0; i < matcher->num_of_mt; i++) {
+		/* Get a definer for each match template */
+		ret = mlx5dr_definer_get(ctx, matcher->mt[i]);
+		if (ret)
+			goto definer_put;
+
+		created++;
+
+		/* Verify all templates produce the same definer */
+		if (i == 0)
+			continue;
+
+		ret = mlx5dr_definer_compare(matcher->mt[i]->definer,
+					     matcher->mt[i-1]->definer);
+		if (ret) {
+			DRV_LOG(ERR, "Match templates cannot be used on the same matcher");
+			rte_errno = ENOTSUP;
+			goto definer_put;
+		}
+	}
+
+	return 0;
+
+definer_put:
+	while (--created)
+		mlx5dr_definer_put(matcher->mt[created]);
+
+	return ret;
+}
+
+static void mlx5dr_matcher_unbind_mt(struct mlx5dr_matcher *matcher)
+{
+	int i;
+
+	for (i = 0; i < matcher->num_of_mt; i++)
+		mlx5dr_definer_put(matcher->mt[i]);
+}
+
+static int mlx5dr_matcher_init(struct mlx5dr_matcher *matcher)
 {
 	struct mlx5dr_context *ctx = matcher->tbl->ctx;
 	int ret;
@@ -269,14 +312,14 @@ static int mlx5dr_matcher_init(struct mlx5dr_matcher *matcher,
 	pthread_spin_lock(&ctx->ctrl_lock);
 
 	/* Select and create the definers for current matcher */
-	ret = mlx5dr_definer_create(matcher, items);
+	ret = mlx5dr_matcher_bind_mt(matcher);
 	if (ret)
 		goto unlock_err;
 
 	/* Create matcher end flow table anchor */
 	ret = mlx5dr_matcher_create_end_ft(matcher);
 	if (ret)
-		goto clear_builders;
+		goto unbind_mt;
 
 	/* Allocate the RTC for the new matcher */
 	ret = mlx5dr_matcher_create_rtc(matcher);
@@ -296,8 +339,8 @@ destroy_rtc:
 	mlx5dr_matcher_destroy_rtc(matcher);
 destroy_end_ft:
 	mlx5dr_matcher_destroy_end_ft(matcher);
-clear_builders:
-	mlx5dr_definer_destroy(matcher);
+unbind_mt:
+	mlx5dr_matcher_unbind_mt(matcher);
 unlock_err:
 	pthread_spin_unlock(&ctx->ctrl_lock);
 	return ret;
@@ -311,14 +354,13 @@ static int mlx5dr_matcher_uninit(struct mlx5dr_matcher *matcher)
 	mlx5dr_matcher_disconnect(matcher);
 	mlx5dr_matcher_destroy_rtc(matcher);
 	mlx5dr_matcher_destroy_end_ft(matcher);
-	mlx5dr_definer_destroy(matcher);
+	mlx5dr_matcher_unbind_mt(matcher);
 	pthread_spin_unlock(&ctx->ctrl_lock);
 
 	return 0;
 }
 
-static int mlx5dr_matcher_init_root(struct mlx5dr_matcher *matcher,
-				    struct rte_flow_item *items)
+static int mlx5dr_matcher_init_root(struct mlx5dr_matcher *matcher)
 {
 	enum mlx5dr_table_type type = matcher->tbl->type;
 	struct mlx5dr_context *ctx = matcher->tbl->ctx;
@@ -354,7 +396,9 @@ static int mlx5dr_matcher_init_root(struct mlx5dr_matcher *matcher,
 
 	flow_attr.tbl_type = type;
 
-	ret = flow_dv_translate_items_hws(items, &flow_attr, mask->match_buf,
+	/* On root table matcher, only a single match template is supported */
+	ret = flow_dv_translate_items_hws(matcher->mt[0]->items,
+					  &flow_attr, mask->match_buf,
 					  MLX5_SET_MATCHER_HS_M, NULL,
 					  &match_criteria,
 					  &rte_error);
@@ -409,10 +453,31 @@ static int mlx5dr_matcher_uninit_root(struct mlx5dr_matcher *matcher)
 	return ret;
 }
 
-struct mlx5dr_matcher *mlx5dr_matcher_create(struct mlx5dr_table *tbl,
-					     struct rte_flow_item items[],
-					     struct mlx5dr_matcher_attr *attr)
+static int
+mlx5dr_matcher_check_template(uint8_t num_of_mt, bool is_root)
 {
+	uint8_t max_num_of_mt;
+
+	max_num_of_mt = is_root ?
+		MLX5DR_MATCHER_MAX_MT_ROOT :
+		MLX5DR_MATCHER_MAX_MT;
+
+	if (num_of_mt > max_num_of_mt) {
+		DRV_LOG(ERR, "Number of match template exceeds limit");
+		rte_errno = ENOTSUP;
+		return rte_errno;
+	}
+
+	return 0;
+}
+
+struct mlx5dr_matcher *
+mlx5dr_matcher_create(struct mlx5dr_table *tbl,
+		      struct mlx5dr_match_template *mt[],
+		      uint8_t num_of_mt,
+		      struct mlx5dr_matcher_attr *attr)
+{
+	bool is_root = mlx5dr_table_is_root(tbl);
 	struct mlx5dr_matcher *matcher;
 	int ret;
 
@@ -422,13 +487,19 @@ struct mlx5dr_matcher *mlx5dr_matcher_create(struct mlx5dr_table *tbl,
 		return NULL;
 	}
 
+	ret = mlx5dr_matcher_check_template(num_of_mt, is_root);
+	if (ret)
+		goto free_matcher;
+
 	matcher->tbl = tbl;
 	matcher->attr = *attr;
+	matcher->num_of_mt = num_of_mt;
+	memcpy(matcher->mt, mt, num_of_mt * sizeof(*mt));
 
-	if (mlx5dr_table_is_root(matcher->tbl))
-		ret = mlx5dr_matcher_init_root(matcher, items);
+	if (is_root)
+		ret = mlx5dr_matcher_init_root(matcher);
 	else
-		ret = mlx5dr_matcher_init(matcher, items);
+		ret = mlx5dr_matcher_init(matcher);
 
 	if (ret) {
 		DRV_LOG(ERR, "Failed to initialise matcher: %d", ret);
@@ -450,5 +521,53 @@ int mlx5dr_matcher_destroy(struct mlx5dr_matcher *matcher)
 		mlx5dr_matcher_uninit(matcher);
 
 	simple_free(matcher);
+	return 0;
+}
+
+struct mlx5dr_match_template *
+mlx5dr_match_template_create(struct rte_flow_item items[])
+{
+	struct mlx5dr_match_template *mt;
+	struct rte_flow_error error;
+	int ret, len;
+
+	mt = simple_calloc(1, sizeof(*mt));
+	if (!mt) {
+		DRV_LOG(ERR, "Failed to allocate match template");
+                rte_errno = ENOMEM;
+                return NULL;
+	}
+
+	/* Duplicate the user given items */
+	ret = rte_flow_conv(RTE_FLOW_CONV_OP_PATTERN, NULL, 0, items, &error);
+	if (ret <= 0)
+		goto free_template;
+
+	len = RTE_ALIGN(ret, 16);
+	mt->items = simple_calloc(1, len);
+	if (!mt->items) {
+		DRV_LOG(ERR, "Failed to allocate item copy");
+		rte_errno = ENOMEM;
+		goto free_template;
+	}
+
+	ret = rte_flow_conv(RTE_FLOW_CONV_OP_PATTERN, mt->items, ret, items, &error);
+	if (ret <= 0)
+		goto free_dst;
+
+	return mt;
+
+free_dst:
+	simple_free(mt->items);
+free_template:
+	simple_free(mt);
+	return NULL;
+}
+
+int mlx5dr_match_template_destroy(struct mlx5dr_match_template *mt)
+{
+	assert(!mt->refcount);
+	simple_free(mt->items);
+	simple_free(mt);
 	return 0;
 }

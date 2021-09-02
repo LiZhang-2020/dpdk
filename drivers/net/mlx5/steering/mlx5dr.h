@@ -99,9 +99,15 @@ mlx5dr_table_create(struct mlx5dr_context *ctx,
 
 int mlx5dr_table_destroy(struct mlx5dr_table *tbl);
 
+struct mlx5dr_match_template *
+mlx5dr_match_template_create(struct rte_flow_item items[]);
+
+int mlx5dr_match_template_destroy(struct mlx5dr_match_template *mt);
+
 struct mlx5dr_matcher *
 mlx5dr_matcher_create(struct mlx5dr_table *table,
-		      struct rte_flow_item items[],
+		      struct mlx5dr_match_template *mt[],
+		      uint8_t num_of_mt,
 		      struct mlx5dr_matcher_attr *attr);
 
 int mlx5dr_matcher_destroy(struct mlx5dr_matcher *matcher);
@@ -109,6 +115,7 @@ int mlx5dr_matcher_destroy(struct mlx5dr_matcher *matcher);
 size_t mlx5dr_rule_get_handle_size(void);
 
 int mlx5dr_rule_create(struct mlx5dr_matcher *matcher,
+		       uint8_t mt_idx,
 		       struct rte_flow_item items[],
 		       struct mlx5dr_rule_action rule_actions[],
 		       uint8_t num_of_actions,
@@ -149,7 +156,6 @@ mlx5dr_action_create_reformat(struct mlx5dr_context *ctx,
 			      uint32_t flags);
 
 int mlx5dr_action_destroy(struct mlx5dr_action *action);
-
 
 int mlx5dr_send_queue_poll(struct mlx5dr_context *ctx,
 			   uint16_t queue_id,

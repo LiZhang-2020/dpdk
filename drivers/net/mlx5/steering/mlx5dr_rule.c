@@ -5,10 +5,11 @@
 #include "mlx5dr_internal.h"
 
 static int mlx5dr_rule_create_hws(struct mlx5dr_rule *rule,
-				   struct rte_flow_item items[],
-				   struct mlx5dr_rule_attr *attr,
-				   struct mlx5dr_rule_action rule_actions[],
-				   uint8_t num_actions)
+				  uint8_t mt_idx,
+				  struct rte_flow_item items[],
+				  struct mlx5dr_rule_attr *attr,
+				  struct mlx5dr_rule_action rule_actions[],
+				  uint8_t num_actions)
 {
 	struct mlx5dr_send_engine_post_attr send_attr = {0};
 	struct mlx5dr_matcher *matcher = rule->matcher;
@@ -43,8 +44,8 @@ static int mlx5dr_rule_create_hws(struct mlx5dr_rule *rule,
 
 	/* Create tag directly on WQE and backup it on the rule for deletion */
 	mlx5dr_definer_create_tag(items,
-				  matcher->fc,
-				  matcher->fc_sz,
+				  matcher->mt[mt_idx]->fc,
+				  matcher->mt[mt_idx]->fc_sz,
 				  (uint8_t *)wqe_data->tag);
 
 	memcpy(rule->match_tag, wqe_data->tag, MLX5DR_MATCH_TAG_SZ);
@@ -184,6 +185,7 @@ static int mlx5dr_rule_destroy_root(struct mlx5dr_rule *rule)
 }
 
 int mlx5dr_rule_create(struct mlx5dr_matcher *matcher,
+		       uint8_t mt_idx,
 		       struct rte_flow_item items[],
 		       struct mlx5dr_rule_action rule_actions[],
 		       uint8_t num_of_actions,
@@ -197,6 +199,8 @@ int mlx5dr_rule_create(struct mlx5dr_matcher *matcher,
 		return rte_errno;
 	}
 
+	assert(matcher->num_of_mt >= mt_idx);
+
 	if (mlx5dr_table_is_root(matcher->tbl))
 		return mlx5dr_rule_create_root(rule_handle,
 					       items,
@@ -204,6 +208,7 @@ int mlx5dr_rule_create(struct mlx5dr_matcher *matcher,
 					       num_of_actions);
 
 	return mlx5dr_rule_create_hws(rule_handle,
+				      mt_idx,
 				      items,
 				      attr,
 				      rule_actions,

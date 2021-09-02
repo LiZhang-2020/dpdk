@@ -281,9 +281,14 @@ void mlx5dr_definer_create_tag(struct rte_flow_item *items,
 			       uint32_t fc_sz,
 			       uint8_t *tag);
 
-int mlx5dr_definer_create(struct mlx5dr_matcher *matcher,
-			  struct rte_flow_item *items);
+int mlx5dr_definer_compare(struct mlx5dr_definer *definer_a,
+			   struct mlx5dr_definer *definer_b);
 
-void mlx5dr_definer_destroy(struct mlx5dr_matcher *matcher);
+int mlx5dr_definer_get_id(struct mlx5dr_definer *definer);
+
+int mlx5dr_definer_get(struct mlx5dr_context *ctx,
+		       struct mlx5dr_match_template *mt);
+
+void mlx5dr_definer_put(struct mlx5dr_match_template *mt);
 
 #endif
