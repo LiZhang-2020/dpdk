@@ -77,7 +77,7 @@ static int mlx5dr_table_init(struct mlx5dr_table *tbl)
 
 	ft_attr.type = tbl->fw_ft_type;
 	ft_attr.wqe_based_flow_update = true;
-	ft_attr.level = MLX5DR_DEFAULT_LEVEL;
+	ft_attr.level = MLX5DR_DEFAULT_LEVEL; // TODO use cap max_ft_level -1 ?
 	// TODO Need to support default miss behaviour for FDB
 
 	tbl->ft = mlx5dr_cmd_flow_table_create(ctx->ibv_ctx, &ft_attr);
