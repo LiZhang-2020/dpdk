@@ -7,6 +7,9 @@
 #include "mlx5dr_buddy.h"
 #include "mlx5dr_internal.h"
 
+static struct mlx5dr_pool_resource *
+mlx5dr_pool_resource_alloc(struct mlx5dr_pool *pool, uint32_t log_range);
+
 static int mlx5dr_onesize_db_get_chunk(struct mlx5dr_pool *pool,
 				       struct mlx5dr_pool_chunk *chunk)
 {
@@ -90,6 +93,38 @@ static void mlx5dr_buddy_db_put_chunk(struct mlx5dr_pool *pool,
 	mlx5dr_buddy_free_mem(buddy, chunk->offset, chunk->order);
 }
 
+static struct mlx5dr_buddy_mem *
+mlx5dr_pool_buddy_get_next_buddy(struct mlx5dr_pool *pool, int idx,
+				 bool *is_new_buddy)
+{
+	static struct mlx5dr_buddy_mem *buddy;
+
+	buddy = pool->db.buddy_manager->buddies[idx];
+	if (buddy)
+		return buddy;
+
+	*is_new_buddy = true;
+	buddy = mlx5dr_buddy_create(pool->alloc_log_sz);
+	if (!buddy) {
+		DRV_LOG(ERR, "Failed to create buddy order: %zu index: %d",
+			pool->alloc_log_sz, idx);
+		return NULL;
+	}
+
+	pool->resource[idx] = mlx5dr_pool_resource_alloc(pool, pool->alloc_log_sz);
+	if (!pool->resource[idx]) {
+		DRV_LOG(ERR, "Failed to create resource type: %d: size %zu index: %d",
+			pool->type, pool->alloc_log_sz, idx);
+		mlx5dr_buddy_cleanup(buddy);
+		return NULL;
+	}
+
+	pool->db.buddy_manager->buddies[idx] = buddy;
+	pool->db.buddy_manager->num_of_buddies++;
+
+	return buddy;
+}
+
 static int mlx5dr_pool_buddy_get_mem_chunk(struct mlx5dr_pool *pool,
 					   int order,
 					   uint32_t *buddy_idx,
@@ -105,15 +140,12 @@ static int mlx5dr_pool_buddy_get_mem_chunk(struct mlx5dr_pool *pool,
 	/* find the next free place from the buddy array */
 	while (*seg == -1) {
 		for (i = 0; i < MLX5DR_POOL_RESOURCE_ARR_SZ; i++) {
-			buddy = pool->db.buddy_manager->buddies[i];
+			buddy = mlx5dr_pool_buddy_get_next_buddy(pool, i, &new_mem);
 			if (!buddy) {
-				 buddy = mlx5dr_buddy_create(pool->alloc_log_sz);
-				if (!buddy)
-					goto out;
-				pool->db.buddy_manager->buddies[i] = buddy;
-				pool->db.buddy_manager->num_of_buddies++;
-				new_mem = true;
+				err = rte_errno;
+				goto out;
 			}
+
 			*seg = mlx5dr_buddy_alloc_mem(buddy, order);
 			if (*seg != -1)
 				goto found;
