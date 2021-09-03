@@ -6829,7 +6829,7 @@ flow_dv_validate_attributes(struct rte_eth_dev *dev,
 			    struct rte_flow_error *error)
 {
 	struct mlx5_priv *priv = dev->data->dev_private;
-	uint32_t priority_max = priv->config.flow_prio - 1;
+	uint32_t priority_max = priv->sh->flow_max_priority - 1;
 	int ret = 0;
 
 #ifndef HAVE_MLX5DV_DR
@@ -13472,7 +13472,7 @@ flow_dv_translate(struct rte_eth_dev *dev,
 	if (attr->transfer)
 		mhdr_res->ft_type = MLX5DV_FLOW_TABLE_TYPE_FDB;
 	if (priority == MLX5_FLOW_PRIO_RSVD)
-		priority = dev_conf->flow_prio - 1;
+		priority = priv->sh->flow_max_priority - 1;
 	/* number of actions must be set to 0 in case of dirty stack. */
 	mhdr_res->actions_num = 0;
 	if (is_flow_tunnel_match_rule(dev_flow->tof_type)) {

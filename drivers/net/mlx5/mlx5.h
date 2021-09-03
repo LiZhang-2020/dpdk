@@ -284,9 +284,6 @@ struct mlx5_dev_config {
 	} mprq; /* Configurations for Multi-Packet RQ. */
 	int mps; /* Multi-packet send supported mode. */
 	int dbnc; /* Skip doorbell register write barrier. */
-	unsigned int flow_prio; /* Number of flow priorities. */
-	enum modify_reg flow_mreg_c[MLX5_MREG_C_NUM];
-	/* Availibility of mreg_c's. */
 	unsigned int tso_max_payload_sz; /* Maximum TCP payload for TSO. */
 	unsigned int ind_table_max_size; /* Maximum indirection table size. */
 	unsigned int max_dump_files_num; /* Maximum dump files per queue. */
@@ -1166,13 +1163,17 @@ struct mlx5_dev_ctx_shared {
 	uint32_t ct_aso_en:1; /* Connection Tracking ASO is supported. */
 	uint32_t tunnel_header_0_1:1; /* tunnel_header_0_1 is supported. */
 	uint32_t misc5_cap:1; /* misc5 matcher parameter is supported. */
-	uint32_t eqn; /* Event Queue number. */
 	uint32_t rq_ts_format:2; /* RQ timestamp formats supported. */
 	uint32_t sq_ts_format:2; /* SQ timestamp formats supported. */
 	uint32_t steering_format_version:4;
 	/* Indicates the device steering logic format. */
 	uint32_t qp_ts_format:2; /* QP timestamp formats supported. */
 	uint32_t reclaim_mode:1; /* Reclaim memory. */
+	uint32_t dr_drop_action_en:1; /* Use DR drop action. */
+	uint32_t drop_action_check_flag:1; /* Check Flag for drop action. */
+	uint32_t flow_priority_check_flag:1; /* Check Flag for flow priority. */
+	uint32_t metadata_regc_check_flag:1; /* Check Flag for metadata REGC. */
+	uint32_t eqn; /* Event Queue number. */
 	uint32_t max_port; /* Maximal IB device port index. */
 	struct mlx5_bond_info bond; /* Bonding information. */
 	void *ctx; /* Verbs/DV/DevX context. */
@@ -1245,6 +1246,9 @@ struct mlx5_dev_ctx_shared {
 	struct mlx5_aso_ct_pools_mng *ct_mng;
 	/* Management data for ASO connection tracking. */
 	struct mlx5_lb_ctx self_lb; /* QP to enable self loopback for Devx. */
+	unsigned int flow_max_priority;
+	enum modify_reg flow_mreg_c[MLX5_MREG_C_NUM];
+	/* Availibility of mreg_c's. */
 	struct mlx5_dev_shared_port port[]; /* per device port data array. */
 };
 
