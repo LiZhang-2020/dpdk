@@ -15,6 +15,7 @@
 #include "../../drivers/net/mlx5/steering/mlx5dr_context.h"
 #include "../../drivers/net/mlx5/steering/mlx5dr_send.h"
 #include "../../drivers/net/mlx5/steering/mlx5dr_rule.h"
+#include "../../drivers/net/mlx5/steering/mlx5dr_pool.h"
 #include "../../drivers/net/mlx5/steering/mlx5dr_action.h"
 
 #define MAX_ITEMS 10
@@ -123,5 +124,6 @@ enum {
 int run_test_post_send(struct ibv_context *ibv_ctx);
 int run_test_rule_insert(struct ibv_context *ibv_ctx);
 int run_test_modify_header_action(struct ibv_context *ibv_ctx);
+int run_test_pool(struct ibv_context *ibv_ctx);
 #endif
 
