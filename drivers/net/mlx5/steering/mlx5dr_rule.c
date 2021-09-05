@@ -40,11 +40,6 @@ static int mlx5dr_rule_create_hws(struct mlx5dr_rule *rule,
 	struct mlx5dr_send_engine_post_ctrl ctrl;
 	size_t wqe_len;
 
-	if (unlikely(mlx5dr_send_engine_full(&ctx->send_queue[attr->queue_id]))) {
-		rte_errno = EBUSY;
-		return rte_errno;
-	}
-
 	mlx5dr_send_engine_inc_rule(&ctx->send_queue[attr->queue_id]);
 
 	/* Check if there are pending work completions */
@@ -122,11 +117,6 @@ static int mlx5dr_rule_destroy_hws(struct mlx5dr_rule *rule,
 			mlx5dr_rule_destroy_failed_hws(rule, attr);
 			return 0;
 		}
-	}
-
-	if (unlikely(mlx5dr_send_engine_full(&ctx->send_queue[attr->queue_id]))) {
-		rte_errno = EBUSY;
-		return rte_errno;
 	}
 
 	mlx5dr_send_engine_inc_rule(&ctx->send_queue[attr->queue_id]);
@@ -243,10 +233,18 @@ int mlx5dr_rule_create(struct mlx5dr_matcher *matcher,
 		       struct mlx5dr_rule_attr *attr,
 		       struct mlx5dr_rule *rule_handle)
 {
+	struct mlx5dr_context *ctx;
+
 	rule_handle->matcher = matcher;
+	ctx = matcher->tbl->ctx;
 
 	if (unlikely(!attr->user_data)) {
 		rte_errno = EINVAL;
+		return rte_errno;
+	}
+
+	if (unlikely(mlx5dr_send_engine_full(&ctx->send_queue[attr->queue_id]))) {
+		rte_errno = EBUSY;
 		return rte_errno;
 	}
 
@@ -270,8 +268,15 @@ int mlx5dr_rule_create(struct mlx5dr_matcher *matcher,
 int mlx5dr_rule_destroy(struct mlx5dr_rule *rule,
 			struct mlx5dr_rule_attr *attr)
 {
+	struct mlx5dr_context *ctx = rule->matcher->tbl->ctx;
+
 	if (unlikely(!attr->user_data)) {
 		rte_errno = EINVAL;
+		return rte_errno;
+	}
+
+	if (unlikely(mlx5dr_send_engine_full(&ctx->send_queue[attr->queue_id]))) {
+		rte_errno = EBUSY;
 		return rte_errno;
 	}
 
