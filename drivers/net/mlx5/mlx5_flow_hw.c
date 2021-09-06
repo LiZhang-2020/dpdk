@@ -124,16 +124,20 @@ err:
 }
 
 static void
-flow_hw_actions_construct(struct rte_flow_table *table,
+flow_hw_actions_construct(struct rte_eth_dev *dev,
+			  struct rte_flow_table *table,
 			  struct mlx5_hw_actions *hw_acts,
 			  const struct rte_flow_action actions[],
 			  struct mlx5dr_rule_action *rule_acts,
 			  uint32_t *acts_num)
 {
+	struct mlx5_priv *priv = dev->data->dev_private;
 	bool actions_end = false;
 	uint32_t i;
 
 	for (i = 0; !actions_end || (i >= MLX5_HW_MAX_ACTS); actions++) {
+		uint32_t tag;
+
 		switch (actions->type) {
 		case RTE_FLOW_ACTION_TYPE_INDIRECT:
 			break;
@@ -146,6 +150,15 @@ flow_hw_actions_construct(struct rte_flow_table *table,
 			rule_acts[i++].action = table->grp->group_id ?
 						hw_acts->jump->hws_action :
 						hw_acts->jump->root_action;
+			break;
+		case RTE_FLOW_ACTION_TYPE_MARK:
+			tag = mlx5_flow_mark_set
+			      (((const struct rte_flow_action_mark *)
+			      (actions->conf))->id);
+			rule_acts[i].action = priv->hw_tag
+					[!!table->grp->group_id][table->type];
+			rule_acts[i].tag.value = tag;
+			i++;
 			break;
 		case RTE_FLOW_ACTION_TYPE_END:
 			actions_end = true;
@@ -194,7 +207,7 @@ flow_hw_q_flow_create(struct rte_eth_dev *dev,
 	hw_acts = &table->ats[action_template_index].acts;
 	/* Construct the flow actions based on the input actions.*/
 	flow_hw_actions_construct
-		(table, hw_acts, actions, rule_acts, &acts_num);
+		(dev, table, hw_acts, actions, rule_acts, &acts_num);
 	job->type = MLX5_HW_Q_JOB_TYPE_CREATE;
 	job->flow = flow;
 	job->user_data = attr->user_data;
@@ -810,15 +823,18 @@ flow_hw_configure(struct rte_eth_dev *dev,
 				(priv->dr_ctx, mlx5_hw_dr_ft_flag[i][j]);
 			if (!priv->hw_drop[i][j])
 				goto err;
+			priv->hw_tag[i][j] = mlx5dr_action_create_tag
+				(priv->dr_ctx, mlx5_hw_dr_ft_flag[i][j]);
 		}
 	}
 	return 0;
 err:
 	for (i = 0; i < 2; i++) {
 		for (j = 0; j < MLX5DR_TABLE_TYPE_MAX; j++) {
-			if (!priv->hw_drop[i][j])
-				continue;
-			mlx5dr_action_destroy(priv->hw_drop[i][j]);
+			if (priv->hw_drop[i][j])
+				mlx5dr_action_destroy(priv->hw_drop[i][j]);
+			if (priv->hw_tag[i][j])
+				mlx5dr_action_destroy(priv->hw_tag[i][j]);
 		}
 	}
 	if (dr_ctx)
