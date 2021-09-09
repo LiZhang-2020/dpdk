@@ -69,7 +69,7 @@ static int mlx5dr_rule_create_hws(struct mlx5dr_rule *rule,
 	send_attr.rule = rule;
 	send_attr.opcode = 0x2c;
 	send_attr.len = 48 + 64;
-	send_attr.notify_hw = attr->burst;
+	send_attr.notify_hw = !attr->burst;
 	send_attr.user_data = attr->user_data;
 	send_attr.id = rule->matcher->rx.rtc->id;
 	mlx5dr_send_engine_post_end(&ctrl, &send_attr);
@@ -89,7 +89,7 @@ static void mlx5dr_rule_destroy_failed_hws(struct mlx5dr_rule *rule,
 	 * insertion we won't ring the HW as nothing is being written to the WQ.
 	 * In such case update the last WQE and ring the HW with that work
 	 */
-	if (!attr->burst)
+	if (attr->burst)
 		return;
 
 	mlx5dr_send_engine_flush_queue(&ctx->send_queue[attr->queue_id]);
@@ -139,7 +139,7 @@ static int mlx5dr_rule_destroy_hws(struct mlx5dr_rule *rule,
 	send_attr.rule = rule;
 	send_attr.opcode = 0x2c;
 	send_attr.len = 48 + 64;
-	send_attr.notify_hw = attr->burst;
+	send_attr.notify_hw = !attr->burst;
 	send_attr.user_data = attr->user_data;
 
 	mlx5dr_send_engine_post_end(&ctrl, &send_attr);

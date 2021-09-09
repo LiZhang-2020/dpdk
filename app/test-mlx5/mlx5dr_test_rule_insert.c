@@ -323,7 +323,7 @@ int run_test_rule_insert(struct ibv_context *ibv_ctx)
 			rule_attr.user_data = &hws_rule[i];
 
 			/* Ring doorbell */
-			rule_attr.burst = ((i + 1) % BURST_TH == 0);
+			rule_attr.burst = !((i + 1) % BURST_TH == 0);
 
 			ipv_value.dst_addr = i;
 			rule_actions[0].action = drop;
@@ -354,7 +354,7 @@ int run_test_rule_insert(struct ibv_context *ibv_ctx)
 			rule_attr.user_data = &hws_rule[i];
 
 			/* Ring doorbell */
-			rule_attr.burst = ((i + 1) % (BURST_TH) == 0);
+			rule_attr.burst = !((i + 1) % (BURST_TH) == 0);
 
 			rule_actions[0].action = drop;
 			ret = mlx5dr_rule_destroy(&hws_rule[i], &rule_attr);
