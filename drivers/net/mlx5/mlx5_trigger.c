@@ -1308,6 +1308,9 @@ mlx5_traffic_enable(struct rte_eth_dev *dev)
 	unsigned int j;
 	int ret;
 
+	if (priv->config.dv_flow_en > 1)
+		return 0;
+
 	/*
 	 * Hairpin txq default flow should be created no matter if it is
 	 * isolation mode. Or else all the packets to be sent will be sent

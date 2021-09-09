@@ -1292,6 +1292,7 @@ struct mlx5_flow_rss_desc {
 	uint64_t hash_fields; /* Verbs Hash fields. */
 	uint8_t key[MLX5_RSS_HASH_KEY_LEN]; /**< RSS hash key. */
 	uint32_t key_len; /**< RSS hash key len. */
+	uint32_t hws_flags; /**< HW steering action. */
 	uint32_t tunnel; /**< Queue in tunnel. */
 	uint32_t shared_rss; /**< Shared RSS index. */
 	struct mlx5_ind_table_obj *ind_tbl;
@@ -1350,9 +1351,8 @@ struct mlx5_hrxq {
 		void *qp; /* Verbs queue pair. */
 		struct mlx5_devx_obj *tir; /* DevX TIR object. */
 	};
-#ifdef HAVE_IBV_FLOW_DV_SUPPORT
 	void *action; /* DV QP action pointer. */
-#endif
+	uint32_t hws_flags; /* Hw steering flags. */
 	uint64_t hash_fields; /* Verbs Hash fields. */
 	uint32_t rss_key_len; /* Hash key length in bytes. */
 	uint32_t idx; /* Hash Rx queue index. */

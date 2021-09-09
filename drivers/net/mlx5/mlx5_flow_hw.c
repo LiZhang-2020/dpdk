@@ -4,6 +4,7 @@
 
 #include "mlx5_defs.h"
 #include "mlx5_flow.h"
+#include "mlx5_rx.h"
 #include "mlx5_flow_os.h"
 
 #include "mlx5dr_context.h"
@@ -52,6 +53,57 @@ flow_hw_register_jump_action(struct rte_eth_dev *dev,
 }
 
 static void
+flow_hw_rxq_flag_set(struct rte_eth_dev *dev,
+		     struct mlx5_hrxq *hrxq)
+{
+	struct mlx5_ind_table_obj *ind_tbl = hrxq->ind_table;
+	unsigned int i;
+
+	for (i = 0; i != ind_tbl->queues_n; ++i) {
+		int idx = ind_tbl->queues[i];
+		struct mlx5_rxq_ctrl *rxq_ctrl = mlx5_rxq_ctrl_get(dev, idx);
+
+		rxq_ctrl->rxq.mark = 1;
+		rxq_ctrl->flow_mark_n++;
+	}
+}
+
+static inline struct mlx5_hrxq*
+flow_hw_register_tir_action(struct rte_eth_dev *dev,
+			    uint32_t hws_flags,
+			    struct rte_flow_action *action)
+{
+	struct mlx5_priv *priv = dev->data->dev_private;
+	struct mlx5_flow_rss_desc rss_desc = {
+		.hws_flags = hws_flags,
+	};
+	uint32_t idx;
+
+	if (action->type == RTE_FLOW_ACTION_TYPE_QUEUE) {
+		const struct rte_flow_action_queue *queue = action->conf;
+
+		rss_desc.const_q = &queue->index;
+		rss_desc.queue_num = 1;
+	} else {
+		const struct rte_flow_action_rss *rss = action->conf;
+
+		rss_desc.queue_num = rss->queue_num;
+		rss_desc.const_q = rss->queue;
+		memcpy(rss_desc.key,
+		       !rss->key ? rss_hash_default_key : rss->key,
+		       MLX5_RSS_HASH_KEY_LEN);
+		flow_dv_action_rss_l34_hash_adjust(rss->types,
+						   &rss_desc.hash_fields);
+		if (rss->level > 1) {
+			rss_desc.hash_fields |= IBV_RX_HASH_INNER;
+			rss_desc.tunnel = 1;
+		}
+	}
+	idx = mlx5_hrxq_get(dev, &rss_desc);
+	return mlx5_ipool_get(priv->sh->ipool[MLX5_IPOOL_HRXQ], idx);
+}
+
+static void
 __flow_hw_action_template_destroy(struct rte_eth_dev *dev,
 				 struct mlx5_hw_actions *acts)
 {
@@ -64,6 +116,10 @@ __flow_hw_action_template_destroy(struct rte_eth_dev *dev,
 			(acts->jump, struct mlx5_flow_group, jump);
 		mlx5_hlist_unregister(priv->sh->flow_tbls, &grp->entry);
 		acts->jump = NULL;
+	}
+	if (acts->tir) {
+		mlx5_hrxq_release(dev, acts->tir->idx);
+		acts->tir = NULL;
 	}
 }
 
@@ -78,7 +134,7 @@ flow_hw_actions_translate(struct rte_eth_dev *dev,
 	const struct rte_flow_attr *attr = &table_attr->flow_attr;
 	struct rte_flow_action *actions = at->actions;
 	struct rte_flow_action *masks = at->masks;
-	bool actions_end = false;
+	bool actions_end = false, mark = false;
 	uint32_t type;
 	int err;
 
@@ -96,6 +152,9 @@ flow_hw_actions_translate(struct rte_eth_dev *dev,
 			break;
 		case RTE_FLOW_ACTION_TYPE_VOID:
 			break;
+		case RTE_FLOW_ACTION_TYPE_MARK:
+			mark = true;
+			break;
 		case RTE_FLOW_ACTION_TYPE_DROP:
 			acts->drop = priv->hw_drop[!!attr->group][type];
 			break;
@@ -106,6 +165,17 @@ flow_hw_actions_translate(struct rte_eth_dev *dev,
 						(dev, attr, jump_group, error);
 			if (!acts->jump)
 				goto err;
+			break;
+		case RTE_FLOW_ACTION_TYPE_QUEUE:
+		case RTE_FLOW_ACTION_TYPE_RSS:
+			acts->tir = flow_hw_register_tir_action
+				(dev,
+				 mlx5_hw_dr_ft_flag[!!attr->group][type],
+				 actions);
+			if (!acts->tir)
+				goto err;
+			if (mark)
+				flow_hw_rxq_flag_set(dev, acts->tir);
 			break;
 		case RTE_FLOW_ACTION_TYPE_END:
 			actions_end = true;
@@ -159,6 +229,10 @@ flow_hw_actions_construct(struct rte_eth_dev *dev,
 					[!!table->grp->group_id][table->type];
 			rule_acts[i].tag.value = tag;
 			i++;
+			break;
+		case RTE_FLOW_ACTION_TYPE_QUEUE:
+		case RTE_FLOW_ACTION_TYPE_RSS:
+			rule_acts[i++].action = hw_acts->tir->action;
 			break;
 		case RTE_FLOW_ACTION_TYPE_END:
 			actions_end = true;

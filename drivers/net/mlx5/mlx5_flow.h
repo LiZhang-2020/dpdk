@@ -1150,6 +1150,7 @@ struct mlx5_hw_jump_action {
 struct mlx5_hw_actions {
 	struct mlx5dr_action *drop; /* Drop action. */
 	struct mlx5_hw_jump_action *jump; /* Jump action. */
+	struct mlx5_hrxq *tir; /* TIR action. */
 };
 
 struct mlx5_hw_action_template {
@@ -2034,6 +2035,9 @@ const struct mlx5_flow_tunnel *
 mlx5_get_tof(const struct rte_flow_item *items,
 	     const struct rte_flow_action *actions,
 	     enum mlx5_tof_rule_type *rule_type);
+
+void flow_dv_action_rss_l34_hash_adjust(uint64_t rss_types,
+					uint64_t *hash_field);
 
 int flow_dv_translate_items_hws(const struct rte_flow_item *items,
 				struct mlx5_flow_attr *attr, void *key,

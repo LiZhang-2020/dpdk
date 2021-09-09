@@ -1038,6 +1038,14 @@ mlx5_devx_hrxq_new(struct rte_eth_dev *dev, struct mlx5_hrxq *hrxq,
 			dev->data->port_id);
 		goto error;
 	}
+	if (hrxq->hws_flags) {
+		hrxq->action = mlx5dr_action_create_dest_tir
+			(priv->dr_ctx,
+			 (struct mlx5dr_devx_obj *)hrxq->tir, hrxq->hws_flags);
+		if (!hrxq->action)
+			goto error;
+		return 0;
+	}
 #ifdef HAVE_IBV_FLOW_DV_SUPPORT
 	if (mlx5_flow_os_create_flow_action_dest_devx_tir(hrxq->tir,
 							  &hrxq->action)) {

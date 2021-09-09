@@ -2489,6 +2489,7 @@ mlx5_hrxq_match_cb(void *tool_ctx __rte_unused, struct mlx5_list_entry *entry,
 
 	return (hrxq->rss_key_len != rss_desc->key_len ||
 	    memcmp(hrxq->rss_key, rss_desc->key, rss_desc->key_len) ||
+	    hrxq->hws_flags != rss_desc->hws_flags ||
 	    hrxq->hash_fields != rss_desc->hash_fields ||
 	    hrxq->ind_table->queues_n != rss_desc->queue_num ||
 	    memcmp(hrxq->ind_table->queues, rss_desc->queue,
@@ -2596,13 +2597,18 @@ __mlx5_hrxq_remove(struct rte_eth_dev *dev, struct mlx5_hrxq *hrxq)
 {
 	struct mlx5_priv *priv = dev->data->dev_private;
 
+	if (hrxq->hws_flags)
+		mlx5dr_action_destroy(hrxq->action);
 #ifdef HAVE_IBV_FLOW_DV_SUPPORT
-	mlx5_glue->destroy_flow_action(hrxq->action);
+	else
+		mlx5_glue->destroy_flow_action(hrxq->action);
 #endif
 	priv->obj_ops.hrxq_destroy(hrxq);
 	if (!hrxq->standalone) {
 		mlx5_ind_table_obj_release(dev, hrxq->ind_table,
-					   hrxq->standalone, true);
+					   hrxq->standalone || hrxq->hws_flags,
+					   hrxq->hws_flags ?
+					   (!!dev->data->dev_started) : true);
 	}
 	mlx5_ipool_free(priv->sh->ipool[MLX5_IPOOL_HRXQ], hrxq->idx);
 }
@@ -2646,11 +2652,12 @@ __mlx5_hrxq_create(struct rte_eth_dev *dev,
 	int ret;
 
 	queues_n = rss_desc->hash_fields ? queues_n : 1;
-	if (!ind_tbl)
+	if (!ind_tbl && !rss_desc->hws_flags)
 		ind_tbl = mlx5_ind_table_obj_get(dev, queues, queues_n);
 	if (!ind_tbl)
 		ind_tbl = mlx5_ind_table_obj_new(dev, queues, queues_n,
-						 standalone,
+						 standalone ||
+						 rss_desc->hws_flags,
 						 !!dev->data->dev_started);
 	if (!ind_tbl)
 		return NULL;
@@ -2662,6 +2669,7 @@ __mlx5_hrxq_create(struct rte_eth_dev *dev,
 	hrxq->ind_table = ind_tbl;
 	hrxq->rss_key_len = rss_key_len;
 	hrxq->hash_fields = rss_desc->hash_fields;
+	hrxq->hws_flags = rss_desc->hws_flags;
 	memcpy(hrxq->rss_key, rss_key, rss_key_len);
 	ret = priv->obj_ops.hrxq_new(dev, hrxq, rss_desc->tunnel);
 	if (ret < 0)
