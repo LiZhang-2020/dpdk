@@ -4,53 +4,10 @@
 
 #include "mlx5dr_internal.h"
 
-static int mlx5dr_table_init_nic(struct mlx5dr_table *tbl,
-				 struct mlx5dr_table_nic *nic_tbl)
-{
-	struct mlx5dr_cmd_stc_modify_attr stc_attr = {0};
-	struct mlx5dr_devx_obj *devx_obj;
-	struct mlx5dr_pool *stc_pool;
-	int ret;
-
-	stc_pool = tbl->ctx->stc_pool[tbl->type];
-	ret = mlx5dr_pool_chunk_alloc(stc_pool, &nic_tbl->stc);
-	if (ret) {
-		DRV_LOG(ERR, "Failed to allocate go to FT STC");
-		return rte_errno;
-	}
-
-	stc_attr.stc_offset = nic_tbl->stc.offset;
-	stc_attr.action_type = MLX5_IFC_STC_ACTION_TYPE_JUMP_TO_FT;
-	stc_attr.dest_table_id = tbl->ft->id;
-	devx_obj = mlx5dr_pool_chunk_get_base_devx_obj(stc_pool, &nic_tbl->stc);
-
-	ret = mlx5dr_cmd_stc_modify(devx_obj, &stc_attr);
-	if (ret) {
-		DRV_LOG(ERR, "Failed to modify STC to jump for FT");
-		 goto free_chunk;
-	}
-
-	return 0;
-
-free_chunk:
-	mlx5dr_pool_chunk_free(stc_pool, &nic_tbl->stc);
-	return rte_errno;
-}
-
-static void mlx5dr_table_uninit_nic(struct mlx5dr_table *tbl,
-				    struct mlx5dr_table_nic *nic_tbl)
-{
-	struct mlx5dr_pool *stc_pool;
-
-	stc_pool = tbl->ctx->stc_pool[tbl->type];
-	mlx5dr_pool_chunk_free(stc_pool, &nic_tbl->stc);
-}
-
 static int mlx5dr_table_init(struct mlx5dr_table *tbl)
 {
 	struct mlx5dr_cmd_ft_create_attr ft_attr = {0};
 	struct mlx5dr_context *ctx = tbl->ctx;
-	struct mlx5dr_table_nic *nic_tbl;
 	int ret;
 
 	if (mlx5dr_table_is_root(tbl))
@@ -63,16 +20,14 @@ static int mlx5dr_table_init(struct mlx5dr_table *tbl)
 
 	switch (tbl->type) {
 	case MLX5DR_TABLE_TYPE_NIC_RX:
-		tbl->fw_ft_type = FS_FT_NIC_RX;
-		nic_tbl = &tbl->rx;
-		break;
+	        tbl->fw_ft_type = FS_FT_NIC_RX;
+	        break;
 	case MLX5DR_TABLE_TYPE_NIC_TX:
-		tbl->fw_ft_type = FS_FT_NIC_TX;
-		nic_tbl = &tbl->tx;
-		break;
+	        tbl->fw_ft_type = FS_FT_NIC_TX;
+	        break;
 	default:
-		assert(0);
-		break;
+	        assert(0);
+	        break;
 	}
 
 	ft_attr.type = tbl->fw_ft_type;
@@ -86,7 +41,7 @@ static int mlx5dr_table_init(struct mlx5dr_table *tbl)
 		return rte_errno;
 	}
 
-	ret = mlx5dr_table_init_nic(tbl, nic_tbl);
+	ret = mlx5dr_action_get_default_stc(ctx, tbl->type);
 	if (ret)
 		goto tbl_destroy;
 
@@ -99,25 +54,11 @@ tbl_destroy:
 
 static void mlx5dr_table_uninit(struct mlx5dr_table *tbl)
 {
-	struct mlx5dr_table_nic *nic_tbl;
-
 	if (mlx5dr_table_is_root(tbl))
 		return;
 
-	switch (tbl->type) {
-	case MLX5DR_TABLE_TYPE_NIC_RX:
-		nic_tbl = &tbl->rx;
-		break;
-	case MLX5DR_TABLE_TYPE_NIC_TX:
-		nic_tbl = &tbl->tx;
-		break;
-	default:
-		assert(0);
-		break;
-	}
-
+	mlx5dr_action_put_default_stc(tbl->ctx, tbl->type);
 	mlx5dr_cmd_destroy_obj(tbl->ft);
-	mlx5dr_table_uninit_nic(tbl, nic_tbl);
 }
 
 struct mlx5dr_table *mlx5dr_table_create(struct mlx5dr_context *ctx,

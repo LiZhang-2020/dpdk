@@ -4,6 +4,20 @@
 #ifndef MLX5DR_ACTION_H_
 #define MLX5DR_ACTION_H_
 
+enum mlx5dr_action_stc_idx {
+	MLX5DR_ACTION_STC_IDX_CTR = 0,
+	MLX5DR_ACTION_STC_IDX_DOUBLE = 1,
+	MLX5DR_ACTION_STC_IDX_SINGLE = 2,
+	MLX5DR_ACTION_STC_IDX_HIT = 3,
+};
+
+enum mlx5dr_action_offset {
+	MLX5DR_ACTION_OFFSET_COUNTER = 0,
+	MLX5DR_ACTION_OFFSET_DOUBLE = 5,
+	MLX5DR_ACTION_OFFSET_SINGLE = 7,
+	MLX5DR_ACTION_OFFSET_HIT = 3,
+};
+
 enum mlx5dr_action_type {
 	MLX5DR_ACTION_TYP_TNL_L2_TO_L2,
 	MLX5DR_ACTION_TYP_L2_TO_TNL_L2,
@@ -27,6 +41,14 @@ enum mlx5dr_action_type {
 	MLX5DR_ACTION_TYP_ASO_FLOW_METER,
 	MLX5DR_ACTION_TYP_ASO_CT,
 	MLX5DR_ACTION_TYP_MAX,
+};
+
+struct mlx5dr_action_default_stc {
+	struct mlx5dr_pool_chunk nop_ctr;
+	struct mlx5dr_pool_chunk nop_double;
+	struct mlx5dr_pool_chunk nop_single;
+	struct mlx5dr_pool_chunk default_hit;
+	uint32_t refcount;
 };
 
 struct mlx5dr_action {
@@ -54,5 +76,12 @@ struct mlx5dr_action {
 int mlx5dr_action_root_build_attr(struct mlx5dr_rule_action rule_actions[],
 				  uint32_t num_actions,
 				  struct mlx5dv_flow_action_attr *attr);
+
+int mlx5dr_action_get_default_stc(struct mlx5dr_context *ctx,
+				  uint8_t tbl_type);
+
+void mlx5dr_action_put_default_stc(struct mlx5dr_context *ctx,
+				   uint8_t tbl_type);
+
 
 #endif

@@ -189,9 +189,9 @@ mlx5dr_cmd_stc_modify_set_stc_param(struct mlx5dr_cmd_stc_modify_attr *stc_attr,
 			 header_modify_argument_id, stc_attr->modify_header.arg_id);
 		break;
 	case MLX5_IFC_STC_ACTION_TYPE_DROP:
-	case MLX5_IFC_STC_ACTION_TYPE_NONE:
+	case MLX5_IFC_STC_ACTION_TYPE_NOP:
 	case MLX5_IFC_STC_ACTION_TYPE_TAG:
-	case MLX5_IFC_STC_ACTION_TYPE_WIRE:
+	case MLX5_IFC_STC_ACTION_TYPE_ALLOW:
 		break;
 	default:
 		DRV_LOG(ERR, "not supported type %d", stc_attr->action_type);

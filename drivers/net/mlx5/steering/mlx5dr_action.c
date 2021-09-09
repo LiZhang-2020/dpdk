@@ -45,7 +45,7 @@ int mlx5dr_action_root_build_attr(struct mlx5dr_rule_action rule_actions[],
 			attr[i].action = action->flow_action;
 			break;
 #ifndef HAVE_IBV_FLOW_DEVX_COUNTERS
-		case DR_ACTION_TYP_CTR:
+		case MLX5DR_ACTION_TYP_CTR:
 			attr[i].type = MLX5DV_FLOW_ACTION_COUNTERS_DEVX;
 			attr[i].obj = action->devx_obj;
 
@@ -74,13 +74,6 @@ mlx5dr_action_alloc_single_stc(struct mlx5dr_context *ctx,
 	struct mlx5dr_pool *stc_pool = ctx->stc_pool[table_type];
 	struct mlx5dr_devx_obj *devx_obj;
 	int ret;
-
-	/* Check if valid action */
-	if (!stc_attr->action_type) {
-		DRV_LOG(ERR, "Unsupported action");
-		rte_errno = ENOTSUP;
-		return rte_errno;
-	}
 
 	ret = mlx5dr_pool_chunk_alloc(stc_pool, stc);
 	if (ret) {
@@ -117,27 +110,41 @@ mlx5dr_action_free_single_stc(struct mlx5dr_context *ctx,
 
 static void mlx5dr_action_fill_stc_attr(struct mlx5dr_action *action,
 					struct mlx5dr_devx_obj *obj,
-					struct mlx5dr_cmd_stc_modify_attr *stc_attr)
+					struct mlx5dr_cmd_stc_modify_attr *attr)
 {
 	switch (action->type) {
 	case MLX5DR_ACTION_TYP_TAG:
+		attr->action_type = MLX5_IFC_STC_ACTION_TYPE_TAG;
+		attr->action_offset = MLX5DR_ACTION_OFFSET_SINGLE;
+		break;
 	case MLX5DR_ACTION_TYP_DROP:
+		attr->action_type = MLX5_IFC_STC_ACTION_TYPE_DROP;
+		attr->action_offset = MLX5DR_ACTION_OFFSET_HIT;
+		break;
 	case MLX5DR_ACTION_TYP_MISS:
+		attr->action_type = MLX5_IFC_STC_ACTION_TYPE_ALLOW;
+		attr->action_offset = MLX5DR_ACTION_OFFSET_HIT;
 		break;
 	case MLX5DR_ACTION_TYP_CTR:
-		stc_attr->id = obj->id;
+		attr->id = obj->id;
+		attr->action_type = MLX5_IFC_STC_ACTION_TYPE_COUNTER;
+		attr->action_offset = MLX5DR_ACTION_OFFSET_SINGLE;
 		break;
 	case MLX5DR_ACTION_TYP_TIR:
-		stc_attr->dest_tir_num = obj->id;
+		attr->action_type = MLX5_IFC_STC_ACTION_TYPE_JUMP_TO_TIR;
+		attr->action_offset = MLX5DR_ACTION_OFFSET_HIT;
+		attr->dest_tir_num = obj->id;
 		break;
 	case MLX5DR_ACTION_TYP_MODIFY_HDR:
-		stc_attr->modify_header.arg_id =
-			action->modify_header.arg_obj->id;
-		stc_attr->modify_header.pattern_id =
-			action->modify_header.pattern_obj->id;
+		attr->action_type = MLX5_IFC_STC_ACTION_TYPE_ACC_MODIFY_LIST;
+		attr->action_offset = MLX5DR_ACTION_OFFSET_DOUBLE;
+		attr->modify_header.arg_id = action->modify_header.arg_obj->id;
+		attr->modify_header.pattern_id = action->modify_header.pattern_obj->id;
 		break;
 	case MLX5DR_ACTION_TYP_FT:
-		stc_attr->dest_table_id = obj->id;
+		attr->action_type = MLX5_IFC_STC_ACTION_TYPE_JUMP_TO_FT;
+		attr->action_offset = MLX5DR_ACTION_OFFSET_HIT;
+		attr->dest_table_id = obj->id;
 		break;
 	default:
 		DRV_LOG(ERR, "Invalid action type %d", action->type);
@@ -151,50 +158,12 @@ mlx5dr_action_create_stcs(struct mlx5dr_action *action,
 {
 	struct mlx5dr_cmd_stc_modify_attr stc_attr = {0};
 	struct mlx5dr_context *ctx = action->ctx;
-	uint32_t stc_type_rx, stc_type_tx;
 	int ret;
-
-	switch (action->type) {
-	case MLX5DR_ACTION_TYP_CTR:
-		stc_type_rx = MLX5_IFC_STC_ACTION_TYPE_COUNTER;
-		stc_type_tx = MLX5_IFC_STC_ACTION_TYPE_COUNTER;
-		break;
-	case MLX5DR_ACTION_TYP_DROP:
-		stc_type_rx = MLX5_IFC_STC_ACTION_TYPE_DROP;
-		stc_type_tx = MLX5_IFC_STC_ACTION_TYPE_DROP;
-		break;
-	case MLX5DR_ACTION_TYP_FT:
-		stc_type_rx = MLX5_IFC_STC_ACTION_TYPE_JUMP_TO_FT;
-		stc_type_tx = MLX5_IFC_STC_ACTION_TYPE_JUMP_TO_FT;
-		break;
-	case MLX5DR_ACTION_TYP_MISS:
-		stc_type_rx = MLX5_IFC_STC_ACTION_TYPE_DROP;
-		stc_type_tx = MLX5_IFC_STC_ACTION_TYPE_WIRE;
-		break;
-	case MLX5DR_ACTION_TYP_TAG:
-		stc_type_rx = MLX5_IFC_STC_ACTION_TYPE_TAG;
-		stc_type_tx = MLX5_IFC_STC_ACTION_TYPE_NONE;
-		break;
-	case MLX5DR_ACTION_TYP_TIR:
-		stc_type_rx = MLX5_IFC_STC_ACTION_TYPE_JUMP_TO_TIR;
-		stc_type_tx = MLX5_IFC_STC_ACTION_TYPE_NONE;
-		break;
-	case MLX5DR_ACTION_TYP_MODIFY_HDR:
-		stc_type_rx = MLX5_IFC_STC_ACTION_TYPE_ACC_MODIFY_LIST;
-		stc_type_tx = MLX5_IFC_STC_ACTION_TYPE_ACC_MODIFY_LIST;
-		break;
-	default:
-		DRV_LOG(ERR, "Invalid action type %d", action->type);
-		rte_errno = ENOTSUP;
-		assert(0);
-		return rte_errno;
-	}
 
 	mlx5dr_action_fill_stc_attr(action, obj, &stc_attr);
 
 	/* Allocate STC for RX */
 	if (action->flags & MLX5DR_ACTION_FLAG_HWS_RX) {
-		stc_attr.action_type = stc_type_rx;
 		ret = mlx5dr_action_alloc_single_stc(ctx, &stc_attr,
 						     MLX5DR_TABLE_TYPE_NIC_RX,
 						     &action->stc_rx);
@@ -204,7 +173,6 @@ mlx5dr_action_create_stcs(struct mlx5dr_action *action,
 
 	/* Allocate STC for TX */
 	if (action->flags & MLX5DR_ACTION_FLAG_HWS_TX) {
-		stc_attr.action_type = stc_type_tx;
 		ret = mlx5dr_action_alloc_single_stc(ctx, &stc_attr,
 						     MLX5DR_TABLE_TYPE_NIC_TX,
 						     &action->stc_tx);
@@ -285,6 +253,7 @@ mlx5dr_action_create_dest_table(struct mlx5dr_context *ctx,
 				enum mlx5dr_action_flags flags)
 {
 	struct mlx5dr_action *action;
+	int ret;
 
 	if (mlx5dr_table_is_root(tbl)) {
 		DRV_LOG(ERR, "Root table cannot be set as destination");
@@ -306,16 +275,16 @@ mlx5dr_action_create_dest_table(struct mlx5dr_context *ctx,
 	if (mlx5dr_action_is_root_flags(flags)) {
 		action->devx_obj = tbl->ft->obj;
 	} else {
-		if (flags & MLX5DR_ACTION_FLAG_HWS_RX)
-			action->stc_rx = tbl->rx.stc;
-
-		if (flags & MLX5DR_ACTION_FLAG_HWS_TX)
-			action->stc_tx = tbl->tx.stc;
-
-		/* TODO Add support for FDB */
+		ret = mlx5dr_action_create_stcs(action, tbl->ft);
+		if (ret)
+			goto free_action;
 	}
 
 	return action;
+
+free_action:
+	simple_free(action);
+	return NULL;
 }
 
 struct mlx5dr_action *
@@ -673,4 +642,103 @@ int mlx5dr_action_destroy(struct mlx5dr_action *action)
 
 	simple_free(action);
 	return 0;
+}
+
+int mlx5dr_action_get_default_stc(struct mlx5dr_context *ctx,
+				  uint8_t tbl_type)
+{
+	struct mlx5dr_cmd_stc_modify_attr stc_attr = {0};
+	struct mlx5dr_action_default_stc *default_stc;
+	int ret;
+
+	pthread_spin_lock(&ctx->ctrl_lock);
+
+	if (ctx->default_stc[tbl_type]) {
+		ctx->default_stc[tbl_type]->refcount++;
+		pthread_spin_unlock(&ctx->ctrl_lock);
+		return 0;
+	}
+
+	default_stc = simple_calloc(1, sizeof(*default_stc));
+	if (!default_stc) {
+		DRV_LOG(ERR, "Failed to allocate memory for default STCs");
+		rte_errno = ENOMEM;
+		return rte_errno;
+	}
+
+	stc_attr.action_type = MLX5_IFC_STC_ACTION_TYPE_NOP;
+	stc_attr.action_offset = MLX5DR_ACTION_OFFSET_COUNTER;
+	ret = mlx5dr_action_alloc_single_stc(ctx, &stc_attr, tbl_type,
+					     &default_stc->nop_ctr);
+	if (ret) {
+		DRV_LOG(ERR, "Failed to allocate default counter STC");
+		goto free_default_stc;
+	}
+
+	stc_attr.action_offset = MLX5DR_ACTION_OFFSET_DOUBLE;
+	ret = mlx5dr_action_alloc_single_stc(ctx, &stc_attr, tbl_type,
+					     &default_stc->nop_double);
+	if (ret) {
+		DRV_LOG(ERR, "Failed to allocate default double STC");
+		goto free_nop_ctr;
+	}
+
+	stc_attr.action_offset = MLX5DR_ACTION_OFFSET_SINGLE;
+	ret = mlx5dr_action_alloc_single_stc(ctx, &stc_attr, tbl_type,
+					     &default_stc->nop_single);
+	if (ret) {
+		DRV_LOG(ERR, "Failed to allocate default single STC");
+		goto free_nop_double;
+	}
+
+	stc_attr.action_offset = MLX5DR_ACTION_OFFSET_HIT;
+	ret = mlx5dr_action_alloc_single_stc(ctx, &stc_attr, tbl_type,
+					     &default_stc->default_hit);
+	if (ret) {
+		DRV_LOG(ERR, "Failed to allocate default allow STC");
+		goto free_nop_single;
+	}
+
+	ctx->default_stc[tbl_type] = default_stc;
+	ctx->default_stc[tbl_type]->refcount++;
+
+	pthread_spin_unlock(&ctx->ctrl_lock);
+
+	return 0;
+
+free_nop_single:
+	mlx5dr_action_free_single_stc(ctx, tbl_type, &default_stc->nop_single);
+free_nop_double:
+	mlx5dr_action_free_single_stc(ctx, tbl_type, &default_stc->nop_double);
+free_nop_ctr:
+	mlx5dr_action_free_single_stc(ctx, tbl_type, &default_stc->nop_ctr);
+free_default_stc:
+	simple_free(default_stc);
+	pthread_spin_unlock(&ctx->ctrl_lock);
+	return rte_errno;
+}
+
+void mlx5dr_action_put_default_stc(struct mlx5dr_context *ctx,
+				   uint8_t tbl_type)
+{
+	struct mlx5dr_action_default_stc *default_stc;
+
+	default_stc = ctx->default_stc[tbl_type];
+
+	pthread_spin_lock(&ctx->ctrl_lock);
+
+	default_stc = ctx->default_stc[tbl_type];
+	if (--default_stc->refcount) {
+		pthread_spin_unlock(&ctx->ctrl_lock);
+		return;
+	}
+
+	mlx5dr_action_free_single_stc(ctx, tbl_type, &default_stc->default_hit);
+	mlx5dr_action_free_single_stc(ctx, tbl_type, &default_stc->nop_single);
+	mlx5dr_action_free_single_stc(ctx, tbl_type, &default_stc->nop_double);
+	mlx5dr_action_free_single_stc(ctx, tbl_type, &default_stc->nop_ctr);
+	simple_free(default_stc);
+	ctx->default_stc[tbl_type] = NULL;
+
+	pthread_spin_unlock(&ctx->ctrl_lock);
 }
