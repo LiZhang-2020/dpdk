@@ -212,9 +212,16 @@ mlx5dr_cmd_stc_modify(struct mlx5dr_devx_obj *devx_obj,
 	void *attr;
 	int ret;
 
-	/* TODO Ignore, not supported due to FW */
-	if (stc_attr->action_type == MLX5_IFC_STC_ACTION_TYPE_JUMP_TO_FT)
-		return 0;
+	/* TODO Current support is DROP, NOP, TIR, Allow others will be NOP */
+	if (stc_attr->action_type != MLX5_IFC_STC_ACTION_TYPE_DROP &&
+	    stc_attr->action_type != MLX5_IFC_STC_ACTION_TYPE_NOP &&
+	    stc_attr->action_type != MLX5_IFC_STC_ACTION_TYPE_ALLOW &&
+	    stc_attr->action_type != MLX5_IFC_STC_ACTION_TYPE_JUMP_TO_TIR) {
+		DRV_LOG(ERR, "TODO FYI - ignoring action STC!");
+		stc_attr->action_type = MLX5_IFC_STC_ACTION_TYPE_NOP;
+		stc_attr->action_offset = 0;
+		stc_attr->id = 0;
+	}
 
 	attr = MLX5_ADDR_OF(create_stc_in, in, hdr);
 	MLX5_SET(general_obj_in_cmd_hdr,

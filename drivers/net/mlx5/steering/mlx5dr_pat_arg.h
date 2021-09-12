@@ -33,7 +33,11 @@ struct mlx5dr_pat_cached_pattern {
 	LIST_ENTRY(mlx5dr_pat_cached_pattern) next;
 };
 
+enum mlx5dr_arg_chunk_size
+mlx5dr_arg_get_arg_log_size(uint16_t num_of_actions);
+
 int mlx5dr_pat_init_pattern_cache(struct mlx5dr_pattern_cache *cache);
+
 void mlx5dr_pat_uninit_pattern_cache(struct mlx5dr_pattern_cache *cache);
 
 int mlx5dr_pat_arg_create_modify_header(struct mlx5dr_context *ctx,

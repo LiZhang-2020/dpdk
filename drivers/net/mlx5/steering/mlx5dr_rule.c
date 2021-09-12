@@ -34,10 +34,11 @@ static int mlx5dr_rule_create_hws(struct mlx5dr_rule *rule,
 {
 	struct mlx5dr_send_engine_post_attr send_attr = {0};
 	struct mlx5dr_matcher *matcher = rule->matcher;
-	struct mlx5dr_context *ctx = matcher->tbl->ctx;
 	struct mlx5dr_wqe_gta_data_seg_ste *wqe_data;
 	struct mlx5dr_wqe_gta_ctrl_seg *wqe_ctrl;
 	struct mlx5dr_send_engine_post_ctrl ctrl;
+	struct mlx5dr_table *tbl = matcher->tbl;
+	struct mlx5dr_context *ctx = tbl->ctx;
 	struct mlx5dr_send_engine *queue;
 	size_t wqe_len;
 
@@ -51,8 +52,6 @@ static int mlx5dr_rule_create_hws(struct mlx5dr_rule *rule,
 
 	/* Check if there are pending work completions */
 
-	/* Check if there is room in queue */
-
 	rule->status = MLX5DR_RULE_STATUS_CREATING;
 
 	/* Allocate WQE */
@@ -62,8 +61,12 @@ static int mlx5dr_rule_create_hws(struct mlx5dr_rule *rule,
 
 	/* Prepare rule insert WQE */
 	wqe_ctrl->op_dirix = htobe32(MLX5DR_WQR_GTA_OP_ACTIVATE << 28);
-	wqe_ctrl->stc_ix[0] = htobe32(num_actions << 29 |
-				      rule_actions->action->stc_rx.offset);
+
+	/* Apply action on */
+	mlx5dr_actions_quick_apply(ctx->default_stc[tbl->type],
+				   wqe_ctrl, wqe_data,
+				   rule_actions, num_actions,
+				   tbl->type == MLX5DR_TABLE_TYPE_NIC_RX);
 
 	/* Create tag directly on WQE and backup it on the rule for deletion */
 	mlx5dr_definer_create_tag(items,
@@ -139,13 +142,11 @@ static int mlx5dr_rule_destroy_hws(struct mlx5dr_rule *rule,
 		return 0;
 	}
 
-	mlx5dr_send_engine_inc_rule(queue);
+	mlx5dr_send_engine_inc_rule(&ctx->send_queue[attr->queue_id]);
 
 	/* Check if there are pending work completions */
 
 	rule->status = MLX5DR_RULE_STATUS_DELETING;
-
-	/* Check if there is room in queue */
 
 	/* Allocate WQE */
 	ctrl = mlx5dr_send_engine_post_start(queue);
@@ -180,7 +181,7 @@ static int mlx5dr_rule_create_root(struct mlx5dr_rule *rule,
 	struct mlx5dv_flow_match_parameters *value;
 	struct mlx5_flow_attr flow_attr = {0};
 	struct mlx5dv_flow_action_attr *attr;
-	struct rte_flow_error rte_error;
+	struct rte_flow_error error;
 	uint8_t match_criteria;
 	int ret;
 
@@ -202,9 +203,9 @@ static int mlx5dr_rule_create_root(struct mlx5dr_rule *rule,
 	ret = flow_dv_translate_items_hws(items, &flow_attr, value->match_buf,
 					  MLX5_SET_MATCHER_HS_V, NULL,
 					  &match_criteria,
-					  &rte_error);
+					  &error);
 	if (ret) {
-		DRV_LOG(ERR, "Failed to convert items to PRM [%s]", rte_error.message);
+		DRV_LOG(ERR, "Failed to convert items to PRM [%s]", error.message);
 		goto free_value;
 	}
 

@@ -9,12 +9,14 @@ enum mlx5dr_action_stc_idx {
 	MLX5DR_ACTION_STC_IDX_DOUBLE = 1,
 	MLX5DR_ACTION_STC_IDX_SINGLE = 2,
 	MLX5DR_ACTION_STC_IDX_HIT = 3,
+	MLX5DR_ACTION_STC_IDX_MAX = 3,
 };
 
 enum mlx5dr_action_offset {
-	MLX5DR_ACTION_OFFSET_COUNTER = 0,
-	MLX5DR_ACTION_OFFSET_DOUBLE = 5,
-	MLX5DR_ACTION_OFFSET_SINGLE = 7,
+	MLX5DR_ACTION_OFFSET_DW0 = 0,
+	MLX5DR_ACTION_OFFSET_DW5 = 5,
+	MLX5DR_ACTION_OFFSET_DW6 = 6,
+	MLX5DR_ACTION_OFFSET_DW7 = 7,
 	MLX5DR_ACTION_OFFSET_HIT = 3,
 };
 
@@ -83,5 +85,11 @@ int mlx5dr_action_get_default_stc(struct mlx5dr_context *ctx,
 void mlx5dr_action_put_default_stc(struct mlx5dr_context *ctx,
 				   uint8_t tbl_type);
 
+int mlx5dr_actions_quick_apply(struct mlx5dr_action_default_stc *default_stc,
+			       struct mlx5dr_wqe_gta_ctrl_seg *wqe_ctrl,
+			       struct mlx5dr_wqe_gta_data_seg_ste *wqe_data,
+			       struct mlx5dr_rule_action rule_actions[],
+			       uint8_t num_actions,
+			       bool is_rx);
 
 #endif

@@ -4,7 +4,7 @@
 
 #include "mlx5dr_internal.h"
 
-static enum mlx5dr_arg_chunk_size
+enum mlx5dr_arg_chunk_size
 mlx5dr_arg_get_arg_log_size(uint16_t num_of_actions)
 {
 	if (num_of_actions <= 8)

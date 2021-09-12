@@ -84,6 +84,11 @@ struct mlx5dr_rule_action {
 			uint32_t offset;
 			uint8_t *data;
 		} modify_header;
+
+		struct {
+			uint32_t offset;
+			uint8_t *data;
+		} reformat;
 	};
 };
 
