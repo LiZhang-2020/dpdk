@@ -7,6 +7,59 @@
 
 #define MLX5DR_NUM_SEND_RINGS 1
 
+
+/* WQE Control segment. */
+struct mlx5dr_wqe_ctrl_seg {
+        __be32 opmod_idx_opcode;
+        __be32 qpn_ds;
+        __be32 flags;
+        __be32 imm;
+};
+
+enum mlx5dr_wqe_opcode {
+	MLX5DR_WQE_OPCODE_TBL_ACCESS = 0x2c,
+};
+
+enum mlx5dr_wqe_opmod {
+	MLX5DR_WQE_OPMOD_GTA_STE = 0,
+	MLX5DR_WQE_OPMOD_GTA_MOD_ARG = 1,
+};
+
+enum mlx5dr_wqe_gta_opcode {
+	MLX5DR_WQE_GTA_OP_ACTIVATE = 0,
+	MLX5DR_WQE_GTA_OP_DEACTIVATE = 1,
+};
+
+enum mlx5dr_wqe_gta_opmod {
+	MLX5DR_WQE_GTA_OPMOD_STE = 0,
+	MLX5DR_WQE_GTA_OPMOD_MOD_ARG = 1,
+};
+
+struct mlx5dr_wqe_gta_ctrl_seg {
+	__be32 op_dirix;
+	__be32 stc_ix[5];
+	__be32 rsvd0[6];
+};
+
+struct mlx5dr_wqe_gta_data_seg_ste {
+	__be32 rsvd0_ctr_id;
+	__be32 rsvd1[4];
+	__be32 action[3];
+	__be32 tag[8];
+};
+
+struct mlx5dr_wqe_gta_data_seg_arg {
+	__be32 action_args[8];
+};
+
+struct mlx5dr_wqe_gta {
+	struct mlx5dr_wqe_gta_ctrl_seg gta_ctrl;
+	union {
+		struct mlx5dr_wqe_gta_data_seg_ste seg_ste;
+		struct mlx5dr_wqe_gta_data_seg_arg seg_arg;
+	};
+};
+
 struct mlx5dr_send_ring_cq {
         uint8_t *buf;
         uint32_t cons_index;
@@ -27,6 +80,13 @@ struct mlx5dr_send_ring_priv {
 	uint32_t num_wqebbs;
 };
 
+struct mlx5dr_send_ring_dep_wqe {
+	struct mlx5dr_wqe_gta_ctrl_seg wqe_ctrl;
+	struct mlx5dr_wqe_gta_data_seg_ste wqe_data;
+	struct mlx5dr_rule *rule;
+	void *user_data;
+};
+
 struct mlx5dr_send_ring_sq {
 	char *buf;
 	uint32_t sqn;
@@ -36,7 +96,9 @@ struct mlx5dr_send_ring_sq {
 	uint16_t buf_mask;
 	struct mlx5dr_send_ring_priv *wr_priv;
 	unsigned last_idx;
-
+	struct mlx5dr_send_ring_dep_wqe *dep_wqe;
+	unsigned head_dep_idx;
+	unsigned tail_dep_idx;
 	struct mlx5dr_devx_obj *obj;
 	struct mlx5dv_devx_umem *buf_umem;
 	struct mlx5dv_devx_umem *db_umem;
@@ -83,8 +145,8 @@ struct mlx5dr_send_engine_post_attr {
 	struct mlx5dr_rule *rule;
 	uint32_t id;
 	void *user_data;
-	uint8_t notify_hw:1;
-	uint8_t fence:1;
+	uint8_t notify_hw;
+	uint8_t fence;
 };
 
 /**
@@ -110,45 +172,13 @@ mlx5dr_uar_write64_relaxed(uint64_t val, void *addr)
 #endif
 }
 
-/* WQE Control segment. */
-struct mlx5dr_wqe_ctrl_seg {
-        __be32 opmod_idx_opcode;
-        __be32 qpn_ds;
-        __be32 flags;
-        __be32 imm;
-};
+struct mlx5dr_send_ring_dep_wqe *
+mlx5dr_send_add_new_dep_wqe(struct mlx5dr_send_engine *queue);
 
-enum mlx5dr_wqe_gta_op {
-	MLX5DR_WQR_GTA_OP_ACTIVATE = 0,
-	MLX5DR_WQR_GTA_OP_DEACTIVATE = 1,
-};
-
-struct mlx5dr_wqe_gta_ctrl_seg {
-	__be32 op_dirix;
-	__be32 stc_ix[5];
-	__be32 rsvd0[6];
-};
-
-struct mlx5dr_wqe_gta_data_seg_ste {
-	__be32 rsvd0_ctr_id;
-	__be32 rsvd1[4];
-	__be32 action[3];
-	__be32 tag[8];
-};
-
-struct mlx5dr_wqe_gta_data_seg_arg {
-	__be32 action_args[8];
-};
-
-struct mlx5dr_wqe_gta {
-	struct mlx5dr_wqe_gta_ctrl_seg gta_ctrl;
-	union {
-		struct mlx5dr_wqe_gta_data_seg_ste seg_ste;
-		struct mlx5dr_wqe_gta_data_seg_arg seg_arg;
-	};
-};
+int mlx5dr_send_all_dep_wqe(struct mlx5dr_send_engine *queue);
 
 void mlx5dr_send_queues_close(struct mlx5dr_context *ctx);
+
 int mlx5dr_send_queues_open(struct mlx5dr_context *ctx,
 			    uint16_t queues,
 			    uint16_t queue_size);

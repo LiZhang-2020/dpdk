@@ -31,15 +31,11 @@ static int mlx5dr_rule_create_hws(struct mlx5dr_rule *rule,
 				  struct mlx5dr_rule_action rule_actions[],
 				  uint8_t num_actions)
 {
-	struct mlx5dr_send_engine_post_attr send_attr = {0};
 	struct mlx5dr_matcher *matcher = rule->matcher;
-	struct mlx5dr_wqe_gta_data_seg_ste *wqe_data;
-	struct mlx5dr_wqe_gta_ctrl_seg *wqe_ctrl;
-	struct mlx5dr_send_engine_post_ctrl ctrl;
+	struct mlx5dr_send_ring_dep_wqe *dep_wqe;
 	struct mlx5dr_table *tbl = matcher->tbl;
 	struct mlx5dr_context *ctx = tbl->ctx;
 	struct mlx5dr_send_engine *queue;
-	size_t wqe_len;
 
 	queue = &ctx->send_queue[attr->queue_id];
 	if (unlikely(mlx5dr_send_engine_err(queue))) {
@@ -49,21 +45,19 @@ static int mlx5dr_rule_create_hws(struct mlx5dr_rule *rule,
 
 	mlx5dr_send_engine_inc_rule(queue);
 
-	/* Check if there are pending work completions */
-
 	rule->status = MLX5DR_RULE_STATUS_CREATING;
 
-	/* Allocate WQE */
-	ctrl = mlx5dr_send_engine_post_start(queue);
-	mlx5dr_send_engine_post_req_wqe(&ctrl, (void *)&wqe_ctrl, &wqe_len);
-	mlx5dr_send_engine_post_req_wqe(&ctrl, (void *)&wqe_data, &wqe_len);
-
-	/* Prepare rule insert WQE */
-	wqe_ctrl->op_dirix = htobe32(MLX5DR_WQR_GTA_OP_ACTIVATE << 28);
+	/* Today we assume all rules have a dependent WQE.
+	 * This is inefficient and should be optimised.
+	 */
+	dep_wqe = mlx5dr_send_add_new_dep_wqe(queue);
+	dep_wqe->rule = rule;
+	dep_wqe->user_data = attr->user_data;
 
 	/* Apply action on */
 	mlx5dr_actions_quick_apply(ctx->default_stc[tbl->type],
-				   wqe_ctrl, wqe_data,
+				   &dep_wqe->wqe_ctrl,
+				   &dep_wqe->wqe_data,
 				   rule_actions, num_actions,
 				   tbl->type == MLX5DR_TABLE_TYPE_NIC_RX);
 
@@ -71,19 +65,13 @@ static int mlx5dr_rule_create_hws(struct mlx5dr_rule *rule,
 	mlx5dr_definer_create_tag(items,
 				  matcher->mt[mt_idx]->fc,
 				  matcher->mt[mt_idx]->fc_sz,
-				  (uint8_t *)wqe_data->tag);
+				  (uint8_t *)rule->match_tag);
 
-	memcpy(rule->match_tag, wqe_data->tag, MLX5DR_MATCH_TAG_SZ);
+	memcpy(dep_wqe->wqe_data.tag, rule->match_tag, MLX5DR_MATCH_TAG_SZ);
 
-	send_attr.rule = rule;
-	send_attr.opcode = 0x2c;
-	send_attr.opmod = 0;
-	send_attr.len = 48 + 64;
-	send_attr.notify_hw = !attr->burst;
-	send_attr.fence = 0;
-	send_attr.user_data = attr->user_data;
-	send_attr.id = rule->matcher->rx.rtc->id;
-	mlx5dr_send_engine_post_end(&ctrl, &send_attr);
+	/* Send dependent WQE */
+	if (!attr->burst)
+		mlx5dr_send_all_dep_wqe(queue);
 
 	return 0;
 }
@@ -143,7 +131,9 @@ static int mlx5dr_rule_destroy_hws(struct mlx5dr_rule *rule,
 
 	mlx5dr_send_engine_inc_rule(queue);
 
-	/* Check if there are pending work completions */
+	/* Send dependent WQE */
+	if (!attr->burst)
+		mlx5dr_send_all_dep_wqe(queue);
 
 	rule->status = MLX5DR_RULE_STATUS_DELETING;
 
@@ -152,13 +142,13 @@ static int mlx5dr_rule_destroy_hws(struct mlx5dr_rule *rule,
 	mlx5dr_send_engine_post_req_wqe(&ctrl, (void *)&wqe_ctrl, &wqe_len);
 	mlx5dr_send_engine_post_req_wqe(&ctrl, (void *)&wqe_data, &wqe_len);
 
-	wqe_ctrl->op_dirix = htobe32(MLX5DR_WQR_GTA_OP_DEACTIVATE << 28);
+	wqe_ctrl->op_dirix = htobe32(MLX5DR_WQE_GTA_OP_DEACTIVATE << 28);
 
 	memcpy(wqe_data->tag, rule->match_tag, MLX5DR_MATCH_TAG_SZ);
 
 	send_attr.rule = rule;
-	send_attr.opcode = 0x2c;
-	send_attr.opmod = 0;
+	send_attr.opcode = MLX5DR_WQE_OPCODE_TBL_ACCESS;
+	send_attr.opmod = MLX5DR_WQE_GTA_OPMOD_STE;
 	send_attr.len = 48 + 64;
 	send_attr.notify_hw = !attr->burst;
 	send_attr.fence = 0;

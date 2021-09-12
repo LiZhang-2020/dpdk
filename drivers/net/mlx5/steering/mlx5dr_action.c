@@ -795,6 +795,7 @@ int mlx5dr_actions_quick_apply(struct mlx5dr_action_default_stc *default_stc,
 	 *
 	 * Current combination allows CTR(0) + Double/Single(5) + Single(7)
 	 */
+	wqe_ctrl->op_dirix = htobe32(MLX5DR_WQE_GTA_OP_ACTIVATE << 28);
 	wqe_ctrl->stc_ix[MLX5DR_ACTION_STC_IDX_CTR] = htobe32(default_stc->nop_ctr.offset);
 	wqe_ctrl->stc_ix[MLX5DR_ACTION_STC_IDX_DOUBLE] = htobe32(default_stc->nop_double.offset);
 	wqe_ctrl->stc_ix[MLX5DR_ACTION_STC_IDX_SINGLE] = htobe32(default_stc->nop_single.offset);
@@ -848,8 +849,7 @@ int mlx5dr_actions_quick_apply(struct mlx5dr_action_default_stc *default_stc,
 			arg_sz = 1 << mlx5dr_arg_get_arg_log_size(action->modify_header.num_of_actions);
 			raw_wqe[MLX5DR_ACTION_OFFSET_DW6] = htobe32(rule_actions[i].modify_header.offset * arg_sz);
 			wqe_ctrl->stc_ix[MLX5DR_ACTION_STC_IDX_DOUBLE] = htobe32(stc_idx);
-			// TODO if not inline mlx5dr_send_arg()
-			assert(0);
+			// TODO mlx5dr_action_send_arg(queue, data, data_sz, arg_idx);
 			break;
 		case MLX5DR_ACTION_TYP_DROP:
 		case MLX5DR_ACTION_TYP_FT:

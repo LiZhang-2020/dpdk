@@ -4,6 +4,58 @@
 
 #include "mlx5dr_internal.h"
 
+struct mlx5dr_send_ring_dep_wqe *
+mlx5dr_send_add_new_dep_wqe(struct mlx5dr_send_engine *queue)
+{
+	struct mlx5dr_send_ring_sq *send_sq = &queue->send_ring->send_sq;
+	unsigned idx = send_sq->head_dep_idx++ & (queue->num_entries - 1);
+
+	return &send_sq->dep_wqe[idx];
+}
+
+int mlx5dr_send_all_dep_wqe(struct mlx5dr_send_engine *queue)
+{
+	struct mlx5dr_send_ring_sq *send_sq = &queue->send_ring->send_sq;
+	struct mlx5dr_send_engine_post_attr send_attr = {0};
+	struct mlx5dr_wqe_gta_data_seg_ste *wqe_data;
+	struct mlx5dr_wqe_gta_ctrl_seg *wqe_ctrl;
+	struct mlx5dr_send_engine_post_ctrl ctrl;
+	struct mlx5dr_send_ring_dep_wqe *dep_wqe;
+	size_t wqe_len;
+
+	send_attr.opcode = MLX5DR_WQE_OPCODE_TBL_ACCESS;
+	send_attr.opmod = MLX5DR_WQE_GTA_OPMOD_STE;
+	send_attr.len = 48 + 64;
+	/* Fence first from previous depend WQEs  */
+	send_attr.fence = 1;
+
+	while (send_sq->head_dep_idx != send_sq->tail_dep_idx) {
+		dep_wqe = &send_sq->dep_wqe[send_sq->tail_dep_idx++ & (queue->num_entries - 1)];
+
+		/* Allocate WQE */
+		ctrl = mlx5dr_send_engine_post_start(queue);
+		mlx5dr_send_engine_post_req_wqe(&ctrl, (void *)&wqe_ctrl, &wqe_len);
+		mlx5dr_send_engine_post_req_wqe(&ctrl, (void *)&wqe_data, &wqe_len);
+
+		/* Copy dependent WQE */
+		memcpy(wqe_ctrl, &dep_wqe->wqe_ctrl, sizeof(*wqe_ctrl));
+		memcpy(wqe_data, &dep_wqe->wqe_data, sizeof(*wqe_data));
+
+		send_attr.rule = dep_wqe->rule;
+		/* Notify HW on the last WQE */
+		send_attr.notify_hw = (send_sq->tail_dep_idx == send_sq->head_dep_idx);
+		send_attr.user_data = dep_wqe->user_data;
+		send_attr.id = dep_wqe->rule->matcher->rx.rtc->id;
+
+		mlx5dr_send_engine_post_end(&ctrl, &send_attr);
+
+		/* Fencing is done only on the first WQE */
+		send_attr.fence = 0;
+	}
+
+	return 0;
+}
+
 struct mlx5dr_send_engine_post_ctrl
 mlx5dr_send_engine_post_start(struct mlx5dr_send_engine *queue)
 {
@@ -349,10 +401,18 @@ static int mlx5dr_send_ring_open_sq(struct mlx5dr_context *ctx,
 		goto destroy_sq_obj;
 	}
 
+	sq->dep_wqe = simple_calloc(queue->num_entries ,sizeof(*sq->dep_wqe));
+	if (!sq->dep_wqe) {
+		err = ENOMEM;
+		goto destroy_wr_priv;
+	}
+
 	sq->buf_mask = buf_sz - 1;
 
 	return 0;
 
+destroy_wr_priv:
+	simple_free(sq->wr_priv);
 destroy_sq_obj:
 	mlx5dr_cmd_destroy_obj(sq->obj);
 free_db_umem:
@@ -369,6 +429,7 @@ free_buf:
 
 static void mlx5dr_send_ring_close_sq(struct mlx5dr_send_ring_sq *sq)
 {
+	simple_free(sq->dep_wqe);
 	mlx5dr_cmd_destroy_obj(sq->obj);
 	mlx5_glue->devx_umem_dereg(sq->db_umem);
 	mlx5_glue->devx_umem_dereg(sq->buf_umem);
