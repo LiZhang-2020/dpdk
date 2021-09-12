@@ -38,9 +38,16 @@ static int mlx5dr_rule_create_hws(struct mlx5dr_rule *rule,
 	struct mlx5dr_wqe_gta_data_seg_ste *wqe_data;
 	struct mlx5dr_wqe_gta_ctrl_seg *wqe_ctrl;
 	struct mlx5dr_send_engine_post_ctrl ctrl;
+	struct mlx5dr_send_engine *queue;
 	size_t wqe_len;
 
-	mlx5dr_send_engine_inc_rule(&ctx->send_queue[attr->queue_id]);
+	queue = &ctx->send_queue[attr->queue_id];
+	if (unlikely(mlx5dr_send_engine_err(queue))) {
+		rte_errno = EIO;
+		return rte_errno;
+	}
+
+	mlx5dr_send_engine_inc_rule(queue);
 
 	/* Check if there are pending work completions */
 
@@ -49,7 +56,7 @@ static int mlx5dr_rule_create_hws(struct mlx5dr_rule *rule,
 	rule->status = MLX5DR_RULE_STATUS_CREATING;
 
 	/* Allocate WQE */
-	ctrl = mlx5dr_send_engine_post_start(&ctx->send_queue[attr->queue_id]);
+	ctrl = mlx5dr_send_engine_post_start(queue);
 	mlx5dr_send_engine_post_req_wqe(&ctrl, (void *)&wqe_ctrl, &wqe_len);
 	mlx5dr_send_engine_post_req_wqe(&ctrl, (void *)&wqe_data, &wqe_len);
 
@@ -81,8 +88,11 @@ static void mlx5dr_rule_destroy_failed_hws(struct mlx5dr_rule *rule,
 					   struct mlx5dr_rule_attr *attr)
 {
 	struct mlx5dr_context *ctx = rule->matcher->tbl->ctx;
+	struct mlx5dr_send_engine *queue;
 
-	mlx5dr_rule_gen_comp(&ctx->send_queue[attr->queue_id], rule, false,
+	queue = &ctx->send_queue[attr->queue_id];
+
+	mlx5dr_rule_gen_comp(queue, rule, false,
 			     attr->user_data, MLX5DR_RULE_STATUS_DELETED);
 
 	/* If a rule that was indicated as burst (need to trigger HW) has failed
@@ -92,7 +102,7 @@ static void mlx5dr_rule_destroy_failed_hws(struct mlx5dr_rule *rule,
 	if (attr->burst)
 		return;
 
-	mlx5dr_send_engine_flush_queue(&ctx->send_queue[attr->queue_id]);
+	mlx5dr_send_engine_flush_queue(queue);
 }
 
 static int mlx5dr_rule_destroy_hws(struct mlx5dr_rule *rule,
@@ -103,7 +113,10 @@ static int mlx5dr_rule_destroy_hws(struct mlx5dr_rule *rule,
 	struct mlx5dr_wqe_gta_data_seg_ste *wqe_data;
 	struct mlx5dr_wqe_gta_ctrl_seg *wqe_ctrl;
 	struct mlx5dr_send_engine_post_ctrl ctrl;
+	struct mlx5dr_send_engine *queue;
 	size_t wqe_len;
+
+	queue = &ctx->send_queue[attr->queue_id];
 
 	/* In case the rule is not completed */
 	if (rule->status != MLX5DR_RULE_STATUS_CREATED) {
@@ -119,7 +132,12 @@ static int mlx5dr_rule_destroy_hws(struct mlx5dr_rule *rule,
 		}
 	}
 
-	mlx5dr_send_engine_inc_rule(&ctx->send_queue[attr->queue_id]);
+	if (unlikely(mlx5dr_send_engine_err(queue))) {
+		mlx5dr_rule_destroy_failed_hws(rule, attr);
+		return 0;
+	}
+
+	mlx5dr_send_engine_inc_rule(queue);
 
 	/* Check if there are pending work completions */
 
@@ -128,7 +146,7 @@ static int mlx5dr_rule_destroy_hws(struct mlx5dr_rule *rule,
 	/* Check if there is room in queue */
 
 	/* Allocate WQE */
-	ctrl = mlx5dr_send_engine_post_start(&ctx->send_queue[attr->queue_id]);
+	ctrl = mlx5dr_send_engine_post_start(queue);
 	mlx5dr_send_engine_post_req_wqe(&ctrl, (void *)&wqe_ctrl, &wqe_len);
 	mlx5dr_send_engine_post_req_wqe(&ctrl, (void *)&wqe_data, &wqe_len);
 

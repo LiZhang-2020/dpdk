@@ -67,6 +67,7 @@ struct mlx5dr_send_engine {
 	uint16_t th_entries;
 	uint16_t rings;
 	uint16_t num_entries;
+	bool err;
 };
 
 struct mlx5dr_send_engine_post_ctrl {
@@ -185,4 +186,10 @@ static inline void mlx5dr_send_engine_gen_comp(struct mlx5dr_send_engine *queue,
 
 	comp->pi = (comp->pi + 1) & comp->mask;
 }
+
+static inline bool mlx5dr_send_engine_err(struct mlx5dr_send_engine *queue)
+{
+	return queue->err;
+}
+
 #endif
