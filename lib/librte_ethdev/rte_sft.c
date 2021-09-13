@@ -1631,6 +1631,12 @@ sft_query_alarm(void *param)
 	uint16_t i;
 
 	RTE_SET_USED(param);
+
+	if (sft_priv == NULL) {
+		RTE_SFT_LOG(ERR, "Query alarm called after SFT was destroyed");
+		return;
+	}
+
 	for (i = 0; i < sft_priv->conf.nb_queues; i++) {
 		rte_spinlock_lock(&(sft_priv->age[i].entries_sl));
 		trigger_event = false;
@@ -1684,6 +1690,16 @@ sft_set_alarm(void)
 {
 	if (rte_eal_alarm_set(RTE_SFT_QUERY_FREQ_US, sft_query_alarm, NULL)) {
 		RTE_SFT_LOG(ERR, "Cannot reinitialize query alarm");
+		return -1;
+	}
+	return 0;
+}
+
+int
+sft_cancel_alarm(void)
+{
+	if (rte_eal_alarm_cancel(sft_query_alarm, NULL) < 0) {
+		RTE_SFT_LOG(ERR, "Cannot cancel query alarm");
 		return -1;
 	}
 	return 0;
@@ -2203,6 +2219,7 @@ err1:
 int
 rte_sft_fini(struct rte_sft_error *error)
 {
+	sft_cancel_alarm();
 	sft_pmd_stop(error);
 	sft_destroy_hash();
 	sft_destroy_context();

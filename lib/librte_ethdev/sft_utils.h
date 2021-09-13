@@ -92,6 +92,7 @@ uint32_t sft_id_get(struct sft_id_pool *pool, uint32_t *id);
 uint32_t sft_id_release(struct sft_id_pool *pool, uint32_t id);
 void sft_query_alarm(void *param);
 int sft_set_alarm(void);
+int sft_cancel_alarm(void);
 
 static inline void
 sft_search_hash(const struct rte_lhash *h, const void *key, void **data)
