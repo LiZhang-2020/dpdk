@@ -153,6 +153,11 @@ mlx5dr_action_create_tag(struct mlx5dr_context *ctx,
 			 enum mlx5dr_action_flags flags);
 
 struct mlx5dr_action *
+mlx5dr_action_create_counter(struct mlx5dr_context *ctx,
+			     struct mlx5dr_devx_obj *obj,
+			     enum mlx5dr_action_flags flags);
+
+struct mlx5dr_action *
 mlx5dr_action_create_reformat(struct mlx5dr_context *ctx,
 			      enum mlx5dr_action_reformat_type reformat_type,
 			      size_t data_sz,

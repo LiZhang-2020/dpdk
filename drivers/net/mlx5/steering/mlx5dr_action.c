@@ -393,6 +393,40 @@ free_action:
 	return NULL;
 }
 
+struct mlx5dr_action *
+mlx5dr_action_create_counter(struct mlx5dr_context *ctx,
+			     struct mlx5dr_devx_obj *obj,
+			     enum mlx5dr_action_flags flags)
+{
+	struct mlx5dr_action *action;
+	int ret;
+
+	if (mlx5dr_action_is_hws_flags(flags) &&
+	    mlx5dr_action_is_root_flags(flags)) {
+		DRV_LOG(ERR, "Same action cannot be used for root and non root");
+		rte_errno = ENOTSUP;
+		return NULL;
+	}
+
+	action = mlx5dr_action_create_generic(ctx, flags, MLX5DR_ACTION_TYP_CTR);
+	if (!action)
+		return NULL;
+
+	if (mlx5dr_action_is_root_flags(flags)) {
+		action->devx_obj = obj->obj;
+	} else {
+		ret = mlx5dr_action_create_stcs(action, obj);
+		if (ret)
+			goto free_action;
+	}
+
+	return action;
+
+free_action:
+	simple_free(action);
+	return NULL;
+}
+
 static int
 mlx5dr_action_conv_reformat_type_to_action(uint32_t reformat_type,
 					   uint32_t *action_type)
@@ -761,8 +795,7 @@ int mlx5dr_actions_quick_apply(struct mlx5dr_action_default_stc *default_stc,
 	 *
 	 * Current combination allows CTR(0) + Double/Single(5) + Single(7)
 	 */
-	wqe_ctrl->stc_ix[MLX5DR_ACTION_STC_IDX_CTR] = htobe32(MLX5DR_ACTION_STC_IDX_MAX << 29 |
-							      default_stc->nop_ctr.offset);
+	wqe_ctrl->stc_ix[MLX5DR_ACTION_STC_IDX_CTR] = htobe32(default_stc->nop_ctr.offset);
 	wqe_ctrl->stc_ix[MLX5DR_ACTION_STC_IDX_DOUBLE] = htobe32(default_stc->nop_double.offset);
 	wqe_ctrl->stc_ix[MLX5DR_ACTION_STC_IDX_SINGLE] = htobe32(default_stc->nop_single.offset);
 	wqe_ctrl->stc_ix[MLX5DR_ACTION_STC_IDX_HIT] = htobe32(default_stc->default_hit.offset);
@@ -785,8 +818,8 @@ int mlx5dr_actions_quick_apply(struct mlx5dr_action_default_stc *default_stc,
 			wqe_ctrl->stc_ix[MLX5DR_ACTION_STC_IDX_SINGLE] = htobe32(stc_idx);
 			break;
 		case MLX5DR_ACTION_TYP_CTR:
-			raw_wqe[MLX5DR_ACTION_OFFSET_DW7] = htobe32(rule_actions[i].counter.offset);
-			wqe_ctrl->stc_ix[MLX5DR_ACTION_STC_IDX_SINGLE] = htobe32(stc_idx);
+			raw_wqe[MLX5DR_ACTION_OFFSET_DW0] = htobe32(rule_actions[i].counter.offset);
+			wqe_ctrl->stc_ix[MLX5DR_ACTION_STC_IDX_CTR] = htobe32(stc_idx);
 			break;
 		case MLX5DR_ACTION_TYP_TNL_L2_TO_L2:
 			wqe_ctrl->stc_ix[MLX5DR_ACTION_STC_IDX_SINGLE] = htobe32(stc_idx);
@@ -830,6 +863,9 @@ int mlx5dr_actions_quick_apply(struct mlx5dr_action_default_stc *default_stc,
 			return rte_errno;
 		}
 	}
+
+	/* Set Fixed number of actions */
+	wqe_ctrl->stc_ix[MLX5DR_ACTION_STC_IDX_CTR] |= htobe32(MLX5DR_ACTION_STC_IDX_MAX << 29);
 
 	return 0;
 }
