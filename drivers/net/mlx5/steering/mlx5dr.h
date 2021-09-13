@@ -131,16 +131,12 @@ int mlx5dr_rule_destroy(struct mlx5dr_rule *rule,
 			struct mlx5dr_rule_attr *attr);
 
 struct mlx5dr_action *
-mlx5dr_action_create_drop(struct mlx5dr_context *ctx,
-			  enum mlx5dr_action_flags flags);
+mlx5dr_action_create_dest_drop(struct mlx5dr_context *ctx,
+			       enum mlx5dr_action_flags flags);
 
 struct mlx5dr_action *
 mlx5dr_action_create_default_miss(struct mlx5dr_context *ctx,
 				  enum mlx5dr_action_flags flags);
-
-struct mlx5dr_action *
-mlx5dr_action_create_tag(struct mlx5dr_context *ctx,
-			 enum mlx5dr_action_flags flags);
 
 struct mlx5dr_action *
 mlx5dr_action_create_dest_table(struct mlx5dr_context *ctx,
@@ -151,6 +147,10 @@ struct mlx5dr_action *
 mlx5dr_action_create_dest_tir(struct mlx5dr_context *ctx,
 			      struct mlx5dr_devx_obj *obj,
 			      enum mlx5dr_action_flags flags);
+
+struct mlx5dr_action *
+mlx5dr_action_create_tag(struct mlx5dr_context *ctx,
+			 enum mlx5dr_action_flags flags);
 
 struct mlx5dr_action *
 mlx5dr_action_create_reformat(struct mlx5dr_context *ctx,

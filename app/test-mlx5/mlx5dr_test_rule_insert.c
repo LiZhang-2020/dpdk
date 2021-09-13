@@ -278,7 +278,7 @@ int run_test_rule_insert(struct ibv_context *ibv_ctx)
 	}
 
 	/* Create drop action */
-	drop = mlx5dr_action_create_drop(ctx, MLX5DR_ACTION_FLAG_HWS_RX);
+	drop = mlx5dr_action_create_dest_drop(ctx, MLX5DR_ACTION_FLAG_HWS_RX);
 	if (!drop) {
 		printf("Failed to create action drop\n");
 		goto destroy_action_decap;

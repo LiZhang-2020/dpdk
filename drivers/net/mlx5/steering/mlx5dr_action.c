@@ -322,8 +322,8 @@ free_action:
 }
 
 struct mlx5dr_action *
-mlx5dr_action_create_drop(struct mlx5dr_context *ctx,
-			  enum mlx5dr_action_flags flags)
+mlx5dr_action_create_dest_drop(struct mlx5dr_context *ctx,
+			       enum mlx5dr_action_flags flags)
 {
 	struct mlx5dr_action *action;
 	int ret;
