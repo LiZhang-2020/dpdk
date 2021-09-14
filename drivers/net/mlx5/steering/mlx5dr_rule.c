@@ -4,7 +4,6 @@
 
 #include "mlx5dr_internal.h"
 
-
 static inline void mlx5dr_rule_gen_comp(struct mlx5dr_send_engine *queue,
 					struct mlx5dr_rule *rule,
 					bool err,
