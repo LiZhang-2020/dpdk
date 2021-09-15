@@ -121,6 +121,12 @@ __flow_hw_action_template_destroy(struct rte_eth_dev *dev,
 		mlx5_hrxq_release(dev, acts->tir->idx);
 		acts->tir = NULL;
 	}
+	if (acts->encap_decap) {
+		if (acts->encap_decap->action)
+			mlx5dr_action_destroy(acts->encap_decap->action);
+		mlx5_free(acts->encap_decap);
+		acts->encap_decap = NULL;
+	}
 }
 
 static int
@@ -134,6 +140,12 @@ flow_hw_actions_translate(struct rte_eth_dev *dev,
 	const struct rte_flow_attr *attr = &table_attr->flow_attr;
 	struct rte_flow_action *actions = at->actions;
 	struct rte_flow_action *masks = at->masks;
+	enum mlx5dr_action_reformat_type refmt_type;
+	const struct rte_flow_action_raw_encap *raw_encap_data;
+	const struct rte_flow_item *enc_item = NULL;
+	uint8_t *encap_data = NULL;
+	bool encap_decap = false;
+	size_t data_size = 0;
 	bool actions_end = false, mark = false;
 	uint32_t type;
 	int err;
@@ -177,12 +189,78 @@ flow_hw_actions_translate(struct rte_eth_dev *dev,
 			if (mark)
 				flow_hw_rxq_flag_set(dev, acts->tir);
 			break;
+		case RTE_FLOW_ACTION_TYPE_VXLAN_ENCAP:
+			MLX5_ASSERT(!encap_decap);
+			enc_item = ((const struct rte_flow_action_vxlan_encap *)
+				   actions->conf)->definition;
+			encap_decap = true;
+			refmt_type = MLX5DR_ACTION_REFORMAT_TYPE_L2_TO_TNL_L2;
+			break;
+		case RTE_FLOW_ACTION_TYPE_NVGRE_ENCAP:
+			MLX5_ASSERT(!encap_decap);
+			enc_item = ((const struct rte_flow_action_nvgre_encap *)
+				   actions->conf)->definition;
+			encap_decap = true;
+			refmt_type = MLX5DR_ACTION_REFORMAT_TYPE_L2_TO_TNL_L2;
+			break;
+		case RTE_FLOW_ACTION_TYPE_VXLAN_DECAP:
+		case RTE_FLOW_ACTION_TYPE_NVGRE_DECAP:
+			MLX5_ASSERT(!encap_decap);
+			encap_decap = true;
+			refmt_type = MLX5DR_ACTION_REFORMAT_TYPE_TNL_L2_TO_L2;
+			break;
+		case RTE_FLOW_ACTION_TYPE_RAW_ENCAP:
+			raw_encap_data =
+				(const struct rte_flow_action_raw_encap *)
+				 actions->conf;
+			encap_data = raw_encap_data->data;
+			data_size = raw_encap_data->size;
+			if (encap_decap) {
+				refmt_type = data_size <
+				MLX5_ENCAPSULATION_DECISION_SIZE ?
+				MLX5DR_ACTION_REFORMAT_TYPE_TNL_L3_TO_L2 :
+				MLX5DR_ACTION_REFORMAT_TYPE_L2_TO_TNL_L3;
+			} else {
+				encap_decap = true;
+				refmt_type =
+				MLX5DR_ACTION_REFORMAT_TYPE_L2_TO_TNL_L2;
+			}
+			break;
+		case RTE_FLOW_ACTION_TYPE_RAW_DECAP:
+			encap_decap = true;
+			refmt_type = MLX5DR_ACTION_REFORMAT_TYPE_TNL_L2_TO_L2;
+			break;
 		case RTE_FLOW_ACTION_TYPE_END:
 			actions_end = true;
 			break;
 		default:
 			break;
 		}
+	}
+	if (encap_decap) {
+		uint8_t buf[MLX5_ENCAP_MAX_LEN];
+
+		if (enc_item) {
+			MLX5_ASSERT(!encap_data);
+			if (flow_convert_encap_data
+			    (enc_item, buf, &data_size, error))
+				goto err;
+			encap_data = buf;
+		}
+		acts->encap_decap = mlx5_malloc(MLX5_MEM_ZERO,
+				    sizeof(*acts->encap_decap) + data_size,
+				    0, SOCKET_ID_ANY);
+		if (!acts->encap_decap)
+			goto err;
+		acts->encap_decap->data_size = data_size;
+		memcpy(acts->encap_decap->data, encap_data, data_size);
+		acts->encap_decap->action = mlx5dr_action_create_reformat
+				(priv->dr_ctx, refmt_type,
+				 data_size, encap_data,
+				 rte_log2_u32(table_attr->nb_flows),
+				 mlx5_hw_dr_ft_flag[!!attr->group][type]);
+		if (!acts->encap_decap->action)
+			goto err;
 	}
 	return 0;
 err:
@@ -195,14 +273,19 @@ err:
 
 static void
 flow_hw_actions_construct(struct rte_eth_dev *dev,
-			  struct rte_flow_table *table,
+			  struct mlx5_hw_q_job *job,
 			  struct mlx5_hw_actions *hw_acts,
 			  const struct rte_flow_action actions[],
 			  struct mlx5dr_rule_action *rule_acts,
 			  uint32_t *acts_num)
 {
 	struct mlx5_priv *priv = dev->data->dev_private;
+	struct rte_flow_table *table = job->flow->table;
+	const struct rte_flow_action_raw_encap *raw_encap_data;
+	const struct rte_flow_item *enc_item = NULL;
+	uint8_t *encap_data = NULL;
 	bool actions_end = false;
+	uint32_t reformat_pos = UINT32_MAX;
 	uint32_t i;
 
 	for (i = 0; !actions_end || (i >= MLX5_HW_MAX_ACTS); actions++) {
@@ -234,12 +317,59 @@ flow_hw_actions_construct(struct rte_eth_dev *dev,
 		case RTE_FLOW_ACTION_TYPE_RSS:
 			rule_acts[i++].action = hw_acts->tir->action;
 			break;
+		case RTE_FLOW_ACTION_TYPE_VXLAN_ENCAP:
+			MLX5_ASSERT(!encap_decap);
+			enc_item = ((const struct rte_flow_action_vxlan_encap *)
+				   actions->conf)->definition;
+			reformat_pos = i++;
+			break;
+		case RTE_FLOW_ACTION_TYPE_NVGRE_ENCAP:
+			enc_item = ((const struct rte_flow_action_nvgre_encap *)
+				   actions->conf)->definition;
+			reformat_pos = i++;
+			break;
+		case RTE_FLOW_ACTION_TYPE_VXLAN_DECAP:
+		case RTE_FLOW_ACTION_TYPE_NVGRE_DECAP:
+			reformat_pos = i++;
+			break;
+		case RTE_FLOW_ACTION_TYPE_RAW_ENCAP:
+			raw_encap_data =
+				(const struct rte_flow_action_raw_encap *)
+				 actions->conf;
+			encap_data = raw_encap_data->data;
+			reformat_pos = i++;
+			break;
+		case RTE_FLOW_ACTION_TYPE_RAW_DECAP:
+			if (!hw_acts->encap_decap->data_size)
+				reformat_pos = i++;
+			break;
 		case RTE_FLOW_ACTION_TYPE_END:
 			actions_end = true;
 			break;
 		default:
 			break;
 		}
+	}
+	if (reformat_pos != UINT32_MAX) {
+		uint8_t buf[MLX5_ENCAP_MAX_LEN];
+		size_t data_size = 0;
+
+		if (hw_acts->encap_decap->data_size) {
+			if (enc_item) {
+				MLX5_ASSERT(!encap_data);
+				flow_convert_encap_data
+					(enc_item, buf, &data_size, NULL);
+				encap_data = buf;
+			}
+			MLX5_ASSERT(hw_acts->encap_decap->data_size ==
+				    raw_encap_data->size);
+			memcpy(job->encap_data, encap_data,
+			       hw_acts->encap_decap->data_size);
+			rule_acts[reformat_pos].reformat.data = job->encap_data;
+		}
+		rule_acts[reformat_pos].reformat.offset =
+				job->flow->idx - 1;
+		rule_acts[reformat_pos].action = hw_acts->encap_decap->action;
 	}
 	*acts_num = i;
 }
@@ -278,13 +408,13 @@ flow_hw_q_flow_create(struct rte_eth_dev *dev,
 	flow->table = table;
 	flow->idx = flow_idx;
 	job = priv->hw_q[queue].job[--priv->hw_q[queue].job_idx];
-	hw_acts = &table->ats[action_template_index].acts;
-	/* Construct the flow actions based on the input actions.*/
-	flow_hw_actions_construct
-		(dev, table, hw_acts, actions, rule_acts, &acts_num);
 	job->type = MLX5_HW_Q_JOB_TYPE_CREATE;
 	job->flow = flow;
 	job->user_data = attr->user_data;
+	hw_acts = &table->ats[action_template_index].acts;
+	/* Construct the flow actions based on the input actions.*/
+	flow_hw_actions_construct
+		(dev, job, hw_acts, actions, rule_acts, &acts_num);
 	rule_attr.user_data = job;
 	ret = mlx5dr_rule_create(table->matcher,
 				 item_template_index, items,
@@ -866,7 +996,8 @@ flow_hw_configure(struct rte_eth_dev *dev,
 	mem_size = sizeof(priv->hw_q[0]) * port_attr->nb_queues;
 	for (i = 0; i < port_attr->nb_queues; i++)
 		mem_size += (sizeof(struct mlx5_hw_q_job *) +
-			    sizeof(struct mlx5_hw_q_job)) *
+			    sizeof(struct mlx5_hw_q_job) +
+			    sizeof(uint8_t) * MLX5_ENCAP_MAX_LEN) *
 			    queue_attr[0]->size;
 	priv->hw_q = mlx5_malloc(MLX5_MEM_ZERO, mem_size,
 				 64, SOCKET_ID_ANY);
@@ -876,6 +1007,8 @@ flow_hw_configure(struct rte_eth_dev *dev,
 	}
 	priv->nb_queues = port_attr->nb_queues;
 	for (i = 0; i < port_attr->nb_queues; i++) {
+		uint8_t *encap = NULL;
+
 		priv->hw_q[i].job_idx = queue_attr[i]->size;
 		priv->hw_q[i].size = queue_attr[i]->size;
 		LIST_INIT(&priv->hw_q[i].flow_list);
@@ -884,11 +1017,15 @@ flow_hw_configure(struct rte_eth_dev *dev,
 					    &priv->hw_q[port_attr->nb_queues];
 		else
 			priv->hw_q[i].job = (struct mlx5_hw_q_job **)
-					    &job[queue_attr[i - 1]->size];
+				&job[queue_attr[i - 1]->size - 1].encap_data
+				 [MLX5_ENCAP_MAX_LEN];
 		job = (struct mlx5_hw_q_job *)
 		      &priv->hw_q[i].job[queue_attr[i]->size];
-		for (j = 0; j < queue_attr[i]->size; j++)
+		encap = (uint8_t *)(&job[queue_attr[i]->size]);
+		for (j = 0; j < queue_attr[i]->size; j++) {
+			job[j].encap_data = &encap[j * MLX5_ENCAP_MAX_LEN];
 			priv->hw_q[i].job[j] = &job[j];
+		}
 	}
 	/* Add global actions. */
 	for (i = 0; i < 2; i++) {

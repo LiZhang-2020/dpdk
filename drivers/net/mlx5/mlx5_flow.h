@@ -567,8 +567,6 @@ struct mlx5_flow_dv_matcher {
 	/**< Hint number of rules of the matcher. */
 };
 
-#define MLX5_ENCAP_MAX_LEN 132
-
 /* Encap/decap resource structure. */
 struct mlx5_flow_dv_encap_decap_resource {
 	struct mlx5_list_entry entry;
@@ -1147,9 +1145,19 @@ struct mlx5_hw_jump_action {
 	struct mlx5dr_action *hws_action;
 };
 
+struct mlx5_hw_encap_decap_action {
+	struct mlx5dr_action *action;
+	/**< Action object. */
+	size_t data_size;
+	/**< Action metadata size. */
+	uint8_t data[];
+};
+
 struct mlx5_hw_actions {
 	struct mlx5dr_action *drop; /* Drop action. */
 	struct mlx5_hw_jump_action *jump; /* Jump action. */
+	/* Encap/Decap action. */
+	struct mlx5_hw_encap_decap_action *encap_decap;
 	struct mlx5_hrxq *tir; /* TIR action. */
 };
 
@@ -2047,4 +2055,8 @@ int flow_dv_translate_items_hws(const struct rte_flow_item *items,
 
 void
 flow_hw_resource_release(struct rte_eth_dev *dev);
+
+int
+flow_convert_encap_data(const struct rte_flow_item *items, uint8_t *buf,
+			size_t *size, struct rte_flow_error *error);
 #endif /* RTE_PMD_MLX5_FLOW_H_ */

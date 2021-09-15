@@ -19,6 +19,8 @@
 #include <rte_flow_driver.h>
 #include <rte_malloc.h>
 #include <rte_ip.h>
+#include <rte_gre.h>
+#include <rte_mpls.h>
 
 #include <mlx5_glue.h>
 #include <mlx5_devx_cmds.h>
@@ -10561,4 +10563,234 @@ mlx5_flow_expand_rss_adjust_node(const struct rte_flow_item *pattern,
 		return &graph[MLX5_EXPANSION_L3_VXLAN];
 	}
 	return node;
+}
+
+/**
+ * Get the size of specific rte_flow_item_type hdr size
+ *
+ * @param[in] item_type
+ *   Tested rte_flow_item_type.
+ *
+ * @return
+ *   sizeof struct item_type, 0 if void or irrelevant.
+ */
+static size_t
+flow_get_item_hdr_len(const enum rte_flow_item_type item_type)
+{
+	size_t retval;
+
+	switch (item_type) {
+	case RTE_FLOW_ITEM_TYPE_ETH:
+		retval = sizeof(struct rte_ether_hdr);
+		break;
+	case RTE_FLOW_ITEM_TYPE_VLAN:
+		retval = sizeof(struct rte_vlan_hdr);
+		break;
+	case RTE_FLOW_ITEM_TYPE_IPV4:
+		retval = sizeof(struct rte_ipv4_hdr);
+		break;
+	case RTE_FLOW_ITEM_TYPE_IPV6:
+		retval = sizeof(struct rte_ipv6_hdr);
+		break;
+	case RTE_FLOW_ITEM_TYPE_UDP:
+		retval = sizeof(struct rte_udp_hdr);
+		break;
+	case RTE_FLOW_ITEM_TYPE_TCP:
+		retval = sizeof(struct rte_tcp_hdr);
+		break;
+	case RTE_FLOW_ITEM_TYPE_VXLAN:
+	case RTE_FLOW_ITEM_TYPE_VXLAN_GPE:
+		retval = sizeof(struct rte_vxlan_hdr);
+		break;
+	case RTE_FLOW_ITEM_TYPE_GRE:
+	case RTE_FLOW_ITEM_TYPE_NVGRE:
+		retval = sizeof(struct rte_gre_hdr);
+		break;
+	case RTE_FLOW_ITEM_TYPE_MPLS:
+		retval = sizeof(struct rte_mpls_hdr);
+		break;
+	case RTE_FLOW_ITEM_TYPE_VOID: /* Fall through. */
+	default:
+		retval = 0;
+		break;
+	}
+	return retval;
+}
+
+#define MLX5_ENCAP_IPV4_VERSION		0x40
+#define MLX5_ENCAP_IPV4_IHL_MIN		0x05
+#define MLX5_ENCAP_IPV4_TTL_DEF		0x40
+#define MLX5_ENCAP_IPV6_VTC_FLOW	0x60000000
+#define MLX5_ENCAP_IPV6_HOP_LIMIT	0xff
+#define MLX5_ENCAP_VXLAN_FLAGS		0x08000000
+#define MLX5_ENCAP_VXLAN_GPE_FLAGS	0x04
+
+/**
+ * Convert the encap action data from list of rte_flow_item to raw buffer
+ *
+ * @param[in] items
+ *   Pointer to rte_flow_item objects list.
+ * @param[out] buf
+ *   Pointer to the output buffer.
+ * @param[out] size
+ *   Pointer to the output buffer size.
+ * @param[out] error
+ *   Pointer to the error structure.
+ *
+ * @return
+ *   0 on success, a negative errno value otherwise and rte_errno is set.
+ */
+int
+flow_convert_encap_data(const struct rte_flow_item *items, uint8_t *buf,
+			size_t *size, struct rte_flow_error *error)
+{
+	struct rte_ether_hdr *eth = NULL;
+	struct rte_vlan_hdr *vlan = NULL;
+	struct rte_ipv4_hdr *ipv4 = NULL;
+	struct rte_ipv6_hdr *ipv6 = NULL;
+	struct rte_udp_hdr *udp = NULL;
+	struct rte_vxlan_hdr *vxlan = NULL;
+	struct rte_vxlan_gpe_hdr *vxlan_gpe = NULL;
+	struct rte_gre_hdr *gre = NULL;
+	size_t len;
+	size_t temp_size = 0;
+
+	if (!items)
+		return rte_flow_error_set(error, EINVAL,
+					  RTE_FLOW_ERROR_TYPE_ACTION,
+					  NULL, "invalid empty data");
+	for (; items->type != RTE_FLOW_ITEM_TYPE_END; items++) {
+		len = flow_get_item_hdr_len(items->type);
+		if (len + temp_size > MLX5_ENCAP_MAX_LEN)
+			return rte_flow_error_set(error, EINVAL,
+						  RTE_FLOW_ERROR_TYPE_ACTION,
+						  (void *)items->type,
+						  "items total size is too big"
+						  " for encap action");
+		rte_memcpy((void *)&buf[temp_size], items->spec, len);
+		switch (items->type) {
+		case RTE_FLOW_ITEM_TYPE_ETH:
+			eth = (struct rte_ether_hdr *)&buf[temp_size];
+			break;
+		case RTE_FLOW_ITEM_TYPE_VLAN:
+			vlan = (struct rte_vlan_hdr *)&buf[temp_size];
+			if (!eth)
+				return rte_flow_error_set(error, EINVAL,
+						RTE_FLOW_ERROR_TYPE_ACTION,
+						(void *)items->type,
+						"eth header not found");
+			if (!eth->ether_type)
+				eth->ether_type = RTE_BE16(RTE_ETHER_TYPE_VLAN);
+			break;
+		case RTE_FLOW_ITEM_TYPE_IPV4:
+			ipv4 = (struct rte_ipv4_hdr *)&buf[temp_size];
+			if (!vlan && !eth)
+				return rte_flow_error_set(error, EINVAL,
+						RTE_FLOW_ERROR_TYPE_ACTION,
+						(void *)items->type,
+						"neither eth nor vlan"
+						" header found");
+			if (vlan && !vlan->eth_proto)
+				vlan->eth_proto = RTE_BE16(RTE_ETHER_TYPE_IPV4);
+			else if (eth && !eth->ether_type)
+				eth->ether_type = RTE_BE16(RTE_ETHER_TYPE_IPV4);
+			if (!ipv4->version_ihl)
+				ipv4->version_ihl = MLX5_ENCAP_IPV4_VERSION |
+						    MLX5_ENCAP_IPV4_IHL_MIN;
+			if (!ipv4->time_to_live)
+				ipv4->time_to_live = MLX5_ENCAP_IPV4_TTL_DEF;
+			break;
+		case RTE_FLOW_ITEM_TYPE_IPV6:
+			ipv6 = (struct rte_ipv6_hdr *)&buf[temp_size];
+			if (!vlan && !eth)
+				return rte_flow_error_set(error, EINVAL,
+						RTE_FLOW_ERROR_TYPE_ACTION,
+						(void *)items->type,
+						"neither eth nor vlan"
+						" header found");
+			if (vlan && !vlan->eth_proto)
+				vlan->eth_proto = RTE_BE16(RTE_ETHER_TYPE_IPV6);
+			else if (eth && !eth->ether_type)
+				eth->ether_type = RTE_BE16(RTE_ETHER_TYPE_IPV6);
+			if (!ipv6->vtc_flow)
+				ipv6->vtc_flow =
+					RTE_BE32(MLX5_ENCAP_IPV6_VTC_FLOW);
+			if (!ipv6->hop_limits)
+				ipv6->hop_limits = MLX5_ENCAP_IPV6_HOP_LIMIT;
+			break;
+		case RTE_FLOW_ITEM_TYPE_UDP:
+			udp = (struct rte_udp_hdr *)&buf[temp_size];
+			if (!ipv4 && !ipv6)
+				return rte_flow_error_set(error, EINVAL,
+						RTE_FLOW_ERROR_TYPE_ACTION,
+						(void *)items->type,
+						"ip header not found");
+			if (ipv4 && !ipv4->next_proto_id)
+				ipv4->next_proto_id = IPPROTO_UDP;
+			else if (ipv6 && !ipv6->proto)
+				ipv6->proto = IPPROTO_UDP;
+			break;
+		case RTE_FLOW_ITEM_TYPE_VXLAN:
+			vxlan = (struct rte_vxlan_hdr *)&buf[temp_size];
+			if (!udp)
+				return rte_flow_error_set(error, EINVAL,
+						RTE_FLOW_ERROR_TYPE_ACTION,
+						(void *)items->type,
+						"udp header not found");
+			if (!udp->dst_port)
+				udp->dst_port = RTE_BE16(MLX5_UDP_PORT_VXLAN);
+			if (!vxlan->vx_flags)
+				vxlan->vx_flags =
+					RTE_BE32(MLX5_ENCAP_VXLAN_FLAGS);
+			break;
+		case RTE_FLOW_ITEM_TYPE_VXLAN_GPE:
+			vxlan_gpe = (struct rte_vxlan_gpe_hdr *)&buf[temp_size];
+			if (!udp)
+				return rte_flow_error_set(error, EINVAL,
+						RTE_FLOW_ERROR_TYPE_ACTION,
+						(void *)items->type,
+						"udp header not found");
+			if (!vxlan_gpe->proto)
+				return rte_flow_error_set(error, EINVAL,
+						RTE_FLOW_ERROR_TYPE_ACTION,
+						(void *)items->type,
+						"next protocol not found");
+			if (!udp->dst_port)
+				udp->dst_port =
+					RTE_BE16(MLX5_UDP_PORT_VXLAN_GPE);
+			if (!vxlan_gpe->vx_flags)
+				vxlan_gpe->vx_flags =
+						MLX5_ENCAP_VXLAN_GPE_FLAGS;
+			break;
+		case RTE_FLOW_ITEM_TYPE_GRE:
+		case RTE_FLOW_ITEM_TYPE_NVGRE:
+			gre = (struct rte_gre_hdr *)&buf[temp_size];
+			if (!gre->proto)
+				return rte_flow_error_set(error, EINVAL,
+						RTE_FLOW_ERROR_TYPE_ACTION,
+						(void *)items->type,
+						"next protocol not found");
+			if (!ipv4 && !ipv6)
+				return rte_flow_error_set(error, EINVAL,
+						RTE_FLOW_ERROR_TYPE_ACTION,
+						(void *)items->type,
+						"ip header not found");
+			if (ipv4 && !ipv4->next_proto_id)
+				ipv4->next_proto_id = IPPROTO_GRE;
+			else if (ipv6 && !ipv6->proto)
+				ipv6->proto = IPPROTO_GRE;
+			break;
+		case RTE_FLOW_ITEM_TYPE_VOID:
+			break;
+		default:
+			return rte_flow_error_set(error, EINVAL,
+						  RTE_FLOW_ERROR_TYPE_ACTION,
+						  (void *)items->type,
+						  "unsupported item type");
+			break;
+		}
+		temp_size += len;
+	}
+	*size = temp_size;
+	return 0;
 }
