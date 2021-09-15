@@ -276,6 +276,34 @@ struct mlx5_ifc_definer_hl_bits {
 	//	tamar_g_cr_no_aligned_expose__descsteering_headers_layout_desc_adb.h
 };
 
+enum mlx5dr_definer_gtp {
+	MLX5DR_DEFINER_GTP_EXT_HDR_BIT = 0x04,
+};
+
+struct mlx5_ifc_header_gtp_bits {
+	/* DW0 */
+	u8 version[0x3];
+	u8 proto_type[0x1];
+	u8 reserved1[0x1];
+	u8 ext_hdr_flag[0x1];
+	u8 seq_num_flag[0x1];
+	u8 pdu[0x1];
+	u8 msg_type[0x8];
+	u8 msg_len[0x8];
+	/* DW1 - TEID */
+	u8 teid[0x20];
+	/* DW2 */
+	u8 seq_num[0x10];
+	u8 pdu_num[0x8];
+	u8 next_ext_hdr_type[0x8];
+	/* DW0 Ext header*/
+	u8 len[0x8];
+	u8 pdu_type[0x4];
+	u8 flags[0x4];
+	u8 qfi[0x8];
+	u8 reserved2[0x8];
+};
+
 void mlx5dr_definer_create_tag(struct rte_flow_item *items,
 			       struct mlx5dr_definer_fc *fc,
 			       uint32_t fc_sz,
