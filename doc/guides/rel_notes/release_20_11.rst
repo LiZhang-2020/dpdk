@@ -463,6 +463,11 @@ New Features
   A new feature flag has been added to allow application to provide
   cipher wrapped keys in session xforms.
 
+* **Updated test-crypto-perf application with new cases.**
+
+  * Added support for asymmetric crypto throughput performance measurement.
+    Only modex is supported for now.
+
 Removed Items
 -------------
 
