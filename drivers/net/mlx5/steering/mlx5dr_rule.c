@@ -141,7 +141,7 @@ static int mlx5dr_rule_destroy_hws(struct mlx5dr_rule *rule,
 		return 0;
 	}
 
-	mlx5dr_send_engine_inc_rule(&ctx->send_queue[attr->queue_id]);
+	mlx5dr_send_engine_inc_rule(queue);
 
 	/* Check if there are pending work completions */
 
@@ -266,6 +266,7 @@ int mlx5dr_rule_create(struct mlx5dr_matcher *matcher,
 		return rte_errno;
 	}
 
+	/* Check if there is room in queue */
 	if (unlikely(mlx5dr_send_engine_full(&ctx->send_queue[attr->queue_id]))) {
 		rte_errno = EBUSY;
 		return rte_errno;
@@ -298,6 +299,7 @@ int mlx5dr_rule_destroy(struct mlx5dr_rule *rule,
 		return rte_errno;
 	}
 
+	/* Check if there is room in queue */
 	if (unlikely(mlx5dr_send_engine_full(&ctx->send_queue[attr->queue_id]))) {
 		rte_errno = EBUSY;
 		return rte_errno;
