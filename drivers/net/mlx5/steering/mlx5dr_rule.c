@@ -213,7 +213,7 @@ static int mlx5dr_rule_create_root(struct mlx5dr_rule *rule,
 	if (ret)
 		goto free_value;
 
-	/* Create verb action */
+	/* Create verb flow */
 	value->match_sz = MLX5_ST_SZ_BYTES(fte_match_param);
 	rule->flow = mlx5dv_create_flow(dv_matcher, value, num_actions, attr);
 
@@ -237,9 +237,10 @@ static int mlx5dr_rule_destroy_root(struct mlx5dr_rule *rule,
 				    struct mlx5dr_rule_attr *attr)
 {
 	struct mlx5dr_context *ctx = rule->matcher->tbl->ctx;
-	int err;
+	int err = 0;
 
-	err = ibv_destroy_flow(rule->flow);
+	if (rule->flow)
+		err = ibv_destroy_flow(rule->flow);
 
 	mlx5dr_rule_gen_comp(&ctx->send_queue[attr->queue_id], rule, err,
 			     attr->user_data, MLX5DR_RULE_STATUS_DELETED);
