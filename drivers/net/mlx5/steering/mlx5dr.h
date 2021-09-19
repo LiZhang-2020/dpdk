@@ -89,6 +89,10 @@ struct mlx5dr_rule_action {
 			uint32_t offset;
 			uint8_t *data;
 		} reformat;
+
+		struct {
+			__be32 vlan_hdr;
+		} push_vlan;
 	};
 };
 
