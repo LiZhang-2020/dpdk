@@ -83,7 +83,8 @@ struct mlx5dr_send_engine_post_attr {
 	struct mlx5dr_rule *rule;
 	uint32_t id;
 	void *user_data;
-	uint8_t notify_hw;
+	uint8_t notify_hw:1;
+	uint8_t fence:1;
 };
 
 /**

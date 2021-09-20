@@ -78,6 +78,7 @@ static int mlx5dr_rule_create_hws(struct mlx5dr_rule *rule,
 	send_attr.opmod = 0;
 	send_attr.len = 48 + 64;
 	send_attr.notify_hw = !attr->burst;
+	send_attr.fence = 0;
 	send_attr.user_data = attr->user_data;
 	send_attr.id = rule->matcher->rx.rtc->id;
 	mlx5dr_send_engine_post_end(&ctrl, &send_attr);
@@ -160,6 +161,7 @@ static int mlx5dr_rule_destroy_hws(struct mlx5dr_rule *rule,
 	send_attr.opmod = 0;
 	send_attr.len = 48 + 64;
 	send_attr.notify_hw = !attr->burst;
+	send_attr.fence = 0;
 	send_attr.user_data = attr->user_data;
 
 	mlx5dr_send_engine_post_end(&ctrl, &send_attr);

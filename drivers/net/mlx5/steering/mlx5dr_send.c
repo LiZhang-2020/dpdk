@@ -47,11 +47,13 @@ static void mlx5dr_send_engine_post_ring(struct mlx5dr_send_ring_sq *sq,
 	rte_wmb();
 }
 
+#define MLX5_WQE_CTRL_SMALL_FENCE (1 << 5)
 void mlx5dr_send_engine_post_end(struct mlx5dr_send_engine_post_ctrl *ctrl,
 				 struct mlx5dr_send_engine_post_attr *attr)
 {
 	struct mlx5dr_wqe_ctrl_seg *wqe_ctrl;
 	struct mlx5dr_send_ring_sq *sq;
+	uint32_t flags = 0;
 	unsigned idx;
 
 	sq = &ctrl->send_ring->send_sq;
@@ -68,7 +70,9 @@ void mlx5dr_send_engine_post_end(struct mlx5dr_send_engine_post_ctrl *ctrl,
 			       sq->sqn << 8);
 	wqe_ctrl->imm = rte_cpu_to_be_32(attr->id);
 
-	wqe_ctrl->flags = rte_cpu_to_be_32(attr->notify_hw ? MLX5_WQE_CTRL_CQ_UPDATE : 0);
+	flags |= attr->notify_hw ? MLX5_WQE_CTRL_CQ_UPDATE : 0;
+	flags |= attr->fence ? MLX5_WQE_CTRL_SMALL_FENCE : 0;
+	wqe_ctrl->flags = rte_cpu_to_be_32(flags);
 
 	sq->wr_priv[idx].rule = attr->rule;
 	attr->rule->wait_on_wqes++;
