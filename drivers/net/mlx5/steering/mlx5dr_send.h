@@ -77,7 +77,8 @@ struct mlx5dr_send_engine_post_ctrl {
 };
 
 struct mlx5dr_send_engine_post_attr {
-	uint32_t opcode;
+	uint8_t opcode;
+	uint8_t opmod;
 	size_t len;
 	struct mlx5dr_rule *rule;
 	uint32_t id;

@@ -75,6 +75,7 @@ static int mlx5dr_rule_create_hws(struct mlx5dr_rule *rule,
 
 	send_attr.rule = rule;
 	send_attr.opcode = 0x2c;
+	send_attr.opmod = 0;
 	send_attr.len = 48 + 64;
 	send_attr.notify_hw = !attr->burst;
 	send_attr.user_data = attr->user_data;
@@ -156,6 +157,7 @@ static int mlx5dr_rule_destroy_hws(struct mlx5dr_rule *rule,
 
 	send_attr.rule = rule;
 	send_attr.opcode = 0x2c;
+	send_attr.opmod = 0;
 	send_attr.len = 48 + 64;
 	send_attr.notify_hw = !attr->burst;
 	send_attr.user_data = attr->user_data;

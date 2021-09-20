@@ -61,7 +61,9 @@ void mlx5dr_send_engine_post_end(struct mlx5dr_send_engine_post_ctrl *ctrl,
 	wqe_ctrl = (void *)(sq->buf + (idx << MLX5_SEND_WQE_SHIFT));
 
 	wqe_ctrl->opmod_idx_opcode =
-		rte_cpu_to_be_32(((sq->cur_post & 0xffff) << 8) | attr->opcode);
+		rte_cpu_to_be_32((attr->opmod << 24) |
+				 ((sq->cur_post & 0xffff) << 8) |
+				 attr->opcode);
 	wqe_ctrl->qpn_ds = rte_cpu_to_be_32((attr->len + sizeof(struct mlx5dr_wqe_ctrl_seg)) / 16 |
 			       sq->sqn << 8);
 	wqe_ctrl->imm = rte_cpu_to_be_32(attr->id);
