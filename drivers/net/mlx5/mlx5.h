@@ -329,12 +329,15 @@ enum {
 
 #define MLX5_ENCAP_MAX_LEN 132
 
+#define MLX5_MHDR_MAX_CMD ((MLX5_MAX_MODIFY_NUM) * 2 + 1)
+
 /* HW steering flow management job descriptor. */
 struct mlx5_hw_q_job {
 	uint32_t type; /* Job type. */
 	struct rte_flow_hw *flow; /* Flow attached to the job. */
 	void *user_data; /* Job user data. */
 	uint8_t *encap_data; /* Encap data. */
+	struct mlx5_modification_cmd *mhdr_cmd;
 };
 
 /* HW steering job descriptor LIFO header . */

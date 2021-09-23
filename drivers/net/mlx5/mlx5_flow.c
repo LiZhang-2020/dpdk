@@ -10794,3 +10794,1217 @@ flow_convert_encap_data(const struct rte_flow_item *items, uint8_t *buf,
 	*size = temp_size;
 	return 0;
 }
+
+struct field_modify_info modify_eth[] = {
+	{4,  0, MLX5_MODI_OUT_DMAC_47_16},
+	{2,  4, MLX5_MODI_OUT_DMAC_15_0},
+	{4,  6, MLX5_MODI_OUT_SMAC_47_16},
+	{2, 10, MLX5_MODI_OUT_SMAC_15_0},
+	{0, 0, 0},
+};
+
+struct field_modify_info modify_vlan_out_first_vid[] = {
+	/* Size in bits !!! */
+	{12, 0, MLX5_MODI_OUT_FIRST_VID},
+	{0, 0, 0},
+};
+
+struct field_modify_info modify_ipv4[] = {
+	{1,  1, MLX5_MODI_OUT_IP_DSCP},
+	{1,  8, MLX5_MODI_OUT_IPV4_TTL},
+	{4, 12, MLX5_MODI_OUT_SIPV4},
+	{4, 16, MLX5_MODI_OUT_DIPV4},
+	{0, 0, 0},
+};
+
+struct field_modify_info modify_ipv6[] = {
+	{1,  0, MLX5_MODI_OUT_IP_DSCP},
+	{1,  7, MLX5_MODI_OUT_IPV6_HOPLIMIT},
+	{4,  8, MLX5_MODI_OUT_SIPV6_127_96},
+	{4, 12, MLX5_MODI_OUT_SIPV6_95_64},
+	{4, 16, MLX5_MODI_OUT_SIPV6_63_32},
+	{4, 20, MLX5_MODI_OUT_SIPV6_31_0},
+	{4, 24, MLX5_MODI_OUT_DIPV6_127_96},
+	{4, 28, MLX5_MODI_OUT_DIPV6_95_64},
+	{4, 32, MLX5_MODI_OUT_DIPV6_63_32},
+	{4, 36, MLX5_MODI_OUT_DIPV6_31_0},
+	{0, 0, 0},
+};
+
+struct field_modify_info modify_udp[] = {
+	{2, 0, MLX5_MODI_OUT_UDP_SPORT},
+	{2, 2, MLX5_MODI_OUT_UDP_DPORT},
+	{0, 0, 0},
+};
+
+struct field_modify_info modify_tcp[] = {
+	{2, 0, MLX5_MODI_OUT_TCP_SPORT},
+	{2, 2, MLX5_MODI_OUT_TCP_DPORT},
+	{4, 4, MLX5_MODI_OUT_TCP_SEQ_NUM},
+	{4, 8, MLX5_MODI_OUT_TCP_ACK_NUM},
+	{0, 0, 0},
+};
+
+/**
+ * Convert modify-header action to DV specification.
+ *
+ * Data length of each action is determined by provided field description
+ * and the item mask. Data bit offset and width of each action is determined
+ * by provided item mask.
+ *
+ * @param[in] item
+ *   Pointer to item specification.
+ * @param[in] field
+ *   Pointer to field modification information.
+ *     For MLX5_MODIFICATION_TYPE_SET specifies destination field.
+ *     For MLX5_MODIFICATION_TYPE_ADD specifies destination field.
+ *     For MLX5_MODIFICATION_TYPE_COPY specifies source field.
+ * @param[in] dcopy
+ *   Destination field info for MLX5_MODIFICATION_TYPE_COPY in @type.
+ *   Negative offset value sets the same offset as source offset.
+ *   size field is ignored, value is taken from source field.
+ * @param[in,out] resource
+ *   Pointer to the modify-header resource.
+ * @param[in] type
+ *   Type of modification.
+ * @param[out] error
+ *   Pointer to the error structure.
+ *
+ * @return
+ *   0 on success, a negative errno value otherwise and rte_errno is set.
+ */
+int
+flow_convert_modify_action(struct rte_flow_item *item,
+			   struct field_modify_info *field,
+			   struct field_modify_info *dcopy,
+			   struct mlx5_flow_dv_modify_hdr_resource *resource,
+			   uint32_t type, struct rte_flow_error *error)
+{
+	uint32_t i = resource->actions_num;
+	struct mlx5_modification_cmd *actions = resource->actions;
+	uint32_t carry_b = 0;
+
+	/*
+	 * The item and mask are provided in big-endian format.
+	 * The fields should be presented as in big-endian format either.
+	 * Mask must be always present, it defines the actual field width.
+	 */
+	MLX5_ASSERT(item->mask);
+	MLX5_ASSERT(field->size);
+	do {
+		uint32_t size_b;
+		uint32_t off_b;
+		uint32_t mask;
+		uint32_t data;
+		bool next_field = true;
+		bool next_dcopy = true;
+
+		if (i >= MLX5_MAX_MODIFY_NUM)
+			return rte_flow_error_set(error, EINVAL,
+				 RTE_FLOW_ERROR_TYPE_ACTION, NULL,
+				 "too many items to modify");
+		/* Fetch variable byte size mask from the array. */
+		mask = flow_fetch_field((const uint8_t *)item->mask +
+					field->offset, field->size);
+		if (!mask) {
+			++field;
+			continue;
+		}
+		/* Deduce actual data width in bits from mask value. */
+		off_b = rte_bsf32(mask) + carry_b;
+		size_b = sizeof(uint32_t) * CHAR_BIT -
+			 off_b - __builtin_clz(mask);
+		MLX5_ASSERT(size_b);
+		actions[i] = (struct mlx5_modification_cmd) {
+			.action_type = type,
+			.field = field->id,
+			.offset = off_b,
+			.length = (size_b == sizeof(uint32_t) * CHAR_BIT) ?
+				0 : size_b,
+		};
+		if (type == MLX5_MODIFICATION_TYPE_COPY) {
+			MLX5_ASSERT(dcopy);
+			actions[i].dst_field = dcopy->id;
+			actions[i].dst_offset =
+				(int)dcopy->offset < 0 ? off_b : dcopy->offset;
+			/* Convert entire record to big-endian format. */
+			actions[i].data1 = rte_cpu_to_be_32(actions[i].data1);
+			/*
+			 * Destination field overflow. Copy leftovers of
+			 * a source field to the next destination field.
+			 */
+			carry_b = 0;
+			if ((size_b > dcopy->size * CHAR_BIT - dcopy->offset) &&
+			    dcopy->size != 0) {
+				actions[i].length =
+					dcopy->size * CHAR_BIT - dcopy->offset;
+				carry_b = actions[i].length;
+				next_field = false;
+			}
+			/*
+			 * Not enough bits in a source filed to fill a
+			 * destination field. Switch to the next source.
+			 */
+			if ((size_b < dcopy->size * CHAR_BIT - dcopy->offset) &&
+			    (size_b == field->size * CHAR_BIT - off_b)) {
+				actions[i].length =
+					field->size * CHAR_BIT - off_b;
+				dcopy->offset += actions[i].length;
+				next_dcopy = false;
+			}
+			if (next_dcopy)
+				++dcopy;
+		} else {
+			MLX5_ASSERT(item->spec);
+			data = flow_fetch_field((const uint8_t *)item->spec +
+						field->offset, field->size);
+			/* Shift out the trailing masked bits from data. */
+			data = (data & mask) >> off_b;
+			actions[i].data1 = rte_cpu_to_be_32(data);
+		}
+		/* Convert entire record to expected big-endian format. */
+		actions[i].data0 = rte_cpu_to_be_32(actions[i].data0);
+		if (next_field)
+			++field;
+		++i;
+	} while (field->size);
+	if (resource->actions_num == i)
+		return rte_flow_error_set(error, EINVAL,
+					  RTE_FLOW_ERROR_TYPE_ACTION, NULL,
+					  "invalid modification flow item");
+	resource->actions_num = i;
+	return 0;
+}
+
+/**
+ * Convert modify-header set IPv4 address action to DV specification.
+ *
+ * @param[in,out] resource
+ *   Pointer to the modify-header resource.
+ * @param[in] action
+ *   Pointer to action specification.
+ * @param[out] error
+ *   Pointer to the error structure.
+ *
+ * @return
+ *   0 on success, a negative errno value otherwise and rte_errno is set.
+ */
+int
+flow_convert_action_modify_ipv4(struct mlx5_flow_dv_modify_hdr_resource *resource,
+			 const struct rte_flow_action *action,
+			 struct rte_flow_error *error)
+{
+	const struct rte_flow_action_set_ipv4 *conf =
+		(const struct rte_flow_action_set_ipv4 *)(action->conf);
+	struct rte_flow_item item = { .type = RTE_FLOW_ITEM_TYPE_IPV4 };
+	struct rte_flow_item_ipv4 ipv4;
+	struct rte_flow_item_ipv4 ipv4_mask;
+
+	memset(&ipv4, 0, sizeof(ipv4));
+	memset(&ipv4_mask, 0, sizeof(ipv4_mask));
+	if (action->type == RTE_FLOW_ACTION_TYPE_SET_IPV4_SRC) {
+		ipv4.hdr.src_addr = conf->ipv4_addr;
+		ipv4_mask.hdr.src_addr = rte_flow_item_ipv4_mask.hdr.src_addr;
+	} else {
+		ipv4.hdr.dst_addr = conf->ipv4_addr;
+		ipv4_mask.hdr.dst_addr = rte_flow_item_ipv4_mask.hdr.dst_addr;
+	}
+	item.spec = &ipv4;
+	item.mask = &ipv4_mask;
+	return flow_convert_modify_action(&item, modify_ipv4, NULL, resource,
+					  MLX5_MODIFICATION_TYPE_SET, error);
+}
+
+/**
+ * Convert modify-header set IPv6 address action to DV specification.
+ *
+ * @param[in,out] resource
+ *   Pointer to the modify-header resource.
+ * @param[in] action
+ *   Pointer to action specification.
+ * @param[out] error
+ *   Pointer to the error structure.
+ *
+ * @return
+ *   0 on success, a negative errno value otherwise and rte_errno is set.
+ */
+int
+flow_convert_action_modify_ipv6(struct mlx5_flow_dv_modify_hdr_resource *resource,
+			 const struct rte_flow_action *action,
+			 struct rte_flow_error *error)
+{
+	const struct rte_flow_action_set_ipv6 *conf =
+		(const struct rte_flow_action_set_ipv6 *)(action->conf);
+	struct rte_flow_item item = { .type = RTE_FLOW_ITEM_TYPE_IPV6 };
+	struct rte_flow_item_ipv6 ipv6;
+	struct rte_flow_item_ipv6 ipv6_mask;
+
+	memset(&ipv6, 0, sizeof(ipv6));
+	memset(&ipv6_mask, 0, sizeof(ipv6_mask));
+	if (action->type == RTE_FLOW_ACTION_TYPE_SET_IPV6_SRC) {
+		memcpy(&ipv6.hdr.src_addr, &conf->ipv6_addr,
+		       sizeof(ipv6.hdr.src_addr));
+		memcpy(&ipv6_mask.hdr.src_addr,
+		       &rte_flow_item_ipv6_mask.hdr.src_addr,
+		       sizeof(ipv6.hdr.src_addr));
+	} else {
+		memcpy(&ipv6.hdr.dst_addr, &conf->ipv6_addr,
+		       sizeof(ipv6.hdr.dst_addr));
+		memcpy(&ipv6_mask.hdr.dst_addr,
+		       &rte_flow_item_ipv6_mask.hdr.dst_addr,
+		       sizeof(ipv6.hdr.dst_addr));
+	}
+	item.spec = &ipv6;
+	item.mask = &ipv6_mask;
+	return flow_convert_modify_action(&item, modify_ipv6, NULL, resource,
+					  MLX5_MODIFICATION_TYPE_SET, error);
+}
+
+/**
+ * Convert modify-header set MAC address action to DV specification.
+ *
+ * @param[in,out] resource
+ *   Pointer to the modify-header resource.
+ * @param[in] action
+ *   Pointer to action specification.
+ * @param[out] error
+ *   Pointer to the error structure.
+ *
+ * @return
+ *   0 on success, a negative errno value otherwise and rte_errno is set.
+ */
+int
+flow_convert_action_modify_mac(struct mlx5_flow_dv_modify_hdr_resource *resource,
+			 const struct rte_flow_action *action,
+			 struct rte_flow_error *error)
+{
+	const struct rte_flow_action_set_mac *conf =
+		(const struct rte_flow_action_set_mac *)(action->conf);
+	struct rte_flow_item item = { .type = RTE_FLOW_ITEM_TYPE_ETH };
+	struct rte_flow_item_eth eth;
+	struct rte_flow_item_eth eth_mask;
+
+	memset(&eth, 0, sizeof(eth));
+	memset(&eth_mask, 0, sizeof(eth_mask));
+	if (action->type == RTE_FLOW_ACTION_TYPE_SET_MAC_SRC) {
+		memcpy(&eth.src.addr_bytes, &conf->mac_addr,
+		       sizeof(eth.src.addr_bytes));
+		memcpy(&eth_mask.src.addr_bytes,
+		       &rte_flow_item_eth_mask.src.addr_bytes,
+		       sizeof(eth_mask.src.addr_bytes));
+	} else {
+		memcpy(&eth.dst.addr_bytes, &conf->mac_addr,
+		       sizeof(eth.dst.addr_bytes));
+		memcpy(&eth_mask.dst.addr_bytes,
+		       &rte_flow_item_eth_mask.dst.addr_bytes,
+		       sizeof(eth_mask.dst.addr_bytes));
+	}
+	item.spec = &eth;
+	item.mask = &eth_mask;
+	return flow_convert_modify_action(&item, modify_eth, NULL, resource,
+					  MLX5_MODIFICATION_TYPE_SET, error);
+}
+
+/**
+ * Convert modify-header set VLAN VID action to DV specification.
+ *
+ * @param[in,out] resource
+ *   Pointer to the modify-header resource.
+ * @param[in] action
+ *   Pointer to action specification.
+ * @param[out] error
+ *   Pointer to the error structure.
+ *
+ * @return
+ *   0 on success, a negative errno value otherwise and rte_errno is set.
+ */
+int
+flow_convert_action_modify_vlan_vid(struct mlx5_flow_dv_modify_hdr_resource *resource,
+			 const struct rte_flow_action *action,
+			 struct rte_flow_error *error)
+{
+	const struct rte_flow_action_of_set_vlan_vid *conf =
+		(const struct rte_flow_action_of_set_vlan_vid *)(action->conf);
+	int i = resource->actions_num;
+	struct mlx5_modification_cmd *actions = resource->actions;
+	struct field_modify_info *field = modify_vlan_out_first_vid;
+
+	if (i >= MLX5_MAX_MODIFY_NUM)
+		return rte_flow_error_set(error, EINVAL,
+			 RTE_FLOW_ERROR_TYPE_ACTION, NULL,
+			 "too many items to modify");
+	actions[i] = (struct mlx5_modification_cmd) {
+		.action_type = MLX5_MODIFICATION_TYPE_SET,
+		.field = field->id,
+		.length = field->size,
+		.offset = field->offset,
+	};
+	actions[i].data0 = rte_cpu_to_be_32(actions[i].data0);
+	actions[i].data1 = conf->vlan_vid;
+	actions[i].data1 = actions[i].data1 << 16;
+	resource->actions_num = ++i;
+	return 0;
+}
+
+int
+flow_convert_action_modify_tp(struct mlx5_flow_dv_modify_hdr_resource *resource,
+			 const struct rte_flow_action *action,
+			 uint8_t is_udp, uint8_t is_src,
+			 struct rte_flow_error *error)
+{
+	const struct rte_flow_action_set_tp *conf =
+		(const struct rte_flow_action_set_tp *)(action->conf);
+	struct rte_flow_item item;
+	struct rte_flow_item_udp udp;
+	struct rte_flow_item_udp udp_mask;
+	struct rte_flow_item_tcp tcp;
+	struct rte_flow_item_tcp tcp_mask;
+	struct field_modify_info *field;
+
+	if (is_udp) {
+		memset(&udp, 0, sizeof(udp));
+		memset(&udp_mask, 0, sizeof(udp_mask));
+		if (is_src) {
+			udp.hdr.src_port = conf->port;
+			udp_mask.hdr.src_port =
+					rte_flow_item_udp_mask.hdr.src_port;
+		} else {
+			udp.hdr.dst_port = conf->port;
+			udp_mask.hdr.dst_port =
+					rte_flow_item_udp_mask.hdr.dst_port;
+		}
+		item.type = RTE_FLOW_ITEM_TYPE_UDP;
+		item.spec = &udp;
+		item.mask = &udp_mask;
+		field = modify_udp;
+	} else {
+		memset(&tcp, 0, sizeof(tcp));
+		memset(&tcp_mask, 0, sizeof(tcp_mask));
+		if (is_src) {
+			tcp.hdr.src_port = conf->port;
+			tcp_mask.hdr.src_port =
+					rte_flow_item_tcp_mask.hdr.src_port;
+		} else {
+			tcp.hdr.dst_port = conf->port;
+			tcp_mask.hdr.dst_port =
+					rte_flow_item_tcp_mask.hdr.dst_port;
+		}
+		item.type = RTE_FLOW_ITEM_TYPE_TCP;
+		item.spec = &tcp;
+		item.mask = &tcp_mask;
+		field = modify_tcp;
+	}
+	return flow_convert_modify_action(&item, field, NULL, resource,
+					  MLX5_MODIFICATION_TYPE_SET, error);
+}
+
+int
+flow_convert_action_modify_ttl(struct mlx5_flow_dv_modify_hdr_resource *resource,
+			 const struct rte_flow_action *action,
+			 uint8_t is_ipv4,
+			 struct rte_flow_error *error)
+{
+	struct rte_flow_item item;
+	struct rte_flow_item_ipv4 ipv4;
+	struct rte_flow_item_ipv4 ipv4_mask;
+	struct rte_flow_item_ipv6 ipv6;
+	struct rte_flow_item_ipv6 ipv6_mask;
+	struct field_modify_info *field;
+	uint8_t ttl_value;
+	uint32_t type;
+
+	if (!action) {
+		ttl_value = 0xff;
+		type = MLX5_MODIFICATION_TYPE_ADD;
+	} else {
+		ttl_value = ((const struct rte_flow_action_set_ttl *)
+				(action->conf))->ttl_value;
+		type = MLX5_MODIFICATION_TYPE_SET;
+	}
+
+	if (is_ipv4) {
+		memset(&ipv4, 0, sizeof(ipv4));
+		memset(&ipv4_mask, 0, sizeof(ipv4_mask));
+		ipv4.hdr.time_to_live = ttl_value;
+		ipv4_mask.hdr.time_to_live = 0xFF;
+		item.type = RTE_FLOW_ITEM_TYPE_IPV4;
+		item.spec = &ipv4;
+		item.mask = &ipv4_mask;
+		field = modify_ipv4;
+	} else {
+		memset(&ipv6, 0, sizeof(ipv6));
+		memset(&ipv6_mask, 0, sizeof(ipv6_mask));
+		ipv6.hdr.hop_limits = ttl_value;
+		ipv6_mask.hdr.hop_limits = 0xFF;
+		item.type = RTE_FLOW_ITEM_TYPE_IPV6;
+		item.spec = &ipv6;
+		item.mask = &ipv6_mask;
+		field = modify_ipv6;
+	}
+	return flow_convert_modify_action(&item, field, NULL, resource,
+					  type, error);
+}
+
+/**
+ * Convert modify-header increment/decrement TCP Sequence number
+ * to DV specification.
+ *
+ * @param[in,out] resource
+ *   Pointer to the modify-header resource.
+ * @param[in] action
+ *   Pointer to action specification.
+ * @param[out] error
+ *   Pointer to the error structure.
+ *
+ * @return
+ *   0 on success, a negative errno value otherwise and rte_errno is set.
+ */
+int
+flow_convert_action_modify_tcp_seq(struct mlx5_flow_dv_modify_hdr_resource *resource,
+			 const struct rte_flow_action *action,
+			 struct rte_flow_error *error)
+{
+	const rte_be32_t *conf = (const rte_be32_t *)(action->conf);
+	uint64_t value = rte_be_to_cpu_32(*conf);
+	struct rte_flow_item item;
+	struct rte_flow_item_tcp tcp;
+	struct rte_flow_item_tcp tcp_mask;
+
+	memset(&tcp, 0, sizeof(tcp));
+	memset(&tcp_mask, 0, sizeof(tcp_mask));
+	if (action->type == RTE_FLOW_ACTION_TYPE_DEC_TCP_SEQ)
+		/*
+		 * The HW has no decrement operation, only increment operation.
+		 * To simulate decrement X from Y using increment operation
+		 * we need to add UINT32_MAX X times to Y.
+		 * Each adding of UINT32_MAX decrements Y by 1.
+		 */
+		value *= UINT32_MAX;
+	tcp.hdr.sent_seq = rte_cpu_to_be_32((uint32_t)value);
+	tcp_mask.hdr.sent_seq = RTE_BE32(UINT32_MAX);
+	item.type = RTE_FLOW_ITEM_TYPE_TCP;
+	item.spec = &tcp;
+	item.mask = &tcp_mask;
+	return flow_convert_modify_action(&item, modify_tcp, NULL, resource,
+					  MLX5_MODIFICATION_TYPE_ADD, error);
+}
+
+/**
+ * Convert modify-header increment/decrement TCP Acknowledgment number
+ * to DV specification.
+ *
+ * @param[in,out] resource
+ *   Pointer to the modify-header resource.
+ * @param[in] action
+ *   Pointer to action specification.
+ * @param[out] error
+ *   Pointer to the error structure.
+ *
+ * @return
+ *   0 on success, a negative errno value otherwise and rte_errno is set.
+ */
+int
+flow_convert_action_modify_tcp_ack(struct mlx5_flow_dv_modify_hdr_resource *resource,
+			 const struct rte_flow_action *action,
+			 struct rte_flow_error *error)
+{
+	const rte_be32_t *conf = (const rte_be32_t *)(action->conf);
+	uint64_t value = rte_be_to_cpu_32(*conf);
+	struct rte_flow_item item;
+	struct rte_flow_item_tcp tcp;
+	struct rte_flow_item_tcp tcp_mask;
+
+	memset(&tcp, 0, sizeof(tcp));
+	memset(&tcp_mask, 0, sizeof(tcp_mask));
+	if (action->type == RTE_FLOW_ACTION_TYPE_DEC_TCP_ACK)
+		/*
+		 * The HW has no decrement operation, only increment operation.
+		 * To simulate decrement X from Y using increment operation
+		 * we need to add UINT32_MAX X times to Y.
+		 * Each adding of UINT32_MAX decrements Y by 1.
+		 */
+		value *= UINT32_MAX;
+	tcp.hdr.recv_ack = rte_cpu_to_be_32((uint32_t)value);
+	tcp_mask.hdr.recv_ack = RTE_BE32(UINT32_MAX);
+	item.type = RTE_FLOW_ITEM_TYPE_TCP;
+	item.spec = &tcp;
+	item.mask = &tcp_mask;
+	return flow_convert_modify_action(&item, modify_tcp, NULL, resource,
+					  MLX5_MODIFICATION_TYPE_ADD, error);
+}
+
+/**
+ * Convert modify-header set IPv4 DSCP action to DV specification.
+ *
+ * @param[in,out] resource
+ *   Pointer to the modify-header resource.
+ * @param[in] action
+ *   Pointer to action specification.
+ * @param[out] error
+ *   Pointer to the error structure.
+ *
+ * @return
+ *   0 on success, a negative errno value otherwise and rte_errno is set.
+ */
+int
+flow_convert_action_modify_ipv4_dscp(struct mlx5_flow_dv_modify_hdr_resource *resource,
+			 const struct rte_flow_action *action,
+			 struct rte_flow_error *error)
+{
+	const struct rte_flow_action_set_dscp *conf =
+		(const struct rte_flow_action_set_dscp *)(action->conf);
+	struct rte_flow_item item = { .type = RTE_FLOW_ITEM_TYPE_IPV4 };
+	struct rte_flow_item_ipv4 ipv4;
+	struct rte_flow_item_ipv4 ipv4_mask;
+
+	memset(&ipv4, 0, sizeof(ipv4));
+	memset(&ipv4_mask, 0, sizeof(ipv4_mask));
+	ipv4.hdr.type_of_service = conf->dscp;
+	ipv4_mask.hdr.type_of_service = RTE_IPV4_HDR_DSCP_MASK >> 2;
+	item.spec = &ipv4;
+	item.mask = &ipv4_mask;
+	return flow_convert_modify_action(&item, modify_ipv4, NULL, resource,
+					  MLX5_MODIFICATION_TYPE_SET, error);
+}
+
+/**
+ * Convert modify-header set IPv6 DSCP action to DV specification.
+ *
+ * @param[in,out] resource
+ *   Pointer to the modify-header resource.
+ * @param[in] action
+ *   Pointer to action specification.
+ * @param[out] error
+ *   Pointer to the error structure.
+ *
+ * @return
+ *   0 on success, a negative errno value otherwise and rte_errno is set.
+ */
+int
+flow_convert_action_modify_ipv6_dscp(struct mlx5_flow_dv_modify_hdr_resource *resource,
+			 const struct rte_flow_action *action,
+			 struct rte_flow_error *error)
+{
+	const struct rte_flow_action_set_dscp *conf =
+		(const struct rte_flow_action_set_dscp *)(action->conf);
+	struct rte_flow_item item = { .type = RTE_FLOW_ITEM_TYPE_IPV6 };
+	struct rte_flow_item_ipv6 ipv6;
+	struct rte_flow_item_ipv6 ipv6_mask;
+
+	memset(&ipv6, 0, sizeof(ipv6));
+	memset(&ipv6_mask, 0, sizeof(ipv6_mask));
+	/*
+	 * Even though the DSCP bits offset of IPv6 is not byte aligned,
+	 * rdma-core only accept the DSCP bits byte aligned start from
+	 * bit 0 to 5 as to be compatible with IPv4. No need to shift the
+	 * bits in IPv6 case as rdma-core requires byte aligned value.
+	 */
+	ipv6.hdr.vtc_flow = conf->dscp;
+	ipv6_mask.hdr.vtc_flow = RTE_IPV6_HDR_DSCP_MASK >> 22;
+	item.spec = &ipv6;
+	item.mask = &ipv6_mask;
+	return flow_convert_modify_action(&item, modify_ipv6, NULL, resource,
+					  MLX5_MODIFICATION_TYPE_SET, error);
+}
+
+enum mlx5_modification_field reg_to_field[] = {
+	[REG_NON] = MLX5_MODI_OUT_NONE,
+	[REG_A] = MLX5_MODI_META_DATA_REG_A,
+	[REG_B] = MLX5_MODI_META_DATA_REG_B,
+	[REG_C_0] = MLX5_MODI_META_REG_C_0,
+	[REG_C_1] = MLX5_MODI_META_REG_C_1,
+	[REG_C_2] = MLX5_MODI_META_REG_C_2,
+	[REG_C_3] = MLX5_MODI_META_REG_C_3,
+	[REG_C_4] = MLX5_MODI_META_REG_C_4,
+	[REG_C_5] = MLX5_MODI_META_REG_C_5,
+	[REG_C_6] = MLX5_MODI_META_REG_C_6,
+	[REG_C_7] = MLX5_MODI_META_REG_C_7,
+};
+
+/**
+ * Get metadata register index for specified steering domain.
+ *
+ * @param[in] dev
+ *   Pointer to the rte_eth_dev structure.
+ * @param[in] attr
+ *   Attributes of flow to determine steering domain.
+ * @param[out] error
+ *   Pointer to the error structure.
+ *
+ * @return
+ *   positive index on success, a negative errno value otherwise
+ *   and rte_errno is set.
+ */
+enum modify_reg
+flow_get_metadata_reg(struct rte_eth_dev *dev,
+		      const struct rte_flow_attr *attr,
+		      struct rte_flow_error *error)
+{
+	int reg =
+		mlx5_flow_get_reg_id(dev, attr->transfer ?
+					  MLX5_METADATA_FDB :
+					    attr->egress ?
+					    MLX5_METADATA_TX :
+					    MLX5_METADATA_RX, 0, error);
+	if (reg < 0)
+		return rte_flow_error_set(error,
+					  ENOTSUP, RTE_FLOW_ERROR_TYPE_ITEM,
+					  NULL, "unavailable "
+					  "metadata register");
+	return reg;
+}
+
+int
+mlx5_flow_item_field_width(struct rte_eth_dev *dev,
+			   enum rte_flow_field_id field,
+			   const struct rte_flow_attr *attr,
+			   struct rte_flow_error *error)
+{
+	struct mlx5_priv *priv = dev->data->dev_private;
+
+	switch (field) {
+	case RTE_FLOW_FIELD_START:
+		return 32;
+	case RTE_FLOW_FIELD_MAC_DST:
+	case RTE_FLOW_FIELD_MAC_SRC:
+		return 48;
+	case RTE_FLOW_FIELD_VLAN_TYPE:
+		return 16;
+	case RTE_FLOW_FIELD_VLAN_ID:
+		return 12;
+	case RTE_FLOW_FIELD_MAC_TYPE:
+		return 16;
+	case RTE_FLOW_FIELD_IPV4_DSCP:
+		return 6;
+	case RTE_FLOW_FIELD_IPV4_TTL:
+		return 8;
+	case RTE_FLOW_FIELD_IPV4_SRC:
+	case RTE_FLOW_FIELD_IPV4_DST:
+		return 32;
+	case RTE_FLOW_FIELD_IPV6_DSCP:
+		return 6;
+	case RTE_FLOW_FIELD_IPV6_HOPLIMIT:
+		return 8;
+	case RTE_FLOW_FIELD_IPV6_SRC:
+	case RTE_FLOW_FIELD_IPV6_DST:
+		return 128;
+	case RTE_FLOW_FIELD_TCP_PORT_SRC:
+	case RTE_FLOW_FIELD_TCP_PORT_DST:
+		return 16;
+	case RTE_FLOW_FIELD_TCP_SEQ_NUM:
+	case RTE_FLOW_FIELD_TCP_ACK_NUM:
+		return 32;
+	case RTE_FLOW_FIELD_TCP_FLAGS:
+		return 9;
+	case RTE_FLOW_FIELD_UDP_PORT_SRC:
+	case RTE_FLOW_FIELD_UDP_PORT_DST:
+		return 16;
+	case RTE_FLOW_FIELD_VXLAN_VNI:
+	case RTE_FLOW_FIELD_GENEVE_VNI:
+		return 24;
+	case RTE_FLOW_FIELD_GTP_TEID:
+	case RTE_FLOW_FIELD_TAG:
+		return 32;
+	case RTE_FLOW_FIELD_MARK:
+		return __builtin_popcount(priv->sh->dv_mark_mask);
+	case RTE_FLOW_FIELD_META:
+		return (flow_get_metadata_reg(dev, attr, error) == REG_C_0) ?
+			__builtin_popcount(priv->sh->dv_meta_mask) : 32;
+	case RTE_FLOW_FIELD_POINTER:
+	case RTE_FLOW_FIELD_VALUE:
+		return 64;
+	default:
+		MLX5_ASSERT(false);
+	}
+	return 0;
+}
+
+static void
+mlx5_flow_field_id_to_modify_info
+		(const struct rte_flow_action_modify_data *data,
+		 struct field_modify_info *info,
+		 uint32_t *mask, uint32_t *value,
+		 uint32_t width, uint32_t dst_width,
+		 uint32_t *shift, struct rte_eth_dev *dev,
+		 const struct rte_flow_attr *attr,
+		 struct rte_flow_error *error)
+{
+	struct mlx5_priv *priv = dev->data->dev_private;
+	uint32_t idx = 0;
+	uint32_t off = 0;
+	uint64_t val = 0;
+	switch (data->field) {
+	case RTE_FLOW_FIELD_START:
+		/* not supported yet */
+		MLX5_ASSERT(false);
+		break;
+	case RTE_FLOW_FIELD_MAC_DST:
+		off = data->offset > 16 ? data->offset - 16 : 0;
+		if (mask) {
+			if (data->offset < 16) {
+				info[idx] = (struct field_modify_info){2, 0,
+						MLX5_MODI_OUT_DMAC_15_0};
+				if (width < 16) {
+					mask[idx] = rte_cpu_to_be_16(0xffff >>
+								 (16 - width));
+					width = 0;
+				} else {
+					mask[idx] = RTE_BE16(0xffff);
+					width -= 16;
+				}
+				if (!width)
+					break;
+				++idx;
+			}
+			info[idx] = (struct field_modify_info){4, 4 * idx,
+						MLX5_MODI_OUT_DMAC_47_16};
+			mask[idx] = rte_cpu_to_be_32((0xffffffff >>
+						      (32 - width)) << off);
+		} else {
+			if (data->offset < 16)
+				info[idx++] = (struct field_modify_info){2, 0,
+						MLX5_MODI_OUT_DMAC_15_0};
+			info[idx] = (struct field_modify_info){4, off,
+						MLX5_MODI_OUT_DMAC_47_16};
+		}
+		break;
+	case RTE_FLOW_FIELD_MAC_SRC:
+		off = data->offset > 16 ? data->offset - 16 : 0;
+		if (mask) {
+			if (data->offset < 16) {
+				info[idx] = (struct field_modify_info){2, 0,
+						MLX5_MODI_OUT_SMAC_15_0};
+				if (width < 16) {
+					mask[idx] = rte_cpu_to_be_16(0xffff >>
+								 (16 - width));
+					width = 0;
+				} else {
+					mask[idx] = RTE_BE16(0xffff);
+					width -= 16;
+				}
+				if (!width)
+					break;
+				++idx;
+			}
+			info[idx] = (struct field_modify_info){4, 4 * idx,
+						MLX5_MODI_OUT_SMAC_47_16};
+			mask[idx] = rte_cpu_to_be_32((0xffffffff >>
+						      (32 - width)) << off);
+		} else {
+			if (data->offset < 16)
+				info[idx++] = (struct field_modify_info){2, 0,
+						MLX5_MODI_OUT_SMAC_15_0};
+			info[idx] = (struct field_modify_info){4, off,
+						MLX5_MODI_OUT_SMAC_47_16};
+		}
+		break;
+	case RTE_FLOW_FIELD_VLAN_TYPE:
+		/* not supported yet */
+		break;
+	case RTE_FLOW_FIELD_VLAN_ID:
+		info[idx] = (struct field_modify_info){2, 0,
+					MLX5_MODI_OUT_FIRST_VID};
+		if (mask)
+			mask[idx] = rte_cpu_to_be_16(0x0fff >> (12 - width));
+		break;
+	case RTE_FLOW_FIELD_MAC_TYPE:
+		info[idx] = (struct field_modify_info){2, 0,
+					MLX5_MODI_OUT_ETHERTYPE};
+		if (mask)
+			mask[idx] = rte_cpu_to_be_16(0xffff >> (16 - width));
+		break;
+	case RTE_FLOW_FIELD_IPV4_DSCP:
+		info[idx] = (struct field_modify_info){1, 0,
+					MLX5_MODI_OUT_IP_DSCP};
+		if (mask)
+			mask[idx] = 0x3f >> (6 - width);
+		break;
+	case RTE_FLOW_FIELD_IPV4_TTL:
+		info[idx] = (struct field_modify_info){1, 0,
+					MLX5_MODI_OUT_IPV4_TTL};
+		if (mask)
+			mask[idx] = 0xff >> (8 - width);
+		break;
+	case RTE_FLOW_FIELD_IPV4_SRC:
+		info[idx] = (struct field_modify_info){4, 0,
+					MLX5_MODI_OUT_SIPV4};
+		if (mask)
+			mask[idx] = rte_cpu_to_be_32(0xffffffff >>
+						     (32 - width));
+		break;
+	case RTE_FLOW_FIELD_IPV4_DST:
+		info[idx] = (struct field_modify_info){4, 0,
+					MLX5_MODI_OUT_DIPV4};
+		if (mask)
+			mask[idx] = rte_cpu_to_be_32(0xffffffff >>
+						     (32 - width));
+		break;
+	case RTE_FLOW_FIELD_IPV6_DSCP:
+		info[idx] = (struct field_modify_info){1, 0,
+					MLX5_MODI_OUT_IP_DSCP};
+		if (mask)
+			mask[idx] = 0x3f >> (6 - width);
+		break;
+	case RTE_FLOW_FIELD_IPV6_HOPLIMIT:
+		info[idx] = (struct field_modify_info){1, 0,
+					MLX5_MODI_OUT_IPV6_HOPLIMIT};
+		if (mask)
+			mask[idx] = 0xff >> (8 - width);
+		break;
+	case RTE_FLOW_FIELD_IPV6_SRC:
+		if (mask) {
+			if (data->offset < 32) {
+				info[idx] = (struct field_modify_info){4,
+						4 * idx,
+						MLX5_MODI_OUT_SIPV6_31_0};
+				if (width < 32) {
+					mask[idx] =
+						rte_cpu_to_be_32(0xffffffff >>
+								 (32 - width));
+					width = 0;
+				} else {
+					mask[idx] = RTE_BE32(0xffffffff);
+					width -= 32;
+				}
+				if (!width)
+					break;
+				++idx;
+			}
+			if (data->offset < 64) {
+				info[idx] = (struct field_modify_info){4,
+						4 * idx,
+						MLX5_MODI_OUT_SIPV6_63_32};
+				if (width < 32) {
+					mask[idx] =
+						rte_cpu_to_be_32(0xffffffff >>
+								 (32 - width));
+					width = 0;
+				} else {
+					mask[idx] = RTE_BE32(0xffffffff);
+					width -= 32;
+				}
+				if (!width)
+					break;
+				++idx;
+			}
+			if (data->offset < 96) {
+				info[idx] = (struct field_modify_info){4,
+						4 * idx,
+						MLX5_MODI_OUT_SIPV6_95_64};
+				if (width < 32) {
+					mask[idx] =
+						rte_cpu_to_be_32(0xffffffff >>
+								 (32 - width));
+					width = 0;
+				} else {
+					mask[idx] = RTE_BE32(0xffffffff);
+					width -= 32;
+				}
+				if (!width)
+					break;
+				++idx;
+			}
+			info[idx] = (struct field_modify_info){4, 4 * idx,
+						MLX5_MODI_OUT_SIPV6_127_96};
+			mask[idx] = rte_cpu_to_be_32(0xffffffff >>
+						     (32 - width));
+		} else {
+			if (data->offset < 32)
+				info[idx++] = (struct field_modify_info){4, 0,
+						MLX5_MODI_OUT_SIPV6_31_0};
+			if (data->offset < 64)
+				info[idx++] = (struct field_modify_info){4, 0,
+						MLX5_MODI_OUT_SIPV6_63_32};
+			if (data->offset < 96)
+				info[idx++] = (struct field_modify_info){4, 0,
+						MLX5_MODI_OUT_SIPV6_95_64};
+			if (data->offset < 128)
+				info[idx++] = (struct field_modify_info){4, 0,
+						MLX5_MODI_OUT_SIPV6_127_96};
+		}
+		break;
+	case RTE_FLOW_FIELD_IPV6_DST:
+		if (mask) {
+			if (data->offset < 32) {
+				info[idx] = (struct field_modify_info){4,
+						4 * idx,
+						MLX5_MODI_OUT_DIPV6_31_0};
+				if (width < 32) {
+					mask[idx] =
+						rte_cpu_to_be_32(0xffffffff >>
+								 (32 - width));
+					width = 0;
+				} else {
+					mask[idx] = RTE_BE32(0xffffffff);
+					width -= 32;
+				}
+				if (!width)
+					break;
+				++idx;
+			}
+			if (data->offset < 64) {
+				info[idx] = (struct field_modify_info){4,
+						4 * idx,
+						MLX5_MODI_OUT_DIPV6_63_32};
+				if (width < 32) {
+					mask[idx] =
+						rte_cpu_to_be_32(0xffffffff >>
+								 (32 - width));
+					width = 0;
+				} else {
+					mask[idx] = RTE_BE32(0xffffffff);
+					width -= 32;
+				}
+				if (!width)
+					break;
+				++idx;
+			}
+			if (data->offset < 96) {
+				info[idx] = (struct field_modify_info){4,
+						4 * idx,
+						MLX5_MODI_OUT_DIPV6_95_64};
+				if (width < 32) {
+					mask[idx] =
+						rte_cpu_to_be_32(0xffffffff >>
+								 (32 - width));
+					width = 0;
+				} else {
+					mask[idx] = RTE_BE32(0xffffffff);
+					width -= 32;
+				}
+				if (!width)
+					break;
+				++idx;
+			}
+			info[idx] = (struct field_modify_info){4, 4 * idx,
+						MLX5_MODI_OUT_DIPV6_127_96};
+			mask[idx] = rte_cpu_to_be_32(0xffffffff >>
+						     (32 - width));
+		} else {
+			if (data->offset < 32)
+				info[idx++] = (struct field_modify_info){4, 0,
+						MLX5_MODI_OUT_DIPV6_31_0};
+			if (data->offset < 64)
+				info[idx++] = (struct field_modify_info){4, 0,
+						MLX5_MODI_OUT_DIPV6_63_32};
+			if (data->offset < 96)
+				info[idx++] = (struct field_modify_info){4, 0,
+						MLX5_MODI_OUT_DIPV6_95_64};
+			if (data->offset < 128)
+				info[idx++] = (struct field_modify_info){4, 0,
+						MLX5_MODI_OUT_DIPV6_127_96};
+		}
+		break;
+	case RTE_FLOW_FIELD_TCP_PORT_SRC:
+		info[idx] = (struct field_modify_info){2, 0,
+					MLX5_MODI_OUT_TCP_SPORT};
+		if (mask)
+			mask[idx] = rte_cpu_to_be_16(0xffff >> (16 - width));
+		break;
+	case RTE_FLOW_FIELD_TCP_PORT_DST:
+		info[idx] = (struct field_modify_info){2, 0,
+					MLX5_MODI_OUT_TCP_DPORT};
+		if (mask)
+			mask[idx] = rte_cpu_to_be_16(0xffff >> (16 - width));
+		break;
+	case RTE_FLOW_FIELD_TCP_SEQ_NUM:
+		info[idx] = (struct field_modify_info){4, 0,
+					MLX5_MODI_OUT_TCP_SEQ_NUM};
+		if (mask)
+			mask[idx] = rte_cpu_to_be_32(0xffffffff >>
+						     (32 - width));
+		break;
+	case RTE_FLOW_FIELD_TCP_ACK_NUM:
+		info[idx] = (struct field_modify_info){4, 0,
+					MLX5_MODI_OUT_TCP_ACK_NUM};
+		if (mask)
+			mask[idx] = rte_cpu_to_be_32(0xffffffff >>
+						     (32 - width));
+		break;
+	case RTE_FLOW_FIELD_TCP_FLAGS:
+		info[idx] = (struct field_modify_info){2, 0,
+					MLX5_MODI_OUT_TCP_FLAGS};
+		if (mask)
+			mask[idx] = rte_cpu_to_be_16(0x1ff >> (9 - width));
+		break;
+	case RTE_FLOW_FIELD_UDP_PORT_SRC:
+		info[idx] = (struct field_modify_info){2, 0,
+					MLX5_MODI_OUT_UDP_SPORT};
+		if (mask)
+			mask[idx] = rte_cpu_to_be_16(0xffff >> (16 - width));
+		break;
+	case RTE_FLOW_FIELD_UDP_PORT_DST:
+		info[idx] = (struct field_modify_info){2, 0,
+					MLX5_MODI_OUT_UDP_DPORT};
+		if (mask)
+			mask[idx] = rte_cpu_to_be_16(0xffff >> (16 - width));
+		break;
+	case RTE_FLOW_FIELD_VXLAN_VNI:
+		/* not supported yet */
+		break;
+	case RTE_FLOW_FIELD_GENEVE_VNI:
+		/* not supported yet*/
+		break;
+	case RTE_FLOW_FIELD_GTP_TEID:
+		info[idx] = (struct field_modify_info){4, 0,
+					MLX5_MODI_GTP_TEID};
+		if (mask)
+			mask[idx] = rte_cpu_to_be_32(0xffffffff >>
+						     (32 - width));
+		break;
+	case RTE_FLOW_FIELD_TAG:
+		{
+			int reg = mlx5_flow_get_reg_id(dev, MLX5_APP_TAG,
+						   data->level, error);
+			if (reg < 0)
+				return;
+			MLX5_ASSERT(reg != REG_NON);
+			MLX5_ASSERT((unsigned int)reg < RTE_DIM(reg_to_field));
+			info[idx] = (struct field_modify_info){4, 0,
+						reg_to_field[reg]};
+			if (mask)
+				mask[idx] =
+					rte_cpu_to_be_32(0xffffffff >>
+							 (32 - width));
+		}
+		break;
+	case RTE_FLOW_FIELD_MARK:
+		{
+			uint32_t mark_mask = priv->sh->dv_mark_mask;
+			uint32_t mark_count = __builtin_popcount(mark_mask);
+			int reg = mlx5_flow_get_reg_id(dev, MLX5_FLOW_MARK,
+						       0, error);
+			if (reg < 0)
+				return;
+			MLX5_ASSERT(reg != REG_NON);
+			MLX5_ASSERT((unsigned int)reg < RTE_DIM(reg_to_field));
+			info[idx] = (struct field_modify_info){4, 0,
+						reg_to_field[reg]};
+			if (mask)
+				mask[idx] = rte_cpu_to_be_32((mark_mask >>
+					 (mark_count - width)) & mark_mask);
+		}
+		break;
+	case RTE_FLOW_FIELD_META:
+		{
+			uint32_t meta_mask = priv->sh->dv_meta_mask;
+			uint32_t meta_count = __builtin_popcount(meta_mask);
+			uint32_t msk_c0 =
+				rte_cpu_to_be_32(priv->sh->dv_regc0_mask);
+			uint32_t shl_c0 = rte_bsf32(msk_c0);
+			int reg = flow_get_metadata_reg(dev, attr, error);
+			if (reg < 0)
+				return;
+			MLX5_ASSERT(reg != REG_NON);
+			MLX5_ASSERT((unsigned int)reg < RTE_DIM(reg_to_field));
+			if (reg == REG_C_0)
+				*shift = shl_c0;
+			info[idx] = (struct field_modify_info){4, 0,
+						reg_to_field[reg]};
+			if (mask)
+				mask[idx] = rte_cpu_to_be_32((meta_mask >>
+					(meta_count - width)) & meta_mask);
+		}
+		break;
+	case RTE_FLOW_FIELD_POINTER:
+	case RTE_FLOW_FIELD_VALUE:
+		if (data->field == RTE_FLOW_FIELD_POINTER)
+			memcpy(&val, (void *)(uintptr_t)data->value,
+			       sizeof(uint64_t));
+		else
+			val = data->value;
+		for (idx = 0; idx < MLX5_ACT_MAX_MOD_FIELDS; idx++) {
+			if (mask[idx]) {
+				if (dst_width == 48) {
+					/*special case for MAC addresses */
+					value[idx] = rte_cpu_to_be_16(val);
+					val >>= 16;
+					dst_width -= 16;
+				} else if (dst_width > 16) {
+					value[idx] = rte_cpu_to_be_32(val);
+					val >>= 32;
+				} else if (dst_width > 8) {
+					value[idx] = rte_cpu_to_be_16(val);
+					val >>= 16;
+				} else {
+					value[idx] = (uint8_t)val;
+					val >>= 8;
+				}
+				if (*shift)
+					value[idx] <<= *shift;
+				if (!val)
+					break;
+			}
+		}
+		break;
+	default:
+		MLX5_ASSERT(false);
+		break;
+	}
+}
+
+/**
+ * Convert modify_field action to DV specification.
+ *
+ * @param[in] dev
+ *   Pointer to the rte_eth_dev structure.
+ * @param[in,out] resource
+ *   Pointer to the modify-header resource.
+ * @param[in] action
+ *   Pointer to action specification.
+ * @param[in] attr
+ *   Attributes of flow that includes this item.
+ * @param[out] error
+ *   Pointer to the error structure.
+ *
+ * @return
+ *   0 on success, a negative errno value otherwise and rte_errno is set.
+ */
+int
+flow_convert_action_modify_field(struct rte_eth_dev *dev,
+			 struct mlx5_flow_dv_modify_hdr_resource *resource,
+			 const struct rte_flow_action *action,
+			 const struct rte_flow_attr *attr,
+			 struct rte_flow_error *error)
+{
+	const struct rte_flow_action_modify_field *conf =
+		(const struct rte_flow_action_modify_field *)(action->conf);
+	struct rte_flow_item item;
+	struct field_modify_info field[MLX5_ACT_MAX_MOD_FIELDS] = {
+								{0, 0, 0} };
+	struct field_modify_info dcopy[MLX5_ACT_MAX_MOD_FIELDS] = {
+								{0, 0, 0} };
+	uint32_t mask[MLX5_ACT_MAX_MOD_FIELDS] = {0, 0, 0, 0, 0};
+	uint32_t value[MLX5_ACT_MAX_MOD_FIELDS] = {0, 0, 0, 0, 0};
+	uint32_t type;
+	uint32_t shift = 0;
+	uint32_t dst_width = mlx5_flow_item_field_width(dev, conf->dst.field,
+							attr, error);
+
+	if (conf->src.field == RTE_FLOW_FIELD_POINTER ||
+		conf->src.field == RTE_FLOW_FIELD_VALUE) {
+		type = MLX5_MODIFICATION_TYPE_SET;
+		/** For SET fill the destination field (field) first. */
+		mlx5_flow_field_id_to_modify_info(&conf->dst, field, mask,
+						  value, conf->width, dst_width,
+						  &shift, dev, attr, error);
+		/** Then copy immediate value from source as per mask. */
+		mlx5_flow_field_id_to_modify_info(&conf->src, dcopy, mask,
+						  value, conf->width, dst_width,
+						  &shift, dev, attr, error);
+		item.spec = &value;
+	} else {
+		type = MLX5_MODIFICATION_TYPE_COPY;
+		/** For COPY fill the destination field (dcopy) without mask. */
+		mlx5_flow_field_id_to_modify_info(&conf->dst, dcopy, NULL,
+						  value, conf->width, dst_width,
+						  &shift, dev, attr, error);
+		/** Then construct the source field (field) with mask. */
+		mlx5_flow_field_id_to_modify_info(&conf->src, field, mask,
+						  value, conf->width, dst_width,
+						  &shift, dev, attr, error);
+	}
+	item.mask = &mask;
+	return flow_convert_modify_action(&item,
+			field, dcopy, resource, type, error);
+}

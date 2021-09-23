@@ -13,6 +13,12 @@
 /* The maximum actions support in the flow. */
 #define MLX5_HW_MAX_ACTS 16
 
+/* NOP command required by DR action. */
+#define MLX5_HW_NOP_MODI_HDR_ACT 2
+
+#define MLX5_HW_INS_NOP_ACT(act_num) \
+	((act_num) += MLX5_HW_NOP_MODI_HDR_ACT)
+
 const struct mlx5_flow_driver_ops mlx5_flow_hw_drv_ops;
 
 static uint32_t mlx5_hw_dr_ft_flag[2][MLX5DR_TABLE_TYPE_MAX] = {
@@ -146,6 +152,14 @@ flow_hw_actions_translate(struct rte_eth_dev *dev,
 	uint8_t *encap_data = NULL;
 	bool encap_decap = false;
 	size_t data_size = 0;
+	union {
+		struct mlx5_hw_header_modify_action act;
+		uint8_t len[sizeof(struct mlx5_hw_header_modify_action) +
+			    sizeof(struct mlx5_modification_cmd) *
+			    (MLX5_MAX_MODIFY_NUM * 2 + 1)];
+	} mhdr_dummy;
+	struct mlx5_hw_header_modify_action *mhdr_act =
+						&mhdr_dummy.act;
 	bool actions_end = false, mark = false;
 	uint32_t type;
 	int err;
@@ -156,6 +170,7 @@ flow_hw_actions_translate(struct rte_eth_dev *dev,
 		type = MLX5DR_TABLE_TYPE_NIC_TX;
 	else
 		type = MLX5DR_TABLE_TYPE_NIC_RX;
+	memset(&mhdr_dummy, 0, sizeof(mhdr_dummy));
 	for (; !actions_end; actions++, masks++) {
 		uint32_t jump_group;
 
@@ -230,12 +245,168 @@ flow_hw_actions_translate(struct rte_eth_dev *dev,
 			encap_decap = true;
 			refmt_type = MLX5DR_ACTION_REFORMAT_TYPE_TNL_L2_TO_L2;
 			break;
+		case RTE_FLOW_ACTION_TYPE_SET_MAC_SRC:
+			mhdr_act->set_cmd_pos[MLX5_HDR_MODI_SET_MAC_SRC] =
+				mhdr_act->res.actions_num;
+			if (flow_convert_action_modify_mac
+				(&mhdr_act->res, actions, error))
+				goto err;
+			MLX5_HW_INS_NOP_ACT(mhdr_act->res.actions_num);
+			break;
+		case RTE_FLOW_ACTION_TYPE_SET_MAC_DST:
+			mhdr_act->set_cmd_pos[MLX5_HDR_MODI_SET_MAC_DST] =
+				mhdr_act->res.actions_num;
+			if (flow_convert_action_modify_mac
+				(&mhdr_act->res, actions, error))
+				goto err;
+			MLX5_HW_INS_NOP_ACT(mhdr_act->res.actions_num);
+			break;
+		case RTE_FLOW_ACTION_TYPE_SET_IPV4_SRC:
+			mhdr_act->set_cmd_pos[MLX5_HDR_MODI_SET_IPV4_SRC] =
+				mhdr_act->res.actions_num;
+			if (flow_convert_action_modify_ipv4
+				(&mhdr_act->res, actions, error))
+				goto err;
+			MLX5_HW_INS_NOP_ACT(mhdr_act->res.actions_num);
+			break;
+		case RTE_FLOW_ACTION_TYPE_SET_IPV4_DST:
+			mhdr_act->set_cmd_pos[MLX5_HDR_MODI_SET_IPV4_DST] =
+				mhdr_act->res.actions_num;
+			if (flow_convert_action_modify_ipv4
+				(&mhdr_act->res, actions, error))
+				goto err;
+			MLX5_HW_INS_NOP_ACT(mhdr_act->res.actions_num);
+			break;
+		case RTE_FLOW_ACTION_TYPE_SET_IPV6_SRC:
+			mhdr_act->set_cmd_pos[MLX5_HDR_MODI_SET_IPV6_SRC] =
+				mhdr_act->res.actions_num;
+			if (flow_convert_action_modify_ipv6
+				(&mhdr_act->res, actions, error))
+				goto err;
+			MLX5_HW_INS_NOP_ACT(mhdr_act->res.actions_num);
+			break;
+		case RTE_FLOW_ACTION_TYPE_SET_IPV6_DST:
+			mhdr_act->set_cmd_pos[MLX5_HDR_MODI_SET_IPV6_DST] =
+				mhdr_act->res.actions_num;
+			if (flow_convert_action_modify_ipv6
+				(&mhdr_act->res, actions, error))
+				goto err;
+			MLX5_HW_INS_NOP_ACT(mhdr_act->res.actions_num);
+			break;
+		case RTE_FLOW_ACTION_TYPE_SET_UDP_TP_SRC:
+			mhdr_act->set_cmd_pos[MLX5_HDR_MODI_SET_UDP_SRC] =
+				mhdr_act->res.actions_num;
+			if (flow_convert_action_modify_tp
+				(&mhdr_act->res, actions, true, true, error))
+				goto err;
+			MLX5_HW_INS_NOP_ACT(mhdr_act->res.actions_num);
+			break;
+		case RTE_FLOW_ACTION_TYPE_SET_UDP_TP_DST:
+			mhdr_act->set_cmd_pos[MLX5_HDR_MODI_SET_UDP_DST] =
+				mhdr_act->res.actions_num;
+			if (flow_convert_action_modify_tp
+				(&mhdr_act->res, actions, true, false, error))
+				goto err;
+			MLX5_HW_INS_NOP_ACT(mhdr_act->res.actions_num);
+			break;
+		case RTE_FLOW_ACTION_TYPE_SET_TCP_TP_SRC:
+			mhdr_act->set_cmd_pos[MLX5_HDR_MODI_SET_TCP_SRC] =
+				mhdr_act->res.actions_num;
+			if (flow_convert_action_modify_tp
+				(&mhdr_act->res, actions, false, true, error))
+				goto err;
+			MLX5_HW_INS_NOP_ACT(mhdr_act->res.actions_num);
+			break;
+		case RTE_FLOW_ACTION_TYPE_SET_TCP_TP_DST:
+			mhdr_act->set_cmd_pos[MLX5_HDR_MODI_SET_TCP_DST] =
+				mhdr_act->res.actions_num;
+			if (flow_convert_action_modify_tp
+				(&mhdr_act->res, actions, false, false, error))
+				goto err;
+			MLX5_HW_INS_NOP_ACT(mhdr_act->res.actions_num);
+			break;
+		case RTE_FLOW_ACTION_TYPE_SET_IPV4_TTL:
+			mhdr_act->set_cmd_pos[MLX5_HDR_MODI_SET_IPV4_TTL] =
+				mhdr_act->res.actions_num;
+			if (flow_convert_action_modify_ttl
+				(&mhdr_act->res, actions, true, error))
+				goto err;
+			MLX5_HW_INS_NOP_ACT(mhdr_act->res.actions_num);
+			break;
+		case RTE_FLOW_ACTION_TYPE_SET_IPV6_HOP:
+			mhdr_act->set_cmd_pos[MLX5_HDR_MODI_SET_IPV6_HOP] =
+				mhdr_act->res.actions_num;
+			if (flow_convert_action_modify_ttl
+				(&mhdr_act->res, actions, false, error))
+				goto err;
+			MLX5_HW_INS_NOP_ACT(mhdr_act->res.actions_num);
+			break;
+		case RTE_FLOW_ACTION_TYPE_DEC_IPV4_TTL:
+			if (flow_convert_action_modify_ttl
+				(&mhdr_act->res, NULL, true, error))
+				goto err;
+			MLX5_HW_INS_NOP_ACT(mhdr_act->res.actions_num);
+			break;
+		case RTE_FLOW_ACTION_TYPE_DEC_IPV6_HOP:
+			if (flow_convert_action_modify_ttl
+				(&mhdr_act->res, NULL, false, error))
+				goto err;
+			MLX5_HW_INS_NOP_ACT(mhdr_act->res.actions_num);
+			break;
+		case RTE_FLOW_ACTION_TYPE_INC_TCP_SEQ:
+		case RTE_FLOW_ACTION_TYPE_DEC_TCP_SEQ:
+			if (flow_convert_action_modify_tcp_seq
+					(&mhdr_act->res, actions, error))
+				goto err;
+			MLX5_HW_INS_NOP_ACT(mhdr_act->res.actions_num);
+			break;
+		case RTE_FLOW_ACTION_TYPE_INC_TCP_ACK:
+		case RTE_FLOW_ACTION_TYPE_DEC_TCP_ACK:
+			if (flow_convert_action_modify_tcp_ack
+					(&mhdr_act->res, actions, error))
+				goto err;
+			MLX5_HW_INS_NOP_ACT(mhdr_act->res.actions_num);
+			break;
+		case RTE_FLOW_ACTION_TYPE_MODIFY_FIELD:
+			mhdr_act->set_cmd_pos[MLX5_HDR_MODI_MODIFY_FIELD] =
+				mhdr_act->res.actions_num;
+			if (flow_convert_action_modify_field
+					(dev, &mhdr_act->res,
+					 actions, attr, error))
+				goto err;
+			MLX5_HW_INS_NOP_ACT(mhdr_act->res.actions_num);
+			break;
+		case RTE_FLOW_ACTION_TYPE_DEC_TTL:
+		case RTE_FLOW_ACTION_TYPE_SET_TTL:
+			/* Not supported now. */
+			break;
 		case RTE_FLOW_ACTION_TYPE_END:
 			actions_end = true;
 			break;
 		default:
 			break;
 		}
+	}
+	if (mhdr_act->res.actions_num) {
+		size_t mhdr_len;
+
+		/* Remove the tail NOP action. */
+		mhdr_act->res.actions_num -= MLX5_HW_NOP_MODI_HDR_ACT;
+		mhdr_len = mhdr_act->res.actions_num *
+			   sizeof(struct mlx5_modification_cmd);
+		mhdr_act->res.action = mlx5dr_action_create_modify_header
+				(priv->dr_ctx, mhdr_len,
+				 (__be64 *)mhdr_act->res.actions,
+				 rte_log2_u32(table_attr->nb_flows),
+				 mlx5_hw_dr_ft_flag[!!attr->group][type]);
+		if (!mhdr_act->res.action)
+			goto err;
+		mhdr_len += sizeof(*acts->hdr_modify);
+		acts->hdr_modify = mlx5_malloc(MLX5_MEM_ZERO, mhdr_len,
+					       0, SOCKET_ID_ANY);
+		if (!acts->hdr_modify)
+			goto err;
+		memcpy(acts->hdr_modify, mhdr_act, mhdr_len);
 	}
 	if (encap_decap) {
 		uint8_t buf[MLX5_ENCAP_MAX_LEN];
@@ -281,13 +452,35 @@ flow_hw_actions_construct(struct rte_eth_dev *dev,
 {
 	struct mlx5_priv *priv = dev->data->dev_private;
 	struct rte_flow_table *table = job->flow->table;
+	struct rte_flow_attr attr = {
+		.ingress = 1,
+	};
 	const struct rte_flow_action_raw_encap *raw_encap_data;
 	const struct rte_flow_item *enc_item = NULL;
 	uint8_t *encap_data = NULL;
 	bool actions_end = false;
 	uint32_t reformat_pos = UINT32_MAX;
+	uint32_t modify_action_position = UINT32_MAX;
+	union {
+		struct mlx5_hw_header_modify_action act;
+		uint8_t len[sizeof(struct mlx5_hw_header_modify_action) +
+			    sizeof(struct mlx5_modification_cmd) *
+			    (MLX5_MAX_MODIFY_NUM * 2 + 1)];
+	} mhdr_dummy;
+	struct mlx5_hw_header_modify_action *mhdr_act =
+						&mhdr_dummy.act;
 	uint32_t i;
 
+	if (table->type == MLX5DR_TABLE_TYPE_FDB) {
+		attr.transfer = 1;
+		attr.ingress = 1;
+	} else if (table->type == MLX5DR_TABLE_TYPE_NIC_TX) {
+		attr.egress = 1;
+		attr.ingress = 0;
+	} else {
+		attr.ingress = 1;
+	}
+	mhdr_act->res.actions_num = 0;
 	for (i = 0; !actions_end || (i >= MLX5_HW_MAX_ACTS); actions++) {
 		uint32_t tag;
 
@@ -343,12 +536,117 @@ flow_hw_actions_construct(struct rte_eth_dev *dev,
 			if (!hw_acts->encap_decap->data_size)
 				reformat_pos = i++;
 			break;
+		case RTE_FLOW_ACTION_TYPE_SET_MAC_SRC:
+			mhdr_act->res.actions_num =
+				hw_acts->hdr_modify->set_cmd_pos
+				[MLX5_HDR_MODI_SET_MAC_SRC];
+			flow_convert_action_modify_mac
+				(&mhdr_act->res, actions, NULL);
+			break;
+		case RTE_FLOW_ACTION_TYPE_SET_MAC_DST:
+			mhdr_act->res.actions_num =
+				hw_acts->hdr_modify->set_cmd_pos
+				[MLX5_HDR_MODI_SET_MAC_DST];
+			flow_convert_action_modify_mac
+				(&mhdr_act->res, actions, NULL);
+			break;
+		case RTE_FLOW_ACTION_TYPE_SET_IPV4_SRC:
+			mhdr_act->res.actions_num =
+				hw_acts->hdr_modify->set_cmd_pos
+				[MLX5_HDR_MODI_SET_IPV4_SRC];
+			flow_convert_action_modify_ipv4
+				(&mhdr_act->res, actions, NULL);
+			break;
+		case RTE_FLOW_ACTION_TYPE_SET_IPV4_DST:
+			mhdr_act->res.actions_num =
+				hw_acts->hdr_modify->set_cmd_pos
+				[MLX5_HDR_MODI_SET_IPV4_DST];
+			flow_convert_action_modify_ipv4
+				(&mhdr_act->res, actions, NULL);
+			break;
+		case RTE_FLOW_ACTION_TYPE_SET_IPV6_SRC:
+			mhdr_act->res.actions_num =
+				hw_acts->hdr_modify->set_cmd_pos
+				[MLX5_HDR_MODI_SET_IPV6_SRC];
+			flow_convert_action_modify_ipv6
+				(&mhdr_act->res, actions, NULL);
+			break;
+		case RTE_FLOW_ACTION_TYPE_SET_IPV6_DST:
+			mhdr_act->res.actions_num =
+				hw_acts->hdr_modify->set_cmd_pos
+				[MLX5_HDR_MODI_SET_IPV6_DST];
+			flow_convert_action_modify_ipv6
+				(&mhdr_act->res, actions, NULL);
+			break;
+		case RTE_FLOW_ACTION_TYPE_SET_UDP_TP_SRC:
+			mhdr_act->res.actions_num =
+				hw_acts->hdr_modify->set_cmd_pos
+				[MLX5_HDR_MODI_SET_UDP_SRC];
+			flow_convert_action_modify_tp
+				(&mhdr_act->res, actions, true, true, NULL);
+			break;
+		case RTE_FLOW_ACTION_TYPE_SET_UDP_TP_DST:
+			mhdr_act->res.actions_num =
+				hw_acts->hdr_modify->set_cmd_pos
+				[MLX5_HDR_MODI_SET_UDP_DST];
+			flow_convert_action_modify_tp
+				(&mhdr_act->res, actions, true, false, NULL);
+			break;
+		case RTE_FLOW_ACTION_TYPE_SET_TCP_TP_SRC:
+			mhdr_act->res.actions_num =
+				hw_acts->hdr_modify->set_cmd_pos
+				[MLX5_HDR_MODI_SET_TCP_SRC];
+			flow_convert_action_modify_tp
+				(&mhdr_act->res, actions, false, true, NULL);
+			break;
+		case RTE_FLOW_ACTION_TYPE_SET_TCP_TP_DST:
+			mhdr_act->res.actions_num =
+				hw_acts->hdr_modify->set_cmd_pos
+				[MLX5_HDR_MODI_SET_TCP_DST];
+			flow_convert_action_modify_tp
+				(&mhdr_act->res, actions, false, false, NULL);
+			break;
+		case RTE_FLOW_ACTION_TYPE_SET_IPV4_TTL:
+			mhdr_act->res.actions_num =
+				hw_acts->hdr_modify->set_cmd_pos
+				[MLX5_HDR_MODI_SET_IPV4_TTL];
+			flow_convert_action_modify_ttl
+				(&mhdr_act->res, actions, true, NULL);
+			break;
+		case RTE_FLOW_ACTION_TYPE_SET_IPV6_HOP:
+			mhdr_act->res.actions_num =
+				hw_acts->hdr_modify->set_cmd_pos
+				[MLX5_HDR_MODI_SET_IPV6_HOP];
+			flow_convert_action_modify_ttl
+				(&mhdr_act->res, actions, false, NULL);
+			break;
+		case RTE_FLOW_ACTION_TYPE_MODIFY_FIELD:
+			mhdr_act->res.actions_num =
+				hw_acts->hdr_modify->set_cmd_pos
+				[MLX5_HDR_MODI_MODIFY_FIELD];
+			flow_convert_action_modify_field
+					(dev, &mhdr_act->res,
+					 actions, &attr, NULL);
+			break;
 		case RTE_FLOW_ACTION_TYPE_END:
 			actions_end = true;
 			break;
 		default:
 			break;
 		}
+		if (mhdr_act->res.actions_num &&
+		    modify_action_position == UINT32_MAX)
+			modify_action_position = i++;
+	}
+	if (mhdr_act->res.actions_num) {
+		rule_acts[modify_action_position].action =
+					hw_acts->hdr_modify->res.action;
+		rule_acts[modify_action_position].modify_header.offset =
+					job->flow->idx - 1;
+		rule_acts[modify_action_position].modify_header.data =
+					(uint8_t *)job->mhdr_cmd;
+		memcpy(job->mhdr_cmd, mhdr_act->res.actions,
+		       sizeof(*job->mhdr_cmd) * mhdr_act->res.actions_num);
 	}
 	if (reformat_pos != UINT32_MAX) {
 		uint8_t buf[MLX5_ENCAP_MAX_LEN];
@@ -997,7 +1295,9 @@ flow_hw_configure(struct rte_eth_dev *dev,
 	for (i = 0; i < port_attr->nb_queues; i++)
 		mem_size += (sizeof(struct mlx5_hw_q_job *) +
 			    sizeof(struct mlx5_hw_q_job) +
-			    sizeof(uint8_t) * MLX5_ENCAP_MAX_LEN) *
+			    sizeof(uint8_t) * MLX5_ENCAP_MAX_LEN +
+			    sizeof(struct mlx5_modification_cmd) *
+			    MLX5_MHDR_MAX_CMD) *
 			    queue_attr[0]->size;
 	priv->hw_q = mlx5_malloc(MLX5_MEM_ZERO, mem_size,
 				 64, SOCKET_ID_ANY);
@@ -1008,6 +1308,7 @@ flow_hw_configure(struct rte_eth_dev *dev,
 	priv->nb_queues = port_attr->nb_queues;
 	for (i = 0; i < port_attr->nb_queues; i++) {
 		uint8_t *encap = NULL;
+		struct mlx5_modification_cmd *mhdr_cmd = NULL;
 
 		priv->hw_q[i].job_idx = queue_attr[i]->size;
 		priv->hw_q[i].size = queue_attr[i]->size;
@@ -1021,8 +1322,12 @@ flow_hw_configure(struct rte_eth_dev *dev,
 				 [MLX5_ENCAP_MAX_LEN];
 		job = (struct mlx5_hw_q_job *)
 		      &priv->hw_q[i].job[queue_attr[i]->size];
-		encap = (uint8_t *)(&job[queue_attr[i]->size]);
+		mhdr_cmd = (struct mlx5_modification_cmd *)
+			   &job[queue_attr[i]->size];
+		encap = (uint8_t *)
+			 &mhdr_cmd[queue_attr[i]->size * MLX5_MHDR_MAX_CMD];
 		for (j = 0; j < queue_attr[i]->size; j++) {
+			job[j].mhdr_cmd = &mhdr_cmd[j * MLX5_MHDR_MAX_CMD];
 			job[j].encap_data = &encap[j * MLX5_ENCAP_MAX_LEN];
 			priv->hw_q[i].job[j] = &job[j];
 		}

@@ -46,6 +46,23 @@ enum mlx5_rte_flow_action_type {
 	MLX5_RTE_FLOW_ACTION_TYPE_JUMP,
 };
 
+enum mlx5_header_modify {
+	MLX5_HDR_MODI_SET_MAC_SRC,
+	MLX5_HDR_MODI_SET_MAC_DST,
+	MLX5_HDR_MODI_SET_IPV4_SRC,
+	MLX5_HDR_MODI_SET_IPV4_DST,
+	MLX5_HDR_MODI_SET_IPV6_SRC,
+	MLX5_HDR_MODI_SET_IPV6_DST,
+	MLX5_HDR_MODI_SET_UDP_SRC,
+	MLX5_HDR_MODI_SET_UDP_DST,
+	MLX5_HDR_MODI_SET_TCP_SRC,
+	MLX5_HDR_MODI_SET_TCP_DST,
+	MLX5_HDR_MODI_SET_IPV4_TTL,
+	MLX5_HDR_MODI_SET_IPV6_HOP,
+	MLX5_HDR_MODI_MODIFY_FIELD,
+	MLX5_HDR_MODI_SET_MAX,
+};
+
 #define MLX5_INDIRECT_ACTION_TYPE_OFFSET 30
 
 enum {
@@ -89,6 +106,12 @@ enum MLX5_SET_MATCHER {
 
 #define MLX5_ACTION_CTX_CT_GET_IDX(index) \
 	((index) & ((1 << MLX5_ACTION_CTX_CT_OWNER_SHIFT) - 1))
+
+struct field_modify_info {
+	uint32_t size; /* Size of field in protocol header, in bytes. */
+	uint32_t offset; /* Offset of field in protocol header, in bytes. */
+	enum mlx5_modification_field id;
+};
 
 struct mlx5_flow_attr {
 	uint32_t port_id;
@@ -1153,12 +1176,27 @@ struct mlx5_hw_encap_decap_action {
 	uint8_t data[];
 };
 
+#ifdef PEDANTIC
+#pragma GCC diagnostic ignored "-Wpedantic"
+#endif
+
+struct mlx5_hw_header_modify_action {
+	uint8_t set_cmd_pos[MLX5_HDR_MODI_SET_MAX];
+	struct mlx5_flow_dv_modify_hdr_resource res;
+};
+
+#ifdef PEDANTIC
+#pragma GCC diagnostic error "-Wpedantic"
+#endif
+
 struct mlx5_hw_actions {
 	struct mlx5dr_action *drop; /* Drop action. */
 	struct mlx5_hw_jump_action *jump; /* Jump action. */
 	/* Encap/Decap action. */
 	struct mlx5_hw_encap_decap_action *encap_decap;
 	struct mlx5_hrxq *tir; /* TIR action. */
+	/* Header modify action. */
+	struct mlx5_hw_header_modify_action *hdr_modify;
 };
 
 struct mlx5_hw_action_template {
@@ -1712,6 +1750,47 @@ mlx5_validate_integrity_item(const struct rte_flow_item_integrity *item)
 	return (test.value == 0);
 }
 
+/**
+ * Fetch 1, 2, 3 or 4 byte field from the byte array
+ * and return as unsigned integer in host-endian format.
+ *
+ * @param[in] data
+ *   Pointer to data array.
+ * @param[in] size
+ *   Size of field to extract.
+ *
+ * @return
+ *   converted field in host endian format.
+ */
+static __rte_always_inline uint32_t
+flow_fetch_field(const uint8_t *data, uint32_t size)
+{
+	uint32_t ret;
+
+	switch (size) {
+	case 1:
+		ret = *data;
+		break;
+	case 2:
+		ret = rte_be_to_cpu_16(*(const unaligned_uint16_t *)data);
+		break;
+	case 3:
+		ret = rte_be_to_cpu_16(*(const unaligned_uint16_t *)data);
+		ret = (ret << 8) | *(data + sizeof(uint16_t));
+		break;
+	case 4:
+		ret = rte_be_to_cpu_32(*(const unaligned_uint32_t *)data);
+		break;
+	default:
+		MLX5_ASSERT(false);
+		ret = 0;
+		break;
+	}
+	return ret;
+}
+
+extern enum mlx5_modification_field reg_to_field[];
+
 int flow_hw_q_flow_flush(struct rte_eth_dev *dev,
 			 uint32_t queue,
 			 struct rte_flow_error *error);
@@ -2059,4 +2138,65 @@ flow_hw_resource_release(struct rte_eth_dev *dev);
 int
 flow_convert_encap_data(const struct rte_flow_item *items, uint8_t *buf,
 			size_t *size, struct rte_flow_error *error);
+
+int flow_convert_modify_action(struct rte_flow_item *item,
+			   struct field_modify_info *field,
+			   struct field_modify_info *dcopy,
+			   struct mlx5_flow_dv_modify_hdr_resource *resource,
+			   uint32_t type, struct rte_flow_error *error);
+int flow_convert_action_modify_tp
+			(struct mlx5_flow_dv_modify_hdr_resource *resource,
+			 const struct rte_flow_action *action,
+			 uint8_t is_udp, uint8_t is_src,
+			 struct rte_flow_error *error);
+int flow_convert_action_modify_ttl
+			(struct mlx5_flow_dv_modify_hdr_resource *resource,
+			 const struct rte_flow_action *action,
+			 uint8_t is_ipv4,
+			 struct rte_flow_error *error);
+int flow_convert_action_modify_ipv4
+			(struct mlx5_flow_dv_modify_hdr_resource *resource,
+			 const struct rte_flow_action *action,
+			 struct rte_flow_error *error);
+int flow_convert_action_modify_ipv6
+			(struct mlx5_flow_dv_modify_hdr_resource *resource,
+			 const struct rte_flow_action *action,
+			 struct rte_flow_error *error);
+int flow_convert_action_modify_mac
+			(struct mlx5_flow_dv_modify_hdr_resource *resource,
+			 const struct rte_flow_action *action,
+			 struct rte_flow_error *error);
+int flow_convert_action_modify_vlan_vid
+			(struct mlx5_flow_dv_modify_hdr_resource *resource,
+			 const struct rte_flow_action *action,
+			 struct rte_flow_error *error);
+int flow_convert_action_modify_tcp_seq
+			(struct mlx5_flow_dv_modify_hdr_resource *resource,
+			 const struct rte_flow_action *action,
+			 struct rte_flow_error *error);
+int flow_convert_action_modify_tcp_ack
+			(struct mlx5_flow_dv_modify_hdr_resource *resource,
+			 const struct rte_flow_action *action,
+			 struct rte_flow_error *error);
+int flow_convert_action_modify_ipv4_dscp
+			(struct mlx5_flow_dv_modify_hdr_resource *resource,
+			 const struct rte_flow_action *action,
+			 struct rte_flow_error *error);
+int flow_convert_action_modify_ipv6_dscp
+			(struct mlx5_flow_dv_modify_hdr_resource *resource,
+			 const struct rte_flow_action *action,
+			 struct rte_flow_error *error);
+enum modify_reg flow_get_metadata_reg(struct rte_eth_dev *dev,
+		      const struct rte_flow_attr *attr,
+		      struct rte_flow_error *error);
+int mlx5_flow_item_field_width(struct rte_eth_dev *dev,
+			       enum rte_flow_field_id field,
+			       const struct rte_flow_attr *attr,
+			       struct rte_flow_error *error);
+int flow_convert_action_modify_field
+			(struct rte_eth_dev *dev,
+			 struct mlx5_flow_dv_modify_hdr_resource *resource,
+			 const struct rte_flow_action *action,
+			 const struct rte_flow_attr *attr,
+			 struct rte_flow_error *error);
 #endif /* RTE_PMD_MLX5_FLOW_H_ */
