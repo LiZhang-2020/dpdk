@@ -1781,6 +1781,8 @@ err_secondary:
 		err = mlx5_alloc_shared_dr(priv);
 		if (err)
 			goto error;
+		if (mlx5_flex_item_port_init(eth_dev) < 0)
+			goto error;
 	}
 	if (config->devx && config->dv_flow_en && config->dest_tir) {
 		priv->obj_ops = devx_obj_ops;
@@ -1913,6 +1915,8 @@ error:
 			claim_zero(rte_eth_switch_domain_free(priv->domain_id));
 		if (priv->hrxqs)
 			mlx5_list_destroy(priv->hrxqs);
+		if (eth_dev && priv->flex_item_map)
+			mlx5_flex_item_port_cleanup(eth_dev);
 		mlx5_free(priv);
 		if (eth_dev != NULL)
 			eth_dev->data->dev_private = NULL;
