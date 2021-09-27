@@ -998,13 +998,15 @@ mlx5_get_lowest_priority(struct rte_eth_dev *dev,
  *   Pointer to device flow rule attributes.
  * @param[in] subpriority
  *   The priority based on the items.
+ * @param[in] external
+ *   Flow is user flow.
  * @return
  *   The matcher priority of the flow.
  */
 uint16_t
 mlx5_get_matcher_priority(struct rte_eth_dev *dev,
 			  const struct rte_flow_attr *attr,
-			  uint32_t subpriority)
+			  uint32_t subpriority, bool external)
 {
 	uint16_t priority = (uint16_t)attr->priority;
 	struct mlx5_priv *priv = dev->data->dev_private;
@@ -1013,6 +1015,9 @@ mlx5_get_matcher_priority(struct rte_eth_dev *dev,
 		if (attr->priority == MLX5_FLOW_LOWEST_PRIO_INDICATOR)
 			priority = priv->sh->flow_max_priority - 1;
 		return mlx5_flow_adjust_priority(dev, priority, subpriority);
+	} else if (!external && attr->transfer && attr->group == 0 &&
+		   attr->priority == MLX5_FLOW_LOWEST_PRIO_INDICATOR) {
+		return 15;
 	}
 	if (attr->priority == MLX5_FLOW_LOWEST_PRIO_INDICATOR)
 		priority = MLX5_NON_ROOT_FLOW_MAX_PRIO;
