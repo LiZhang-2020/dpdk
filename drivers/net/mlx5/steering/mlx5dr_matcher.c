@@ -291,7 +291,7 @@ static int mlx5dr_matcher_bind_mt(struct mlx5dr_matcher *matcher)
 	return 0;
 
 definer_put:
-	while (--created)
+	while (created--)
 		mlx5dr_definer_put(matcher->mt[created]);
 
 	return ret;

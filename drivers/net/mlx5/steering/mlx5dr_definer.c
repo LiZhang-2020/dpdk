@@ -808,8 +808,8 @@ int mlx5dr_definer_get(struct mlx5dr_context *ctx,
 	mt->definer = simple_calloc(1, sizeof(*mt->definer));
 	if (!mt->definer) {
 		DRV_LOG(ERR, "Failed to allocate memory for definer");
-                rte_errno = ENOMEM;
-                return rte_errno;
+		rte_errno = ENOMEM;
+		goto dec_refcount;
 	}
 
 	/* Header layout (hl) holds full bit mask per field */
@@ -866,6 +866,9 @@ free_hl:
 	simple_free(hl);
 free_definer:
 	simple_free(mt->definer);
+dec_refcount:
+	mt->refcount--;
+
 	return rte_errno;
 }
 
