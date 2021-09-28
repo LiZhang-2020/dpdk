@@ -3290,6 +3290,65 @@ Allows to pre-allocate all the needed resources beforehand.
                      const struct rte_flow_port_attr *port_attr,
                      struct rte_flow_error *error);
 
+Flow table
+~~~~~~~~~~
+
+Oftentimes in an application, many flow rules share a common structure
+(the same pattern and/or action list) so they can be grouped and classified
+together. This knowledge may be used as a source of optimization by a PMD/HW.
+The flow rule creation is done by selecting a table, an item template
+and an action template (which are bound to the table), and setting unique
+values for the items and actions.
+
+Item templates
+--------------
+
+The item template defines common pattern (the item mask) without values.
+
+.. code-block:: c
+
+	struct rte_flow_item_template *
+	rte_flow_item_template_create(uint16_t port_id,
+				const struct rte_flow_item_template_attr *it_attr,
+				const struct rte_flow_item items[],
+				struct rte_flow_error *error);
+
+Action templates
+----------------
+
+The action template holds a list of action types that will be used together
+in the same rule. The specific values for items and actions will be given
+only during the rule creation.
+
+.. code-block:: c
+
+	struct rte_flow_action_template *
+	rte_flow_action_template_create(uint16_t port_id,
+				const struct rte_flow_action_template_attr *at_attr,
+				const struct rte_flow_action actions[],
+				const struct rte_flow_action masks[],
+				struct rte_flow_error *error);
+
+Flow table
+----------
+
+A table combines item and action templates along with shared flow rule
+attributes (group ID, priority and traffic direction). This way a PMD/HW
+can prepare all the resources needed for efficient flow rules creation in
+the datapath. To avoid any hiccups due to memory reallocation, the maximum
+number of flow rules is defined at table creation time.
+
+.. code-block:: c
+
+	struct rte_flow_table *
+	rte_flow_table_create(uint16_t port_id,
+				const struct rte_flow_table_attr *table_attr,
+				struct rte_flow_item_template *item_templates[],
+				uint8_t nb_item_templates,
+				struct rte_flow_action_template *action_templates[],
+				uint8_t nb_action_templates,
+				struct rte_flow_error *error);
+
 .. _flow_isolated_mode:
 
 Flow isolated mode

@@ -1394,3 +1394,146 @@ rte_flow_configure(uint16_t port_id,
 				  RTE_FLOW_ERROR_TYPE_UNSPECIFIED,
 				  NULL, rte_strerror(ENOTSUP));
 }
+
+struct rte_flow_item_template *
+rte_flow_item_template_create(uint16_t port_id,
+			const struct rte_flow_item_template_attr *it_attr,
+			const struct rte_flow_item items[],
+			struct rte_flow_error *error)
+{
+	struct rte_eth_dev *dev = &rte_eth_devices[port_id];
+	const struct rte_flow_ops *ops = rte_flow_ops_get(port_id, error);
+	struct rte_flow_item_template *template;
+
+	if (unlikely(!ops))
+		return NULL;
+	if (likely(!!ops->item_template_create)) {
+		template = ops->item_template_create(dev, it_attr,
+						     items, error);
+		if (template == NULL)
+			flow_err(port_id, -rte_errno, error);
+		return template;
+	}
+	rte_flow_error_set(error, ENOTSUP,
+			   RTE_FLOW_ERROR_TYPE_UNSPECIFIED,
+			   NULL, rte_strerror(ENOTSUP));
+	return NULL;
+}
+
+int
+rte_flow_item_template_destroy(uint16_t port_id,
+			struct rte_flow_item_template *template,
+			struct rte_flow_error *error)
+{
+	struct rte_eth_dev *dev = &rte_eth_devices[port_id];
+	const struct rte_flow_ops *ops = rte_flow_ops_get(port_id, error);
+
+	if (unlikely(!ops))
+		return -rte_errno;
+	if (likely(!!ops->item_template_destroy)) {
+		return flow_err(port_id,
+				ops->item_template_destroy(dev, template,
+							   error),
+				error);
+	}
+	return rte_flow_error_set(error, ENOTSUP,
+				  RTE_FLOW_ERROR_TYPE_UNSPECIFIED,
+				  NULL, rte_strerror(ENOTSUP));
+}
+
+struct rte_flow_action_template *
+rte_flow_action_template_create(uint16_t port_id,
+			const struct rte_flow_action_template_attr *at_attr,
+			const struct rte_flow_action actions[],
+			const struct rte_flow_action masks[],
+			struct rte_flow_error *error)
+{
+	struct rte_eth_dev *dev = &rte_eth_devices[port_id];
+	const struct rte_flow_ops *ops = rte_flow_ops_get(port_id, error);
+	struct rte_flow_action_template *template;
+
+	if (unlikely(!ops))
+		return NULL;
+	if (likely(!!ops->action_template_create)) {
+		template = ops->action_template_create(dev, at_attr,
+						       actions, masks, error);
+		if (template == NULL)
+			flow_err(port_id, -rte_errno, error);
+		return template;
+	}
+	rte_flow_error_set(error, ENOTSUP,
+			   RTE_FLOW_ERROR_TYPE_UNSPECIFIED,
+			   NULL, rte_strerror(ENOTSUP));
+	return NULL;
+}
+
+int
+rte_flow_action_template_destroy(uint16_t port_id,
+			struct rte_flow_action_template *template,
+			struct rte_flow_error *error)
+{
+	struct rte_eth_dev *dev = &rte_eth_devices[port_id];
+	const struct rte_flow_ops *ops = rte_flow_ops_get(port_id, error);
+
+	if (unlikely(!ops))
+		return -rte_errno;
+	if (likely(!!ops->action_template_destroy)) {
+		return flow_err(port_id,
+				ops->action_template_destroy(dev, template,
+							     error),
+				error);
+	}
+	return rte_flow_error_set(error, ENOTSUP,
+				  RTE_FLOW_ERROR_TYPE_UNSPECIFIED,
+				  NULL, rte_strerror(ENOTSUP));
+}
+
+struct rte_flow_table *
+rte_flow_table_create(uint16_t port_id,
+		      const struct rte_flow_table_attr *table_attr,
+		      struct rte_flow_item_template *item_templates[],
+		      uint8_t nb_item_templates,
+		      struct rte_flow_action_template *action_templates[],
+		      uint8_t nb_action_templates,
+		      struct rte_flow_error *error)
+{
+	struct rte_eth_dev *dev = &rte_eth_devices[port_id];
+	const struct rte_flow_ops *ops = rte_flow_ops_get(port_id, error);
+	struct rte_flow_table *table;
+
+	if (unlikely(!ops))
+		return NULL;
+	if (likely(!!ops->table_create)) {
+		table = ops->table_create(dev, table_attr,
+					  item_templates, nb_item_templates,
+					  action_templates, nb_action_templates,
+					  error);
+		if (table == NULL)
+			flow_err(port_id, -rte_errno, error);
+		return table;
+	}
+	rte_flow_error_set(error, ENOTSUP,
+			   RTE_FLOW_ERROR_TYPE_UNSPECIFIED,
+			   NULL, rte_strerror(ENOTSUP));
+	return NULL;
+}
+
+int
+rte_flow_table_destroy(uint16_t port_id,
+		       struct rte_flow_table *table,
+		       struct rte_flow_error *error)
+{
+	struct rte_eth_dev *dev = &rte_eth_devices[port_id];
+	const struct rte_flow_ops *ops = rte_flow_ops_get(port_id, error);
+
+	if (unlikely(!ops))
+		return -rte_errno;
+	if (likely(!!ops->table_destroy)) {
+		return flow_err(port_id,
+				ops->table_destroy(dev, table, error),
+				error);
+	}
+	return rte_flow_error_set(error, ENOTSUP,
+				  RTE_FLOW_ERROR_TYPE_UNSPECIFIED,
+				  NULL, rte_strerror(ENOTSUP));
+}

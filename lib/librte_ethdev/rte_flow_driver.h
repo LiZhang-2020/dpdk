@@ -177,6 +177,43 @@ struct rte_flow_ops {
 		(struct rte_eth_dev *dev,
 		 const struct rte_flow_port_attr *port_attr,
 		 struct rte_flow_error *err);
+	/** See rte_flow_item_template_create() */
+	struct rte_flow_item_template *(*item_template_create)
+		(struct rte_eth_dev *dev,
+		 const struct rte_flow_item_template_attr *it_attr,
+		 const struct rte_flow_item items[],
+		 struct rte_flow_error *err);
+	/** See rte_flow_item_template_destroy() */
+	int (*item_template_destroy)
+		(struct rte_eth_dev *dev,
+		 struct rte_flow_item_template *template,
+		 struct rte_flow_error *err);
+	/** See rte_flow_action_template_create() */
+	struct rte_flow_action_template *(*action_template_create)
+		(struct rte_eth_dev *dev,
+		 const struct rte_flow_action_template_attr *at_attr,
+		 const struct rte_flow_action actions[],
+		 const struct rte_flow_action masks[],
+		 struct rte_flow_error *err);
+	/** See rte_flow_action_template_destroy() */
+	int (*action_template_destroy)
+		(struct rte_eth_dev *dev,
+		 struct rte_flow_action_template *template,
+		 struct rte_flow_error *err);
+	/** See rte_flow_table_create() */
+	struct rte_flow_table *(*table_create)
+		(struct rte_eth_dev *dev,
+		 const struct rte_flow_table_attr *table_attr,
+		 struct rte_flow_item_template *item_templates[],
+		 uint8_t nb_item_templates,
+		 struct rte_flow_action_template *action_templates[],
+		 uint8_t nb_action_templates,
+		 struct rte_flow_error *err);
+	/** See rte_flow_table_destroy() */
+	int (*table_destroy)
+		(struct rte_eth_dev *dev,
+		 struct rte_flow_table *table,
+		 struct rte_flow_error *err);
 };
 
 /**
