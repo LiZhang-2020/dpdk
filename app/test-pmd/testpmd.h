@@ -838,6 +838,9 @@ struct rte_flow_action_handle *port_action_handle_get_by_id(portid_t port_id,
 							    uint32_t id);
 int port_action_handle_update(portid_t port_id, uint32_t id,
 			      const struct rte_flow_action *action);
+int port_flow_configure(portid_t port_id,
+			const struct rte_flow_port_attr *port_attr,
+			const struct rte_flow_queue_attr *queue_attr);
 int port_flow_validate(portid_t port_id,
 		       const struct rte_flow_attr *attr,
 		       const struct rte_flow_item *pattern,

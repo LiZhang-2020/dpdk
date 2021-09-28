@@ -1783,6 +1783,28 @@ action_alloc(portid_t port_id, uint32_t id,
 	return 0;
 }
 
+/** Configure flow management resources. */
+int
+port_flow_configure(portid_t port_id,
+	const struct rte_flow_port_attr *port_attr,
+	const struct rte_flow_queue_attr *queue_attr)
+{
+	struct rte_flow_error error;
+	const struct rte_flow_queue_attr *attr_list[port_attr->nb_queues];
+	int std_queue;
+
+	for (std_queue = 0; std_queue < port_attr->nb_queues; std_queue++)
+		attr_list[std_queue] = queue_attr;
+	/* Poisoning to make sure PMDs update it in case of error. */
+	memset(&error, 0x66, sizeof(error));
+	if (rte_flow_configure(port_id, port_attr, attr_list, &error))
+		return port_flow_complain(&error);
+	printf("Configure flows on port %u: number of queues %d "
+	       "with %d elements\n", port_id,
+		   port_attr->nb_queues, queue_attr->size);
+	return 0;
+}
+
 /** Create indirect action */
 int
 port_action_handle_create(portid_t port_id, uint32_t id,
