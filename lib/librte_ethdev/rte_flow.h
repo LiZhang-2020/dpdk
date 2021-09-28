@@ -4628,6 +4628,74 @@ rte_flow_flex_item_release(uint16_t port_id,
  * @warning
  * @b EXPERIMENTAL: this API may change without prior notice.
  *
+ * Flow engine configuration.
+ */
+__extension__
+struct rte_flow_port_attr {
+	/**
+	 * Version of the struct layout, should be 0.
+	 */
+	uint32_t version;
+	/**
+	 * Number of counter actions pre-configured.
+	 * If set to 0, PMD will allocate counters dynamically.
+	 * @see RTE_FLOW_ACTION_TYPE_COUNT
+	 */
+	uint32_t nb_counters;
+	/**
+	 * Number of aging actions pre-configured.
+	 * If set to 0, PMD will allocate aging dynamically.
+	 * @see RTE_FLOW_ACTION_TYPE_AGE
+	 */
+	uint32_t nb_aging;
+	/**
+	 * Number of traffic metering actions pre-configured.
+	 * If set to 0, PMD will allocate meters dynamically.
+	 * @see RTE_FLOW_ACTION_TYPE_METER
+	 */
+	uint32_t nb_meters;
+	/**
+	 * Resources reallocation strategy.
+	 * If set to 1, PMD is not allowed to allocate more resources on demand.
+	 * An application can only allocate more resources by calling the
+	 * configure API again with new values (may not be supported by PMD).
+	 */
+	uint32_t fixed_resource_size:1;
+};
+
+/**
+ * @warning
+ * @b EXPERIMENTAL: this API may change without prior notice.
+ *
+ * Configure flow rules module.
+ * To pre-allocate resources as per the flow port attributes,
+ * this configuration function must be called before any flow rule is created.
+ * No other rte_flow function should be called while this function is invoked.
+ * This function can be called again to change the configuration.
+ * Some PMDs may not support re-configuration at all,
+ * or may only allow increasing the number of resources allocated.
+ *
+ * @param port_id
+ *   Port identifier of Ethernet device.
+ * @param[in] port_attr
+ *   Port configuration attributes.
+ * @param[out] error
+ *   Perform verbose error reporting if not NULL.
+ *   PMDs initialize this structure in case of error only.
+ *
+ * @return
+ *   0 on success, a negative errno value otherwise and rte_errno is set.
+ */
+__rte_experimental
+int
+rte_flow_configure(uint16_t port_id,
+		   const struct rte_flow_port_attr *port_attr,
+		   struct rte_flow_error *error);
+
+/**
+ * @warning
+ * @b EXPERIMENTAL: this API may change without prior notice.
+ *
  * Dequeue operation status.
  */
 enum rte_flow_q_op_status {

@@ -1374,3 +1374,23 @@ rte_flow_flex_item_release(uint16_t port_id,
 	ret = ops->flex_item_release(dev, handle, error);
 	return flow_err(port_id, ret, error);
 }
+
+int
+rte_flow_configure(uint16_t port_id,
+		   const struct rte_flow_port_attr *port_attr,
+		   struct rte_flow_error *error)
+{
+	struct rte_eth_dev *dev = &rte_eth_devices[port_id];
+	const struct rte_flow_ops *ops = rte_flow_ops_get(port_id, error);
+
+	if (unlikely(!ops))
+		return -rte_errno;
+	if (likely(!!ops->configure)) {
+		return flow_err(port_id,
+				ops->configure(dev, port_attr, error),
+				error);
+	}
+	return rte_flow_error_set(error, ENOTSUP,
+				  RTE_FLOW_ERROR_TYPE_UNSPECIFIED,
+				  NULL, rte_strerror(ENOTSUP));
+}

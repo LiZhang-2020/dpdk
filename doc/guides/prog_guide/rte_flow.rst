@@ -3250,6 +3250,46 @@ Return values:
 
 - 0 on success, a negative errno value otherwise and ``rte_errno`` is set.
 
+Pre-configuration hints
+-----------------------
+
+Configure flow management library.
+
+An application may provide some hints at the initialization phase about
+flow rules characteristics to be used. The configuration function
+pre-allocates all the needed resources inside a PMD/HW beforehand and
+these resources are used at a later stage without costly allocations.
+
+Configuration
+~~~~~~~~~~~~~
+
+Allows to pre-allocate all the needed resources beforehand.
+
+.. _table_rte_flow_port_attr:
+
+.. table:: RTE Flow Port Attributes
+
+   +--------------------------+-------------------------------------------------------------+
+   | Field                    | Value                                                       |
+   +==========================+=============================================================+
+   | ``version``              | version of the struct layout                                |
+   +--------------------------+-------------------------------------------------------------+
+   | ``nb_counters``          | number of counter actions pre-configured                    |
+   +--------------------------+-------------------------------------------------------------+
+   | ``nb_aging``             | number of aging actions pre-configured                      |
+   +--------------------------+-------------------------------------------------------------+
+   | ``nb_meters``            | number of traffic metering actions pre-configured           |
+   +--------------------------+-------------------------------------------------------------+
+   | ``fixed_resource_size``  | is PMD allowed to allocate more resources on demand         |
+   +--------------------------+-------------------------------------------------------------+
+
+.. code-block:: c
+
+   int
+   rte_flow_configure(uint16_t port_id,
+                     const struct rte_flow_port_attr *port_attr,
+                     struct rte_flow_error *error);
+
 .. _flow_isolated_mode:
 
 Flow isolated mode
