@@ -116,7 +116,7 @@ EOF
 
 # Export PKG_CONFIG_PATH
 mkdir -p %{buildroot}%{_sysconfdir}/profile.d
-cat > %{buildroot}%{_sysconfdir}/profile.d/%{name}-%{_arch}.sh << EOF
+cat > %{buildroot}%{_sysconfdir}/profile.d/%{name}-%{_arch}.sh << 'EOF'
 export PKG_CONFIG_PATH=${PKG_CONFIG_PATH}:/opt/mellanox/dpdk/lib64/pkgconfig
 EOF
 
