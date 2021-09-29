@@ -281,22 +281,24 @@ enum mlx5dr_definer_gtp {
 };
 
 struct mlx5_ifc_header_gtp_bits {
-	/* DW0 */
 	u8 version[0x3];
 	u8 proto_type[0x1];
 	u8 reserved1[0x1];
 	u8 ext_hdr_flag[0x1];
 	u8 seq_num_flag[0x1];
-	u8 pdu[0x1];
+	u8 pdu_flag[0x1];
 	u8 msg_type[0x8];
 	u8 msg_len[0x8];
-	/* DW1 - TEID */
 	u8 teid[0x20];
-	/* DW2 */
+};
+
+struct mlx5_ifc_header_opt_gtp_bits {
 	u8 seq_num[0x10];
 	u8 pdu_num[0x8];
 	u8 next_ext_hdr_type[0x8];
-	/* DW0 Ext header*/
+};
+
+struct mlx5_ifc_header_gtp_psc_bits {
 	u8 len[0x8];
 	u8 pdu_type[0x4];
 	u8 flags[0x4];

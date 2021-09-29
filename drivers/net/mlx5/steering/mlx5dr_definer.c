@@ -223,7 +223,7 @@ mlx5dr_definer_conv_item_eth(struct mlx5dr_definer_conv_data *cd,
 	struct mlx5dr_definer_fc *fc;
 	bool inner = cd->tunnel;
 
-	if (m->has_vlan || m->type || m->reserved) {
+	if (m->has_vlan || m->reserved) {
 		rte_errno = ENOTSUP;
 		return rte_errno;
 	}
@@ -515,8 +515,8 @@ mlx5dr_definer_conv_item_gtp_psc(struct mlx5dr_definer_conv_data *cd,
 	fc->item_idx = item_idx;
 	fc->tag_set = &mlx5dr_definer_gtp_next_ext_hdr_set;
 	fc->tag_mask_set = &mlx5dr_definer_ones_set;
-	fc->bit_mask = __mlx5_mask(header_gtp, next_ext_hdr_type);
-	fc->bit_off = __mlx5_dw_bit_off(header_gtp, next_ext_hdr_type);
+	fc->bit_mask = __mlx5_mask(header_opt_gtp, next_ext_hdr_type);
+	fc->bit_off = __mlx5_dw_bit_off(header_opt_gtp, next_ext_hdr_type);
 	fc->byte_off = mlx5dr_definer_get_flex_parser_off(flex_idx);
 
 	if (m->pdu_type) {
@@ -528,8 +528,8 @@ mlx5dr_definer_conv_item_gtp_psc(struct mlx5dr_definer_conv_data *cd,
 		fc = &cd->fc[MLX5DR_DEFINER_FNAME_GTP_EXT_HDR_PDU];
 		fc->item_idx = item_idx;
 		fc->tag_set = &mlx5dr_definer_gtp_ext_hdr_pdu_set;
-		fc->bit_mask = __mlx5_mask(header_gtp, pdu_type);
-		fc->bit_off = __mlx5_dw_bit_off(header_gtp, pdu_type);
+		fc->bit_mask = __mlx5_mask(header_gtp_psc, pdu_type);
+		fc->bit_off = __mlx5_dw_bit_off(header_gtp_psc, pdu_type);
 		fc->byte_off = mlx5dr_definer_get_flex_parser_off(flex_idx);
 	}
 
@@ -542,8 +542,8 @@ mlx5dr_definer_conv_item_gtp_psc(struct mlx5dr_definer_conv_data *cd,
 		fc = &cd->fc[MLX5DR_DEFINER_FNAME_GTP_EXT_HDR_QFI];
 		fc->item_idx = item_idx;
 		fc->tag_set = &mlx5dr_definer_gtp_ext_hdr_qfi_set;
-		fc->bit_mask = __mlx5_mask(header_gtp, qfi);
-		fc->bit_off = __mlx5_dw_bit_off(header_gtp, qfi);
+		fc->bit_mask = __mlx5_mask(header_gtp_psc, qfi);
+		fc->bit_off = __mlx5_dw_bit_off(header_gtp_psc, qfi);
 		fc->byte_off = mlx5dr_definer_get_flex_parser_off(flex_idx);
 	}
 
