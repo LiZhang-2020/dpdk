@@ -58,6 +58,8 @@ enum index {
 	POLICY_ID,
 	COMMON_FLEX_HANDLE,
 	COMMON_FLEX_TOKEN,
+	ITEM_TEMPLATE_ID,
+	ACTION_TEMPLATE_ID,
 
 	/* TOP-level command. */
 	ADD,
@@ -75,6 +77,8 @@ enum index {
 	FLOW,
 	/* Sub-level commands. */
 	CONFIGURE,
+	ITEM_TEMPLATE,
+	ACTION_TEMPLATE,
 	INDIRECT_ACTION,
 	VALIDATE,
 	CREATE,
@@ -92,6 +96,21 @@ enum index {
 	FLEX_ITEM_INIT,
 	FLEX_ITEM_CREATE,
 	FLEX_ITEM_DESTROY,
+
+	/* Item template arguments. */
+	ITEM_TEMPLATE_CREATE,
+	ITEM_TEMPLATE_DESTROY,
+	ITEM_TEMPLATE_CREATE_ID,
+	ITEM_TEMPLATE_DESTROY_ID,
+	ITEM_TEMPLATE_SPEC,
+
+	/* Action template arguments. */
+	ACTION_TEMPLATE_CREATE,
+	ACTION_TEMPLATE_DESTROY,
+	ACTION_TEMPLATE_CREATE_ID,
+	ACTION_TEMPLATE_DESTROY_ID,
+	ACTION_TEMPLATE_SPEC,
+	ACTION_TEMPLATE_MASK,
 
 	/* Tunnel arguments. */
 	TUNNEL_CREATE,
@@ -849,6 +868,10 @@ struct buffer {
 			struct rte_flow_queue_attr queue_attr;
 		} configure; /**< Configuration arguments. */
 		struct {
+			uint32_t *template_id;
+			uint32_t template_id_n;
+		} templ_destroy; /**< Template destroy arguments. */
+		struct {
 			uint32_t *action_id;
 			uint32_t action_id_n;
 		} ia_destroy; /**< Indirect action destroy arguments. */
@@ -856,10 +879,13 @@ struct buffer {
 			uint32_t action_id;
 		} ia; /* Indirect action query arguments */
 		struct {
+			uint32_t it_id;
+			uint32_t at_id;
 			struct rte_flow_attr attr;
 			struct tunnel_ops tunnel_ops;
 			struct rte_flow_item *pattern;
 			struct rte_flow_action *actions;
+			struct rte_flow_action *masks;
 			uint32_t pattern_n;
 			uint32_t actions_n;
 			uint8_t *data;
@@ -936,6 +962,42 @@ static const enum index next_config_attr[] = {
 	CONFIG_AGING_COUNTERS_NUMBER,
 	CONFIG_METERS_NUMBER,
 	CONFIG_FIXED_RESOURCE_SIZE,
+	END,
+	ZERO,
+};
+
+static const enum index next_it_subcmd[] = {
+	ITEM_TEMPLATE_CREATE,
+	ITEM_TEMPLATE_DESTROY,
+	ZERO,
+};
+
+static const enum index next_it_attr[] = {
+	ITEM_TEMPLATE_CREATE_ID,
+	ITEM_TEMPLATE_SPEC,
+	ZERO,
+};
+
+static const enum index next_it_destroy_attr[] = {
+	ITEM_TEMPLATE_DESTROY_ID,
+	END,
+	ZERO,
+};
+
+static const enum index next_at_subcmd[] = {
+	ACTION_TEMPLATE_CREATE,
+	ACTION_TEMPLATE_DESTROY,
+	ZERO,
+};
+
+static const enum index next_at_attr[] = {
+	ACTION_TEMPLATE_CREATE_ID,
+	ACTION_TEMPLATE_SPEC,
+	ZERO,
+};
+
+static const enum index next_at_destroy_attr[] = {
+	ACTION_TEMPLATE_DESTROY_ID,
 	END,
 	ZERO,
 };
@@ -1967,6 +2029,13 @@ static int parse_isolate(struct context *, const struct token *,
 static int parse_configure(struct context *, const struct token *,
 			   const char *, unsigned int,
 			   void *, unsigned int);
+static int parse_template(struct context *, const struct token *,
+			  const char *, unsigned int,
+			  void *, unsigned int);
+static int parse_template_destroy(struct context *ctx,
+				  const struct token *token,
+				  const char *str, unsigned int len,
+				  void *buf, unsigned int size);
 static int parse_tunnel(struct context *, const struct token *,
 			const char *, unsigned int,
 			void *, unsigned int);
@@ -2036,6 +2105,10 @@ static int comp_set_modify_field_op(struct context *, const struct token *,
 			      unsigned int, char *, unsigned int);
 static int comp_set_modify_field_id(struct context *, const struct token *,
 			      unsigned int, char *, unsigned int);
+static int comp_item_template_id(struct context *, const struct token *,
+				 unsigned int, char *, unsigned int);
+static int comp_action_template_id(struct context *, const struct token *,
+				   unsigned int, char *, unsigned int);
 
 /** Token definitions. */
 static const struct token token_list[] = {
@@ -2186,6 +2259,20 @@ static const struct token token_list[] = {
 		.call = parse_flex_handle,
 		.comp = comp_none,
 	},
+	[ITEM_TEMPLATE_ID] = {
+		.name = "{item_template_id}",
+		.type = "ITEM_TEMPLATE_ID",
+		.help = "item template id",
+		.call = parse_int,
+		.comp = comp_item_template_id,
+	},
+	[ACTION_TEMPLATE_ID] = {
+		.name = "{action_template_id}",
+		.type = "ACTION_TEMPLATE_ID",
+		.help = "action template id",
+		.call = parse_int,
+		.comp = comp_action_template_id,
+	},
 	/* Top-level command. */
 	[FLOW] = {
 		.name = "flow",
@@ -2193,6 +2280,8 @@ static const struct token token_list[] = {
 		.help = "manage ingress/egress flow rules",
 		.next = NEXT(NEXT_ENTRY
 			     (CONFIGURE,
+			      ITEM_TEMPLATE,
+			      ACTION_TEMPLATE,
 			      INDIRECT_ACTION,
 			      VALIDATE,
 			      CREATE,
@@ -2264,6 +2353,103 @@ static const struct token token_list[] = {
 			     NEXT_ENTRY(UNSIGNED)),
 		.args = ARGS(ARGS_ENTRY(struct buffer,
 					args.configure.queue_attr.size)),
+	},
+	/* Top-level command. */
+	[ITEM_TEMPLATE] = {
+		.name = "item_template",
+		.type = "{command} {port_id} [{arg} [...]]",
+		.help = "manage item templates",
+		.next = NEXT(next_it_subcmd, NEXT_ENTRY(PORT_ID)),
+		.args = ARGS(ARGS_ENTRY(struct buffer, port)),
+		.call = parse_template,
+	},
+	/* Sub-level commands. */
+	[ITEM_TEMPLATE_CREATE] = {
+		.name = "create",
+		.help = "create item template",
+		.next = NEXT(next_it_attr),
+		.call = parse_template,
+	},
+	[ITEM_TEMPLATE_DESTROY] = {
+		.name = "destroy",
+		.help = "destroy item template",
+		.next = NEXT(NEXT_ENTRY(ITEM_TEMPLATE_DESTROY_ID)),
+		.args = ARGS(ARGS_ENTRY(struct buffer, port)),
+		.call = parse_template_destroy,
+	},
+	/* Item arguments. */
+	[ITEM_TEMPLATE_CREATE_ID] = {
+		.name = "item_template_id",
+		.help = "specify a item template id to create",
+		.next = NEXT(next_it_attr,
+			     NEXT_ENTRY(ITEM_TEMPLATE_ID)),
+		.args = ARGS(ARGS_ENTRY(struct buffer, args.vc.it_id)),
+	},
+	[ITEM_TEMPLATE_DESTROY_ID] = {
+		.name = "item_template",
+		.help = "specify an item template id to destroy",
+		.next = NEXT(next_it_destroy_attr,
+			     NEXT_ENTRY(ITEM_TEMPLATE_ID)),
+		.args = ARGS(ARGS_ENTRY_PTR(struct buffer,
+					    args.templ_destroy.template_id)),
+		.call = parse_template_destroy,
+	},
+	[ITEM_TEMPLATE_SPEC] = {
+		.name = "template",
+		.help = "specify item to create item template",
+		.next = NEXT(next_item),
+	},
+	/* Top-level command. */
+	[ACTION_TEMPLATE] = {
+		.name = "action_template",
+		.type = "{command} {port_id} [{arg} [...]]",
+		.help = "manage action templates",
+		.next = NEXT(next_at_subcmd, NEXT_ENTRY(PORT_ID)),
+		.args = ARGS(ARGS_ENTRY(struct buffer, port)),
+		.call = parse_template,
+	},
+	/* Sub-level commands. */
+	[ACTION_TEMPLATE_CREATE] = {
+		.name = "create",
+		.help = "create action template",
+		.next = NEXT(next_at_attr),
+		.call = parse_template,
+	},
+	[ACTION_TEMPLATE_DESTROY] = {
+		.name = "destroy",
+		.help = "destroy action template",
+		.next = NEXT(NEXT_ENTRY(ACTION_TEMPLATE_DESTROY_ID)),
+		.args = ARGS(ARGS_ENTRY(struct buffer, port)),
+		.call = parse_template_destroy,
+	},
+	/* Action  arguments. */
+	[ACTION_TEMPLATE_CREATE_ID] = {
+		.name = "action_template_id",
+		.help = "specify a action template id to create",
+		.next = NEXT(next_at_attr,
+			     NEXT_ENTRY(ACTION_TEMPLATE_ID)),
+		.args = ARGS(ARGS_ENTRY(struct buffer, args.vc.at_id)),
+	},
+	[ACTION_TEMPLATE_DESTROY_ID] = {
+		.name = "action_template",
+		.help = "specify an action template id to destroy",
+		.next = NEXT(next_at_destroy_attr,
+			     NEXT_ENTRY(ACTION_TEMPLATE_ID)),
+		.args = ARGS(ARGS_ENTRY_PTR(struct buffer,
+					    args.templ_destroy.template_id)),
+		.call = parse_template_destroy,
+	},
+	[ACTION_TEMPLATE_SPEC] = {
+		.name = "template",
+		.help = "specify action to create action template",
+		.next = NEXT(next_action),
+		.call = parse_template,
+	},
+	[ACTION_TEMPLATE_MASK] = {
+		.name = "mask",
+		.help = "specify action mask to create action template",
+		.next = NEXT(next_action),
+		.call = parse_template,
 	},
 	/* Top-level command. */
 	[INDIRECT_ACTION] = {
@@ -2586,7 +2772,7 @@ static const struct token token_list[] = {
 		.name = "end",
 		.help = "end list of pattern items",
 		.priv = PRIV_ITEM(END, 0),
-		.next = NEXT(NEXT_ENTRY(ACTIONS)),
+		.next = NEXT(NEXT_ENTRY(ACTIONS, END)),
 		.call = parse_vc,
 	},
 	[ITEM_VOID] = {
@@ -3853,6 +4039,7 @@ static const struct token token_list[] = {
 		.name = "end",
 		.help = "end list of actions",
 		.priv = PRIV_ACTION(END, 0),
+		.next = NEXT(NEXT_ENTRY(ACTION_TEMPLATE_MASK, END)),
 		.call = parse_vc,
 	},
 	[ACTION_VOID] = {
@@ -5537,7 +5724,9 @@ parse_vc(struct context *ctx, const struct token *token,
 	if (!out)
 		return len;
 	if (!out->command) {
-		if (ctx->curr != VALIDATE && ctx->curr != CREATE)
+		if (ctx->curr != VALIDATE && ctx->curr != CREATE &&
+			ctx->curr != ITEM_TEMPLATE_CREATE &&
+			ctx->curr != ACTION_TEMPLATE_CREATE)
 			return -1;
 		if (sizeof(*out) > size)
 			return -1;
@@ -7320,6 +7509,114 @@ parse_configure(struct context *ctx, const struct token *token,
 	return len;
 }
 
+/** Parse tokens for template create command. */
+static int
+parse_template(struct context *ctx, const struct token *token,
+	       const char *str, unsigned int len,
+	       void *buf, unsigned int size)
+{
+	struct buffer *out = buf;
+
+	/* Token name must match. */
+	if (parse_default(ctx, token, str, len, NULL, 0) < 0)
+		return -1;
+	/* Nothing else to do if there is no buffer. */
+	if (!out)
+		return len;
+	if (!out->command) {
+		if (ctx->curr != ITEM_TEMPLATE &&
+		    ctx->curr != ACTION_TEMPLATE)
+			return -1;
+		if (sizeof(*out) > size)
+			return -1;
+		out->command = ctx->curr;
+		ctx->objdata = 0;
+		ctx->object = out;
+		ctx->objmask = NULL;
+		out->args.vc.data = (uint8_t *)out + size;
+		return len;
+	}
+	switch (ctx->curr) {
+	case ITEM_TEMPLATE_CREATE:
+		out->args.vc.pattern =
+			(void *)RTE_ALIGN_CEIL((uintptr_t)(out + 1),
+					       sizeof(double));
+		out->args.vc.it_id = UINT32_MAX;
+		out->command = ctx->curr;
+		ctx->objdata = 0;
+		ctx->object = out;
+		ctx->objmask = NULL;
+		return len;
+	case ACTION_TEMPLATE_CREATE:
+		out->args.vc.at_id = UINT32_MAX;
+		out->command = ctx->curr;
+		ctx->objdata = 0;
+		ctx->object = out;
+		ctx->objmask = NULL;
+		return len;
+	case ACTION_TEMPLATE_SPEC:
+		out->args.vc.actions =
+			(void *)RTE_ALIGN_CEIL((uintptr_t)(out + 1),
+					       sizeof(double));
+		ctx->object = out->args.vc.actions;
+		ctx->objmask = NULL;
+		return len;
+	case ACTION_TEMPLATE_MASK:
+		out->args.vc.masks =
+			(void *)RTE_ALIGN_CEIL((uintptr_t)
+					       (out->args.vc.actions +
+						out->args.vc.actions_n),
+					       sizeof(double));
+		ctx->object = out->args.vc.masks;
+		ctx->objmask = NULL;
+		return len;
+	default:
+		return -1;
+	}
+}
+
+/** Parse tokens for template destroy command. */
+static int
+parse_template_destroy(struct context *ctx, const struct token *token,
+		       const char *str, unsigned int len,
+		       void *buf, unsigned int size)
+{
+	struct buffer *out = buf;
+	uint32_t *template_id;
+
+	/* Token name must match. */
+	if (parse_default(ctx, token, str, len, NULL, 0) < 0)
+		return -1;
+	/* Nothing else to do if there is no buffer. */
+	if (!out)
+		return len;
+	if (!out->command ||
+		out->command == ITEM_TEMPLATE ||
+		out->command == ACTION_TEMPLATE) {
+		if (ctx->curr != ITEM_TEMPLATE_DESTROY &&
+			ctx->curr != ACTION_TEMPLATE_DESTROY)
+			return -1;
+		if (sizeof(*out) > size)
+			return -1;
+		out->command = ctx->curr;
+		ctx->objdata = 0;
+		ctx->object = out;
+		ctx->objmask = NULL;
+		out->args.templ_destroy.template_id =
+			(void *)RTE_ALIGN_CEIL((uintptr_t)(out + 1),
+					       sizeof(double));
+		return len;
+	}
+	template_id = out->args.templ_destroy.template_id
+		    + out->args.templ_destroy.template_id_n++;
+	if ((uint8_t *)template_id > (uint8_t *)out + size)
+		return -1;
+	ctx->objdata = 0;
+	ctx->object = template_id;
+	ctx->objmask = NULL;
+	return len;
+}
+
 static int
 parse_flex(struct context *ctx, const struct token *token,
 	     const char *str, unsigned int len,
@@ -8284,6 +8581,54 @@ comp_set_modify_field_id(struct context *ctx, const struct token *token,
 	return -1;
 }
 
+/** Complete available item template IDs. */
+static int
+comp_item_template_id(struct context *ctx, const struct token *token,
+		      unsigned int ent, char *buf, unsigned int size)
+{
+	unsigned int i = 0;
+	struct rte_port *port;
+	struct port_template *pt;
+
+	(void)token;
+	if (port_id_is_invalid(ctx->port, DISABLED_WARN) ||
+	    ctx->port == (portid_t)RTE_PORT_ALL)
+		return -1;
+	port = &ports[ctx->port];
+	for (pt = port->item_templ_list; pt != NULL; pt = pt->next) {
+		if (buf && i == ent)
+			return snprintf(buf, size, "%u", pt->id);
+		++i;
+	}
+	if (buf)
+		return -1;
+	return i;
+}
+
+/** Complete available iaction template IDs. */
+static int
+comp_action_template_id(struct context *ctx, const struct token *token,
+			unsigned int ent, char *buf, unsigned int size)
+{
+	unsigned int i = 0;
+	struct rte_port *port;
+	struct port_template *pt;
+
+	(void)token;
+	if (port_id_is_invalid(ctx->port, DISABLED_WARN) ||
+	    ctx->port == (portid_t)RTE_PORT_ALL)
+		return -1;
+	port = &ports[ctx->port];
+	for (pt = port->action_templ_list; pt != NULL; pt = pt->next) {
+		if (buf && i == ent)
+			return snprintf(buf, size, "%u", pt->id);
+		++i;
+	}
+	if (buf)
+		return -1;
+	return i;
+}
+
 /** Internal context. */
 static struct context cmd_flow_context;
 
@@ -8546,6 +8891,24 @@ cmd_flow_parsed(const struct buffer *in)
 	case CONFIGURE:
 		port_flow_configure(in->port, &in->args.configure.port_attr,
 			       &in->args.configure.queue_attr);
+		break;
+	case ITEM_TEMPLATE_CREATE:
+		port_flow_item_template_create(in->port, in->args.vc.it_id,
+				in->args.vc.pattern);
+		break;
+	case ITEM_TEMPLATE_DESTROY:
+		port_flow_item_template_destroy(in->port,
+					   in->args.templ_destroy.template_id_n,
+					   in->args.templ_destroy.template_id);
+		break;
+	case ACTION_TEMPLATE_CREATE:
+		port_flow_action_template_create(in->port, in->args.vc.at_id,
+				in->args.vc.actions, in->args.vc.masks);
+		break;
+	case ACTION_TEMPLATE_DESTROY:
+		port_flow_action_template_destroy(in->port,
+					   in->args.templ_destroy.template_id_n,
+					   in->args.templ_destroy.template_id);
 		break;
 	case INDIRECT_ACTION_CREATE:
 		port_action_handle_create(

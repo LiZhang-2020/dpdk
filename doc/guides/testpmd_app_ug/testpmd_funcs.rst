@@ -3307,6 +3307,25 @@ following sections.
        [counters_number {number}] [aging_counters_number {number}]
        [meters_number {number}] [fixed_resource_size {boolean}]
 
+- Create an item template::
+
+   flow item_template {port_id} create [item_template_id {id}]
+       template {item} [/ {item} [...]] / end
+
+- Destroy an item template::
+
+   flow item_template {port_id} destroy item_template {id} [...]
+
+- Create an action template::
+
+   flow action_template {port_id} create [action_template_id {id}]
+       template {action} [/ {action} [...]] / end
+       mask {action} [/ {action} [...]] / end
+
+- Destroy an action template::
+
+   flow action_template {port_id} destroy action_template {id} [...]
+
 - Check whether a flow rule can be created::
 
    flow validate {port_id}
@@ -3411,6 +3430,85 @@ If successful, it will show::
    Configure flows on port #[...]: number of queues #[...] with #[...] elements
 
 Otherwise it will show an error message of the form::
+
+   Caught error type [...] ([...]): [...]
+
+Creating item templates
+~~~~~~~~~~~~~~~~~~~~~~~
+
+``flow item_template create`` creates the specified item template.
+It is bound to ``rte_flow_item_template_create()``::
+
+   flow item_template {port_id} create [item_template_id {id}]
+       template {item} [/ {item} [...]] / end
+
+If successful, it will show::
+
+   Item template #[...] created
+
+Otherwise it will show an error message of the form::
+
+   Caught error type [...] ([...]): [...]
+
+This command uses the same pattern items as ``flow create``,
+their format is described in `Creating flow rules`_.
+
+Destroying item templates
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+``flow item_template destroy`` destroys one or more item templates
+from their template ID (as returned by ``flow item_template create``),
+this command calls ``rte_flow_item_template_destroy()`` as many
+times as necessary::
+
+   flow item_template {port_id} destroy item_template {id} [...]
+
+If successful, it will show::
+
+   Item template #[...] destroyed
+
+It does not report anything for item template IDs that do not exist.
+The usual error message is shown when an item template cannot be destroyed::
+
+   Caught error type [...] ([...]): [...]
+
+Creating action templates
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+``flow action_template create`` creates the specified action template.
+It is bound to ``rte_flow_action_template_create()``::
+
+   flow action_template {port_id} create [action_template_id {id}]
+       template {action} [/ {action} [...]] / end
+       mask {action} [/ {action} [...]] / end
+
+If successful, it will show::
+
+   Action template #[...] created
+
+Otherwise it will show an error message of the form::
+
+   Caught error type [...] ([...]): [...]
+
+This command uses the same actions as ``flow create``,
+their format is described in `Creating flow rules`_.
+
+Destroying action templates
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+``flow action_template destroy`` destroys one or more action templates
+from their template ID (as returned by ``flow action_template create``),
+this command calls ``rte_flow_action_template_destroy()`` as many
+times as necessary::
+
+   flow action_template {port_id} destroy action_template {id} [...]
+
+If successful, it will show::
+
+   Action template #[...] destroyed
+
+It does not report anything for item template IDs that do not exist.
+The usual error message is shown when an item template cannot be destroyed::
 
    Caught error type [...] ([...]): [...]
 
