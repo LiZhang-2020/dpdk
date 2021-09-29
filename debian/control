@@ -46,8 +46,6 @@ Depends: hwdata,
 Recommends: python3-pyelftools,
 Suggests: mlnx-dpdk-doc,
           linux-image-generic,
-Breaks: mlnx-dpdk-dev (<< 18.11),
-Replaces: mlnx-dpdk-dev (<< 18.11),
 Description: Data Plane Development Kit (runtime)
  DPDK is a set of libraries for fast packet processing. Applications run
  in user-space and communicate directly with dedicated network interfaces.
@@ -77,7 +75,8 @@ Section: libdevel
 Architecture: amd64 arm64 armhf i386 ppc64el
 Multi-Arch: same
 Pre-Depends: ${misc:Pre-Depends},
-Depends: libbsd-dev,
+Depends: mlnx-dpdk,
+         libbsd-dev,
          libibverbs-dev,
          libmnl-dev,
          libnuma-dev,

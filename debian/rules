@@ -186,8 +186,8 @@ override_dh_auto_install-arch:
 		debian/mlnx-dpdk.sh.in > debian/tmp/etc/profile.d/mlnx-dpdk-$(DEB_HOST_MULTIARCH).sh
 	dh_auto_install
 	dh_install -p mlnx-dpdk     $(PREFIX)/bin
-	dh_install -p mlnx-dpdk-dev $(PREFIX)/lib/$(DEB_HOST_MULTIARCH)/*.so.*
-	dh_install -p mlnx-dpdk-dev $(PREFIX)/lib/$(DEB_HOST_MULTIARCH)/*/*/*.so.*
+	dh_install -p mlnx-dpdk $(PREFIX)/lib/$(DEB_HOST_MULTIARCH)/*.so.*
+	dh_install -p mlnx-dpdk $(PREFIX)/lib/$(DEB_HOST_MULTIARCH)/*/*/*.so.*
 	dh_install -p mlnx-dpdk-dev $(PREFIX)/lib/$(DEB_HOST_MULTIARCH)/*.so
 	dh_install -p mlnx-dpdk-dev $(PREFIX)/lib/$(DEB_HOST_MULTIARCH)/*/*/*.so
 	dh_install -p mlnx-dpdk-dev $(PREFIX)/lib/$(DEB_HOST_MULTIARCH)/*.a
