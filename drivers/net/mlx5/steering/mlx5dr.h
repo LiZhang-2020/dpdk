@@ -419,4 +419,14 @@ int mlx5dr_send_queue_action(struct mlx5dr_context *ctx,
 			     uint16_t queue_id,
 			     uint32_t actions);
 
+/* Dump HWS info
+ *
+ * @param[in] f
+ *	The file to write the dump to.
+ * @param[in] ctx
+ *	The context which to dump the info from.
+ * @return zero on success non zero otherwise.
+ */
+int mlx5dr_debug_dump(FILE *f, struct mlx5dr_context *ctx);
+
 #endif

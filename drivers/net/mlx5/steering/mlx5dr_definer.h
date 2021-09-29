@@ -5,6 +5,10 @@
 #ifndef MLX5DR_DEFINER_H_
 #define MLX5DR_DEFINER_H_
 
+/* Selectors based on match TAG */
+#define DW_SELECTORS    6
+#define BYTE_SELECTORS  8
+
 struct mlx5_ifc_definer_hl_eth_l2_bits {
 	u8 dmac_47_16[0x20];
 	u8 dmac_15_0[0x10];
@@ -304,6 +308,13 @@ struct mlx5_ifc_header_gtp_psc_bits {
 	u8 flags[0x4];
 	u8 qfi[0x8];
 	u8 reserved2[0x8];
+};
+
+struct mlx5dr_definer {
+	uint8_t dw_selector[DW_SELECTORS];
+	uint8_t byte_selector[BYTE_SELECTORS];
+	uint8_t mask_tag[MLX5DR_MATCH_TAG_SZ];
+	struct mlx5dr_devx_obj *obj;
 };
 
 void mlx5dr_definer_create_tag(const struct rte_flow_item *items,

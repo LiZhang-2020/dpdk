@@ -11,10 +11,6 @@
 #define STE_UDP		0x2
 #define GTP_PDU_SC	0x85
 
-/* Selectors based on match TAG */
-#define DW_SELECTORS	6
-#define BYTE_SELECTORS	8
-
 #define DR_CALC_FNAME(field, inner) \
 	((inner) ? MLX5DR_DEFINER_FNAME_##field##_I : \
 		   MLX5DR_DEFINER_FNAME_##field##_O)
@@ -100,13 +96,6 @@ enum mlx5dr_definer_fname {
 	MLX5DR_DEFINER_FNAME_FLEX_PARSER_6,
 	MLX5DR_DEFINER_FNAME_FLEX_PARSER_7,
 	MLX5DR_DEFINER_FNAME_MAX,
-};
-
-struct mlx5dr_definer {
-	uint8_t dw_selector[DW_SELECTORS];
-	uint8_t byte_selector[BYTE_SELECTORS];
-	uint8_t mask_tag[MLX5DR_MATCH_TAG_SZ];
-	struct mlx5dr_devx_obj *obj;
 };
 
 struct mlx5dr_definer_sel_ctrl {
