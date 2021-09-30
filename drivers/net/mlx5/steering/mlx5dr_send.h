@@ -7,7 +7,6 @@
 
 #define MLX5DR_NUM_SEND_RINGS 1
 
-
 /* WQE Control segment. */
 struct mlx5dr_wqe_ctrl_seg {
         __be32 opmod_idx_opcode;
@@ -33,6 +32,11 @@ enum mlx5dr_wqe_gta_opcode {
 enum mlx5dr_wqe_gta_opmod {
 	MLX5DR_WQE_GTA_OPMOD_STE = 0,
 	MLX5DR_WQE_GTA_OPMOD_MOD_ARG = 1,
+};
+
+enum mlx5dr_wqe_gta_sz {
+	MLX5DR_WQE_SZ_GTA_CTRL = 48,
+	MLX5DR_WQE_SZ_GTA_DATA = 64,
 };
 
 struct mlx5dr_wqe_gta_ctrl_seg {

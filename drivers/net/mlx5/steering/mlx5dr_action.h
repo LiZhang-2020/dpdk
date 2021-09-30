@@ -85,7 +85,9 @@ int mlx5dr_action_get_default_stc(struct mlx5dr_context *ctx,
 void mlx5dr_action_put_default_stc(struct mlx5dr_context *ctx,
 				   uint8_t tbl_type);
 
-int mlx5dr_actions_quick_apply(struct mlx5dr_action_default_stc *default_stc,
+int mlx5dr_actions_quick_apply(struct mlx5dr_send_engine *queue,
+			       struct mlx5dr_rule *rule,
+			       struct mlx5dr_action_default_stc *default_stc,
 			       struct mlx5dr_wqe_gta_ctrl_seg *wqe_ctrl,
 			       struct mlx5dr_wqe_gta_data_seg_ste *wqe_data,
 			       struct mlx5dr_rule_action rule_actions[],

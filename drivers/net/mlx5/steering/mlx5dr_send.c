@@ -25,7 +25,7 @@ int mlx5dr_send_all_dep_wqe(struct mlx5dr_send_engine *queue)
 
 	send_attr.opcode = MLX5DR_WQE_OPCODE_TBL_ACCESS;
 	send_attr.opmod = MLX5DR_WQE_GTA_OPMOD_STE;
-	send_attr.len = 48 + 64;
+	send_attr.len = MLX5DR_WQE_SZ_GTA_CTRL + MLX5DR_WQE_SZ_GTA_DATA;
 	/* Fence first from previous depend WQEs  */
 	send_attr.fence = 1;
 

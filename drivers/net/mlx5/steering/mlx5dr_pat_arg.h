@@ -48,4 +48,11 @@ int mlx5dr_pat_arg_create_modify_header(struct mlx5dr_context *ctx,
 
 void mlx5dr_pat_arg_destroy_modify_header(struct mlx5dr_context *ctx,
 					  struct mlx5dr_action *action);
+
+void mlx5dr_arg_write(struct mlx5dr_send_engine *queue,
+		      struct mlx5dr_rule *rule,
+		      uint32_t arg_idx,
+		      uint8_t *arg_data,
+		      uint16_t num_of_actions);
+
 #endif

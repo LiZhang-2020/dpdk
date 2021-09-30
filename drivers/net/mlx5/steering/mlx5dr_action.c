@@ -777,7 +777,9 @@ void mlx5dr_action_put_default_stc(struct mlx5dr_context *ctx,
 	pthread_spin_unlock(&ctx->ctrl_lock);
 }
 
-int mlx5dr_actions_quick_apply(struct mlx5dr_action_default_stc *default_stc,
+int mlx5dr_actions_quick_apply(struct mlx5dr_send_engine *queue,
+			       struct mlx5dr_rule *rule,
+			       struct mlx5dr_action_default_stc *default_stc,
 			       struct mlx5dr_wqe_gta_ctrl_seg *wqe_ctrl,
 			       struct mlx5dr_wqe_gta_data_seg_ste *wqe_data,
 			       struct mlx5dr_rule_action rule_actions[],
@@ -808,6 +810,7 @@ int mlx5dr_actions_quick_apply(struct mlx5dr_action_default_stc *default_stc,
 	 * - One single action, one double action and jump
 	 */
 	for (i = 0; i < num_actions; i++) {
+		uint32_t arg_idx;
 		uint8_t arg_sz;
 
 		action = rule_actions[i].action;
@@ -847,9 +850,16 @@ int mlx5dr_actions_quick_apply(struct mlx5dr_action_default_stc *default_stc,
 			break;
 		case MLX5DR_ACTION_TYP_MODIFY_HDR:
 			arg_sz = 1 << mlx5dr_arg_get_arg_log_size(action->modify_header.num_of_actions);
-			raw_wqe[MLX5DR_ACTION_OFFSET_DW6] = htobe32(rule_actions[i].modify_header.offset * arg_sz);
+			/* Argument base + offset based on number of actions */
+			arg_idx = action->modify_header.arg_obj->id;
+			arg_idx += rule_actions[i].modify_header.offset * arg_sz;
+			raw_wqe[MLX5DR_ACTION_OFFSET_DW6] = htobe32(arg_idx);
 			wqe_ctrl->stc_ix[MLX5DR_ACTION_STC_IDX_DOUBLE] = htobe32(stc_idx);
-			// TODO mlx5dr_action_send_arg(queue, data, data_sz, arg_idx);
+
+			if (!(action->flags & MLX5DR_ACTION_FLAG_INLINE))
+				mlx5dr_arg_write(queue, rule, arg_idx,
+						 rule_actions[i].modify_header.data,
+						 action->modify_header.num_of_actions);
 			break;
 		case MLX5DR_ACTION_TYP_DROP:
 		case MLX5DR_ACTION_TYP_FT:
