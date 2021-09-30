@@ -83,6 +83,8 @@ Depends: mlnx-dpdk,
          libpcap-dev,
          libssl-dev,
          zlib1g-dev,
+	 libelf-dev,
+	 libjansson-dev,
          ${misc:Depends},
 Description: Data Plane Development Kit (basic development files)
  DPDK is a set of libraries for fast packet processing. Applications run
