@@ -390,7 +390,7 @@ mlx5dr_definer_conv_item_tcp(struct mlx5dr_definer_conv_data *cd,
 		return rte_errno;
 	}
 
-	/* Set match on L4 type TCP */
+	/* Overwrite match on L4 type TCP */
 	fc = &cd->fc[DR_CALC_FNAME(IP_PROTOCOL, inner)];
 	fc->item_idx = item_idx;
 	fc->tag_set = &mlx5dr_definer_tcp_protocol_set;
