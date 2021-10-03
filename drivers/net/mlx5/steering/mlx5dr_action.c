@@ -146,6 +146,13 @@ static void mlx5dr_action_fill_stc_attr(struct mlx5dr_action *action,
 		attr->action_offset = MLX5DR_ACTION_OFFSET_HIT;
 		attr->dest_table_id = obj->id;
 		break;
+	case MLX5DR_ACTION_TYP_TNL_L2_TO_L2:
+		attr->action_type = MLX5_IFC_STC_ACTION_TYPE_HEADER_REMOVE;
+		attr->action_offset = MLX5DR_ACTION_OFFSET_DW5;
+		attr->remove_header.decap = 1;
+		attr->remove_header.start_anchor = MLX5_HEADER_START_OF_PACKET;
+		attr->remove_header.end_anchor = MLX5_HEADER_ANCHOR_INNER_MAC;
+		break;
 	default:
 		DRV_LOG(ERR, "Invalid action type %d", action->type);
 		assert(false);
@@ -514,6 +521,24 @@ mlx5dr_action_create_reformat_root(struct mlx5dr_action *action,
 	return 0;
 }
 
+static int
+mlx5dr_action_create_reformat_hws(struct mlx5dr_action *action)
+{
+	int ret = ENOTSUP;
+
+	switch (action->type) {
+	case MLX5DR_ACTION_TYP_TNL_L2_TO_L2:
+		ret = mlx5dr_action_create_stcs(action, NULL);
+		break;
+	default:
+		assert(false);
+		rte_errno = ENOTSUP;
+		return rte_errno;
+	}
+
+	return ret;
+}
+
 struct mlx5dr_action *
 mlx5dr_action_create_reformat(struct mlx5dr_context *ctx,
 			      enum mlx5dr_action_reformat_type reformat_type,
@@ -534,13 +559,6 @@ mlx5dr_action_create_reformat(struct mlx5dr_context *ctx,
 	if (!action)
 		return NULL;
 
-	if (mlx5dr_action_is_hws_flags(flags)) {
-		// TODO support reformat on HWS
-		DRV_LOG(ERR, "reformat not supported on HWS yet");
-		rte_errno = ENOTSUP;
-		return NULL;
-	}
-
 	if (mlx5dr_action_is_root_flags(flags)) {
 		if (bulk_size) {
 			DRV_LOG(ERR, "Bulk reformat not supported over root");
@@ -551,6 +569,22 @@ mlx5dr_action_create_reformat(struct mlx5dr_context *ctx,
 		ret = mlx5dr_action_create_reformat_root(action, data_sz, data);
 		if (ret)
 			goto free_action;
+
+		return action;
+	}
+
+	if (!mlx5dr_action_is_hws_flags(flags)) {
+		DRV_LOG(ERR, "reformat flags don't fit hws (flags: %x0x)\n",
+			flags);
+		rte_errno = EINVAL;
+		goto free_action;
+	}
+
+	ret = mlx5dr_action_create_reformat_hws(action);
+	if (ret) {
+		DRV_LOG(ERR, "Failed to create reformat.\n");
+		rte_errno = EINVAL;
+		goto free_action;
 	}
 
 	return action;
@@ -645,6 +679,7 @@ static void mlx5dr_action_destroy_hws(struct mlx5dr_action *action)
 	case MLX5DR_ACTION_TYP_TAG:
 	case MLX5DR_ACTION_TYP_DROP:
 	case MLX5DR_ACTION_TYP_QP:
+	case MLX5DR_ACTION_TYP_TNL_L2_TO_L2:
 		mlx5dr_action_destroy_stcs(action);
 		break;
 	case MLX5DR_ACTION_TYP_MODIFY_HDR:

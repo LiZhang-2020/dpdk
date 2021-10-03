@@ -649,6 +649,8 @@ enum {
 	MLX5_MODIFICATION_TYPE_SET = 0x1,
 	MLX5_MODIFICATION_TYPE_ADD = 0x2,
 	MLX5_MODIFICATION_TYPE_COPY = 0x3,
+	MLX5_MODIFICATION_TYPE_INSERT = 0x4,
+	MLX5_MODIFICATION_TYPE_REMOVE = 0x5,
 };
 
 /* The field of packet to be modified. */
@@ -2951,6 +2953,7 @@ struct mlx5_ifc_rtc_bits {
 
 enum mlx5_ifc_stc_action_type {
 	MLX5_IFC_STC_ACTION_TYPE_NOP = 0x00,
+	MLX5_IFC_STC_ACTION_TYPE_HEADER_REMOVE = 0x09,
 	MLX5_IFC_STC_ACTION_TYPE_TAG = 0x0c,
 	MLX5_IFC_STC_ACTION_TYPE_ACC_MODIFY_LIST = 0x0e,
 	MLX5_IFC_STC_ACTION_TYPE_COUNTER = 0x14,
@@ -2987,12 +2990,28 @@ struct mlx5_ifc_stc_ste_param_header_modify_list_bits {
 	u8 header_modify_argument_id[0x20];
 };
 
+enum mlx5_ifc_header_anchors {
+	MLX5_HEADER_START_OF_PACKET = 0x0,
+	MLX5_HEADER_ANCHOR_INNER_MAC = 0x13,
+};
+
+struct mlx5_ifc_stc_ste_param_remove_bits {
+	u8 action_type[0x4];
+	u8 decap[0x1];
+	u8 reserved_at_5[0x5];
+	u8 remove_start_anchor[0x6];
+	u8 reserved_at_10[0x2];
+	u8 remove_end_anchor[0x6];
+	u8 reserved_at_18[0x8];
+};
+
 union mlx5_ifc_stc_param_bits {
 	struct mlx5_ifc_stc_ste_param_ste_table_bits ste_table;
 	struct mlx5_ifc_stc_ste_param_tir_bits tir;
 	struct mlx5_ifc_stc_ste_param_table_bits table;
 	struct mlx5_ifc_stc_ste_param_flow_counter_bits counter;
 	struct mlx5_ifc_stc_ste_param_header_modify_list_bits modify_header;
+	struct mlx5_ifc_stc_ste_param_remove_bits remove_header;
 	u8 reserved_at_0[0x80];
 };
 

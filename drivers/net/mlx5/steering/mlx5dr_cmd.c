@@ -188,6 +188,16 @@ mlx5dr_cmd_stc_modify_set_stc_param(struct mlx5dr_cmd_stc_modify_attr *stc_attr,
 		MLX5_SET(stc_ste_param_header_modify_list, stc_parm,
 			 header_modify_argument_id, stc_attr->modify_header.arg_id);
 		break;
+	case MLX5_IFC_STC_ACTION_TYPE_HEADER_REMOVE:
+		MLX5_SET(stc_ste_param_remove, stc_parm, action_type,
+			 MLX5_MODIFICATION_TYPE_REMOVE);
+		MLX5_SET(stc_ste_param_remove, stc_parm, decap,
+			 stc_attr->remove_header.decap);
+		MLX5_SET(stc_ste_param_remove, stc_parm, remove_start_anchor,
+			 stc_attr->remove_header.start_anchor);
+		MLX5_SET(stc_ste_param_remove, stc_parm, remove_end_anchor,
+			 stc_attr->remove_header.end_anchor);
+		break;
 	case MLX5_IFC_STC_ACTION_TYPE_DROP:
 	case MLX5_IFC_STC_ACTION_TYPE_NOP:
 	case MLX5_IFC_STC_ACTION_TYPE_TAG:
@@ -216,7 +226,8 @@ mlx5dr_cmd_stc_modify(struct mlx5dr_devx_obj *devx_obj,
 	if (stc_attr->action_type != MLX5_IFC_STC_ACTION_TYPE_DROP &&
 	    stc_attr->action_type != MLX5_IFC_STC_ACTION_TYPE_NOP &&
 	    stc_attr->action_type != MLX5_IFC_STC_ACTION_TYPE_ALLOW &&
-	    stc_attr->action_type != MLX5_IFC_STC_ACTION_TYPE_JUMP_TO_TIR) {
+	    stc_attr->action_type != MLX5_IFC_STC_ACTION_TYPE_JUMP_TO_TIR &&
+	    stc_attr->action_type != MLX5_IFC_STC_ACTION_TYPE_HEADER_REMOVE) {
 		DRV_LOG(ERR, "TODO FYI - ignoring action STC!");
 		stc_attr->action_type = MLX5_IFC_STC_ACTION_TYPE_NOP;
 		stc_attr->action_offset = 0;

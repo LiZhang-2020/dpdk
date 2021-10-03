@@ -44,6 +44,11 @@ struct mlx5dr_cmd_stc_modify_attr {
 	union {
 		uint32_t id; /* TIRN, TAG, FT ID, STE ID */
 		struct {
+			uint8_t decap;
+			uint16_t start_anchor;
+			uint16_t end_anchor;
+		} remove_header;
+		struct {
 			uint32_t arg_id;
 			uint32_t pattern_id;
 		} modify_header;
