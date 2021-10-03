@@ -361,6 +361,8 @@ int mlx5dr_pat_arg_create_modify_header(struct mlx5dr_context *ctx,
 		return rte_errno;
 	}
 
+	action->modify_header.num_of_actions = num_of_actions;
+
 	ret = mlx5dr_arg_create_modify_header_arg(ctx, action,
 						  num_of_actions,
 						  pattern,
