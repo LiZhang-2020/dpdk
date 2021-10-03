@@ -241,6 +241,7 @@ mlx5dr_cmd_stc_modify(struct mlx5dr_devx_obj *devx_obj,
 
 	/* TODO Current support is DROP, NOP, TIR, Allow others will be NOP */
 	if (stc_attr->action_type != MLX5_IFC_STC_ACTION_TYPE_DROP &&
+	    stc_attr->action_type != MLX5_IFC_STC_ACTION_TYPE_ACC_MODIFY_LIST &&
 	    stc_attr->action_type != MLX5_IFC_STC_ACTION_TYPE_NOP &&
 	    stc_attr->action_type != MLX5_IFC_STC_ACTION_TYPE_ALLOW &&
 	    stc_attr->action_type != MLX5_IFC_STC_ACTION_TYPE_JUMP_TO_TIR &&
@@ -550,25 +551,25 @@ int mlx5dr_cmd_query_caps(struct ibv_context *ctx,
 
 	if (caps->flex_protocols & MLX5_HCA_FLEX_GTPU_DW_0_ENABLED)
 		caps->flex_parser_id_gtpu_dw_0 =
-			DEVX_GET(query_hca_cap_out,
+			MLX5_GET(query_hca_cap_out,
 				 out,
 				 capability.cmd_hca_cap.flex_parser_id_gtpu_dw_0);
 
 	if (caps->flex_protocols & MLX5_HCA_FLEX_GTPU_TEID_ENABLED)
 		caps->flex_parser_id_gtpu_teid =
-			DEVX_GET(query_hca_cap_out,
+			MLX5_GET(query_hca_cap_out,
 				 out,
 				 capability.cmd_hca_cap.flex_parser_id_gtpu_teid);
 
 	if (caps->flex_protocols & MLX5_HCA_FLEX_GTPU_DW_2_ENABLED)
 		caps->flex_parser_id_gtpu_dw_2 =
-			DEVX_GET(query_hca_cap_out,
+			MLX5_GET(query_hca_cap_out,
 				 out,
 				 capability.cmd_hca_cap.flex_parser_id_gtpu_dw_2);
 
 	if (caps->flex_protocols & MLX5_HCA_FLEX_GTPU_FIRST_EXT_DW_0_ENABLED)
 		caps->flex_parser_id_gtpu_first_ext_dw_0 =
-			DEVX_GET(query_hca_cap_out,
+			MLX5_GET(query_hca_cap_out,
 				 out,
 				 capability.cmd_hca_cap.flex_parser_id_gtpu_first_ext_dw_0);
 

@@ -11,7 +11,7 @@ static int mlx5dr_matcher_create_end_ft(struct mlx5dr_matcher *matcher)
 
 	ft_attr.type = tbl->fw_ft_type;
 	ft_attr.wqe_based_flow_update = true;
-	ft_attr.level = MLX5DR_DEFAULT_LEVEL;
+	ft_attr.level = tbl->ctx->caps->nic_ft.max_level - 1;
 	// TODO Need to support default miss behaviour for FDB
 
 	matcher->end_ft = mlx5dr_cmd_flow_table_create(tbl->ctx->ibv_ctx, &ft_attr);

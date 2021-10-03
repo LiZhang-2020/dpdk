@@ -6,7 +6,6 @@
 #define MLX5DR_TABLE_H_
 
 #define MLX5DR_ROOT_LEVEL 0
-#define MLX5DR_DEFAULT_LEVEL 0xdc
 
 struct mlx5dr_table {
 	struct mlx5dr_context *ctx;
