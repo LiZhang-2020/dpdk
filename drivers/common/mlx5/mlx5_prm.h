@@ -1266,6 +1266,7 @@ enum {
 	MLX5_GET_HCA_CAP_OP_MOD_ROCE = 0x4 << 1,
 	MLX5_GET_HCA_CAP_OP_MOD_NIC_FLOW_TABLE = 0x7 << 1,
 	MLX5_GET_HCA_CAP_OP_MOD_VDPA_EMULATION = 0x13 << 1,
+	MLX5_GET_HCA_CAP_OP_MOD_WQE_BASED_FLOW_TABLE = 0x1B << 1,
 	MLX5_GET_HCA_CAP_OP_MOD_PARSE_GRAPH_NODE_CAP = 0x1C << 1,
 	MLX5_GET_HCA_CAP_OP_MOD_GENERAL_DEVICE_2 = 0x20 << 1,
 };
@@ -1483,7 +1484,8 @@ struct mlx5_ifc_cmd_hca_cap_bits {
 	u8 wol_u[0x1];
 	u8 wol_p[0x1];
 	u8 stat_rate_support[0x10];
-	u8 reserved_at_1f0[0xc];
+	u8 reserved_at_1ef[0xb];
+	u8 wqe_based_flow_table_update_cap[0x1];
 	u8 cqe_version[0x4];
 	u8 compact_address_vector[0x1];
 	u8 striding_rq[0x1];
@@ -1874,7 +1876,9 @@ struct mlx5_ifc_flow_table_prop_layout_bits {
 	u8 log_max_ft_sampler_num[8];
 	u8 metadata_reg_b_width[0x8];
 	u8 metadata_reg_a_width[0x8];
-	u8 reserved_at_60[0x18];
+	u8 reserved_at_60[0xa];
+	u8 reparse[0x1];
+	u8 reserved_at_6b[0xd];
 	u8 log_max_ft_num[0x8];
 	u8 reserved_at_80[0x10];
 	u8 log_max_flow_counter[0x8];
@@ -1962,6 +1966,37 @@ struct mlx5_ifc_cmd_hca_cap_2_bits {
 	u8 reserved_at_100[0x700];
 };
 
+struct mlx5_ifc_wqe_based_flow_table_cap_bits {
+	u8 reserved_at_0[0x3];
+	u8 log_max_num_ste[0x5];
+	u8 reserved_at_8[0x3];
+	u8 log_max_num_stc[0x5];
+	u8 reserved_at_10[0x3];
+	u8 log_max_num_rtc[0x5];
+	u8 reserved_at_18[0x3];
+	u8 log_max_num_header_modify_pattern[0x5];
+	u8 reserved_at_20[0x3];
+	u8 stc_alloc_log_granularity[0x5];
+	u8 reserved_at_28[0x3];
+	u8 stc_alloc_log_max[0x5];
+	u8 reserved_at_30[0x3];
+	u8 ste_alloc_log_granularity[0x5];
+	u8 reserved_at_38[0x3];
+	u8 ste_alloc_log_max[0x5];
+	u8 reserved_at_40[0xb];
+	u8 rtc_reparse_mode[0x5];
+	u8 reserved_at_50[0x3];
+	u8 rtc_index_mode[0x5];
+	u8 reserved_at_58[0x3];
+	u8 rtc_log_depth_max[0x5];
+	u8 reserved_at_60[0x10];
+	u8 ste_format[0x10];
+	u8 stc_action_type[0x20];
+	u8 header_insert_type[0x10];
+	u8 header_remove_type[0x10];
+	u8 trivial_match_definer[0x20];
+};
+
 union mlx5_ifc_hca_cap_union_bits {
 	struct mlx5_ifc_cmd_hca_cap_bits cmd_hca_cap;
 	struct mlx5_ifc_per_protocol_networking_offload_caps_bits
@@ -1970,6 +2005,7 @@ union mlx5_ifc_hca_cap_union_bits {
 	struct mlx5_ifc_virtio_emulation_cap_bits vdpa_caps;
 	struct mlx5_ifc_flow_table_nic_cap_bits flow_table_nic_cap;
 	struct mlx5_ifc_roce_caps_bits roce_caps;
+	struct mlx5_ifc_wqe_based_flow_table_cap_bits wqe_based_flow_table_cap;
 	u8 reserved_at_0[0x8000];
 };
 
