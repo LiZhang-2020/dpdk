@@ -176,6 +176,7 @@ struct rte_flow_ops {
 	int (*configure)
 		(struct rte_eth_dev *dev,
 		 const struct rte_flow_port_attr *port_attr,
+		 const struct rte_flow_queue_attr *queue_attr[],
 		 struct rte_flow_error *err);
 	/** See rte_flow_item_template_create() */
 	struct rte_flow_item_template *(*item_template_create)
@@ -214,6 +215,66 @@ struct rte_flow_ops {
 		(struct rte_eth_dev *dev,
 		 struct rte_flow_table *table,
 		 struct rte_flow_error *err);
+	/** See rte_flow_q_flow_create() */
+	struct rte_flow *(*q_flow_create)
+		(struct rte_eth_dev *dev,
+		 uint32_t queue_id,
+		 const struct rte_flow_q_ops_attr *q_ops_attr,
+		 struct rte_flow_table *table,
+		 const struct rte_flow_item items[],
+		 uint8_t item_template_index,
+		 const struct rte_flow_action actions[],
+		 uint8_t action_template_index,
+		 struct rte_flow_error *err);
+	/** See rte_flow_q_flow_destroy() */
+	int (*q_flow_destroy)
+		(struct rte_eth_dev *dev,
+		 uint32_t queue_id,
+		 const struct rte_flow_q_ops_attr *q_ops_attr,
+		 struct rte_flow *flow,
+		 struct rte_flow_error *err);
+	/** See rte_flow_q_flow_update() */
+	int (*q_flow_update)
+		(struct rte_eth_dev *dev,
+		 uint32_t queue_id,
+		 const struct rte_flow_q_ops_attr *q_ops_attr,
+		 struct rte_flow *flow,
+		 struct rte_flow_error *err);
+	/** See rte_flow_q_action_handle_create() */
+	struct rte_flow_action_handle *(*q_action_handle_create)
+		(struct rte_eth_dev *dev,
+		 uint32_t queue_id,
+		 const struct rte_flow_q_ops_attr *q_ops_attr,
+		 const struct rte_flow_indir_action_conf *indir_action_conf,
+		 const struct rte_flow_action *action,
+		 struct rte_flow_error *err);
+	/** See rte_flow_q_action_handle_destroy() */
+	int (*q_action_handle_destroy)
+		(struct rte_eth_dev *dev,
+		 uint32_t queue_id,
+		 const struct rte_flow_q_ops_attr *q_ops_attr,
+		 struct rte_flow_action_handle *action_handle,
+		 struct rte_flow_error *error);
+	/** See rte_flow_q_action_handle_update() */
+	int (*q_action_handle_update)
+		(struct rte_eth_dev *dev,
+		 uint32_t queue_id,
+		 const struct rte_flow_q_ops_attr *q_ops_attr,
+		 struct rte_flow_action_handle *action_handle,
+		 const void *update,
+		 struct rte_flow_error *error);
+	/** See rte_flow_q_drain() */
+	int (*q_drain)
+		(struct rte_eth_dev *dev,
+		 uint32_t queue_id,
+		 struct rte_flow_error *err);
+	/** See rte_flow_q_dequeue() */
+	int (*q_dequeue)
+		(struct rte_eth_dev *dev,
+		 uint32_t queue_id,
+		 struct rte_flow_q_op_res res[],
+		 uint16_t n_res,
+		 struct rte_flow_error *error);
 };
 
 /**

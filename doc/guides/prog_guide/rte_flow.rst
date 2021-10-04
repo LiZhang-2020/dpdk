@@ -92,6 +92,14 @@ To avoid resource leaks on the PMD side, handles must be explicitly
 destroyed by the application before releasing associated resources such as
 queues and ports.
 
+Flow rules creation/destruction can be done by using lockless flow queues.
+An application configures number of queues during the initialization stage.
+Then create/destroy operations are enqueued without any locks asynchronously.
+By adopting an asynchronous queue-based approach, the packet processing can
+continue with handling next packets while inserting/destruction a flow rule
+is processed inside the hardware. The application is expected to poll for
+results later to see if the flow rule is successfully inserted/destroyed.
+
 The following sections cover:
 
 - **Attributes** (represented by ``struct rte_flow_attr``): properties of a
@@ -3250,6 +3258,70 @@ Return values:
 
 - 0 on success, a negative errno value otherwise and ``rte_errno`` is set.
 
+Enqueue creation operation
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Enqueueing a flow rule creation operation is similar to simpe creation.
+
+.. code-block:: c
+
+	struct rte_flow *
+	rte_flow_q_flow_create(uint16_t port_id,
+				uint32_t queue_id,
+				const struct rte_flow_q_ops_attr *q_ops_attr,
+				struct rte_flow_table *table,
+				const struct rte_flow_item items[],
+				uint8_t item_template_index,
+				const struct rte_flow_action actions[],
+				uint8_t action_template_index,
+				struct rte_flow_error *error);
+
+Enqueue destruction operation
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Enqueueing a flow rule destruction operation is similar to simpe destruction.
+
+.. code-block:: c
+
+	int
+	rte_flow_q_flow_destroy(uint16_t port_id,
+				uint32_t queue_id,
+				const struct rte_flow_q_ops_attr *q_ops_attr,
+				struct rte_flow *flow,
+				struct rte_flow_error *error);
+
+Queue drain
+~~~~~~~~~~~
+
+Function to drain the queue and push all internally stored rules to the HW.
+
+.. code-block:: c
+
+	int
+	rte_flow_q_drain(uint16_t port_id,
+			uint32_t queue_id,
+			struct rte_flow_error *error);
+
+In the unlikely event of failure, handles are still considered destroyed and
+no longer valid but the port must be assumed to be in an inconsistent state.
+
+Dequeue
+~~~~~~~
+
+Dequeue a rte flow operation.
+
+The application must invoke this function in order to complete the flow rule
+offloading and to receive the flow rule operation status.
+
+.. code-block:: c
+
+	int
+	rte_flow_q_dequeue(uint16_t port_id,
+			uint32_t queue_id,
+			struct rte_flow_q_op_res res[],
+			uint16_t n_res,
+			struct rte_flow_error *error);
+
 Pre-configuration hints
 -----------------------
 
@@ -3288,6 +3360,7 @@ Allows to pre-allocate all the needed resources beforehand.
    int
    rte_flow_configure(uint16_t port_id,
                      const struct rte_flow_port_attr *port_attr,
+                     const struct rte_flow_queue_attr *queue_attr[],
                      struct rte_flow_error *error);
 
 Flow table
