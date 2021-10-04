@@ -10,6 +10,8 @@ mlx5dr_send_add_new_dep_wqe(struct mlx5dr_send_engine *queue)
 	struct mlx5dr_send_ring_sq *send_sq = &queue->send_ring->send_sq;
 	unsigned idx = send_sq->head_dep_idx++ & (queue->num_entries - 1);
 
+	memset(&send_sq->dep_wqe[idx].wqe_data, 0, MLX5DR_WQE_SZ_GTA_DATA);
+
 	return &send_sq->dep_wqe[idx];
 }
 

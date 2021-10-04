@@ -66,9 +66,9 @@ static int mlx5dr_rule_create_hws(struct mlx5dr_rule *rule,
 	mlx5dr_definer_create_tag(items,
 				  matcher->mt[mt_idx]->fc,
 				  matcher->mt[mt_idx]->fc_sz,
-				  (uint8_t *)rule->match_tag);
+				  (uint8_t *)dep_wqe->wqe_data.tag);
 
-	memcpy(dep_wqe->wqe_data.tag, rule->match_tag, MLX5DR_MATCH_TAG_SZ);
+	memcpy(rule->match_tag, dep_wqe->wqe_data.tag, MLX5DR_MATCH_TAG_SZ);
 
 	/* Send dependent WQE */
 	if (!attr->burst)
