@@ -1286,6 +1286,12 @@ enum {
 			(1ULL << MLX5_GENERAL_OBJ_TYPE_CONN_TRACK_OFFLOAD)
 #define MLX5_GENERAL_OBJ_TYPES_CAP_RTC \
 			(1ULL << MLX5_GENERAL_OBJ_TYPE_RTC)
+#define MLX5_GENERAL_OBJ_TYPES_CAP_STC \
+			(1ULL << MLX5_GENERAL_OBJ_TYPE_STC)
+#define MLX5_GENERAL_OBJ_TYPES_CAP_STE \
+			(1ULL << MLX5_GENERAL_OBJ_TYPE_STE)
+#define MLX5_GENERAL_OBJ_TYPES_CAP_DEFINER \
+			(1ULL << MLX5_GENERAL_OBJ_TYPE_DEFINER)
 #define MLX5_GENERAL_OBJ_TYPES_CAP_DEK \
 			(1ULL << MLX5_GENERAL_OBJ_TYPE_DEK)
 #define MLX5_GENERAL_OBJ_TYPES_CAP_IMPORT_KEK \
@@ -2814,6 +2820,9 @@ enum {
 	MLX5_GENERAL_OBJ_TYPE_STC = 0x0024, // TODO PRM valex value not from PRM and already taken
 	MLX5_GENERAL_OBJ_TYPE_STE = 0x0025, // TODO PRM valex value not from PRM and already taken
 	MLX5_GENERAL_OBJ_TYPE_RTC = 0x0026, // TODO PRM valex value not from PRM and already taken
+//	MLX5_GENERAL_OBJ_TYPE_STC = 0x0040,
+//	MLX5_GENERAL_OBJ_TYPE_RTC = 0x0041,
+//	MLX5_GENERAL_OBJ_TYPE_STE = 0x0042,
 	MLX5_GENERAL_OBJ_TYPE_MODIFY_HEADER_PATTERN = 0x0043,
 };
 
@@ -2868,6 +2877,8 @@ struct mlx5_ifc_geneve_tlv_option_bits {
 enum mlx5_ifc_rtc_update_mode {
 	MLX5_IFC_RTC_STE_UPDATE_MODE_BY_HASH = 0x1,
 	MLX5_IFC_RTC_STE_UPDATE_MODE_BY_OFFSET = 0x2,
+//	MLX5_IFC_RTC_STE_UPDATE_MODE_BY_HASH = 0x0,
+//	MLX5_IFC_RTC_STE_UPDATE_MODE_BY_OFFSET = 0x1,
 };
 
 enum mlx5_ifc_rtc_ste_format {
@@ -2875,14 +2886,20 @@ enum mlx5_ifc_rtc_ste_format {
 	MLX5_IFC_RTC_STE_FORMAT_11DW = 0x5,
 };
 
+enum mlx5_ifc_rtc_reparse_mode {
+	MLX5_IFC_RTC_REPARSE_NEVER = 0x0,
+	MLX5_IFC_RTC_REPARSE_ALWAYS = 0x1,
+};
+
 struct mlx5_ifc_rtc_bits {
 	u8 modify_field_select[0x40];
 	u8 reserved_at_40[0x40];
 	u8 update_index_mode[0x2];
-	u8 reserved_at_82[0x6];
+	u8 reparse_mode[0x2];
+	u8 reserved_at_84[0x4];
 	u8 pd[0x18];
-	u8 reserved_at_a0[0x10];
-	u8 log_depth[0x8];
+	u8 reserved_at_a0[0x13];
+	u8 log_depth[0x5];
 	u8 log_hash_size[0x8];
 	u8 ste_format[0x8];
 	u8 table_type[0x8];
