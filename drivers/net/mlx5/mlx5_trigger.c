@@ -106,6 +106,64 @@ error:
 }
 
 /**
+ * Translate the chunk address to MR key in order to put in into the cache.
+ */
+static void
+mlx5_rxq_mempool_register_cb(struct rte_mempool *mp, void *opaque,
+			     struct rte_mempool_memhdr *memhdr,
+			     unsigned int idx)
+{
+	struct mlx5_rxq_data *rxq = opaque;
+
+	RTE_SET_USED(mp);
+	RTE_SET_USED(idx);
+	mlx5_rx_addr2mr(rxq, (uintptr_t)memhdr->addr);
+}
+
+/**
+ * Register Rx queue mempools and fill the Rx queue cache.
+ * This function tolerates repeated mempool registration.
+ *
+ * @param[in] rxq_ctrl
+ *   Rx queue control data.
+ *
+ * @return
+ *   0 on success, (-1) on failure and rte_errno is set.
+ */
+static int
+mlx5_rxq_mempool_register(struct rte_eth_dev *dev,
+			  struct mlx5_rxq_ctrl *rxq_ctrl)
+{
+	struct mlx5_priv *priv = dev->data->dev_private;
+	struct rte_mempool *mp;
+	uint32_t s;
+	int ret = 0;
+
+	mlx5_mr_flush_local_cache(&rxq_ctrl->rxq.mr_ctrl);
+	/* MPRQ mempool is registered on creation, just fill the cache. */
+	if (mlx5_rxq_mprq_enabled(&rxq_ctrl->rxq)) {
+		rte_mempool_mem_iter(rxq_ctrl->rxq.mprq_mp,
+				     mlx5_rxq_mempool_register_cb,
+				     &rxq_ctrl->rxq);
+		return 0;
+	}
+	for (s = 0; s < rxq_ctrl->rxq.rxseg_n; s++) {
+		uint32_t flags;
+
+		mp = rxq_ctrl->rxq.rxseg[s].mp;
+		flags = rte_pktmbuf_priv_flags(mp);
+		ret = mlx5_mr_mempool_register(&priv->sh->share_cache,
+					       priv->sh->pd, mp, &priv->mp_id);
+		if (ret < 0 && rte_errno != EEXIST)
+			return ret;
+		if ((flags & RTE_PKTMBUF_POOL_F_PINNED_EXT_BUF) == 0)
+			rte_mempool_mem_iter(mp, mlx5_rxq_mempool_register_cb,
+					&rxq_ctrl->rxq);
+	}
+	return 0;
+}
+
+/**
  * Stop traffic on Rx queues.
  *
  * @param dev
@@ -128,20 +186,18 @@ mlx5_rxq_ctrl_prepare(struct rte_eth_dev *dev, struct mlx5_rxq_ctrl *rxq_ctrl,
 	int ret = 0;
 
 	if (rxq_ctrl->type == MLX5_RXQ_TYPE_STANDARD) {
-		if (mlx5_rxq_mprq_enabled(&rxq_ctrl->rxq)) {
-			/* Allocate/reuse/resize mempool for MPRQ. */
+		/* Allocate/reuse/resize mempool for MPRQ. */
+		if (mlx5_rxq_mprq_enabled(&rxq_ctrl->rxq))
 			if (mlx5_mprq_alloc_mp(dev, rxq_ctrl) < 0)
 				return -rte_errno;
-
-			/* Pre-register Rx mempools. */
-			mlx5_mr_update_mp(dev, &rxq_ctrl->rxq.mr_ctrl,
-					  rxq_ctrl->rxq.mprq_mp);
-		} else {
-			uint32_t s;
-			for (s = 0; s < rxq_ctrl->rxq.rxseg_n; s++)
-				mlx5_mr_update_mp(dev, &rxq_ctrl->rxq.mr_ctrl,
-						  rxq_ctrl->rxq.rxseg[s].mp);
-		}
+		/*
+		 * Pre-register the mempools. Regardless of whether
+		 * the implicit registration is enabled or not,
+		 * Rx mempool destruction is tracked to free MRs.
+		 */
+		ret = mlx5_rxq_mempool_register(dev, rxq_ctrl);
+		if (ret)
+			return ret;
 		ret = rxq_alloc_elts(rxq_ctrl);
 		if (ret)
 			return ret;
@@ -1130,6 +1186,11 @@ mlx5_dev_start(struct rte_eth_dev *dev)
 	if (ret) {
 		DRV_LOG(DEBUG, "port %u failed to start default actions: %s",
 			dev->data->port_id, strerror(rte_errno));
+		goto error;
+	}
+	if (mlx5_dev_ctx_shared_mempool_subscribe(dev) != 0) {
+		DRV_LOG(ERR, "port %u failed to subscribe for mempool life cycle: %s",
+			dev->data->port_id, rte_strerror(rte_errno));
 		goto error;
 	}
 	rte_wmb();

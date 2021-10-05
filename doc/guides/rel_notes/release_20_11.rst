@@ -226,6 +226,7 @@ New Features
   * Added "hint_num_of_rules_log" attribute to hint rdma-core.
   * Enlarge the number of flow priorities to 21844(0 - 21843) for ingress or egress
     flow groups greater than 0 and for any transfer flow group.
+  * Added implicit mempool registration to avoid data path hiccups (opt-out).
 
   Updated Mellanox mlx5 vDPA driver:
 

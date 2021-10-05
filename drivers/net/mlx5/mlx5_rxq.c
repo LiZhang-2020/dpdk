@@ -1395,6 +1395,7 @@ mlx5_mprq_free_mp(struct rte_eth_dev *dev, struct mlx5_rxq_ctrl *rxq_ctrl)
 int
 mlx5_mprq_alloc_mp(struct rte_eth_dev *dev, struct mlx5_rxq_ctrl *rxq_ctrl)
 {
+	struct mlx5_priv *priv = dev->data->dev_private;
 	struct mlx5_rxq_data *rxq = &rxq_ctrl->rxq;
 	struct rte_mempool *mp = rxq->mprq_mp;
 	char name[RTE_MEMPOOL_NAMESIZE];
@@ -1404,6 +1405,7 @@ mlx5_mprq_alloc_mp(struct rte_eth_dev *dev, struct mlx5_rxq_ctrl *rxq_ctrl)
 	unsigned int obj_size;
 	unsigned int strd_num_n = 0;
 	unsigned int strd_sz_n = 0;
+	int ret;
 
 	if (rxq_ctrl == NULL || rxq_ctrl->type != MLX5_RXQ_TYPE_STANDARD)
 		return 0;
@@ -1473,6 +1475,16 @@ mlx5_mprq_alloc_mp(struct rte_eth_dev *dev, struct mlx5_rxq_ctrl *rxq_ctrl)
 			" Multi-Packet RQ, count=%u, size=%u",
 			dev->data->port_id, rxq->idx, obj_num, obj_size);
 		rte_errno = ENOMEM;
+		return -rte_errno;
+	}
+	ret = mlx5_mr_mempool_register(&priv->sh->share_cache, priv->sh->pd,
+				       mp, &priv->mp_id);
+	if (ret < 0 && rte_errno != EEXIST) {
+		ret = rte_errno;
+		DRV_LOG(ERR, "port %u failed to register a mempool for Multi-Packet RQ",
+			dev->data->port_id);
+		rte_mempool_free(mp);
+		rte_errno = ret;
 		return -rte_errno;
 	}
 	rxq->mprq_mp = mp;
@@ -1675,6 +1687,8 @@ mlx5_rxq_new(struct rte_eth_dev *dev, struct mlx5_rxq_priv *rxq,
 		/* rte_errno is already set. */
 		goto error;
 	}
+	/* Rx queues don't use this pointer, but we want a valid structure. */
+	tmpl->rxq.mr_ctrl.dev_gen_ptr = &priv->sh->share_cache.dev_gen;
 	tmpl->socket = socket;
 	if (dev->data->dev_conf.intr_conf.rxq)
 		tmpl->irq = 1;
