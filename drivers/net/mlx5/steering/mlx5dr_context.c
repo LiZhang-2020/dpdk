@@ -122,7 +122,7 @@ static int mlx5dr_context_uninit_pd(struct mlx5dr_context *ctx)
 	return 0;
 }
 
-static void mlx5dr_context_hws_supp(struct mlx5dr_context *ctx)
+static void mlx5dr_context_check_hws_supp(struct mlx5dr_context *ctx)
 {
 	struct mlx5dr_cmd_query_caps *caps = ctx->caps;
 
@@ -154,6 +154,47 @@ static void mlx5dr_context_hws_supp(struct mlx5dr_context *ctx)
 	ctx->flags |= MLX5DR_CONTEXT_FLAG_HWS_SUPPORT;
 }
 
+static int mlx5dr_context_init_hws(struct mlx5dr_context *ctx,
+				   struct mlx5dr_context_attr *attr)
+{
+	int ret;
+
+	mlx5dr_context_check_hws_supp(ctx);
+
+	if (!(ctx->flags & MLX5DR_CONTEXT_FLAG_HWS_SUPPORT))
+		return 0;
+
+	ret = mlx5dr_context_init_pd(ctx, attr->pd);
+	if (ret)
+		return ret;
+
+	ret = mlx5dr_context_pools_init(ctx, attr->initial_log_ste_memory);
+	if (ret)
+		goto uninit_pd;
+
+	ret = mlx5dr_send_queues_open(ctx, attr->queues, attr->queue_size);
+	if (ret)
+		goto pools_uninit;
+
+	return 0;
+
+pools_uninit:
+	mlx5dr_context_pools_uninit(ctx);
+uninit_pd:
+	mlx5dr_context_uninit_pd(ctx);
+	return ret;
+}
+
+static void mlx5dr_context_uninit_hws(struct mlx5dr_context *ctx)
+{
+	if (!(ctx->flags & MLX5DR_CONTEXT_FLAG_HWS_SUPPORT))
+		return;
+
+	mlx5dr_send_queues_close(ctx);
+	mlx5dr_context_pools_uninit(ctx);
+	mlx5dr_context_uninit_pd(ctx);
+}
+
 struct mlx5dr_context *mlx5dr_context_open(struct ibv_context *ibv_ctx,
 					   struct mlx5dr_context_attr *attr)
 {
@@ -177,28 +218,12 @@ struct mlx5dr_context *mlx5dr_context_open(struct ibv_context *ibv_ctx,
 	if (ret)
 		goto free_caps;
 
-	/* Check HW steering is supported */
-	mlx5dr_context_hws_supp(ctx);
-
-	ret = mlx5dr_context_init_pd(ctx, attr->pd);
+	ret = mlx5dr_context_init_hws(ctx, attr);
 	if (ret)
 		goto free_caps;
 
-	/* Initialise memory pools */
-	ret = mlx5dr_context_pools_init(ctx, attr->initial_log_ste_memory);
-	if (ret)
-		goto uninit_pd;
-
-	ret = mlx5dr_send_queues_open(ctx, attr->queues, attr->queue_size);
-	if (ret)
-		goto pools_uninit;
-
 	return ctx;
 
-pools_uninit:
-	mlx5dr_context_pools_uninit(ctx);
-uninit_pd:
-	mlx5dr_context_uninit_pd(ctx);
 free_caps:
 	simple_free(ctx->caps);
 free_ctx:
@@ -208,11 +233,9 @@ free_ctx:
 
 int mlx5dr_context_close(struct mlx5dr_context *ctx)
 {
-	mlx5dr_send_queues_close(ctx);
-	mlx5dr_context_pools_uninit(ctx);
-	pthread_spin_destroy(&ctx->ctrl_lock);
-	mlx5dr_context_uninit_pd(ctx);
+	mlx5dr_context_uninit_hws(ctx);
 	simple_free(ctx->caps);
+	pthread_spin_destroy(&ctx->ctrl_lock);
 	simple_free(ctx);
 	return 0;
 }

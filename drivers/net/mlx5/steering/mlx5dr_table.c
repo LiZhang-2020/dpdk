@@ -14,6 +14,7 @@ static int mlx5dr_table_init(struct mlx5dr_table *tbl)
 		return 0;
 
 	if (!(tbl->ctx->flags & MLX5DR_CONTEXT_FLAG_HWS_SUPPORT)) {
+		DRV_LOG(ERR, "HWS not supported, cannot create mlx5dr_table");
 		rte_errno = EOPNOTSUPP;
 		return rte_errno;
 	}
