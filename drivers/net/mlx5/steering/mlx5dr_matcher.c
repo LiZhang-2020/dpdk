@@ -57,12 +57,12 @@ static int mlx5dr_matcher_connect(struct mlx5dr_matcher *matcher)
 		LIST_INSERT_AFTER(prev, matcher, next);
 
 connect:
+	ft_attr.modify_fs = MLX5_IFC_MODIFY_FLOW_TABLE_RTC_ID;
+	ft_attr.wqe_based_flow_update = true;
+	ft_attr.type = tbl->fw_ft_type;
+
 	/* Connect to next */
 	if (next) {
-		ft_attr.modify_fs = MLX5_IFC_MODIFY_FLOW_TABLE_RTC_ID;
-		ft_attr.type = tbl->fw_ft_type;
-		ft_attr.wqe_based_flow_update = true;
-
 		if (next->rx.rtc)
 			ft_attr.rtc_id = next->rx.rtc->id;
 		if (next->tx.rtc)
@@ -77,9 +77,6 @@ connect:
 
 	/* Connect to previous */
 	ft = prev ? prev->end_ft : tbl->ft;
-	ft_attr.modify_fs = MLX5_IFC_MODIFY_FLOW_TABLE_RTC_ID;
-	ft_attr.type = tbl->fw_ft_type;
-	ft_attr.wqe_based_flow_update = true;
 
 	if (matcher->rx.rtc)
 		ft_attr.rtc_id = matcher->rx.rtc->id;
@@ -472,6 +469,46 @@ mlx5dr_matcher_check_template(uint8_t num_of_mt, bool is_root)
 	return 0;
 }
 
+static int
+mlx5dr_macther_check_attr(struct mlx5dr_cmd_query_caps *caps,
+			  struct mlx5dr_matcher_attr *attr,
+			  bool is_root)
+{
+	if (is_root) {
+		if (attr->sz_hint_row_log || attr->sz_hint_col_log) {
+			DRV_LOG(ERR, "Root matcher doesn't support non zero hint value");
+			goto not_supported;
+		}
+		return 0;
+	}
+
+	if (attr->sz_hint_col_log > caps->rtc_log_depth_max) {
+		DRV_LOG(ERR, "Matcher depth exceeds limit %d", caps->rtc_log_depth_max);
+		goto not_supported;
+	}
+
+	if (attr->sz_hint_col_log + attr->sz_hint_row_log > caps->ste_alloc_log_max) {
+		DRV_LOG(ERR, "Total matcher size exceeds limit %d", caps->ste_alloc_log_max);
+		goto not_supported;
+	}
+
+	if (attr->sz_hint_col_log + attr->sz_hint_row_log < caps->ste_alloc_log_gran) {
+		DRV_LOG(ERR, "Total matcher size below limit %d", caps->ste_alloc_log_gran);
+		goto not_supported;
+	}
+
+	if (attr->insertion_mode != MLX5DR_MATCHER_INSERTION_MODE_BEST_EFFORT) {
+		DRV_LOG(ERR, "HWS Matcher only supports best effort mode");
+		goto not_supported;
+	}
+
+	return 0;
+
+not_supported:
+	rte_errno = EOPNOTSUPP;
+	return rte_errno;
+}
+
 struct mlx5dr_matcher *
 mlx5dr_matcher_create(struct mlx5dr_table *tbl,
 		      struct mlx5dr_match_template *mt[],
@@ -482,15 +519,19 @@ mlx5dr_matcher_create(struct mlx5dr_table *tbl,
 	struct mlx5dr_matcher *matcher;
 	int ret;
 
+	ret = mlx5dr_matcher_check_template(num_of_mt, is_root);
+	if (ret)
+		return NULL;
+
+	ret = mlx5dr_macther_check_attr(tbl->ctx->caps, attr, is_root);
+	if (ret)
+		return NULL;
+
 	matcher = simple_calloc(1, sizeof(*matcher));
 	if (!matcher) {
 		rte_errno = ENOMEM;
 		return NULL;
 	}
-
-	ret = mlx5dr_matcher_check_template(num_of_mt, is_root);
-	if (ret)
-		goto free_matcher;
 
 	matcher->tbl = tbl;
 	matcher->attr = *attr;
