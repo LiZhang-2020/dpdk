@@ -11,8 +11,7 @@ enum mlx5dr_pool_type {
 	MLX5DR_POOL_TYPE_NONE = 0x77, /* TODO: testing only, will be removed */
 };
 
-// TODO this value is hard coded in FW, need to enlarge
-#define MLX5DR_POOL_STC_LOG_SZ 8
+#define MLX5DR_POOL_STC_LOG_SZ 14
 #define MLX5DR_POOL_STE_LOG_SZ 22
 
 #define MLX5DR_POOL_RESOURCE_ARR_SZ 100

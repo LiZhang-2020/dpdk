@@ -8,6 +8,7 @@ static int mlx5dr_context_pools_init(struct mlx5dr_context *ctx,
 				     size_t log_ste_memory)
 {
 	struct mlx5dr_pool_attr pool_attr = {0};
+	uint8_t max_log_sz;
 	int i;
 
 	if (mlx5dr_pat_init_pattern_cache(ctx->pattern_cache))
@@ -16,7 +17,8 @@ static int mlx5dr_context_pools_init(struct mlx5dr_context *ctx,
 	/* Create an STC pool per FT type */
 	pool_attr.single_resource = 1;
 	pool_attr.pool_type = MLX5DR_POOL_TYPE_STC;
-	pool_attr.alloc_log_sz = MLX5DR_POOL_STC_LOG_SZ;
+	max_log_sz = RTE_MIN(MLX5DR_POOL_STC_LOG_SZ, ctx->caps->stc_alloc_log_max);
+	pool_attr.alloc_log_sz = RTE_MAX(max_log_sz, ctx->caps->stc_alloc_log_gran);
 	pool_attr.inital_log_sz = 0;
 
 	for (i = 0; i < MLX5DR_TABLE_TYPE_MAX; i++) {
@@ -31,7 +33,8 @@ static int mlx5dr_context_pools_init(struct mlx5dr_context *ctx,
 	/* Create an STE pool per FT type */
 	pool_attr.single_resource = 0;
 	pool_attr.pool_type = MLX5DR_POOL_TYPE_STE;
-	pool_attr.alloc_log_sz = MLX5DR_POOL_STE_LOG_SZ;
+	max_log_sz = RTE_MIN(MLX5DR_POOL_STE_LOG_SZ, ctx->caps->ste_alloc_log_max);
+	pool_attr.alloc_log_sz = RTE_MAX(max_log_sz, ctx->caps->ste_alloc_log_gran);
 	pool_attr.inital_log_sz = log_ste_memory;
 
 	for (i = 0; i < MLX5DR_TABLE_TYPE_MAX; i++) {
@@ -63,6 +66,8 @@ static void mlx5dr_context_pools_uninit(struct mlx5dr_context *ctx)
 {
 	int i;
 
+	mlx5dr_pat_uninit_pattern_cache(ctx->pattern_cache);
+
 	for (i = 0; i < MLX5DR_TABLE_TYPE_MAX; i++) {
 		if (ctx->ste_pool[i])
 			mlx5dr_pool_destroy(ctx->ste_pool[i]);
@@ -70,8 +75,6 @@ static void mlx5dr_context_pools_uninit(struct mlx5dr_context *ctx)
 		if (ctx->stc_pool[i])
 			mlx5dr_pool_destroy(ctx->stc_pool[i]);
 	}
-
-	mlx5dr_pat_uninit_pattern_cache(ctx->pattern_cache);
 }
 
 static int mlx5dr_context_init_pd(struct mlx5dr_context *ctx,
@@ -119,25 +122,36 @@ static int mlx5dr_context_uninit_pd(struct mlx5dr_context *ctx)
 	return 0;
 }
 
-static int mlx5dr_context_hws_supp(struct mlx5dr_context *ctx)
+static void mlx5dr_context_hws_supp(struct mlx5dr_context *ctx)
 {
-	struct mlx5_hca_attr attr = {0};
-	int ret;
+	struct mlx5dr_cmd_query_caps *caps = ctx->caps;
 
-	ret = mlx5_devx_cmd_query_hca_attr(ctx->ibv_ctx, &attr);
-	if (ret) {
-		DRV_LOG(ERR, "Failed to query hca attributes");
-		return ret;
+	/* HWS not supported on device / FW */
+	if (!caps->wqe_based_update){
+		DRV_LOG(INFO, "Required HWS WQE based insertion cap not supported");
+		return;
 	}
 
-	// TODO check supp general obj RTC
-	// TODO check supp general obj STC
-	// TODO check supp general obj STE-ID
-	// TODO check wqe_based_flow_update
+	/* Current solution requires all rules to set reparse bit */
+	if (!caps->nic_ft.reparse ||
+	    !IS_BIT_SET(caps->rtc_reparse_mode, MLX5_IFC_RTC_REPARSE_ALWAYS)) {
+		DRV_LOG(INFO, "Required HWS reparse cap not supported");
+		return;
+	}
+
+	/* FW/HW must support 8DW STE */
+	if (!IS_BIT_SET(caps->ste_format, MLX5_IFC_RTC_STE_FORMAT_8DW)) {
+		DRV_LOG(INFO, "Required HWS STE format not supported");
+		return;
+	}
+
+	/* All rules are add by hash */
+	if (!IS_BIT_SET(caps->rtc_index_mode, MLX5_IFC_RTC_STE_UPDATE_MODE_BY_HASH)) {
+		DRV_LOG(INFO, "Required HWS RTC index mode not supported");
+		return;
+	}
 
 	ctx->flags |= MLX5DR_CONTEXT_FLAG_HWS_SUPPORT;
-
-	return ret;
 }
 
 struct mlx5dr_context *mlx5dr_context_open(struct ibv_context *ibv_ctx,
@@ -163,14 +177,12 @@ struct mlx5dr_context *mlx5dr_context_open(struct ibv_context *ibv_ctx,
 	if (ret)
 		goto free_caps;
 
+	/* Check HW steering is supported */
+	mlx5dr_context_hws_supp(ctx);
+
 	ret = mlx5dr_context_init_pd(ctx, attr->pd);
 	if (ret)
 		goto free_caps;
-
-	/* Check HW steering is supported */
-	ret = mlx5dr_context_hws_supp(ctx);
-	if (ret)
-		goto uninit_pd;
 
 	/* Initialise memory pools */
 	ret = mlx5dr_context_pools_init(ctx, attr->initial_log_ste_memory);
