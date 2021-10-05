@@ -372,6 +372,10 @@ rte_mempool_populate_iova(struct rte_mempool *mp, char *vaddr,
 	STAILQ_INSERT_TAIL(&mp->mem_list, memhdr, next);
 	mp->nb_mem_chunks++;
 
+	/* Check if at least some objects in the pool are now usable for IO. */
+	if (!(mp->flags & MEMPOOL_F_NO_IOVA_CONTIG) && iova != RTE_BAD_IOVA)
+		mp->flags &= ~MEMPOOL_F_NON_IO;
+
 	/* Report the mempool as ready only when fully populated. */
 	if (mp->populated_size >= mp->size)
 		mempool_event_callback_invoke(RTE_MEMPOOL_EVENT_READY, mp);
@@ -837,6 +841,12 @@ rte_mempool_create_empty(const char *name, unsigned n, unsigned elt_size,
 		rte_errno = EINVAL;
 		return NULL;
 	}
+
+	/*
+	 * No objects in the pool can be used for IO until it's populated
+	 * with at least some objects with valid IOVA.
+	 */
+	flags |= MEMPOOL_F_NON_IO;
 
 	/* "no cache align" imply "no spread" */
 	if (flags & MEMPOOL_F_NO_CACHE_ALIGN)
@@ -1368,7 +1378,7 @@ mempool_event_callback_invoke(enum rte_mempool_event event,
 
 	rte_mcfg_tailq_read_lock();
 	list = RTE_TAILQ_CAST(callback_tailq.head, mempool_callback_list);
-	RTE_TAILQ_FOREACH_SAFE(te, list, next, tmp_te) {
+	TAILQ_FOREACH_SAFE(te, list, next, tmp_te) {
 		struct mempool_callback_data *cb = te->data;
 		rte_mcfg_tailq_read_unlock();
 		cb->func(event, mp, cb->user_data);
@@ -1394,7 +1404,7 @@ rte_mempool_event_callback_register(rte_mempool_event_callback *func,
 
 	rte_mcfg_tailq_write_lock();
 	list = RTE_TAILQ_CAST(callback_tailq.head, mempool_callback_list);
-	RTE_TAILQ_FOREACH_SAFE(te, list, next, tmp_te) {
+	TAILQ_FOREACH_SAFE(te, list, next, tmp_te) {
 		cb = te->data;
 		if (cb->func == func && cb->user_data == user_data) {
 			ret = -EEXIST;

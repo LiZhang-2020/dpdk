@@ -682,6 +682,9 @@ API Changes
 * sched: Removed ``tb_rate``, ``tc_rate``, ``tc_period`` and ``tb_size``
   from ``struct rte_sched_subport_params``.
 
+* mempool: Added ``MEMPOOL_F_NON_IO`` flag to give a hint to DPDK components
+  that objects from this pool will not be used for device IO (e.g. DMA).
+
 
 ABI Changes
 -----------

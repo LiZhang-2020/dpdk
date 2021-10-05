@@ -12,6 +12,7 @@
 #include <sys/queue.h>
 
 #include <rte_common.h>
+#include <rte_eal_paging.h>
 #include <rte_log.h>
 #include <rte_debug.h>
 #include <rte_errno.h>
@@ -716,6 +717,111 @@ exit:
 #pragma pop_macro("RTE_TEST_TRACE_FAILURE")
 }
 
+#pragma push_macro("RTE_TEST_TRACE_FAILURE")
+#undef RTE_TEST_TRACE_FAILURE
+#define RTE_TEST_TRACE_FAILURE(...) do { \
+		ret = TEST_FAILED; \
+		goto exit; \
+	} while (0)
+
+static int
+test_mempool_flag_non_io_set_when_no_iova_contig_set(void)
+{
+	const struct rte_memzone *mz = NULL;
+	void *virt;
+	rte_iova_t iova;
+	size_t size = MEMPOOL_ELT_SIZE * 16;
+	struct rte_mempool *mp = NULL;
+	int ret;
+
+	mz = rte_memzone_reserve("test_mempool", size, SOCKET_ID_ANY, 0);
+	RTE_TEST_ASSERT_NOT_NULL(mz, "Cannot allocate memory");
+	virt = mz->addr;
+	iova = mz->iova;
+	mp = rte_mempool_create_empty("empty", MEMPOOL_SIZE,
+				      MEMPOOL_ELT_SIZE, 0, 0,
+				      SOCKET_ID_ANY, MEMPOOL_F_NO_IOVA_CONTIG);
+	RTE_TEST_ASSERT_NOT_NULL(mp, "Cannot create mempool: %s",
+				 rte_strerror(rte_errno));
+	rte_mempool_set_ops_byname(mp, rte_mbuf_best_mempool_ops(), NULL);
+
+	RTE_TEST_ASSERT(mp->flags & MEMPOOL_F_NON_IO,
+			"NON_IO flag is not set on an empty mempool");
+
+	/*
+	 * Always use valid IOVA so that populate() has no other reason
+	 * to infer that the mempool cannot be used for IO.
+	 */
+	ret = rte_mempool_populate_iova(mp, virt, iova, size, NULL, NULL);
+	RTE_TEST_ASSERT(ret > 0, "Failed to populate mempool: %s",
+			rte_strerror(-ret));
+	RTE_TEST_ASSERT(mp->flags & MEMPOOL_F_NON_IO,
+			"NON_IO flag is not set when NO_IOVA_CONTIG is set");
+	ret = TEST_SUCCESS;
+exit:
+	rte_mempool_free(mp);
+	rte_memzone_free(mz);
+	return ret;
+}
+
+static int
+test_mempool_flag_non_io_unset_when_populated_with_valid_iova(void)
+{
+	const struct rte_memzone *mz = NULL;
+	void *virt;
+	rte_iova_t iova;
+	size_t total_size = MEMPOOL_ELT_SIZE * MEMPOOL_SIZE;
+	size_t block_size = total_size / 3;
+	struct rte_mempool *mp = NULL;
+	int ret;
+
+	/*
+	 * Since objects from the pool are never used in the test,
+	 * we don't care for contiguous IOVA, on the other hand,
+	 * requiring it could cause spurious test failures.
+	 */
+	mz = rte_memzone_reserve("test_mempool", total_size, SOCKET_ID_ANY, 0);
+	RTE_TEST_ASSERT_NOT_NULL(mz, "Cannot allocate memory");
+	virt = mz->addr;
+	iova = mz->iova;
+	mp = rte_mempool_create_empty("empty", MEMPOOL_SIZE,
+				      MEMPOOL_ELT_SIZE, 0, 0,
+				      SOCKET_ID_ANY, 0);
+	RTE_TEST_ASSERT_NOT_NULL(mp, "Cannot create mempool: %s",
+				 rte_strerror(rte_errno));
+
+	RTE_TEST_ASSERT(mp->flags & MEMPOOL_F_NON_IO,
+			"NON_IO flag is not set on an empty mempool");
+
+	ret = rte_mempool_populate_iova(mp, RTE_PTR_ADD(virt, 1 * block_size),
+					RTE_BAD_IOVA, block_size, NULL, NULL);
+	RTE_TEST_ASSERT(ret > 0, "Failed to populate mempool: %s",
+			rte_strerror(-ret));
+	RTE_TEST_ASSERT(mp->flags & MEMPOOL_F_NON_IO,
+			"NON_IO flag is not set when mempool is populated with only RTE_BAD_IOVA");
+
+	ret = rte_mempool_populate_iova(mp, virt, iova, block_size, NULL, NULL);
+	RTE_TEST_ASSERT(ret > 0, "Failed to populate mempool: %s",
+			rte_strerror(-ret));
+	RTE_TEST_ASSERT(!(mp->flags & MEMPOOL_F_NON_IO),
+			"NON_IO flag is not unset when mempool is populated with valid IOVA");
+
+	ret = rte_mempool_populate_iova(mp, RTE_PTR_ADD(virt, 2 * block_size),
+					RTE_BAD_IOVA, block_size, NULL, NULL);
+	RTE_TEST_ASSERT(ret > 0, "Failed to populate mempool: %s",
+			rte_strerror(-ret));
+	RTE_TEST_ASSERT(!(mp->flags & MEMPOOL_F_NON_IO),
+			"NON_IO flag is set even when some objects have valid IOVA");
+	ret = TEST_SUCCESS;
+
+exit:
+	rte_mempool_free(mp);
+	rte_memzone_free(mz);
+	return ret;
+}
+
+#pragma pop_macro("RTE_TEST_TRACE_FAILURE")
+
 static int
 test_mempool(void)
 {
@@ -898,6 +1004,12 @@ test_mempool(void)
 	if (test_mempool_events(rte_mempool_populate_anon) < 0)
 		GOTO_ERR(ret, err);
 	if (test_mempool_events_safety() < 0)
+		GOTO_ERR(ret, err);
+
+	/* test NON_IO flag inference */
+	if (test_mempool_flag_non_io_set_when_no_iova_contig_set() < 0)
+		GOTO_ERR(ret, err);
+	if (test_mempool_flag_non_io_unset_when_populated_with_valid_iova() < 0)
 		GOTO_ERR(ret, err);
 
 	rte_mempool_list_dump(stdout);
