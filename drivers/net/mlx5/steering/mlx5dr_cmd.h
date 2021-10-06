@@ -84,12 +84,29 @@ struct mlx5dr_cmd_sq_create_attr {
 	uint32_t log_wq_sz;
 };
 
+struct mlx5dr_cmd_query_ft_caps {
+	uint8_t max_level;
+	uint8_t reparse;
+};
+
 struct mlx5dr_cmd_query_caps {
 	uint32_t flex_protocols;
+	uint8_t wqe_based_update;
+	uint8_t rtc_reparse_mode;
+	uint16_t ste_format;
+	uint8_t rtc_index_mode;
+	uint8_t ste_alloc_log_max;
+	uint8_t ste_alloc_log_gran;
+	uint8_t stc_alloc_log_max;
+	uint8_t stc_alloc_log_gran;
+	uint8_t fdb_ft_reparse;
+	uint8_t rtc_log_depth_max;
 	uint8_t flex_parser_id_gtpu_dw_0;
 	uint8_t flex_parser_id_gtpu_teid;
 	uint8_t flex_parser_id_gtpu_dw_2;
 	uint8_t flex_parser_id_gtpu_first_ext_dw_0;
+	struct mlx5dr_cmd_query_ft_caps nic_ft;
+	struct mlx5dr_cmd_query_ft_caps fdb_ft;
 };
 
 int mlx5dr_cmd_destroy_obj(struct mlx5dr_devx_obj *devx_obj);

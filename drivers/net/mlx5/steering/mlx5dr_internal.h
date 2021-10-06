@@ -32,6 +32,7 @@
 #include "mlx5dr_pat_arg.h"
 
 #define DW_SIZE		4
+#define IS_BIT_SET(_value, _bit) (_value & (1ULL << (_bit)))
 
 static inline void *simple_malloc(size_t size)
 {

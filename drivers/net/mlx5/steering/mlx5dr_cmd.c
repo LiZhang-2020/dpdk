@@ -114,6 +114,8 @@ mlx5dr_cmd_rtc_create(struct ibv_context *ctx,
 	MLX5_SET(rtc, attr, ste_table_base_id, rtc_attr->ste_base);
 	MLX5_SET(rtc, attr, ste_table_offset, rtc_attr->ste_offset);
 	MLX5_SET(rtc, attr, miss_flow_table_id, rtc_attr->miss_ft_id);
+	/* TODO Reparse is an RTC attribute and cannot be controlled per rule */
+	// MLX5_SET(rtc, attr, reparse_mode, MLX5_IFC_RTC_REPARSE_ALWAYS);
 
 	devx_obj->obj = mlx5_glue->devx_obj_create(ctx, in, sizeof(in), out, sizeof(out));
 	if (!devx_obj->obj) {
@@ -539,6 +541,10 @@ int mlx5dr_cmd_query_caps(struct ibv_context *ctx,
 		return rte_errno;
 	}
 
+	caps->wqe_based_update =
+		MLX5_GET(query_hca_cap_out, out,
+			 capability.cmd_hca_cap.wqe_based_flow_table_update_cap);
+
 	caps->flex_protocols = MLX5_GET(query_hca_cap_out, out,
 					capability.cmd_hca_cap.flex_parser_protocols);
 
@@ -565,6 +571,83 @@ int mlx5dr_cmd_query_caps(struct ibv_context *ctx,
 			DEVX_GET(query_hca_cap_out,
 				 out,
 				 capability.cmd_hca_cap.flex_parser_id_gtpu_first_ext_dw_0);
+
+	MLX5_SET(query_hca_cap_in, in, op_mod,
+		 MLX5_GET_HCA_CAP_OP_MOD_NIC_FLOW_TABLE |
+		 MLX5_HCA_CAP_OPMOD_GET_CUR);
+
+	ret = mlx5_glue->devx_general_cmd(ctx, in, sizeof(in), out, sizeof(out));
+	if (ret) {
+		DRV_LOG(ERR, "Failed to query flow table caps");
+		rte_errno = errno;
+		return rte_errno;
+	}
+
+	caps->nic_ft.max_level = MLX5_GET(query_hca_cap_out, out,
+					  capability.flow_table_nic_cap.
+					  flow_table_properties_nic_receive.max_ft_level);
+
+	caps->nic_ft.reparse = MLX5_GET(query_hca_cap_out, out,
+					capability.flow_table_nic_cap.
+					flow_table_properties_nic_receive.reparse);
+
+	// TODO Allow below later on
+	if (caps->wqe_based_update && 0) {
+		MLX5_SET(query_hca_cap_in, in, op_mod,
+			 MLX5_GET_HCA_CAP_OP_MOD_WQE_BASED_FLOW_TABLE |
+			 MLX5_HCA_CAP_OPMOD_GET_CUR);
+
+		ret = mlx5_glue->devx_general_cmd(ctx, in, sizeof(in), out, sizeof(out));
+		if (ret) {
+			DRV_LOG(ERR, "Failed to query WQE based FT caps");
+			rte_errno = errno;
+			return rte_errno;
+		}
+
+		caps->rtc_reparse_mode = MLX5_GET(query_hca_cap_out, out,
+						  capability.wqe_based_flow_table_cap.
+						  rtc_reparse_mode);
+
+		caps->ste_format = MLX5_GET(query_hca_cap_out, out,
+					    capability.wqe_based_flow_table_cap.
+					    ste_format);
+
+		caps->rtc_index_mode = MLX5_GET(query_hca_cap_out, out,
+						capability.wqe_based_flow_table_cap.
+						rtc_index_mode);
+
+		caps->rtc_log_depth_max = MLX5_GET(query_hca_cap_out, out,
+						   capability.wqe_based_flow_table_cap.
+						   rtc_log_depth_max);
+
+		caps->ste_alloc_log_max = MLX5_GET(query_hca_cap_out, out,
+						   capability.wqe_based_flow_table_cap.
+						   ste_alloc_log_max);
+
+		caps->ste_alloc_log_gran = MLX5_GET(query_hca_cap_out, out,
+						    capability.wqe_based_flow_table_cap.
+						    ste_alloc_log_granularity);
+
+		caps->stc_alloc_log_max = MLX5_GET(query_hca_cap_out, out,
+						   capability.wqe_based_flow_table_cap.
+						   stc_alloc_log_max);
+
+		caps->stc_alloc_log_gran = MLX5_GET(query_hca_cap_out, out,
+						    capability.wqe_based_flow_table_cap.
+						    stc_alloc_log_granularity);
+	}
+
+	// TODO Remove once we have a working FW
+	caps->wqe_based_update = 1;
+	caps->rtc_reparse_mode = 1 << MLX5_IFC_RTC_REPARSE_ALWAYS;
+	caps->nic_ft.reparse = 1;
+	caps->ste_format = 1 << MLX5_IFC_RTC_STE_FORMAT_8DW;
+	caps->rtc_log_depth_max = 3;
+	caps->rtc_index_mode = 1 << MLX5_IFC_RTC_STE_UPDATE_MODE_BY_HASH;
+	caps->ste_alloc_log_max = MLX5DR_POOL_STE_LOG_SZ;
+	caps->ste_alloc_log_gran = 0;
+	caps->stc_alloc_log_max = 8; // curent FW supp
+	caps->stc_alloc_log_gran = 0;
 
 	return ret;
 }
