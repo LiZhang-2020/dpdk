@@ -25,7 +25,7 @@ static int mlx5dr_context_pools_init(struct mlx5dr_context *ctx,
 		pool_attr.table_type = i;
 		ctx->stc_pool[i] = mlx5dr_pool_create(ctx, &pool_attr);
 		if (!ctx->stc_pool[i]) {
-			DRV_LOG(ERR, "Failed to allocate STC pool [%d]" ,i);
+			DR_LOG(ERR, "Failed to allocate STC pool [%d]" ,i);
 			goto free_stc_pools;
 		}
 	}
@@ -41,7 +41,7 @@ static int mlx5dr_context_pools_init(struct mlx5dr_context *ctx,
 		pool_attr.table_type = i;
 		ctx->ste_pool[i] = mlx5dr_pool_create(ctx, &pool_attr);
 		if (!ctx->ste_pool[i]) {
-			DRV_LOG(ERR, "Failed to allocate STE pool [%d]" ,i);
+			DR_LOG(ERR, "Failed to allocate STE pool [%d]" ,i);
 			goto free_ste_pools;
 		}
 	}
@@ -89,7 +89,7 @@ static int mlx5dr_context_init_pd(struct mlx5dr_context *ctx,
 	} else {
 		ctx->pd = mlx5_glue->alloc_pd(ctx->ibv_ctx);
 		if (!ctx->pd) {
-			DRV_LOG(ERR, "Failed to allocate PD");
+			DR_LOG(ERR, "Failed to allocate PD");
 			rte_errno = errno;
 			return rte_errno;
 		}
@@ -128,26 +128,26 @@ static void mlx5dr_context_check_hws_supp(struct mlx5dr_context *ctx)
 
 	/* HWS not supported on device / FW */
 	if (!caps->wqe_based_update){
-		DRV_LOG(INFO, "Required HWS WQE based insertion cap not supported");
+		DR_LOG(INFO, "Required HWS WQE based insertion cap not supported");
 		return;
 	}
 
 	/* Current solution requires all rules to set reparse bit */
 	if (!caps->nic_ft.reparse ||
 	    !IS_BIT_SET(caps->rtc_reparse_mode, MLX5_IFC_RTC_REPARSE_ALWAYS)) {
-		DRV_LOG(INFO, "Required HWS reparse cap not supported");
+		DR_LOG(INFO, "Required HWS reparse cap not supported");
 		return;
 	}
 
 	/* FW/HW must support 8DW STE */
 	if (!IS_BIT_SET(caps->ste_format, MLX5_IFC_RTC_STE_FORMAT_8DW)) {
-		DRV_LOG(INFO, "Required HWS STE format not supported");
+		DR_LOG(INFO, "Required HWS STE format not supported");
 		return;
 	}
 
 	/* All rules are add by hash */
 	if (!IS_BIT_SET(caps->rtc_index_mode, MLX5_IFC_RTC_STE_UPDATE_MODE_BY_HASH)) {
-		DRV_LOG(INFO, "Required HWS RTC index mode not supported");
+		DR_LOG(INFO, "Required HWS RTC index mode not supported");
 		return;
 	}
 

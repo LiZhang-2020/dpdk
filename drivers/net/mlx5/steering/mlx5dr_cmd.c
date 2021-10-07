@@ -25,7 +25,7 @@ mlx5dr_cmd_flow_table_create(struct ibv_context *ctx,
 
 	devx_obj = simple_malloc(sizeof(*devx_obj));
 	if (!devx_obj) {
-		DRV_LOG(ERR, "Failed to allocate memory for flow table object");
+		DR_LOG(ERR, "Failed to allocate memory for flow table object");
                 rte_errno = ENOMEM;
                 return NULL;
 	}
@@ -40,7 +40,7 @@ mlx5dr_cmd_flow_table_create(struct ibv_context *ctx,
 
 	devx_obj->obj = mlx5_glue->devx_obj_create(ctx, in, sizeof(in), out, sizeof(out));
 	if (!devx_obj->obj) {
-		DRV_LOG(ERR, "Failed to create FT");
+		DR_LOG(ERR, "Failed to create FT");
 		simple_free(devx_obj);
 		rte_errno = errno;
 		return NULL;
@@ -73,7 +73,7 @@ mlx5dr_cmd_flow_table_modify(struct mlx5dr_devx_obj *devx_obj,
 
 	ret = mlx5_glue->devx_obj_modify(devx_obj->obj, in, sizeof(in), out, sizeof(out));
 	if (ret) {
-		DRV_LOG(ERR, "Failed to modify FT");
+		DR_LOG(ERR, "Failed to modify FT");
 		rte_errno = errno;
 	}
 
@@ -91,7 +91,7 @@ mlx5dr_cmd_rtc_create(struct ibv_context *ctx,
 
 	devx_obj = simple_malloc(sizeof(*devx_obj));
 	if (!devx_obj) {
-		DRV_LOG(ERR, "Failed to allocate memory for RTC object");
+		DR_LOG(ERR, "Failed to allocate memory for RTC object");
 		rte_errno = ENOMEM;
 		return NULL;
 	}
@@ -119,7 +119,7 @@ mlx5dr_cmd_rtc_create(struct ibv_context *ctx,
 
 	devx_obj->obj = mlx5_glue->devx_obj_create(ctx, in, sizeof(in), out, sizeof(out));
 	if (!devx_obj->obj) {
-		DRV_LOG(ERR, "Failed to create RTC");
+		DR_LOG(ERR, "Failed to create RTC");
 		simple_free(devx_obj);
 		rte_errno = errno;
 		return NULL;
@@ -141,7 +141,7 @@ mlx5dr_cmd_stc_create(struct ibv_context *ctx,
 
 	devx_obj = simple_malloc(sizeof(*devx_obj));
 	if (!devx_obj) {
-		DRV_LOG(ERR, "Failed to allocate memory for STC object");
+		DR_LOG(ERR, "Failed to allocate memory for STC object");
 		rte_errno = ENOMEM;
 		return NULL;
 	}
@@ -159,7 +159,7 @@ mlx5dr_cmd_stc_create(struct ibv_context *ctx,
 
 	devx_obj->obj = mlx5_glue->devx_obj_create(ctx, in, sizeof(in), out, sizeof(out));
 	if (!devx_obj->obj) {
-		DRV_LOG(ERR, "Failed to create STC");
+		DR_LOG(ERR, "Failed to create STC");
 		simple_free(devx_obj);
 		rte_errno = errno;
 		return NULL;
@@ -221,7 +221,7 @@ mlx5dr_cmd_stc_modify_set_stc_param(struct mlx5dr_cmd_stc_modify_attr *stc_attr,
 	case MLX5_IFC_STC_ACTION_TYPE_ALLOW:
 		break;
 	default:
-		DRV_LOG(ERR, "not supported type %d", stc_attr->action_type);
+		DR_LOG(ERR, "not supported type %d", stc_attr->action_type);
 		rte_errno = EINVAL;
 		return rte_errno;
 		break;
@@ -247,7 +247,7 @@ mlx5dr_cmd_stc_modify(struct mlx5dr_devx_obj *devx_obj,
 	    stc_attr->action_type != MLX5_IFC_STC_ACTION_TYPE_JUMP_TO_TIR &&
 	    stc_attr->action_type != MLX5_IFC_STC_ACTION_TYPE_HEADER_REMOVE &&
 	    stc_attr->action_type != MLX5_IFC_STC_ACTION_TYPE_HEADER_INSERT) {
-		DRV_LOG(ERR, "TODO FYI - ignoring action STC!");
+		DR_LOG(ERR, "TODO FYI - ignoring action STC!");
 		stc_attr->action_type = MLX5_IFC_STC_ACTION_TYPE_NOP;
 		stc_attr->action_offset = 0;
 		stc_attr->id = 0;
@@ -277,7 +277,7 @@ mlx5dr_cmd_stc_modify(struct mlx5dr_devx_obj *devx_obj,
 
 	ret = mlx5_glue->devx_obj_modify(devx_obj->obj, in, sizeof(in), out, sizeof(out));
 	if (ret) {
-		DRV_LOG(ERR, "Failed to modify STC");
+		DR_LOG(ERR, "Failed to modify STC");
 		rte_errno = errno;
 	}
 
@@ -296,7 +296,7 @@ mlx5dr_cmd_arg_create(struct ibv_context *ctx,
 
 	devx_obj = simple_malloc(sizeof(*devx_obj));
 	if (!devx_obj) {
-		DRV_LOG(ERR, "Failed to allocate memory for ARG object");
+		DR_LOG(ERR, "Failed to allocate memory for ARG object");
 		rte_errno = ENOMEM;
 		return NULL;
 	}
@@ -314,7 +314,7 @@ mlx5dr_cmd_arg_create(struct ibv_context *ctx,
 
 	devx_obj->obj = mlx5_glue->devx_obj_create(ctx, in, sizeof(in), out, sizeof(out));
 	if (!devx_obj->obj) {
-		DRV_LOG(ERR, "Failed to create ARG");
+		DR_LOG(ERR, "Failed to create ARG");
 		simple_free(devx_obj);
 		rte_errno = errno;
 		return NULL;
@@ -338,7 +338,7 @@ mlx5dr_cmd_header_modify_pattern_create(struct ibv_context *ctx,
 	void *attr;
 
 	if (pattern_length > MAX_ACTIONS_DATA_IN_HEADER_MODIFY) {
-		DRV_LOG(ERR, "too much patterns (%d), more than %d",
+		DR_LOG(ERR, "too much patterns (%d), more than %d",
 			pattern_length, MAX_ACTIONS_DATA_IN_HEADER_MODIFY);
 		rte_errno = EINVAL;
 		return NULL;
@@ -346,7 +346,7 @@ mlx5dr_cmd_header_modify_pattern_create(struct ibv_context *ctx,
 
 	devx_obj = simple_malloc(sizeof(*devx_obj));
 	if (!devx_obj) {
-		DRV_LOG(ERR, "Failed to allocate memory for header_modify_pattern object");
+		DR_LOG(ERR, "Failed to allocate memory for header_modify_pattern object");
 		rte_errno = ENOMEM;
 		return NULL;
 	}
@@ -366,7 +366,7 @@ mlx5dr_cmd_header_modify_pattern_create(struct ibv_context *ctx,
 
 	devx_obj->obj = mlx5_glue->devx_obj_create(ctx, in, sizeof(in), out, sizeof(out));
 	if (!devx_obj->obj) {
-		DRV_LOG(ERR, "Failed to create header_modify_pattern");
+		DR_LOG(ERR, "Failed to create header_modify_pattern");
 		rte_errno = errno;
 		goto free_obj;
 	}
@@ -391,7 +391,7 @@ mlx5dr_cmd_ste_create(struct ibv_context *ctx,
 
 	devx_obj = simple_malloc(sizeof(*devx_obj));
 	if (!devx_obj) {
-		DRV_LOG(ERR, "Failed to allocate memory for STE object");
+		DR_LOG(ERR, "Failed to allocate memory for STE object");
 		rte_errno = ENOMEM;
 		return NULL;
 	}
@@ -409,7 +409,7 @@ mlx5dr_cmd_ste_create(struct ibv_context *ctx,
 
 	devx_obj->obj = mlx5_glue->devx_obj_create(ctx, in, sizeof(in), out, sizeof(out));
 	if (!devx_obj->obj) {
-		DRV_LOG(ERR, "Failed to create STE");
+		DR_LOG(ERR, "Failed to create STE");
 		simple_free(devx_obj);
 		rte_errno = errno;
 		return NULL;
@@ -431,7 +431,7 @@ mlx5dr_cmd_definer_create(struct ibv_context *ctx,
 
 	devx_obj = simple_malloc(sizeof(*devx_obj));
 	if (!devx_obj) {
-		DRV_LOG(ERR, "Failed to allocate memory for STE object");
+		DR_LOG(ERR, "Failed to allocate memory for STE object");
 		rte_errno = ENOMEM;
 		return NULL;
 	}
@@ -450,7 +450,7 @@ mlx5dr_cmd_definer_create(struct ibv_context *ctx,
 
 	devx_obj->obj = mlx5_glue->devx_obj_create(ctx, in, sizeof(in), out, sizeof(out));
 	if (!devx_obj->obj) {
-		DRV_LOG(ERR, "Failed to create Definer");
+		DR_LOG(ERR, "Failed to create Definer");
 		simple_free(devx_obj);
 		rte_errno = errno;
 		return NULL;
@@ -473,7 +473,7 @@ mlx5dr_cmd_sq_create(struct ibv_context *ctx,
 
 	devx_obj = simple_malloc(sizeof(*devx_obj));
 	if (!devx_obj) {
-		DRV_LOG(ERR, "Failed to create SQ");
+		DR_LOG(ERR, "Failed to create SQ");
 		rte_errno = ENOMEM;
 		return NULL;
 	}
@@ -516,7 +516,7 @@ int mlx5dr_cmd_sq_modify_rdy(struct mlx5dr_devx_obj *devx_obj)
 
 	ret = mlx5_glue->devx_obj_modify(devx_obj->obj, in, sizeof(in), out, sizeof(out));
 	if (ret) {
-		DRV_LOG(ERR, "Failed to modify SQ");
+		DR_LOG(ERR, "Failed to modify SQ");
 		rte_errno = errno;
 	}
 
@@ -537,7 +537,7 @@ int mlx5dr_cmd_query_caps(struct ibv_context *ctx,
 
 	ret = mlx5_glue->devx_general_cmd(ctx, in, sizeof(in), out, sizeof(out));
 	if (ret) {
-		DRV_LOG(ERR, "Failed to query device caps");
+		DR_LOG(ERR, "Failed to query device caps");
 		rte_errno = errno;
 		return rte_errno;
 	}
@@ -579,7 +579,7 @@ int mlx5dr_cmd_query_caps(struct ibv_context *ctx,
 
 	ret = mlx5_glue->devx_general_cmd(ctx, in, sizeof(in), out, sizeof(out));
 	if (ret) {
-		DRV_LOG(ERR, "Failed to query flow table caps");
+		DR_LOG(ERR, "Failed to query flow table caps");
 		rte_errno = errno;
 		return rte_errno;
 	}
@@ -600,7 +600,7 @@ int mlx5dr_cmd_query_caps(struct ibv_context *ctx,
 
 		ret = mlx5_glue->devx_general_cmd(ctx, in, sizeof(in), out, sizeof(out));
 		if (ret) {
-			DRV_LOG(ERR, "Failed to query WQE based FT caps");
+			DR_LOG(ERR, "Failed to query WQE based FT caps");
 			rte_errno = errno;
 			return rte_errno;
 		}

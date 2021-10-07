@@ -141,7 +141,7 @@ mlx5dr_pat_add_pattern_to_cache(struct mlx5dr_pattern_cache *cache,
 
 	cached_pattern = simple_calloc(1, sizeof(*cached_pattern));
 	if (!cached_pattern) {
-		DRV_LOG(ERR, "Failed to allocate cached_pattern");
+		DR_LOG(ERR, "Failed to allocate cached_pattern");
 		rte_errno = ENOMEM;
 		return NULL;
 	}
@@ -152,7 +152,7 @@ mlx5dr_pat_add_pattern_to_cache(struct mlx5dr_pattern_cache *cache,
 	cached_pattern->mh_data.data =
 		simple_malloc(num_of_actions * MLX5DR_MODIFY_ACTION_SIZE);
 	if (!cached_pattern->mh_data.data) {
-		DRV_LOG(ERR, "Failed to allocate mh_data.data");
+		DR_LOG(ERR, "Failed to allocate mh_data.data");
 		rte_errno = ENOMEM;
 		goto free_cached_obj;
 	}
@@ -189,7 +189,7 @@ mlx5dr_pat_put_pattern(struct mlx5dr_pattern_cache *cache,
 	pthread_spin_lock(&cache->lock);
 	cached_pattern = mlx5dr_pat_get_cached_pattern_by_action(cache, action);
 	if (!cached_pattern) {
-		DRV_LOG(ERR, "Failed to find pattern according to action with pt");
+		DR_LOG(ERR, "Failed to find pattern according to action with pt");
 		assert(false);
 		goto out;
 	}
@@ -228,7 +228,7 @@ static int mlx5dr_pat_get_pattern(struct mlx5dr_context *ctx,
 							pattern_sz,
 							(uint8_t *)pattern);
 	if (!action->modify_header.pattern_obj) {
-		DRV_LOG(ERR, "Failed to create pattern FW object");
+		DR_LOG(ERR, "Failed to create pattern FW object");
 
 		ret = rte_errno;
 		goto out_unlock;
@@ -241,7 +241,7 @@ static int mlx5dr_pat_get_pattern(struct mlx5dr_context *ctx,
 						num_of_actions,
 						pattern);
 	if (!cached_pattern) {
-		DRV_LOG(ERR, "Failed to add pattern to cache");
+		DR_LOG(ERR, "Failed to add pattern to cache");
 		ret = rte_errno;
 		goto clean_pattern;
 	}
@@ -326,7 +326,7 @@ mlx5dr_arg_create_modify_header_arg(struct mlx5dr_context *ctx,
 	/* alloc bulk of args */
 	args_log_size = mlx5dr_arg_get_arg_log_size(num_of_actions);
 	if (args_log_size >= MLX5DR_ARG_CHUNK_SIZE_MAX) {
-		DRV_LOG(ERR, "exceed number of allowed actions %u",
+		DR_LOG(ERR, "exceed number of allowed actions %u",
 			num_of_actions);
 		rte_errno = EINVAL;
 		return rte_errno;
@@ -336,7 +336,7 @@ mlx5dr_arg_create_modify_header_arg(struct mlx5dr_context *ctx,
 		mlx5dr_cmd_arg_create(ctx->ibv_ctx, args_log_size + bulk_size,
 				      ctx->pd_num);
 	if (!action->modify_header.arg_obj) {
-		DRV_LOG(ERR, "failed allocating arg in order: %d",
+		DR_LOG(ERR, "failed allocating arg in order: %d",
 			args_log_size + bulk_size);
 		return rte_errno;
 	}
@@ -345,7 +345,7 @@ mlx5dr_arg_create_modify_header_arg(struct mlx5dr_context *ctx,
 	if (flags & MLX5DR_ACTION_FLAG_INLINE)
 		ret = mlx5dr_arg_write_inline_arg_data(action, pattern); // TODO use mlx5dr_arg_write
 	if (ret) {
-		DRV_LOG(ERR, "failed writing INLINE arg in order: %d",
+		DR_LOG(ERR, "failed writing INLINE arg in order: %d",
 			args_log_size + bulk_size);
 		mlx5dr_cmd_destroy_obj(action->modify_header.arg_obj);
 		return rte_errno;
@@ -365,7 +365,7 @@ int mlx5dr_pat_arg_create_modify_header(struct mlx5dr_context *ctx,
 
 	num_of_actions = pattern_sz / MLX5DR_MODIFY_ACTION_SIZE;
 	if (num_of_actions == 0) {
-		DRV_LOG(ERR, "Invalid number of actions %u\n", num_of_actions);
+		DR_LOG(ERR, "Invalid number of actions %u\n", num_of_actions);
 		rte_errno = EINVAL;
 		return rte_errno;
 	}
@@ -377,14 +377,14 @@ int mlx5dr_pat_arg_create_modify_header(struct mlx5dr_context *ctx,
 						  pattern,
 						  bulk_size);
 	if (ret) {
-		DRV_LOG(ERR, "Failed to allocate arg");
+		DR_LOG(ERR, "Failed to allocate arg");
 		return ret;
 	}
 
 	ret = mlx5dr_pat_get_pattern(ctx, action, num_of_actions, pattern_sz,
 				     pattern);
 	if (ret) {
-		DRV_LOG(ERR, "Failed to allocate pattern");
+		DR_LOG(ERR, "Failed to allocate pattern");
 		goto free_arg;
 	}
 

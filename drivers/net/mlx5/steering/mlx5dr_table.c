@@ -14,7 +14,7 @@ static int mlx5dr_table_init(struct mlx5dr_table *tbl)
 		return 0;
 
 	if (!(tbl->ctx->flags & MLX5DR_CONTEXT_FLAG_HWS_SUPPORT)) {
-		DRV_LOG(ERR, "HWS not supported, cannot create mlx5dr_table");
+		DR_LOG(ERR, "HWS not supported, cannot create mlx5dr_table");
 		rte_errno = EOPNOTSUPP;
 		return rte_errno;
 	}
@@ -38,7 +38,7 @@ static int mlx5dr_table_init(struct mlx5dr_table *tbl)
 
 	tbl->ft = mlx5dr_cmd_flow_table_create(ctx->ibv_ctx, &ft_attr);
 	if (!tbl->ft) {
-		DRV_LOG(ERR, "Failed to create flow table devx object");
+		DR_LOG(ERR, "Failed to create flow table devx object");
 		return rte_errno;
 	}
 
@@ -69,7 +69,7 @@ struct mlx5dr_table *mlx5dr_table_create(struct mlx5dr_context *ctx,
 	int ret;
 
 	if (attr->type >= MLX5DR_TABLE_TYPE_FDB) {
-		DRV_LOG(ERR, "Invalid table type %d", attr->type);
+		DR_LOG(ERR, "Invalid table type %d", attr->type);
 		return NULL;
 	}
 
@@ -86,7 +86,7 @@ struct mlx5dr_table *mlx5dr_table_create(struct mlx5dr_context *ctx,
 
 	ret = mlx5dr_table_init(tbl);
 	if (ret) {
-		DRV_LOG(ERR, "Failed to initialise table");
+		DR_LOG(ERR, "Failed to initialise table");
 		goto free_tbl;
 	}
 

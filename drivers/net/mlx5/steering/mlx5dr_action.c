@@ -56,7 +56,7 @@ int mlx5dr_action_root_build_attr(struct mlx5dr_rule_action rule_actions[],
 			break;
 #endif
 		default:
-			DRV_LOG(ERR, "Found unsupported action type: %d", action->type);
+			DR_LOG(ERR, "Found unsupported action type: %d", action->type);
 			rte_errno = ENOTSUP;
 			return rte_errno;
 		}
@@ -77,7 +77,7 @@ mlx5dr_action_alloc_single_stc(struct mlx5dr_context *ctx,
 
 	ret = mlx5dr_pool_chunk_alloc(stc_pool, stc);
 	if (ret) {
-		DRV_LOG(ERR, "Failed to allocate single action STC");
+		DR_LOG(ERR, "Failed to allocate single action STC");
 		return ret;
 	}
 
@@ -87,7 +87,7 @@ mlx5dr_action_alloc_single_stc(struct mlx5dr_context *ctx,
 
 	ret = mlx5dr_cmd_stc_modify(devx_obj, stc_attr);
 	if (ret) {
-		DRV_LOG(ERR, "Failed to modify STC to type %d", stc_attr->action_type);
+		DR_LOG(ERR, "Failed to modify STC to type %d", stc_attr->action_type);
 		goto free_chunk;
 	}
 
@@ -163,7 +163,7 @@ static void mlx5dr_action_fill_stc_attr(struct mlx5dr_action *action,
 		break;
 
 	default:
-		DRV_LOG(ERR, "Invalid action type %d", action->type);
+		DR_LOG(ERR, "Invalid action type %d", action->type);
 		assert(false);
 	}
 }
@@ -244,14 +244,14 @@ mlx5dr_action_create_generic(struct mlx5dr_context *ctx,
 
 	if (!mlx5dr_action_is_root_flags(flags) &&
 	    !mlx5dr_action_is_hws_flags(flags)) {
-		DRV_LOG(ERR, "Action flags must specify root or non root (HWS)");
+		DR_LOG(ERR, "Action flags must specify root or non root (HWS)");
 		rte_errno = ENOTSUP;
 		return NULL;
 	}
 
 	action = simple_calloc(1, sizeof(*action));
 	if (!action) {
-		DRV_LOG(ERR, "Failed to allocate memory for action [%d]", action_type);
+		DR_LOG(ERR, "Failed to allocate memory for action [%d]", action_type);
 		rte_errno = ENOMEM;
 		return NULL;
 	}
@@ -272,14 +272,14 @@ mlx5dr_action_create_dest_table(struct mlx5dr_context *ctx,
 	int ret;
 
 	if (mlx5dr_table_is_root(tbl)) {
-		DRV_LOG(ERR, "Root table cannot be set as destination");
+		DR_LOG(ERR, "Root table cannot be set as destination");
 		rte_errno = ENOTSUP;
 		return NULL;
 	}
 
 	if (mlx5dr_action_is_hws_flags(flags) &&
 	    mlx5dr_action_is_root_flags(flags)) {
-		DRV_LOG(ERR, "Same action cannot be used for root and non root");
+		DR_LOG(ERR, "Same action cannot be used for root and non root");
 		rte_errno = ENOTSUP;
 		return NULL;
 	}
@@ -313,7 +313,7 @@ mlx5dr_action_create_dest_tir(struct mlx5dr_context *ctx,
 
 	if (mlx5dr_action_is_hws_flags(flags) &&
 	    mlx5dr_action_is_root_flags(flags)) {
-		DRV_LOG(ERR, "Same action cannot be used for root and non root");
+		DR_LOG(ERR, "Same action cannot be used for root and non root");
 		rte_errno = ENOTSUP;
 		return NULL;
 	}
@@ -419,7 +419,7 @@ mlx5dr_action_create_counter(struct mlx5dr_context *ctx,
 
 	if (mlx5dr_action_is_hws_flags(flags) &&
 	    mlx5dr_action_is_root_flags(flags)) {
-		DRV_LOG(ERR, "Same action cannot be used for root and non root");
+		DR_LOG(ERR, "Same action cannot be used for root and non root");
 		rte_errno = ENOTSUP;
 		return NULL;
 	}
@@ -461,7 +461,7 @@ mlx5dr_action_conv_reformat_type_to_action(uint32_t reformat_type,
 		*action_type = MLX5DR_ACTION_TYP_L2_TO_TNL_L3;
 		break;
 	default:
-		DRV_LOG(ERR, "Invalid reformat type requested");
+		DR_LOG(ERR, "Invalid reformat type requested");
 		rte_errno = ENOTSUP;
 		return rte_errno;
 	}
@@ -540,7 +540,7 @@ static int mlx5dr_action_handle_l2_to_tunnel_l2(struct mlx5dr_context *ctx,
 	int ret;
 
 	if (data_sz % 2 != 0) {
-		DRV_LOG(ERR, "data size should be multiply of 2");
+		DR_LOG(ERR, "data size should be multiply of 2");
 		rte_errno = EINVAL;
 		return rte_errno;
 	}
@@ -548,7 +548,7 @@ static int mlx5dr_action_handle_l2_to_tunnel_l2(struct mlx5dr_context *ctx,
 
 	args_log_size = mlx5dr_arg_data_size_to_arg_log_size(data_sz);
 	if (args_log_size >= MLX5DR_ARG_CHUNK_SIZE_MAX) {
-		DRV_LOG(ERR, "data size is bigger than supported");
+		DR_LOG(ERR, "data size is bigger than supported");
 		rte_errno = EINVAL;
 		return rte_errno;
 	}
@@ -557,7 +557,7 @@ static int mlx5dr_action_handle_l2_to_tunnel_l2(struct mlx5dr_context *ctx,
 							 args_log_size,
 							 ctx->pd_num);
 	if (!action->reformat.arg_obj) {
-		DRV_LOG(ERR, "failed to create arg for reformat");
+		DR_LOG(ERR, "failed to create arg for reformat");
 		return rte_errno;
 	}
 
@@ -565,13 +565,13 @@ static int mlx5dr_action_handle_l2_to_tunnel_l2(struct mlx5dr_context *ctx,
 	if (action->flags & MLX5DR_ACTION_FLAG_INLINE)
 		ret = mlx5dr_arg_write_inline_arg_data(action, data);
 	if (ret) {
-		DRV_LOG(ERR, "failed to write inline arg for reformat");
+		DR_LOG(ERR, "failed to write inline arg for reformat");
 		goto free_arg;
 	}
 
 	ret = mlx5dr_action_create_stcs(action, NULL);
 	if (ret) {
-		DRV_LOG(ERR, "failed to create stc for reformat");
+		DR_LOG(ERR, "failed to create stc for reformat");
 		goto free_arg;
 	}
 
@@ -631,7 +631,7 @@ mlx5dr_action_create_reformat(struct mlx5dr_context *ctx,
 
 	if (mlx5dr_action_is_root_flags(flags)) {
 		if (bulk_size) {
-			DRV_LOG(ERR, "Bulk reformat not supported over root");
+			DR_LOG(ERR, "Bulk reformat not supported over root");
 			rte_errno = ENOTSUP;
 			goto free_action;
 		}
@@ -645,7 +645,7 @@ mlx5dr_action_create_reformat(struct mlx5dr_context *ctx,
 
 	if (!mlx5dr_action_is_hws_flags(flags)||
 	    ((flags & MLX5DR_ACTION_FLAG_INLINE) && bulk_size)) {
-		DRV_LOG(ERR, "reformat flags don't fit hws (flags: %x0x)\n",
+		DR_LOG(ERR, "reformat flags don't fit hws (flags: %x0x)\n",
 			flags);
 		rte_errno = EINVAL;
 		goto free_action;
@@ -653,7 +653,7 @@ mlx5dr_action_create_reformat(struct mlx5dr_context *ctx,
 
 	ret = mlx5dr_action_create_reformat_hws(ctx, data_sz, data, bulk_size, action);
 	if (ret) {
-		DRV_LOG(ERR, "Failed to create reformat.\n");
+		DR_LOG(ERR, "Failed to create reformat.\n");
 		rte_errno = EINVAL;
 		goto free_action;
 	}
@@ -704,7 +704,7 @@ mlx5dr_action_create_modify_header(struct mlx5dr_context *ctx,
 
 	if (mlx5dr_action_is_root_flags(flags)) {
 		if (bulk_size) {
-			DRV_LOG(ERR, "Bulk modify-header not supported over root");
+			DR_LOG(ERR, "Bulk modify-header not supported over root");
 			rte_errno = ENOTSUP;
 			goto free_action;
 		}
@@ -717,7 +717,7 @@ mlx5dr_action_create_modify_header(struct mlx5dr_context *ctx,
 
 	if (!mlx5dr_action_is_hws_flags(flags) ||
 	    ((flags & MLX5DR_ACTION_FLAG_INLINE) && bulk_size)) {
-		DRV_LOG(ERR, "flags don't fit hws (flags: %x0x, bulk_size: %d)\n",
+		DR_LOG(ERR, "flags don't fit hws (flags: %x0x, bulk_size: %d)\n",
 			flags, bulk_size);
 		rte_errno = EINVAL;
 		goto free_action;
@@ -726,7 +726,7 @@ mlx5dr_action_create_modify_header(struct mlx5dr_context *ctx,
 	ret = mlx5dr_pat_arg_create_modify_header(ctx, action, pattern_sz,
 						  pattern, bulk_size);
 	if (ret) {
-		DRV_LOG(ERR, "Failed allocating modify-header\n");
+		DR_LOG(ERR, "Failed allocating modify-header\n");
 		goto free_action;
 	}
 
@@ -805,7 +805,7 @@ int mlx5dr_action_get_default_stc(struct mlx5dr_context *ctx,
 
 	default_stc = simple_calloc(1, sizeof(*default_stc));
 	if (!default_stc) {
-		DRV_LOG(ERR, "Failed to allocate memory for default STCs");
+		DR_LOG(ERR, "Failed to allocate memory for default STCs");
 		rte_errno = ENOMEM;
 		return rte_errno;
 	}
@@ -815,7 +815,7 @@ int mlx5dr_action_get_default_stc(struct mlx5dr_context *ctx,
 	ret = mlx5dr_action_alloc_single_stc(ctx, &stc_attr, tbl_type,
 					     &default_stc->nop_ctr);
 	if (ret) {
-		DRV_LOG(ERR, "Failed to allocate default counter STC");
+		DR_LOG(ERR, "Failed to allocate default counter STC");
 		goto free_default_stc;
 	}
 
@@ -823,7 +823,7 @@ int mlx5dr_action_get_default_stc(struct mlx5dr_context *ctx,
 	ret = mlx5dr_action_alloc_single_stc(ctx, &stc_attr, tbl_type,
 					     &default_stc->nop_double);
 	if (ret) {
-		DRV_LOG(ERR, "Failed to allocate default double STC");
+		DR_LOG(ERR, "Failed to allocate default double STC");
 		goto free_nop_ctr;
 	}
 
@@ -831,7 +831,7 @@ int mlx5dr_action_get_default_stc(struct mlx5dr_context *ctx,
 	ret = mlx5dr_action_alloc_single_stc(ctx, &stc_attr, tbl_type,
 					     &default_stc->nop_single);
 	if (ret) {
-		DRV_LOG(ERR, "Failed to allocate default single STC");
+		DR_LOG(ERR, "Failed to allocate default single STC");
 		goto free_nop_double;
 	}
 
@@ -839,7 +839,7 @@ int mlx5dr_action_get_default_stc(struct mlx5dr_context *ctx,
 	ret = mlx5dr_action_alloc_single_stc(ctx, &stc_attr, tbl_type,
 					     &default_stc->default_hit);
 	if (ret) {
-		DRV_LOG(ERR, "Failed to allocate default allow STC");
+		DR_LOG(ERR, "Failed to allocate default allow STC");
 		goto free_nop_single;
 	}
 
@@ -995,7 +995,7 @@ int mlx5dr_actions_quick_apply(struct mlx5dr_send_engine *queue,
 			wqe_ctrl->stc_ix[MLX5DR_ACTION_STC_IDX_HIT] = htobe32(stc_idx);
 			break;
 		default:
-			DRV_LOG(ERR, "Found unsupported action type: %d", action->type);
+			DR_LOG(ERR, "Found unsupported action type: %d", action->type);
 			rte_errno = ENOTSUP;
 			return rte_errno;
 		}

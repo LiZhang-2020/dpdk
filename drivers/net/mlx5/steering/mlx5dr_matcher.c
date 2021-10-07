@@ -16,7 +16,7 @@ static int mlx5dr_matcher_create_end_ft(struct mlx5dr_matcher *matcher)
 
 	matcher->end_ft = mlx5dr_cmd_flow_table_create(tbl->ctx->ibv_ctx, &ft_attr);
 	if (!matcher->end_ft) {
-		DRV_LOG(ERR, "Failed to create matcher end flow table");
+		DR_LOG(ERR, "Failed to create matcher end flow table");
 		return rte_errno;
 	}
 	return 0;
@@ -70,7 +70,7 @@ connect:
 
 		ret = mlx5dr_cmd_flow_table_modify(matcher->end_ft, &ft_attr);
 		if (ret) {
-			DRV_LOG(ERR, "Failed to connect new matcher to next RTC");
+			DR_LOG(ERR, "Failed to connect new matcher to next RTC");
 			goto remove_from_list;
 		}
 	}
@@ -85,7 +85,7 @@ connect:
 
 	ret = mlx5dr_cmd_flow_table_modify(ft, &ft_attr);
 	if (ret) {
-		DRV_LOG(ERR, "Failed to connect new matcher to previous FT");
+		DR_LOG(ERR, "Failed to connect new matcher to previous FT");
 		goto remove_from_list;
 	}
 
@@ -124,7 +124,7 @@ static int mlx5dr_matcher_disconnect(struct mlx5dr_matcher *matcher)
 
 	ret = mlx5dr_cmd_flow_table_modify(prev_ft, &ft_attr);
 	if (ret) {
-		DRV_LOG(ERR, "Failed to disconnect matcher");
+		DR_LOG(ERR, "Failed to disconnect matcher");
 		return ret;
 	}
 
@@ -153,7 +153,7 @@ static int mlx5dr_matcher_create_rtc_nic(struct mlx5dr_matcher *matcher,
 
 	ret = mlx5dr_pool_chunk_alloc(ste_pool, &nic_matcher->ste);
 	if (ret) {
-		DRV_LOG(ERR, "Failed to allocate STE for matcher RTC");
+		DR_LOG(ERR, "Failed to allocate STE for matcher RTC");
 		return ret;
 	}
 
@@ -177,7 +177,7 @@ static int mlx5dr_matcher_create_rtc_nic(struct mlx5dr_matcher *matcher,
 
 	nic_matcher->rtc = mlx5dr_cmd_rtc_create(ctx->ibv_ctx, &rtc_attr);
 	if (!nic_matcher->rtc) {
-		DRV_LOG(ERR, "Failed to create matcher RTC");
+		DR_LOG(ERR, "Failed to create matcher RTC");
 		return errno;
 	}
 	return 0;
@@ -279,7 +279,7 @@ static int mlx5dr_matcher_bind_mt(struct mlx5dr_matcher *matcher)
 		ret = mlx5dr_definer_compare(matcher->mt[i]->definer,
 					     matcher->mt[i-1]->definer);
 		if (ret) {
-			DRV_LOG(ERR, "Match templates cannot be used on the same matcher");
+			DR_LOG(ERR, "Match templates cannot be used on the same matcher");
 			rte_errno = ENOTSUP;
 			goto definer_put;
 		}
@@ -401,7 +401,7 @@ static int mlx5dr_matcher_init_root(struct mlx5dr_matcher *matcher)
 					  &match_criteria,
 					  &rte_error);
 	if (ret) {
-		DRV_LOG(ERR, "Failed to convert items to PRM [%s]", rte_error.message);
+		DR_LOG(ERR, "Failed to convert items to PRM [%s]", rte_error.message);
 		goto free_mask;
 	}
 
@@ -415,7 +415,7 @@ static int mlx5dr_matcher_init_root(struct mlx5dr_matcher *matcher)
 
 	matcher->dv_matcher = mlx5dv_create_flow_matcher(ctx->ibv_ctx, &attr);
 	if (!matcher->dv_matcher) {
-		DRV_LOG(ERR, "Failed to create DV flow matcher");
+		DR_LOG(ERR, "Failed to create DV flow matcher");
 		rte_errno = errno;
 		goto free_mask;
 	}
@@ -444,7 +444,7 @@ static int mlx5dr_matcher_uninit_root(struct mlx5dr_matcher *matcher)
 
 	ret = mlx5dv_destroy_flow_matcher(matcher->dv_matcher);
 	if (ret) {
-		DRV_LOG(ERR, "Failed to Destroy DV flow matcher");
+		DR_LOG(ERR, "Failed to Destroy DV flow matcher");
 		rte_errno = errno;
 	}
 
@@ -461,7 +461,7 @@ mlx5dr_matcher_check_template(uint8_t num_of_mt, bool is_root)
 		MLX5DR_MATCHER_MAX_MT;
 
 	if (num_of_mt > max_num_of_mt) {
-		DRV_LOG(ERR, "Number of match template exceeds limit");
+		DR_LOG(ERR, "Number of match template exceeds limit");
 		rte_errno = ENOTSUP;
 		return rte_errno;
 	}
@@ -476,29 +476,29 @@ mlx5dr_macther_check_attr(struct mlx5dr_cmd_query_caps *caps,
 {
 	if (is_root) {
 		if (attr->sz_hint_row_log || attr->sz_hint_col_log) {
-			DRV_LOG(ERR, "Root matcher doesn't support non zero hint value");
+			DR_LOG(ERR, "Root matcher doesn't support non zero hint value");
 			goto not_supported;
 		}
 		return 0;
 	}
 
 	if (attr->sz_hint_col_log > caps->rtc_log_depth_max) {
-		DRV_LOG(ERR, "Matcher depth exceeds limit %d", caps->rtc_log_depth_max);
+		DR_LOG(ERR, "Matcher depth exceeds limit %d", caps->rtc_log_depth_max);
 		goto not_supported;
 	}
 
 	if (attr->sz_hint_col_log + attr->sz_hint_row_log > caps->ste_alloc_log_max) {
-		DRV_LOG(ERR, "Total matcher size exceeds limit %d", caps->ste_alloc_log_max);
+		DR_LOG(ERR, "Total matcher size exceeds limit %d", caps->ste_alloc_log_max);
 		goto not_supported;
 	}
 
 	if (attr->sz_hint_col_log + attr->sz_hint_row_log < caps->ste_alloc_log_gran) {
-		DRV_LOG(ERR, "Total matcher size below limit %d", caps->ste_alloc_log_gran);
+		DR_LOG(ERR, "Total matcher size below limit %d", caps->ste_alloc_log_gran);
 		goto not_supported;
 	}
 
 	if (attr->insertion_mode != MLX5DR_MATCHER_INSERTION_MODE_BEST_EFFORT) {
-		DRV_LOG(ERR, "HWS Matcher only supports best effort mode");
+		DR_LOG(ERR, "HWS Matcher only supports best effort mode");
 		goto not_supported;
 	}
 
@@ -544,7 +544,7 @@ mlx5dr_matcher_create(struct mlx5dr_table *tbl,
 		ret = mlx5dr_matcher_init(matcher);
 
 	if (ret) {
-		DRV_LOG(ERR, "Failed to initialise matcher: %d", ret);
+		DR_LOG(ERR, "Failed to initialise matcher: %d", ret);
 		goto free_matcher;
 	}
 
@@ -575,7 +575,7 @@ mlx5dr_match_template_create(struct rte_flow_item items[])
 
 	mt = simple_calloc(1, sizeof(*mt));
 	if (!mt) {
-		DRV_LOG(ERR, "Failed to allocate match template");
+		DR_LOG(ERR, "Failed to allocate match template");
                 rte_errno = ENOMEM;
                 return NULL;
 	}
@@ -588,7 +588,7 @@ mlx5dr_match_template_create(struct rte_flow_item items[])
 	len = RTE_ALIGN(ret, 16);
 	mt->items = simple_calloc(1, len);
 	if (!mt->items) {
-		DRV_LOG(ERR, "Failed to allocate item copy");
+		DR_LOG(ERR, "Failed to allocate item copy");
 		rte_errno = ENOMEM;
 		goto free_template;
 	}

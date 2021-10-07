@@ -195,7 +195,7 @@ static int mlx5dr_rule_create_root(struct mlx5dr_rule *rule,
 					  &match_criteria,
 					  &error);
 	if (ret) {
-		DRV_LOG(ERR, "Failed to convert items to PRM [%s]", error.message);
+		DR_LOG(ERR, "Failed to convert items to PRM [%s]", error.message);
 		goto free_value;
 	}
 

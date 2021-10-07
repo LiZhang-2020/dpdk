@@ -453,7 +453,7 @@ static int mlx5dr_send_ring_open_cq(struct mlx5dr_context *ctx,
 	cq_size = queue->num_entries;
 	ibv_cq = mlx5_glue->create_cq(ctx->ibv_ctx, cq_size, NULL, NULL, 0);
 	if (!ibv_cq) {
-		DRV_LOG(ERR, "Failed to create CQ");
+		DR_LOG(ERR, "Failed to create CQ");
 		rte_errno = errno;
 		return rte_errno;
 	}
@@ -470,7 +470,7 @@ static int mlx5dr_send_ring_open_cq(struct mlx5dr_context *ctx,
 	cq->db = mlx5_cq.dbrec;
 	cq->ncqe = mlx5_cq.cqe_cnt;
 	if (cq->ncqe < queue->num_entries)
-		DRV_LOG(ERR, "%s - (ncqe: %u quque_num_entries: %u) Bug?!",
+		DR_LOG(ERR, "%s - (ncqe: %u quque_num_entries: %u) Bug?!",
 			__func__,
 			cq->ncqe,
 			queue->num_entries); /* TODO - Debug test */

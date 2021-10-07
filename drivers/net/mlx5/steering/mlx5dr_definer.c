@@ -606,7 +606,7 @@ mlx5dr_definer_conv_items_to_hl(struct mlx5dr_context *ctx,
 		}
 
 		if (ret) {
-			DRV_LOG(ERR, "Failed processing item type: %d", items->type);
+			DR_LOG(ERR, "Failed processing item type: %d", items->type);
 			return ret;
 		}
 	}
@@ -622,7 +622,7 @@ mlx5dr_definer_conv_items_to_hl(struct mlx5dr_context *ctx,
 	mt->fc_sz = total;
 	mt->fc = simple_calloc(total, sizeof(*mt->fc));
 	if (!mt->fc) {
-		DRV_LOG(ERR, "Failed to allocate field copy array");
+		DR_LOG(ERR, "Failed to allocate field copy array");
                 rte_errno = ENOMEM;
                 return rte_errno;
 	}
@@ -665,7 +665,7 @@ mlx5dr_definer_find_byte_in_tag(struct mlx5dr_definer *definer,
 	}
 
 	/* The hl byte offset must be part of the definer */
-	DRV_LOG(ERR, "Failed to map to definer - Field not supported");
+	DR_LOG(ERR, "Failed to map to definer - Field not supported");
 	rte_errno = EINVAL;
 	return rte_errno;
 }
@@ -807,7 +807,7 @@ int mlx5dr_definer_get(struct mlx5dr_context *ctx,
 
 	mt->definer = simple_calloc(1, sizeof(*mt->definer));
 	if (!mt->definer) {
-		DRV_LOG(ERR, "Failed to allocate memory for definer");
+		DR_LOG(ERR, "Failed to allocate memory for definer");
 		rte_errno = ENOMEM;
 		goto dec_refcount;
 	}
@@ -815,7 +815,7 @@ int mlx5dr_definer_get(struct mlx5dr_context *ctx,
 	/* Header layout (hl) holds full bit mask per field */
 	hl = simple_calloc(1, MLX5_ST_SZ_BYTES(definer_hl));
 	if (!hl) {
-		DRV_LOG(ERR, "Failed to allocate memory for header layout");
+		DR_LOG(ERR, "Failed to allocate memory for header layout");
                 rte_errno = ENOMEM;
                 goto free_definer;
 	}
@@ -823,14 +823,14 @@ int mlx5dr_definer_get(struct mlx5dr_context *ctx,
 	/* Convert items to hl and allocate the field copy array (fc) */
 	ret = mlx5dr_definer_conv_items_to_hl(ctx, mt, hl);
 	if (ret) {
-		DRV_LOG(ERR, "Failed to convert items to hl");
+		DR_LOG(ERR, "Failed to convert items to hl");
 		goto free_hl;
 	}
 
 	/* Find the definer for given header layout */
 	ret = mlx5dr_definer_find_best_hl_fit(mt->definer, &format_id);
 	if (ret) {
-		DRV_LOG(ERR, "Failed to create definer from header layout");
+		DR_LOG(ERR, "Failed to create definer from header layout");
 		goto free_field_copy;
 	}
 
@@ -839,7 +839,7 @@ int mlx5dr_definer_get(struct mlx5dr_context *ctx,
 				     mt->fc,
 				     mt->fc_sz);
 	if (ret) {
-		DRV_LOG(ERR, "Failed to bind field copy to definer");
+		DR_LOG(ERR, "Failed to bind field copy to definer");
 		goto free_field_copy;
 	}
 
