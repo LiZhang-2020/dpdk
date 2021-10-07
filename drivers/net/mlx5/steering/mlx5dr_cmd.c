@@ -198,6 +198,21 @@ mlx5dr_cmd_stc_modify_set_stc_param(struct mlx5dr_cmd_stc_modify_attr *stc_attr,
 		MLX5_SET(stc_ste_param_remove, stc_parm, remove_end_anchor,
 			 stc_attr->remove_header.end_anchor);
 		break;
+	case MLX5_IFC_STC_ACTION_TYPE_HEADER_INSERT:
+		MLX5_SET(stc_ste_param_insert, stc_parm, action_type,
+			 MLX5_MODIFICATION_TYPE_INSERT);
+		MLX5_SET(stc_ste_param_insert, stc_parm, encap,
+			 stc_attr->reformat.encap);
+		MLX5_SET(stc_ste_param_insert, stc_parm, inline_data,
+			 stc_attr->reformat.is_inline);
+		MLX5_SET(stc_ste_param_insert, stc_parm, insert_anchor,
+			 stc_attr->reformat.insert_anchor);
+		/* HW gets that size in words */
+		MLX5_SET(stc_ste_param_insert, stc_parm, insert_size,
+			 stc_attr->reformat.header_size / 2);
+		MLX5_SET(stc_ste_param_insert, stc_parm, insert_argument,
+			 stc_attr->reformat.arg_id);
+		break;
 	case MLX5_IFC_STC_ACTION_TYPE_DROP:
 	case MLX5_IFC_STC_ACTION_TYPE_NOP:
 	case MLX5_IFC_STC_ACTION_TYPE_TAG:
@@ -227,7 +242,8 @@ mlx5dr_cmd_stc_modify(struct mlx5dr_devx_obj *devx_obj,
 	    stc_attr->action_type != MLX5_IFC_STC_ACTION_TYPE_NOP &&
 	    stc_attr->action_type != MLX5_IFC_STC_ACTION_TYPE_ALLOW &&
 	    stc_attr->action_type != MLX5_IFC_STC_ACTION_TYPE_JUMP_TO_TIR &&
-	    stc_attr->action_type != MLX5_IFC_STC_ACTION_TYPE_HEADER_REMOVE) {
+	    stc_attr->action_type != MLX5_IFC_STC_ACTION_TYPE_HEADER_REMOVE &&
+	    stc_attr->action_type != MLX5_IFC_STC_ACTION_TYPE_HEADER_INSERT) {
 		DRV_LOG(ERR, "TODO FYI - ignoring action STC!");
 		stc_attr->action_type = MLX5_IFC_STC_ACTION_TYPE_NOP;
 		stc_attr->action_offset = 0;

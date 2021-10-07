@@ -4,19 +4,28 @@
 
 #include "mlx5dr_internal.h"
 
+
+/* it returns the roundup of log2(data_size) */
 enum mlx5dr_arg_chunk_size
-mlx5dr_arg_get_arg_log_size(uint16_t num_of_actions)
+mlx5dr_arg_data_size_to_arg_log_size(uint16_t data_size)
 {
-	if (num_of_actions <= 8)
+	if (data_size <= MLX5DR_ARG_DATA_SIZE)
 		return MLX5DR_ARG_CHUNK_SIZE_1;
-	if (num_of_actions <= 16)
+	if (data_size <= MLX5DR_ARG_DATA_SIZE * 2)
 		return MLX5DR_ARG_CHUNK_SIZE_2;
-	if (num_of_actions <= 32)
+	if (data_size <= MLX5DR_ARG_DATA_SIZE * 4)
 		return MLX5DR_ARG_CHUNK_SIZE_3;
-	if (num_of_actions <= 64)
+	if (data_size <= MLX5DR_ARG_DATA_SIZE * 8)
 		return MLX5DR_ARG_CHUNK_SIZE_4;
 
 	return MLX5DR_ARG_CHUNK_SIZE_MAX;
+}
+
+enum mlx5dr_arg_chunk_size
+mlx5dr_arg_get_arg_log_size(uint16_t num_of_actions)
+{
+	return mlx5dr_arg_data_size_to_arg_log_size(num_of_actions *
+						    MLX5DR_MODIFY_ACTION_SIZE);
 }
 
 /* cache and cache element handling */
@@ -251,7 +260,7 @@ void mlx5dr_arg_write(struct mlx5dr_send_engine *queue,
 		      struct mlx5dr_rule *rule,
 		      uint32_t arg_idx,
 		      uint8_t *arg_data,
-		      uint16_t num_of_actions)
+		      size_t data_size)
 {
 	struct mlx5dr_send_engine_post_attr send_attr = {0};
 	struct mlx5dr_wqe_gta_data_seg_arg *wqe_arg;
@@ -261,8 +270,8 @@ void mlx5dr_arg_write(struct mlx5dr_send_engine *queue,
 	size_t wqe_len;
 
 	/* Each WQE can hold 64B of data, it might require multiple iteration */
-	full_iter = num_of_actions / MLX5DR_MODIFY_ACTION_SIZE;
-	leftover = num_of_actions & (MLX5DR_MODIFY_ACTION_SIZE - 1);
+	full_iter = data_size / MLX5DR_ARG_DATA_SIZE;
+	leftover = data_size & (MLX5DR_ARG_DATA_SIZE - 1);
 
 	send_attr.opcode = MLX5DR_WQE_OPCODE_TBL_ACCESS;
 	send_attr.opmod = MLX5DR_WQE_GTA_OPMOD_MOD_ARG;
@@ -279,7 +288,7 @@ void mlx5dr_arg_write(struct mlx5dr_send_engine *queue,
 		mlx5dr_send_engine_post_end(&ctrl, &send_attr);
 
 		/* Move to next argument data */
-		arg_data += MLX5DR_MODIFY_ACTION_SIZE;
+		arg_data += MLX5DR_ARG_DATA_SIZE;
 	}
 
 	if (leftover) {
@@ -294,7 +303,7 @@ void mlx5dr_arg_write(struct mlx5dr_send_engine *queue,
 }
 
 /* TBD write arg, needs to know the structure of the arg to be written */
-static int mlx5dr_arg_write_arg_data(struct mlx5dr_action *action,
+int mlx5dr_arg_write_inline_arg_data(struct mlx5dr_action *action,
 				     __be64 *pattern)
 {
 	(void) action;
@@ -334,7 +343,7 @@ mlx5dr_arg_create_modify_header_arg(struct mlx5dr_context *ctx,
 
 	/* when INLINE need to write the arg data */
 	if (flags & MLX5DR_ACTION_FLAG_INLINE)
-		ret = mlx5dr_arg_write_arg_data(action, pattern); // TODO use mlx5dr_arg_write
+		ret = mlx5dr_arg_write_inline_arg_data(action, pattern); // TODO use mlx5dr_arg_write
 	if (ret) {
 		DRV_LOG(ERR, "failed writing INLINE arg in order: %d",
 			args_log_size + bulk_size);

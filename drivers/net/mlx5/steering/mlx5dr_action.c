@@ -153,6 +153,15 @@ static void mlx5dr_action_fill_stc_attr(struct mlx5dr_action *action,
 		attr->remove_header.start_anchor = MLX5_HEADER_START_OF_PACKET;
 		attr->remove_header.end_anchor = MLX5_HEADER_ANCHOR_INNER_MAC;
 		break;
+	case MLX5DR_ACTION_TYP_L2_TO_TNL_L2:
+		attr->action_type = MLX5_IFC_STC_ACTION_TYPE_HEADER_INSERT;
+		attr->action_offset = MLX5DR_ACTION_OFFSET_DW5;
+		attr->reformat.encap = 1;
+		attr->reformat.insert_anchor = MLX5_HEADER_START_OF_PACKET;
+		attr->reformat.arg_id = action->reformat.arg_obj->id;
+		attr->reformat.header_size = action->reformat.header_size;
+		break;
+
 	default:
 		DRV_LOG(ERR, "Invalid action type %d", action->type);
 		assert(false);
@@ -521,14 +530,75 @@ mlx5dr_action_create_reformat_root(struct mlx5dr_action *action,
 	return 0;
 }
 
+static int mlx5dr_action_handle_l2_to_tunnel_l2(struct mlx5dr_context *ctx,
+						size_t data_sz,
+						void *data,
+						uint32_t bulk_size,
+						struct mlx5dr_action *action)
+{
+	uint32_t args_log_size;
+	int ret;
+
+	if (data_sz % 2 != 0) {
+		DRV_LOG(ERR, "data size should be multiply of 2");
+		rte_errno = EINVAL;
+		return rte_errno;
+	}
+	action->reformat.header_size = data_sz;
+
+	args_log_size = mlx5dr_arg_data_size_to_arg_log_size(data_sz);
+	if (args_log_size >= MLX5DR_ARG_CHUNK_SIZE_MAX) {
+		DRV_LOG(ERR, "data size is bigger than supported");
+		rte_errno = EINVAL;
+		return rte_errno;
+	}
+	args_log_size += bulk_size;
+	action->reformat.arg_obj = mlx5dr_cmd_arg_create(ctx->ibv_ctx,
+							 args_log_size,
+							 ctx->pd_num);
+	if (!action->reformat.arg_obj) {
+		DRV_LOG(ERR, "failed to create arg for reformat");
+		return rte_errno;
+	}
+
+	/* when INLINE need to write the arg data */
+	if (action->flags & MLX5DR_ACTION_FLAG_INLINE)
+		ret = mlx5dr_arg_write_inline_arg_data(action, data);
+	if (ret) {
+		DRV_LOG(ERR, "failed to write inline arg for reformat");
+		goto free_arg;
+	}
+
+	ret = mlx5dr_action_create_stcs(action, NULL);
+	if (ret) {
+		DRV_LOG(ERR, "failed to create stc for reformat");
+		goto free_arg;
+	}
+
+	return 0;
+
+free_arg:
+	mlx5dr_cmd_destroy_obj(action->reformat.arg_obj);
+	return ret;
+}
+
 static int
-mlx5dr_action_create_reformat_hws(struct mlx5dr_action *action)
+mlx5dr_action_create_reformat_hws(struct mlx5dr_context *ctx,
+				  size_t data_sz,
+				  void *data,
+				  uint32_t bulk_size,
+				  struct mlx5dr_action *action)
 {
 	int ret = ENOTSUP;
 
 	switch (action->type) {
 	case MLX5DR_ACTION_TYP_TNL_L2_TO_L2:
 		ret = mlx5dr_action_create_stcs(action, NULL);
+		break;
+	case MLX5DR_ACTION_TYP_L2_TO_TNL_L2:
+		ret = mlx5dr_action_handle_l2_to_tunnel_l2(ctx, data_sz, data, bulk_size, action);
+		break;
+	case MLX5DR_ACTION_TYP_L2_TO_TNL_L3:
 		break;
 	default:
 		assert(false);
@@ -573,14 +643,15 @@ mlx5dr_action_create_reformat(struct mlx5dr_context *ctx,
 		return action;
 	}
 
-	if (!mlx5dr_action_is_hws_flags(flags)) {
+	if (!mlx5dr_action_is_hws_flags(flags)||
+	    ((flags & MLX5DR_ACTION_FLAG_INLINE) && bulk_size)) {
 		DRV_LOG(ERR, "reformat flags don't fit hws (flags: %x0x)\n",
 			flags);
 		rte_errno = EINVAL;
 		goto free_action;
 	}
 
-	ret = mlx5dr_action_create_reformat_hws(action);
+	ret = mlx5dr_action_create_reformat_hws(ctx, data_sz, data, bulk_size, action);
 	if (ret) {
 		DRV_LOG(ERR, "Failed to create reformat.\n");
 		rte_errno = EINVAL;
@@ -684,6 +755,10 @@ static void mlx5dr_action_destroy_hws(struct mlx5dr_action *action)
 		break;
 	case MLX5DR_ACTION_TYP_MODIFY_HDR:
 		mlx5dr_pat_arg_destroy_modify_header(action->ctx, action);
+		mlx5dr_action_destroy_stcs(action);
+		break;
+	case MLX5DR_ACTION_TYP_L2_TO_TNL_L2:
+		mlx5dr_cmd_destroy_obj(action->reformat.arg_obj);
 		mlx5dr_action_destroy_stcs(action);
 		break;
 	}
@@ -812,6 +887,16 @@ void mlx5dr_action_put_default_stc(struct mlx5dr_context *ctx,
 	pthread_spin_unlock(&ctx->ctrl_lock);
 }
 
+static void mlx5dr_action_arg_write(struct mlx5dr_send_engine *queue,
+				    struct mlx5dr_rule *rule,
+				    uint32_t arg_idx,
+				    uint8_t *arg_data,
+				    uint16_t num_of_actions)
+{
+	mlx5dr_arg_write(queue, rule, arg_idx, arg_data,
+			 num_of_actions * MLX5DR_MODIFY_ACTION_SIZE);
+}
+
 int mlx5dr_actions_quick_apply(struct mlx5dr_send_engine *queue,
 			       struct mlx5dr_rule *rule,
 			       struct mlx5dr_action_default_stc *default_stc,
@@ -864,11 +949,18 @@ int mlx5dr_actions_quick_apply(struct mlx5dr_send_engine *queue,
 			wqe_ctrl->stc_ix[MLX5DR_ACTION_STC_IDX_SINGLE] = htobe32(stc_idx);
 			break;
 		case MLX5DR_ACTION_TYP_L2_TO_TNL_L2:
-			raw_wqe[MLX5DR_ACTION_OFFSET_DW6] = htobe32(rule_actions[i].reformat.offset);
+			arg_sz =
+				1 << mlx5dr_arg_data_size_to_arg_log_size(action->reformat.header_size);
+			/* Argument base + offset based on number of actions */
+			arg_idx = action->reformat.arg_obj->id;
+			arg_idx += rule_actions[i].reformat.offset * arg_sz;
+			raw_wqe[MLX5DR_ACTION_OFFSET_DW6] = htobe32(arg_idx);
 			wqe_ctrl->stc_ix[MLX5DR_ACTION_STC_IDX_DOUBLE] = htobe32(stc_idx);
-			// TODO if not inline mlx5dr_send_arg()
-			// TODO set encap size
-			assert(0);
+
+			if (!(action->flags & MLX5DR_ACTION_FLAG_INLINE))
+				mlx5dr_arg_write(queue, rule, arg_idx,
+						 rule_actions[i].reformat.data,
+						 action->reformat.header_size);
 			break;
 		case MLX5DR_ACTION_TYP_TNL_L3_TO_L2:
 			/* Modify header: remove L2L3 + insert inline */
@@ -892,9 +984,9 @@ int mlx5dr_actions_quick_apply(struct mlx5dr_send_engine *queue,
 			wqe_ctrl->stc_ix[MLX5DR_ACTION_STC_IDX_DOUBLE] = htobe32(stc_idx);
 
 			if (!(action->flags & MLX5DR_ACTION_FLAG_INLINE))
-				mlx5dr_arg_write(queue, rule, arg_idx,
-						 rule_actions[i].modify_header.data,
-						 action->modify_header.num_of_actions);
+				mlx5dr_action_arg_write(queue, rule, arg_idx,
+							rule_actions[i].modify_header.data,
+							action->modify_header.num_of_actions);
 			break;
 		case MLX5DR_ACTION_TYP_DROP:
 		case MLX5DR_ACTION_TYP_FT:

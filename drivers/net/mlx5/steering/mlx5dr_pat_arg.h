@@ -14,7 +14,10 @@ enum mlx5dr_arg_chunk_size {
 	MLX5DR_ARG_CHUNK_SIZE_MAX,
 };
 
-#define MLX5DR_MODIFY_ACTION_SIZE 8
+enum {
+	MLX5DR_MODIFY_ACTION_SIZE = 8,
+	MLX5DR_ARG_DATA_SIZE = 64,
+};
 
 struct mlx5dr_pattern_cache {
 	pthread_spinlock_t lock; /* protect pattern list */
@@ -35,6 +38,8 @@ struct mlx5dr_pat_cached_pattern {
 
 enum mlx5dr_arg_chunk_size
 mlx5dr_arg_get_arg_log_size(uint16_t num_of_actions);
+enum mlx5dr_arg_chunk_size
+mlx5dr_arg_data_size_to_arg_log_size(uint16_t data_size);
 
 int mlx5dr_pat_init_pattern_cache(struct mlx5dr_pattern_cache *cache);
 
@@ -53,6 +58,9 @@ void mlx5dr_arg_write(struct mlx5dr_send_engine *queue,
 		      struct mlx5dr_rule *rule,
 		      uint32_t arg_idx,
 		      uint8_t *arg_data,
-		      uint16_t num_of_actions);
+		      size_t data_size);
+int mlx5dr_arg_write_inline_arg_data(struct mlx5dr_action *action,
+				     __be64 *pattern);
+
 
 #endif

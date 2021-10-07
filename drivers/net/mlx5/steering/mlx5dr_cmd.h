@@ -52,6 +52,14 @@ struct mlx5dr_cmd_stc_modify_attr {
 			uint32_t arg_id;
 			uint32_t pattern_id;
 		} modify_header;
+		struct {
+			uint32_t arg_id;
+			uint32_t header_size;
+			uint8_t is_inline;
+			uint8_t encap;
+			uint16_t insert_anchor;
+		} reformat;
+
 		uint32_t dest_table_id;
 		uint32_t dest_tir_num;
 	};

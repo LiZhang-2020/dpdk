@@ -2954,6 +2954,7 @@ struct mlx5_ifc_rtc_bits {
 enum mlx5_ifc_stc_action_type {
 	MLX5_IFC_STC_ACTION_TYPE_NOP = 0x00,
 	MLX5_IFC_STC_ACTION_TYPE_HEADER_REMOVE = 0x09,
+	MLX5_IFC_STC_ACTION_TYPE_HEADER_INSERT = 0x0b,
 	MLX5_IFC_STC_ACTION_TYPE_TAG = 0x0c,
 	MLX5_IFC_STC_ACTION_TYPE_ACC_MODIFY_LIST = 0x0e,
 	MLX5_IFC_STC_ACTION_TYPE_COUNTER = 0x14,
@@ -3005,6 +3006,19 @@ struct mlx5_ifc_stc_ste_param_remove_bits {
 	u8 reserved_at_18[0x8];
 };
 
+struct mlx5_ifc_stc_ste_param_insert_bits {
+	u8 action_type[0x4];
+	u8 encap[0x1];
+	u8 inline_data[0x1];
+	u8 reserved_at_6[0x4];
+	u8 insert_anchor[0x6];
+	u8 reserved_at_10[0x1];
+	u8 insert_offset[0x7];
+	u8 reserved_at_18[0x1];
+	u8 insert_size[0x7];
+	u8 insert_argument[0x20];
+};
+
 union mlx5_ifc_stc_param_bits {
 	struct mlx5_ifc_stc_ste_param_ste_table_bits ste_table;
 	struct mlx5_ifc_stc_ste_param_tir_bits tir;
@@ -3012,6 +3026,7 @@ union mlx5_ifc_stc_param_bits {
 	struct mlx5_ifc_stc_ste_param_flow_counter_bits counter;
 	struct mlx5_ifc_stc_ste_param_header_modify_list_bits modify_header;
 	struct mlx5_ifc_stc_ste_param_remove_bits remove_header;
+	struct mlx5_ifc_stc_ste_param_insert_bits insert_header;
 	u8 reserved_at_0[0x80];
 };
 

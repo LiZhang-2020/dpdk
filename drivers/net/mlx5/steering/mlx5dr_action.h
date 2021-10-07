@@ -61,12 +61,18 @@ struct mlx5dr_action {
 		struct {
 			struct mlx5dr_pool_chunk stc_rx;
 			struct mlx5dr_pool_chunk stc_tx;
+			union {
+				struct {
+					struct mlx5dr_devx_obj *pattern_obj;
+					struct mlx5dr_devx_obj *arg_obj;
+					uint16_t num_of_actions;
+				} modify_header;
 
-			struct {
-				struct mlx5dr_devx_obj *pattern_obj;
-				struct mlx5dr_devx_obj *arg_obj;
-				uint16_t num_of_actions;
-			} modify_header;
+				struct {
+					struct mlx5dr_devx_obj *arg_obj;
+					uint32_t header_size;
+				} reformat;
+			};
 		};
 
 		struct ibv_flow_action *flow_action;
@@ -95,3 +101,4 @@ int mlx5dr_actions_quick_apply(struct mlx5dr_send_engine *queue,
 			       bool is_rx);
 
 #endif
+
