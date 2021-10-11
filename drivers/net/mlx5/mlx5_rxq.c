@@ -925,6 +925,7 @@ mlx5_rx_queue_setup(struct rte_eth_dev *dev, uint16_t idx, uint16_t desc,
 		/* Join owner list of shared RXQ. */
 		LIST_INSERT_HEAD(&rxq_ctrl->owners, rxq, owner_entry);
 		rxq->ctrl = rxq_ctrl;
+		mlx5_rxq_ref(dev, idx);
 	} else {
 		/* Create new shared RXQ. */
 		rxq_ctrl = mlx5_rxq_new(dev, rxq, desc, socket, conf, rx_seg,
