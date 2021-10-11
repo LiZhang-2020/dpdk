@@ -7337,8 +7337,13 @@ mlx5_ctrl_flow_vlan(struct rte_eth_dev *dev,
 		queue[i] = (*priv->reta_idx)[i];
 	flow_idx = mlx5_flow_list_create(dev, MLX5_FLOW_TYPE_CTL,
 					 &attr, items, actions, false, &error);
-	if (!flow_idx)
+	if (!flow_idx) {
+		DRV_LOG(ERR,
+			"Failed to create ctrl flow: rte_errno(%d), type(%d): %s",
+			rte_errno, error.type,
+			error.message ? error.message : " (no stated reason)");
 		return -rte_errno;
+	}
 	return 0;
 }
 
