@@ -289,8 +289,6 @@ mlx5dr_definer_conv_item_ipv4(struct mlx5dr_definer_conv_data *cd,
 	fc->item_idx = item_idx;
 	fc->tag_set = &mlx5dr_definer_ipv4_version_set;
 	fc->tag_mask_set = &mlx5dr_definer_ones_set;
-	// TODO: l3_type is present in multiple headers, this value is correct
-	// for definer 22 but not for definer 28.  (eth_l2 -> eth_l2_src)
 	DR_CALC_SET(fc, eth_l2, l3_type, inner);
 
 	/* Unset ethertype if present */
@@ -353,8 +351,6 @@ mlx5dr_definer_conv_item_udp(struct mlx5dr_definer_conv_data *cd,
 	fc->item_idx = item_idx;
 	fc->tag_set = &mlx5dr_definer_udp_protocol_set;
 	fc->tag_mask_set = &mlx5dr_definer_ones_set;
-	// TODO: l4_type is present in multiple headers, this value is correct
-	// for definer 22 but not for definer 28. (eth_l2 -> eth_l2_src)
 	DR_CALC_SET(fc, eth_l2, l4_type_bwc, inner);
 
 	if (m->hdr.src_port) {
@@ -395,8 +391,6 @@ mlx5dr_definer_conv_item_tcp(struct mlx5dr_definer_conv_data *cd,
 	fc->item_idx = item_idx;
 	fc->tag_set = &mlx5dr_definer_tcp_protocol_set;
 	fc->tag_mask_set = &mlx5dr_definer_ones_set;
-	// TODO: l4_type is present in multiple headers, this value is correct
-	// for definer 22 but not for definer 28.  (eth_l2 -> eth_l2_src)
 	DR_CALC_SET(fc, eth_l2, l4_type_bwc, inner);
 
 	if (m->hdr.src_port) {
@@ -698,9 +692,19 @@ mlx5dr_definer_fc_bind(struct mlx5dr_definer *definer,
 }
 
 static int
-mlx5dr_definer_find_best_hl_fit(struct mlx5dr_definer *definer,
+mlx5dr_definer_find_best_hl_fit(struct mlx5dr_match_template *mt,
+				struct mlx5dr_cmd_query_caps *caps,
 				uint16_t *format_id)
 {
+	struct mlx5dr_definer *definer = mt->definer;
+	uint32_t tag_offset, i;
+	bool fail;
+	int ret;
+
+	/* Temporary support for two fixed definers, until dynamic definer */
+
+	fail = false;
+	*format_id = 22;
 	definer->dw_selector[5] = 64;
 	definer->dw_selector[4] = 65;
 	definer->dw_selector[3] = 24;
@@ -715,27 +719,56 @@ mlx5dr_definer_find_best_hl_fit(struct mlx5dr_definer *definer,
 	definer->byte_selector[2] = 37;
 	definer->byte_selector[1] = 4;
 	definer->byte_selector[0] = 5;
-	*format_id = 22;
 
-//	TODO Once FW will support def28, please check other TODO`s before enabling
-//	definer->dw_selector[5] = 26;
-//	definer->dw_selector[4] = MLX5_BYTE_OFF(definer_hl, flex_parser.flex_parser_0) / DW_SIZE;
-//	definer->dw_selector[4] -= caps->flex_parser_id_gtpu_teid;
-//	definer->dw_selector[3] = 66;
-//	definer->dw_selector[2] = 67;
-//	definer->dw_selector[1] = 64;
-//	definer->dw_selector[0] = 65;
-//	definer->byte_selector[7] = 96;
-//	definer->byte_selector[6] = 97;
-//	definer->byte_selector[5] = 98;
-//	definer->byte_selector[4] = 99;
-//	definer->byte_selector[3] = 79;
-//	definer->byte_selector[2] = 47;
-//	definer->byte_selector[1] = 59;
-//	definer->byte_selector[0] = 39;
-//	*format_id = 28;
+	/* Check if all fields are supported by definer 22 */
+	for (i = 0; i < mt->fc_sz; i++) {
+		ret = mlx5dr_definer_find_byte_in_tag(definer, mt->fc->byte_off, &tag_offset);
+		if (ret) {
+			fail = true;
+			break;
+		}
+	}
 
-	return 0;
+	if (!fail)
+		return 0;
+
+	fail = false;
+	// TODO, This is not defined yet RM #2820558
+	*format_id = 55;
+	// GTPU TEID
+	definer->dw_selector[5] =
+		mlx5dr_definer_get_flex_parser_off(caps->flex_parser_id_gtpu_teid) / DW_SIZE;
+	// GTPU QFI
+	definer->dw_selector[4] =
+		mlx5dr_definer_get_flex_parser_off(caps->flex_parser_id_gtpu_first_ext_dw_0) / DW_SIZE;
+	definer->dw_selector[3] = 64; // SRC IP OUT
+	definer->dw_selector[2] = 66; // SRC IP INNER
+	definer->dw_selector[1] = 67; // DST IP INNER
+	definer->dw_selector[0] = 26; // SRC & DST PORT INNER
+	definer->byte_selector[7] = 136; // Reserved
+	definer->byte_selector[6] = 136; // Reserved
+	definer->byte_selector[5] = 136; // Reserved
+	definer->byte_selector[4] = 136; // Reserved
+	definer->byte_selector[3] = 136; // Reserved
+	definer->byte_selector[2] = 136; // Reserved
+	definer->byte_selector[1] = 21;  // L3 & L4 type INNER
+	definer->byte_selector[0] = 9;   // L3 & L4 type OUT
+
+	/* Check if all fields are supported by definer 55 */
+	for (i = 0; i < mt->fc_sz; i++) {
+		ret = mlx5dr_definer_find_byte_in_tag(definer, mt->fc->byte_off, &tag_offset);
+		if (ret) {
+			fail = true;
+			break;
+		}
+	}
+
+	if (!fail)
+		return 0;
+
+	DR_LOG(ERR, "Unable to find supporting match definer");
+	rte_errno = ENOTSUP;
+	return rte_errno;
 }
 
 static void
@@ -828,7 +861,7 @@ int mlx5dr_definer_get(struct mlx5dr_context *ctx,
 	}
 
 	/* Find the definer for given header layout */
-	ret = mlx5dr_definer_find_best_hl_fit(mt->definer, &format_id);
+	ret = mlx5dr_definer_find_best_hl_fit(mt, ctx->caps, &format_id);
 	if (ret) {
 		DR_LOG(ERR, "Failed to create definer from header layout");
 		goto free_field_copy;
