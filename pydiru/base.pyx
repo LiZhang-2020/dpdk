@@ -3,10 +3,16 @@
 
 import logging
 
+from pydiru.pydiru_error import PydiruError
+cimport pydiru.libpydiru as pdr
 
 LOG_LEVEL=logging.INFO
 LOG_FORMAT='[%(levelname)s] %(asctime)s %(filename)s:%(lineno)s: %(message)s'
 logging.basicConfig(format=LOG_FORMAT, level=LOG_LEVEL, datefmt='%d %b %Y %H:%M:%S')
+
+
+cpdef PydiruErrno(str msg):
+    return PydiruError(msg, pdr.rte_errno)
 
 
 cdef class PydiruObject:
@@ -25,6 +31,7 @@ cdef class PydiruCM(PydiruObject):
     close() is also declared but it should be overridden by each inheriting
     class.
     """
+
     def __enter__(self):
         return self
 

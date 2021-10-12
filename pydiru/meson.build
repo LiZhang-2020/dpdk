@@ -37,15 +37,29 @@ pydiru_cython_modules = [
 ]
 
 pydiru_python_modules = [
-	'__init__.py'
+	'__init__.py',
+	'pydiru_error.py'
 ]
+
+deps += ['ethdev']
+dep_objs = []
+foreach d:deps
+	dep_objs += get_variable(get_option('default_library')
+				 + '_rte_' + d)
+endforeach
+
+link_libs = []
+if get_option('default_library') == 'static'
+	link_libs = dpdk_static_libraries + dpdk_drivers
+endif
 
 py3_dep = python3.dependency(required:false)
 foreach pyx_file:pydiru_cython_modules
 	python3.extension_module(
 		pyx_file.split('.')[0],
 		pyx_file,
-		dependencies : py3_dep,
+		dependencies : [py3_dep] + dep_objs,
+		link_whole: link_libs,
 		include_directories : includes,
 		install_dir : python3.get_path('platlib') + '/pydiru',
 		install : true

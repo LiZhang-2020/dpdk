@@ -4,11 +4,17 @@
 includes += global_inc
 
 pydiru_cython_modules = [
+    'mlx5dr_context.pyx',
 ]
 
 pydiru_python_modules = [
     '__init__.py'
 ]
+
+link_libs = []
+if get_option('default_library') == 'static'
+    link_libs = dpdk_static_libraries + dpdk_drivers
+endif
 
 
 foreach pyx_file:pydiru_cython_modules
@@ -16,6 +22,7 @@ foreach pyx_file:pydiru_cython_modules
 		pyx_file.split('.')[0],
 		pyx_file,
 		dependencies : py3_dep,
+		link_whole: link_libs,
 		include_directories : includes,
 		install_dir : python3.get_path('platlib') + '/pydiru/providers/mlx5/steering',
 		install : true
