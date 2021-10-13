@@ -164,6 +164,10 @@ enum rte_flow_item_type {
 	RTE_FLOW_ITEM_TYPE_ANY,
 
 	/**
+	 * @deprecated
+	 * @see RTE_FLOW_ITEM_TYPE_PORT_REPRESENTOR
+	 * @see RTE_FLOW_ITEM_TYPE_REPRESENTED_PORT
+	 *
 	 * [META]
 	 *
 	 * Matches traffic originating from (ingress) or going to (egress)
@@ -174,6 +178,10 @@ enum rte_flow_item_type {
 	RTE_FLOW_ITEM_TYPE_PF,
 
 	/**
+	 * @deprecated
+	 * @see RTE_FLOW_ITEM_TYPE_PORT_REPRESENTOR
+	 * @see RTE_FLOW_ITEM_TYPE_REPRESENTED_PORT
+	 *
 	 * [META]
 	 *
 	 * Matches traffic originating from (ingress) or going to (egress) a
@@ -184,6 +192,10 @@ enum rte_flow_item_type {
 	RTE_FLOW_ITEM_TYPE_VF,
 
 	/**
+	 * @deprecated
+	 * @see RTE_FLOW_ITEM_TYPE_PORT_REPRESENTOR
+	 * @see RTE_FLOW_ITEM_TYPE_REPRESENTED_PORT
+	 *
 	 * [META]
 	 *
 	 * Matches traffic originating from (ingress) or going to (egress) a
@@ -194,6 +206,10 @@ enum rte_flow_item_type {
 	RTE_FLOW_ITEM_TYPE_PHY_PORT,
 
 	/**
+	 * @deprecated
+	 * @see RTE_FLOW_ITEM_TYPE_PORT_REPRESENTOR
+	 * @see RTE_FLOW_ITEM_TYPE_REPRESENTED_PORT
+	 *
 	 * [META]
 	 *
 	 * Matches traffic originating from (ingress) or going to (egress) a
@@ -667,6 +683,10 @@ static const struct rte_flow_item_any rte_flow_item_any_mask = {
 #endif
 
 /**
+ * @deprecated
+ * @see RTE_FLOW_ITEM_TYPE_PORT_REPRESENTOR
+ * @see RTE_FLOW_ITEM_TYPE_REPRESENTED_PORT
+ *
  * RTE_FLOW_ITEM_TYPE_VF
  *
  * Matches traffic originating from (ingress) or going to (egress) a given
@@ -696,6 +716,10 @@ static const struct rte_flow_item_vf rte_flow_item_vf_mask = {
 #endif
 
 /**
+ * @deprecated
+ * @see RTE_FLOW_ITEM_TYPE_PORT_REPRESENTOR
+ * @see RTE_FLOW_ITEM_TYPE_REPRESENTED_PORT
+ *
  * RTE_FLOW_ITEM_TYPE_PHY_PORT
  *
  * Matches traffic originating from (ingress) or going to (egress) a
@@ -727,6 +751,10 @@ static const struct rte_flow_item_phy_port rte_flow_item_phy_port_mask = {
 #endif
 
 /**
+ * @deprecated
+ * @see RTE_FLOW_ITEM_TYPE_PORT_REPRESENTOR
+ * @see RTE_FLOW_ITEM_TYPE_REPRESENTED_PORT
+ *
  * RTE_FLOW_ITEM_TYPE_PORT_ID
  *
  * Matches traffic originating from (ingress) or going to (egress) a given
@@ -2207,6 +2235,10 @@ enum rte_flow_action_type {
 	RTE_FLOW_ACTION_TYPE_RSS,
 
 	/**
+	 * @deprecated
+	 * @see RTE_FLOW_ACTION_TYPE_PORT_REPRESENTOR
+	 * @see RTE_FLOW_ACTION_TYPE_REPRESENTED_PORT
+	 *
 	 * Directs matching traffic to the physical function (PF) of the
 	 * current device.
 	 *
@@ -2215,6 +2247,10 @@ enum rte_flow_action_type {
 	RTE_FLOW_ACTION_TYPE_PF,
 
 	/**
+	 * @deprecated
+	 * @see RTE_FLOW_ACTION_TYPE_PORT_REPRESENTOR
+	 * @see RTE_FLOW_ACTION_TYPE_REPRESENTED_PORT
+	 *
 	 * Directs matching traffic to a given virtual function of the
 	 * current device.
 	 *
@@ -2223,6 +2259,10 @@ enum rte_flow_action_type {
 	RTE_FLOW_ACTION_TYPE_VF,
 
 	/**
+	 * @deprecated
+	 * @see RTE_FLOW_ACTION_TYPE_PORT_REPRESENTOR
+	 * @see RTE_FLOW_ACTION_TYPE_REPRESENTED_PORT
+	 *
 	 * Directs packets to a given physical port index of the underlying
 	 * device.
 	 *
@@ -2231,6 +2271,10 @@ enum rte_flow_action_type {
 	RTE_FLOW_ACTION_TYPE_PHY_PORT,
 
 	/**
+	 * @deprecated
+	 * @see RTE_FLOW_ACTION_TYPE_PORT_REPRESENTOR
+	 * @see RTE_FLOW_ACTION_TYPE_REPRESENTED_PORT
+	 *
 	 * Directs matching traffic to a given DPDK port ID.
 	 *
 	 * See struct rte_flow_action_port_id.
@@ -2936,6 +2980,10 @@ struct rte_flow_action_rss {
 };
 
 /**
+ * @deprecated
+ * @see RTE_FLOW_ACTION_TYPE_PORT_REPRESENTOR
+ * @see RTE_FLOW_ACTION_TYPE_REPRESENTED_PORT
+ *
  * RTE_FLOW_ACTION_TYPE_VF
  *
  * Directs matching traffic to a given virtual function of the current
@@ -2954,6 +3002,10 @@ struct rte_flow_action_vf {
 };
 
 /**
+ * @deprecated
+ * @see RTE_FLOW_ACTION_TYPE_PORT_REPRESENTOR
+ * @see RTE_FLOW_ACTION_TYPE_REPRESENTED_PORT
+ *
  * RTE_FLOW_ACTION_TYPE_PHY_PORT
  *
  * Directs packets to a given physical port index of the underlying
@@ -2968,6 +3020,10 @@ struct rte_flow_action_phy_port {
 };
 
 /**
+ * @deprecated
+ * @see RTE_FLOW_ACTION_TYPE_PORT_REPRESENTOR
+ * @see RTE_FLOW_ACTION_TYPE_REPRESENTED_PORT
+ *
  * RTE_FLOW_ACTION_TYPE_PORT_ID
  *
  * Directs matching traffic to a given DPDK port ID.
