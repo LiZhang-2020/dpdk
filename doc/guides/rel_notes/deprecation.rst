@@ -124,6 +124,10 @@ Deprecation Notices
 * ethdev: Items and actions ``PF``, ``VF``, ``PHY_PORT``, ``PORT_ID`` are
   deprecated as hard-to-use / ambiguous and will be removed in DPDK 22.11.
 
+* ethdev: The use of attributes ``ingress`` / ``egress`` in "transfer" flows
+  is deprecated as ambiguous with respect to the embedded switch. The use of
+  these attributes will become invalid starting from DPDK 22.11.
+
 * Broadcom bnxt PMD: NetXtreme devices belonging to the ``BCM573xx and
   BCM5740x`` families will no longer be supported as of DPDK 21.02.
   Specifically the support for the following Broadcom PCI IDs will be removed
