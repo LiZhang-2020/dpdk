@@ -1476,6 +1476,65 @@ rte_flow_flex_item_create() routine.
   as padded with trailing zeroes up to full configured length, both for
   value and mask.
 
+Item: ``PORT_REPRESENTOR``
+^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Matches traffic entering the embedded switch from the given ethdev.
+
+Term **ethdev** and the concept of **port representor** are synonymous.
+The **represented port** is an *entity* plugged to the embedded switch
+at the opposite end of the "wire" leading to the ethdev.
+
+::
+
+    .--------------------.
+    |  PORT_REPRESENTOR  |  Ethdev (Application Port Referred to by its ID)
+    '--------------------'
+              ||
+              \/
+      .----------------.
+      |  Logical Port  |
+      '----------------'
+              ||
+              ||
+              ||
+              \/
+         .----------.
+         |  Switch  |
+         '----------'
+              :
+               :
+              :
+               :
+      .----------------.
+      |  Logical Port  |
+      '----------------'
+              :
+               :
+    .--------------------.
+    |  REPRESENTED_PORT  |  Net / Guest / Another Ethdev (Same Application)
+    '--------------------'
+
+
+- Incompatible with `Attribute: Traffic direction`_.
+- Requires `Attribute: Transfer`_.
+
+.. _table_rte_flow_item_ethdev:
+
+.. table:: ``struct rte_flow_item_ethdev``
+
+   +----------+-------------+---------------------------+
+   | Field    | Subfield    | Value                     |
+   +==========+=============+===========================+
+   | ``spec`` | ``port_id`` | ethdev port ID            |
+   +----------+-------------+---------------------------+
+   | ``last`` | ``port_id`` | upper range value         |
+   +----------+-------------+---------------------------+
+   | ``mask`` | ``port_id`` | zeroed for wildcard match |
+   +----------+-------------+---------------------------+
+
+- Default ``mask`` provides exact match behaviour.
+
 Actions
 ~~~~~~~
 

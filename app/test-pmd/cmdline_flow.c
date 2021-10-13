@@ -419,6 +419,8 @@ enum index {
 	ITEM_FLEX,
 	ITEM_FLEX_ITEM_HANDLE,
 	ITEM_FLEX_PATTERN_HANDLE,
+	ITEM_PORT_REPRESENTOR,
+	ITEM_PORT_REPRESENTOR_PORT_ID,
 
 	/* Validate/create actions. */
 	ACTIONS,
@@ -1295,6 +1297,7 @@ static const enum index next_item[] = {
 	ITEM_SFT,
 	ITEM_INTEGRITY,
 	ITEM_FLEX,
+	ITEM_PORT_REPRESENTOR,
 	END_SET,
 	ZERO,
 };
@@ -1676,6 +1679,12 @@ static const enum index item_integrity[] = {
 static const enum index item_integrity_lv[] = {
 	ITEM_INTEGRITY_LEVEL,
 	ITEM_INTEGRITY_VALUE,
+	ITEM_NEXT,
+	ZERO,
+};
+
+static const enum index item_port_representor[] = {
+	ITEM_PORT_REPRESENTOR_PORT_ID,
 	ITEM_NEXT,
 	ZERO,
 };
@@ -4579,6 +4588,21 @@ static const struct token token_list[] = {
 		.next = NEXT(item_flex, NEXT_ENTRY(COMMON_FLEX_HANDLE),
 			     NEXT_ENTRY(ITEM_PARAM_IS)),
 		.args = ARGS(ARGS_ENTRY(struct rte_flow_item_flex, pattern)),
+	},
+	[ITEM_PORT_REPRESENTOR] = {
+		.name = "port_representor",
+		.help = "match traffic entering the embedded switch from the given ethdev",
+		.priv = PRIV_ITEM(PORT_REPRESENTOR,
+				  sizeof(struct rte_flow_item_ethdev)),
+		.next = NEXT(item_port_representor),
+		.call = parse_vc,
+	},
+	[ITEM_PORT_REPRESENTOR_PORT_ID] = {
+		.name = "port_id",
+		.help = "ethdev port ID",
+		.next = NEXT(item_port_representor, NEXT_ENTRY(UNSIGNED),
+			     item_param),
+		.args = ARGS(ARGS_ENTRY(struct rte_flow_item_ethdev, port_id)),
 	},
 	/* Validate/create actions. */
 	[ACTIONS] = {
@@ -10212,6 +10236,9 @@ flow_item_default_mask(const struct rte_flow_item *item)
 		break;
 	case RTE_FLOW_ITEM_TYPE_PFCP:
 		mask = &rte_flow_item_pfcp_mask;
+		break;
+	case RTE_FLOW_ITEM_TYPE_PORT_REPRESENTOR:
+		mask = &rte_flow_item_ethdev_mask;
 		break;
 	default:
 		break;

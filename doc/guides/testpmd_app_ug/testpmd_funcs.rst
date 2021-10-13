@@ -4064,6 +4064,10 @@ This section lists supported pattern items and their attributes, if any.
    - ``value {unsigned}``: A bitmask that specify what packet elements
      must be matched for integrity.
 
+- ``port_representor``: match traffic entering the embedded switch from the given ethdev
+
+  - ``port_id {unsigned}``: ethdev port ID
+
 Actions list
 ^^^^^^^^^^^^
 
