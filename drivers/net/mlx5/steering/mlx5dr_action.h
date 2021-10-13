@@ -53,6 +53,11 @@ struct mlx5dr_action_default_stc {
 	uint32_t refcount;
 };
 
+struct mlx5dr_action_shared_stc {
+	struct mlx5dr_pool_chunk remove_header;
+	rte_atomic32_t refcount;
+};
+
 struct mlx5dr_action {
 	uint8_t type;
 	uint8_t flags;
@@ -93,7 +98,7 @@ void mlx5dr_action_put_default_stc(struct mlx5dr_context *ctx,
 
 int mlx5dr_actions_quick_apply(struct mlx5dr_send_engine *queue,
 			       struct mlx5dr_rule *rule,
-			       struct mlx5dr_action_default_stc *default_stc,
+			       struct mlx5dr_context_common_res *common_res,
 			       struct mlx5dr_wqe_gta_ctrl_seg *wqe_ctrl,
 			       struct mlx5dr_wqe_gta_data_seg_ste *wqe_data,
 			       struct mlx5dr_rule_action rule_actions[],

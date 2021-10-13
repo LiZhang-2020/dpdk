@@ -2987,6 +2987,7 @@ struct mlx5_ifc_stc_ste_param_header_modify_list_bits {
 
 enum mlx5_ifc_header_anchors {
 	MLX5_HEADER_START_OF_PACKET = 0x0,
+	MLX5_HEADER_ANCHOR_IPV6_IPV4 = 0x07,
 	MLX5_HEADER_ANCHOR_INNER_MAC = 0x13,
 };
 

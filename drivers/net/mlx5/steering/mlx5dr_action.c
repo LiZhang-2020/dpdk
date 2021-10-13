@@ -161,7 +161,14 @@ static void mlx5dr_action_fill_stc_attr(struct mlx5dr_action *action,
 		attr->reformat.arg_id = action->reformat.arg_obj->id;
 		attr->reformat.header_size = action->reformat.header_size;
 		break;
-
+	case MLX5DR_ACTION_TYP_L2_TO_TNL_L3:
+		attr->action_type = MLX5_IFC_STC_ACTION_TYPE_HEADER_INSERT;
+		attr->action_offset = MLX5DR_ACTION_OFFSET_DW6;
+		attr->reformat.encap = 1;
+		attr->reformat.insert_anchor = MLX5_HEADER_START_OF_PACKET;
+		attr->reformat.arg_id = action->reformat.arg_obj->id;
+		attr->reformat.header_size = action->reformat.header_size;
+		break;
 	default:
 		DR_LOG(ERR, "Invalid action type %d", action->type);
 		assert(false);
@@ -530,11 +537,11 @@ mlx5dr_action_create_reformat_root(struct mlx5dr_action *action,
 	return 0;
 }
 
-static int mlx5dr_action_handle_l2_to_tunnel_l2(struct mlx5dr_context *ctx,
-						size_t data_sz,
-						void *data,
-						uint32_t bulk_size,
-						struct mlx5dr_action *action)
+static int mlx5dr_action_handle_reformat_args(struct mlx5dr_context *ctx,
+					      size_t data_sz,
+					      void *data,
+					      uint32_t bulk_size,
+					      struct mlx5dr_action *action)
 {
 	uint32_t args_log_size;
 	int ret;
@@ -562,12 +569,33 @@ static int mlx5dr_action_handle_l2_to_tunnel_l2(struct mlx5dr_context *ctx,
 	}
 
 	/* when INLINE need to write the arg data */
-	if (action->flags & MLX5DR_ACTION_FLAG_INLINE) {
+	if (action->flags & MLX5DR_ACTION_FLAG_INLINE)
 		ret = mlx5dr_arg_write_inline_arg_data(action, data);
-		if (ret) {
-			DR_LOG(ERR, "failed to write inline arg for reformat");
-			goto free_arg;
-		}
+	if (ret) {
+		DR_LOG(ERR, "failed to write inline arg for reformat");
+		goto free_arg;
+	}
+
+	return 0;
+
+free_arg:
+	mlx5dr_cmd_destroy_obj(action->reformat.arg_obj);
+	return ret;
+}
+
+static int mlx5dr_action_handle_l2_to_tunnel_l2(struct mlx5dr_context *ctx,
+						size_t data_sz,
+						void *data,
+						uint32_t bulk_size,
+						struct mlx5dr_action *action)
+{
+	int ret;
+
+	ret = mlx5dr_action_handle_reformat_args(ctx, data_sz, data, bulk_size,
+						 action);
+	if (ret) {
+		DR_LOG(ERR, "failed to create args for reformat");
+		return ret;
 	}
 
 	ret = mlx5dr_action_create_stcs(action, NULL);
@@ -578,6 +606,150 @@ static int mlx5dr_action_handle_l2_to_tunnel_l2(struct mlx5dr_context *ctx,
 
 	return 0;
 
+free_arg:
+	mlx5dr_cmd_destroy_obj(action->reformat.arg_obj);
+	return ret;
+}
+
+static int mlx5dr_action_get_shared_stc_offset(struct mlx5dr_context_common_res *common_res)
+{
+	return common_res->shared_stc->remove_header.offset;
+}
+
+static int mlx5dr_action_get_shared_stc_nic(struct mlx5dr_context *ctx,
+				       uint8_t tbl_type)
+{
+	struct mlx5dr_cmd_stc_modify_attr stc_attr = {0};
+	struct mlx5dr_action_shared_stc *shared_stc;
+	int ret;
+
+	pthread_spin_lock(&ctx->ctrl_lock);
+	if (ctx->common_res[tbl_type].shared_stc) {
+		rte_atomic32_add(&ctx->common_res[tbl_type].shared_stc->refcount, 1);
+		pthread_spin_unlock(&ctx->ctrl_lock);
+		return 0;
+	}
+
+	shared_stc = simple_calloc(1, sizeof(*shared_stc));
+	if (!shared_stc) {
+		DR_LOG(ERR, "Failed to allocate memory for shared STCs");
+		rte_errno = ENOMEM;
+		goto unlock_and_out;
+	}
+
+	stc_attr.action_type = MLX5_IFC_STC_ACTION_TYPE_HEADER_REMOVE;
+	stc_attr.action_offset = MLX5DR_ACTION_OFFSET_DW5;
+	stc_attr.remove_header.decap = 1;
+	stc_attr.remove_header.start_anchor = MLX5_HEADER_START_OF_PACKET;
+	stc_attr.remove_header.end_anchor = MLX5_HEADER_ANCHOR_IPV6_IPV4;
+
+	ret = mlx5dr_action_alloc_single_stc(ctx, &stc_attr, tbl_type,
+					     &shared_stc->remove_header);
+	if (ret) {
+		DR_LOG(ERR, "Failed to allocate shared decap l2 STC");
+		goto free_shared_stc;
+	}
+
+	rte_atomic32_init(&ctx->common_res[tbl_type].shared_stc->refcount);
+	rte_atomic32_set(&ctx->common_res[tbl_type].shared_stc->refcount, 1);
+
+	ctx->common_res[tbl_type].shared_stc = shared_stc;
+
+	pthread_spin_unlock(&ctx->ctrl_lock);
+
+	return 0;
+
+free_shared_stc:
+	simple_free(shared_stc);
+unlock_and_out:
+	pthread_spin_unlock(&ctx->ctrl_lock);
+	return rte_errno;
+}
+
+static void mlx5dr_action_put_shared_stc_nic(struct mlx5dr_context *ctx,
+					  uint8_t tbl_type)
+{
+	struct mlx5dr_action_shared_stc *shared_stc;
+
+	pthread_spin_lock(&ctx->ctrl_lock);
+	if (!rte_atomic32_dec_and_test(&ctx->common_res[tbl_type].shared_stc->refcount)) {
+		pthread_spin_unlock(&ctx->ctrl_lock);
+		return;
+	}
+
+	shared_stc = ctx->common_res[tbl_type].shared_stc;
+
+	mlx5dr_action_free_single_stc(ctx, tbl_type, &shared_stc->remove_header);
+	simple_free(shared_stc);
+	ctx->common_res[tbl_type].shared_stc = NULL;
+	pthread_spin_unlock(&ctx->ctrl_lock);
+}
+
+static int mlx5dr_action_get_shared_stc(struct mlx5dr_action *action)
+{
+	struct mlx5dr_context *ctx = action->ctx;
+	int ret;
+
+	if (action->flags & MLX5DR_ACTION_FLAG_HWS_RX)
+		ret = mlx5dr_action_get_shared_stc_nic(ctx, MLX5DR_TABLE_TYPE_NIC_RX);
+	if (ret) {
+		DR_LOG(ERR, "Failed to allocate memory for RX shared STCs");
+		return ret;
+	}
+
+	if (action->flags & MLX5DR_ACTION_FLAG_HWS_TX)
+		ret = mlx5dr_action_get_shared_stc_nic(ctx, MLX5DR_TABLE_TYPE_NIC_TX);
+	if (ret) {
+		DR_LOG(ERR, "Failed to allocate memory for TX shared STCs");
+		mlx5dr_action_put_shared_stc_nic(ctx, MLX5DR_TABLE_TYPE_NIC_RX);
+	}
+
+	return ret;
+}
+
+static void mlx5dr_action_put_shared_stc(struct mlx5dr_action *action)
+{
+	struct mlx5dr_context *ctx = action->ctx;
+
+	if (action->flags & MLX5DR_ACTION_FLAG_HWS_RX)
+		mlx5dr_action_put_shared_stc_nic(ctx, MLX5DR_TABLE_TYPE_NIC_RX);
+
+	if (action->flags & MLX5DR_ACTION_FLAG_HWS_TX)
+		mlx5dr_action_put_shared_stc_nic(ctx, MLX5DR_TABLE_TYPE_NIC_TX);
+}
+
+static int mlx5dr_action_handle_l2_to_tunnel_l3(struct mlx5dr_context *ctx,
+						size_t data_sz,
+						void *data,
+						uint32_t bulk_size,
+						struct mlx5dr_action *action)
+{
+	int ret;
+
+	ret = mlx5dr_action_handle_reformat_args(ctx, data_sz, data, bulk_size,
+						 action);
+	if (ret) {
+		DR_LOG(ERR, "failed to create args for reformat");
+		return ret;
+	}
+
+	/* the action is remove-l2-header + insert-l3-header */
+	ret = mlx5dr_action_get_shared_stc(action);
+	if (ret) {
+		DR_LOG(ERR, "failed to create remove stc for reformat");
+		goto free_arg;
+	}
+
+	ret = mlx5dr_action_create_stcs(action, NULL);
+	if (ret) {
+		DR_LOG(ERR, "failed to create insert stc for reformat");
+		goto down_shared;
+	}
+
+	return 0;
+
+down_shared:
+	mlx5dr_action_put_shared_stc(action);
 free_arg:
 	mlx5dr_cmd_destroy_obj(action->reformat.arg_obj);
 	return ret;
@@ -600,6 +772,7 @@ mlx5dr_action_create_reformat_hws(struct mlx5dr_context *ctx,
 		ret = mlx5dr_action_handle_l2_to_tunnel_l2(ctx, data_sz, data, bulk_size, action);
 		break;
 	case MLX5DR_ACTION_TYP_L2_TO_TNL_L3:
+		ret = mlx5dr_action_handle_l2_to_tunnel_l3(ctx, data_sz, data, bulk_size, action);
 		break;
 	default:
 		assert(false);
@@ -758,6 +931,11 @@ static void mlx5dr_action_destroy_hws(struct mlx5dr_action *action)
 		mlx5dr_pat_arg_destroy_modify_header(action->ctx, action);
 		mlx5dr_action_destroy_stcs(action);
 		break;
+	case MLX5DR_ACTION_TYP_L2_TO_TNL_L3:
+		mlx5dr_action_put_shared_stc(action);
+		mlx5dr_cmd_destroy_obj(action->reformat.arg_obj);
+		mlx5dr_action_destroy_stcs(action);
+		break;
 	case MLX5DR_ACTION_TYP_L2_TO_TNL_L2:
 		mlx5dr_cmd_destroy_obj(action->reformat.arg_obj);
 		mlx5dr_action_destroy_stcs(action);
@@ -798,8 +976,8 @@ int mlx5dr_action_get_default_stc(struct mlx5dr_context *ctx,
 
 	pthread_spin_lock(&ctx->ctrl_lock);
 
-	if (ctx->default_stc[tbl_type]) {
-		ctx->default_stc[tbl_type]->refcount++;
+	if (ctx->common_res[tbl_type].default_stc) {
+		ctx->common_res[tbl_type].default_stc->refcount++;
 		pthread_spin_unlock(&ctx->ctrl_lock);
 		return 0;
 	}
@@ -845,8 +1023,8 @@ int mlx5dr_action_get_default_stc(struct mlx5dr_context *ctx,
 		goto free_nop_single;
 	}
 
-	ctx->default_stc[tbl_type] = default_stc;
-	ctx->default_stc[tbl_type]->refcount++;
+	ctx->common_res[tbl_type].default_stc = default_stc;
+	ctx->common_res[tbl_type].default_stc->refcount++;
 
 	pthread_spin_unlock(&ctx->ctrl_lock);
 
@@ -869,11 +1047,11 @@ void mlx5dr_action_put_default_stc(struct mlx5dr_context *ctx,
 {
 	struct mlx5dr_action_default_stc *default_stc;
 
-	default_stc = ctx->default_stc[tbl_type];
+	default_stc = ctx->common_res[tbl_type].default_stc;
 
 	pthread_spin_lock(&ctx->ctrl_lock);
 
-	default_stc = ctx->default_stc[tbl_type];
+	default_stc = ctx->common_res[tbl_type].default_stc;
 	if (--default_stc->refcount) {
 		pthread_spin_unlock(&ctx->ctrl_lock);
 		return;
@@ -884,7 +1062,7 @@ void mlx5dr_action_put_default_stc(struct mlx5dr_context *ctx,
 	mlx5dr_action_free_single_stc(ctx, tbl_type, &default_stc->nop_double);
 	mlx5dr_action_free_single_stc(ctx, tbl_type, &default_stc->nop_ctr);
 	simple_free(default_stc);
-	ctx->default_stc[tbl_type] = NULL;
+	ctx->common_res[tbl_type].default_stc = NULL;
 
 	pthread_spin_unlock(&ctx->ctrl_lock);
 }
@@ -901,13 +1079,14 @@ static void mlx5dr_action_arg_write(struct mlx5dr_send_engine *queue,
 
 int mlx5dr_actions_quick_apply(struct mlx5dr_send_engine *queue,
 			       struct mlx5dr_rule *rule,
-			       struct mlx5dr_action_default_stc *default_stc,
+			       struct mlx5dr_context_common_res *common_res,
 			       struct mlx5dr_wqe_gta_ctrl_seg *wqe_ctrl,
 			       struct mlx5dr_wqe_gta_data_seg_ste *wqe_data,
 			       struct mlx5dr_rule_action rule_actions[],
 			       uint8_t num_actions,
 			       bool is_rx)
 {
+	struct mlx5dr_action_default_stc *default_stc = common_res->default_stc;
 	uint32_t *raw_wqe = (uint32_t *)wqe_data;
 	struct mlx5dr_action *action;
 	int stc_idx;
@@ -940,7 +1119,7 @@ int mlx5dr_actions_quick_apply(struct mlx5dr_send_engine *queue,
 
 		switch (action->type) {
 		case MLX5DR_ACTION_TYP_TAG:
-			raw_wqe[MLX5DR_ACTION_OFFSET_DW7] = htobe32(rule_actions[i].tag.value);
+			raw_wqe[MLX5DR_ACTION_OFFSET_DW5] = htobe32(rule_actions[i].tag.value);
 			wqe_ctrl->stc_ix[MLX5DR_ACTION_STC_IDX_SINGLE] = htobe32(stc_idx);
 			break;
 		case MLX5DR_ACTION_TYP_CTR:
@@ -971,10 +1150,22 @@ int mlx5dr_actions_quick_apply(struct mlx5dr_send_engine *queue,
 			assert(0);
 			break;
 		case MLX5DR_ACTION_TYP_L2_TO_TNL_L3:
-			/* Remove L2 header - single
-			 * Insert with pointer - double
-			 */
-			assert(0);
+			/* Remove L2 header, shared stc - single */
+			wqe_ctrl->stc_ix[MLX5DR_ACTION_STC_IDX_SINGLE] =
+				mlx5dr_action_get_shared_stc_offset(common_res);
+
+			/* Insert with pointer (arg-id) - double */
+			arg_sz =
+				1 << mlx5dr_arg_data_size_to_arg_log_size(action->reformat.header_size);
+			arg_idx = rule_actions[i].reformat.offset * arg_sz;
+			raw_wqe[MLX5DR_ACTION_OFFSET_DW6] = htobe32(arg_idx);
+
+			wqe_ctrl->stc_ix[MLX5DR_ACTION_STC_IDX_DOUBLE] = htobe32(stc_idx);
+
+			if (!(action->flags & MLX5DR_ACTION_FLAG_INLINE))
+				mlx5dr_arg_write(queue, rule, arg_idx,
+						 rule_actions[i].reformat.data,
+						 action->reformat.header_size);
 			break;
 		case MLX5DR_ACTION_TYP_MODIFY_HDR:
 			arg_sz = 1 << mlx5dr_arg_get_arg_log_size(action->modify_header.num_of_actions);
