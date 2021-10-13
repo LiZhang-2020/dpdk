@@ -3588,10 +3588,10 @@ flow_dv_validate_action_modify_field(struct rte_eth_dev *dev,
 	const struct rte_flow_action_modify_field *action_modify_field =
 		action->conf;
 	uint32_t dst_width = mlx5_flow_item_field_width(dev,
-				action_modify_field->dst.field,
+				action_modify_field->dst.field, -1,
 				attr, error);
 	uint32_t src_width = mlx5_flow_item_field_width(dev,
-				action_modify_field->src.field,
+				action_modify_field->src.field, dst_width,
 				attr, error);
 
 	ret = flow_dv_validate_action_modify_hdr(action_flags, action, error);

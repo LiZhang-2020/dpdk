@@ -2229,6 +2229,7 @@ enum modify_reg flow_get_metadata_reg(struct rte_eth_dev *dev,
 		      struct rte_flow_error *error);
 int mlx5_flow_item_field_width(struct rte_eth_dev *dev,
 			       enum rte_flow_field_id field,
+			       int inherit,
 			       const struct rte_flow_attr *attr,
 			       struct rte_flow_error *error);
 int flow_convert_action_modify_field
