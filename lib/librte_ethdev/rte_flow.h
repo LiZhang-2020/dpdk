@@ -610,6 +610,16 @@ enum rte_flow_item_type {
 	 * @see struct rte_flow_item_ethdev
 	 */
 	RTE_FLOW_ITEM_TYPE_PORT_REPRESENTOR,
+
+	/**
+	 * [META]
+	 *
+	 * Matches traffic entering the embedded switch from
+	 * the entity represented by the given ethdev.
+	 *
+	 * @see struct rte_flow_item_ethdev
+	 */
+	RTE_FLOW_ITEM_TYPE_REPRESENTED_PORT,
 };
 
 /**
@@ -1859,7 +1869,8 @@ rte_flow_item_integrity_mask = {
  * @b EXPERIMENTAL: this structure may change without prior notice
  *
  * Provides an ethdev port ID for use with the following items:
- * RTE_FLOW_ITEM_TYPE_PORT_REPRESENTOR.
+ * RTE_FLOW_ITEM_TYPE_PORT_REPRESENTOR,
+ * RTE_FLOW_ITEM_TYPE_REPRESENTED_PORT.
  */
 struct rte_flow_item_ethdev {
 	uint16_t port_id; /**< ethdev port ID */
