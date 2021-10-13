@@ -573,6 +573,7 @@ enum index {
 	ACTION_MODIFY_FIELD_SRC_LEVEL,
 	ACTION_MODIFY_FIELD_SRC_OFFSET,
 	ACTION_MODIFY_FIELD_SRC_VALUE,
+	ACTION_MODIFY_FIELD_SRC_POINTER,
 	ACTION_MODIFY_FIELD_WIDTH,
 	ACTION_POL_G,
 	ACTION_POL_Y,
@@ -595,6 +596,14 @@ enum index {
 /** Storage size for struct rte_flow_item_sft including user_data. */
 #define ITEM_SFT_SIZE \
 	(sizeof(struct rte_flow_item_sft) + ITEM_SFT_USER_DATA_SIZE)
+
+/** Maximum size for external pattern in struct rte_flow_action_modify_data. */
+#define ACTION_MODIFY_PATTERN_SIZE 32
+
+/** Storage size for struct rte_flow_action_modify_field including pattern. */
+#define ACTION_MODIFY_SIZE \
+	(sizeof(struct rte_flow_action_modify_field) + \
+	ACTION_MODIFY_PATTERN_SIZE)
 
 /** Maximum number of queue indices in struct rte_flow_action_rss. */
 #define ACTION_RSS_QUEUE_NUM 128
@@ -2050,6 +2059,7 @@ static const enum index action_modify_field_src[] = {
 	ACTION_MODIFY_FIELD_SRC_LEVEL,
 	ACTION_MODIFY_FIELD_SRC_OFFSET,
 	ACTION_MODIFY_FIELD_SRC_VALUE,
+	ACTION_MODIFY_FIELD_SRC_POINTER,
 	ACTION_MODIFY_FIELD_WIDTH,
 	ZERO,
 };
@@ -5369,8 +5379,7 @@ static const struct token token_list[] = {
 	[ACTION_MODIFY_FIELD] = {
 		.name = "modify_field",
 		.help = "modify destination field with data from source field",
-		.priv = PRIV_ACTION(MODIFY_FIELD,
-			sizeof(struct rte_flow_action_modify_field)),
+		.priv = PRIV_ACTION(MODIFY_FIELD, ACTION_MODIFY_SIZE),
 		.next = NEXT(NEXT_ENTRY(ACTION_MODIFY_FIELD_OP)),
 		.call = parse_vc,
 	},
@@ -5449,9 +5458,24 @@ static const struct token token_list[] = {
 		.name = "src_value",
 		.help = "source immediate value",
 		.next = NEXT(NEXT_ENTRY(ACTION_MODIFY_FIELD_WIDTH),
-			NEXT_ENTRY(UNSIGNED)),
-		.args = ARGS(ARGS_ENTRY(struct rte_flow_action_modify_field,
+			     NEXT_ENTRY(HEX)),
+		.args = ARGS(ARGS_ENTRY_ARB(0, 0),
+			     ARGS_ENTRY_ARB(0, 0),
+			     ARGS_ENTRY(struct rte_flow_action_modify_field,
 					src.value)),
+		.call = parse_vc_conf,
+	},
+	[ACTION_MODIFY_FIELD_SRC_POINTER] = {
+		.name = "src_ptr",
+		.help = "pointer to source immediate value",
+		.next = NEXT(NEXT_ENTRY(ACTION_MODIFY_FIELD_WIDTH),
+			     NEXT_ENTRY(HEX)),
+		.args = ARGS(ARGS_ENTRY(struct rte_flow_action_modify_field,
+					src.pvalue),
+			     ARGS_ENTRY_ARB(0, 0),
+			     ARGS_ENTRY_ARB
+				(sizeof(struct rte_flow_action_modify_field),
+				 ACTION_MODIFY_PATTERN_SIZE)),
 		.call = parse_vc_conf,
 	},
 	[ACTION_MODIFY_FIELD_WIDTH] = {
@@ -9429,15 +9453,11 @@ static int
 comp_set_modify_field_op(struct context *ctx, const struct token *token,
 		   unsigned int ent, char *buf, unsigned int size)
 {
-	uint16_t idx = 0;
-
 	RTE_SET_USED(ctx);
 	RTE_SET_USED(token);
-	for (idx = 0; modify_field_ops[idx]; ++idx)
-		;
 	if (!buf)
-		return idx + 1;
-	if (ent < idx)
+		return RTE_DIM(modify_field_ops);
+	if (ent < RTE_DIM(modify_field_ops) - 1)
 		return strlcpy(buf, modify_field_ops[ent], size);
 	return -1;
 }
@@ -9447,16 +9467,17 @@ static int
 comp_set_modify_field_id(struct context *ctx, const struct token *token,
 		   unsigned int ent, char *buf, unsigned int size)
 {
-	uint16_t idx = 0;
+	const char *name;
 
-	RTE_SET_USED(ctx);
 	RTE_SET_USED(token);
-	for (idx = 0; modify_field_ids[idx]; ++idx)
-		;
 	if (!buf)
-		return idx + 1;
-	if (ent < idx)
-		return strlcpy(buf, modify_field_ids[ent], size);
+		return RTE_DIM(modify_field_ids);
+	if (ent >= RTE_DIM(modify_field_ids) - 1)
+		return -1;
+	name = modify_field_ids[ent];
+	if (ctx->curr == ACTION_MODIFY_FIELD_SRC_TYPE ||
+	    (strcmp(name, "pointer") && strcmp(name, "value")))
+		return rte_strscpy(buf, name, size);
 	return -1;
 }
 
