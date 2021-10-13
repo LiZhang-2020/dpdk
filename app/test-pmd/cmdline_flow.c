@@ -586,6 +586,8 @@ enum index {
 	ACTION_POL_G,
 	ACTION_POL_Y,
 	ACTION_POL_R,
+	ACTION_PORT_REPRESENTOR,
+	ACTION_PORT_REPRESENTOR_PORT_ID,
 };
 
 /** Maximum size for pattern in struct rte_flow_item_raw. */
@@ -1778,6 +1780,7 @@ static const enum index next_action[] = {
 	ACTION_SET_TCP_TP_DST,
 	ACTION_SFT,
 	ACTION_MODIFY_FIELD,
+	ACTION_PORT_REPRESENTOR,
 	ZERO,
 };
 
@@ -2092,6 +2095,12 @@ static const enum index action_modify_field_src[] = {
 	ACTION_MODIFY_FIELD_SRC_VALUE,
 	ACTION_MODIFY_FIELD_SRC_POINTER,
 	ACTION_MODIFY_FIELD_WIDTH,
+	ZERO,
+};
+
+static const enum index action_port_representor[] = {
+	ACTION_PORT_REPRESENTOR_PORT_ID,
+	ACTION_NEXT,
 	ZERO,
 };
 
@@ -5770,6 +5779,23 @@ static const struct token token_list[] = {
 		.next = NEXT(NEXT_ENTRY(ACTION_NEXT)),
 		.call = parse_vc_action_sample_index,
 		.comp = comp_set_sample_index,
+	},
+	[ACTION_PORT_REPRESENTOR] = {
+		.name = "port_representor",
+		.help = "at embedded switch level, send matching traffic to the given ethdev",
+		.priv = PRIV_ACTION(PORT_REPRESENTOR,
+				    sizeof(struct rte_flow_action_ethdev)),
+		.next = NEXT(action_port_representor),
+		.call = parse_vc,
+	},
+	[ACTION_PORT_REPRESENTOR_PORT_ID] = {
+		.name = "port_id",
+		.help = "ethdev port ID",
+		.next = NEXT(action_port_representor,
+			     NEXT_ENTRY(UNSIGNED)),
+		.args = ARGS(ARGS_ENTRY(struct rte_flow_action_ethdev,
+					port_id)),
+		.call = parse_vc_conf,
 	},
 	/* Indirect action destroy arguments. */
 	[INDIRECT_ACTION_DESTROY_ID] = {
