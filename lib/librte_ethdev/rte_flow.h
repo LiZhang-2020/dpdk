@@ -2736,6 +2736,14 @@ enum rte_flow_action_type {
 	 * @see struct rte_flow_action_ethdev
 	 */
 	RTE_FLOW_ACTION_TYPE_PORT_REPRESENTOR,
+
+	/**
+	 * At embedded switch level, send matching traffic to
+	 * the entity represented by the given ethdev.
+	 *
+	 * @see struct rte_flow_action_ethdev
+	 */
+	RTE_FLOW_ACTION_TYPE_REPRESENTED_PORT,
 };
 
 /**
@@ -3508,7 +3516,8 @@ struct rte_flow_action_meter_color {
  * @b EXPERIMENTAL: this structure may change without prior notice
  *
  * Provides an ethdev port ID for use with the following actions:
- * RTE_FLOW_ACTION_TYPE_PORT_REPRESENTOR.
+ * RTE_FLOW_ACTION_TYPE_PORT_REPRESENTOR,
+ * RTE_FLOW_ACTION_TYPE_REPRESENTED_PORT.
  */
 struct rte_flow_action_ethdev {
 	uint16_t port_id; /**< ethdev port ID */
