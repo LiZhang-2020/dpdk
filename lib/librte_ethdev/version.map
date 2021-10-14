@@ -271,6 +271,7 @@ EXPERIMENTAL {
 	# added in 21.11
 	rte_flow_flex_item_create;
 	rte_flow_flex_item_release;
+	rte_flow_pick_transfer_proxy;
 
 	# added in 22.02
 	rte_flow_configure;
