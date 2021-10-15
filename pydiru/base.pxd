@@ -5,8 +5,10 @@
 cimport pydiru.libpydiru as p
 
 cdef class PydiruObject:
+    cdef object __weakref__
     cdef object logger
 
 cdef class PydiruCM(PydiruObject):
     cpdef close(self)
 
+cdef close_weakrefs(iterables)

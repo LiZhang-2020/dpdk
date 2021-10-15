@@ -2,10 +2,12 @@
 # Copyright (c) 2021, Nvidia Inc. All rights reserved.
 
 from pydiru.providers.mlx5.steering.libmlx5dr cimport mlx5dr_context_close
+from pydiru.providers.mlx5.steering.mlx5dr_table cimport Mlx5drTable
 from pydiru.pydiru_error import PydiruError
-from libc.stdlib cimport calloc, free
+from pydiru.base cimport close_weakrefs
 from pydiru.base import PydiruErrno
 cimport pydiru.libibverbs as v
+import weakref
 
 
 DEF MAX_ARGC = 10
@@ -44,6 +46,14 @@ cdef class Mlx5drContext(PydiruCM):
                                               <dr.mlx5dr_context_attr *>&(attr.attr))
         if self.context == NULL:
             raise PydiruErrno('Failed creating Mlx5drContext')
+        self.mlx5dr_tables = weakref.WeakSet()
+        self.ibv_context = context
+
+    cdef add_ref(self, obj):
+        if isinstance(obj, Mlx5drTable):
+            self.mlx5dr_tables.add(obj)
+        else:
+            raise PydiruError('Unrecognized object type')
 
     @staticmethod
     def rte_init(args):
@@ -84,6 +94,7 @@ cdef class Mlx5drContext(PydiruCM):
     cpdef close(self):
         if self.context != NULL:
             self.logger.debug('Closing Mlx5drContext.')
+            close_weakrefs([self.mlx5dr_tables])
             rc = mlx5dr_context_close(<dr.mlx5dr_context *>(self.context))
             if rc:
                 raise PydiruError('Failed to destroy Mlx5drContext.', rc)

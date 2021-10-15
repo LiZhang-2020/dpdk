@@ -40,3 +40,25 @@ cdef class PydiruCM(PydiruObject):
 
     cpdef close(self):
         pass
+
+cdef close_weakrefs(iterables):
+    """
+    For each iterable element of iterables, pop each element and
+    call its close() method. This method is used when an object is being
+    closed while other objects still hold C references to it; the object
+    holds weakrefs to such other object, and closes them before trying to
+    teardown the C resources.
+    :param iterables: an array of WeakSets
+    :return: None
+    """
+    # None elements can be present if an object's close() was called more
+    # than once (e.g. GC and by another object)
+    for it in iterables:
+        if it is None:
+            continue
+        while True:
+            try:
+                tmp = it.pop()
+                tmp.close()
+            except KeyError: # popping an empty set
+                break
