@@ -33,7 +33,9 @@ endif
 includes += global_inc
 
 pydiru_cython_modules = [
-	'base.pyx'
+	'base.pyx',
+	'pydiru_enums.pyx',
+	'rte_flow.pyx'
 ]
 
 pydiru_python_modules = [

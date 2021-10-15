@@ -6,6 +6,7 @@ includes += global_inc
 pydiru_cython_modules = [
     'mlx5dr_context.pyx',
     'mlx5dr_enums.pyx',
+    'mlx5dr_matcher.pyx',
     'mlx5dr_table.pyx'
 ]
 

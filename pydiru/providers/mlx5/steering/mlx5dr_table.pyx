@@ -3,9 +3,11 @@
 
 
 from pydiru.providers.mlx5.steering.mlx5dr_context cimport Mlx5drContext
+from pydiru.providers.mlx5.steering.mlx5dr_matcher import Mlx5drMatcher
 from pydiru.pydiru_error import PydiruError
+from pydiru.base cimport close_weakrefs
 from pydiru.base import PydiruErrno
-
+import weakref
 
 cdef class Mlx5drTableAttr(PydiruObject):
     def __init__(self, table_type, level):
@@ -33,6 +35,13 @@ cdef class Mlx5drTable(PydiruCM):
             raise PydiruErrno('Failed creating Mlx5drTable')
         self.mlx5dr_context = context
         context.add_ref(self)
+        self.mlx5dr_matchers = weakref.WeakSet()
+
+    cdef add_ref(self, obj):
+        if isinstance(obj, Mlx5drMatcher):
+            self.mlx5dr_matchers.add(obj)
+        else:
+            raise PydiruError('Unrecognized object type')
 
     def __dealloc__(self):
         self.close()
@@ -40,6 +49,7 @@ cdef class Mlx5drTable(PydiruCM):
     cpdef close(self):
         if self.table != NULL:
             self.logger.debug('Closing Mlx5drTable.')
+            close_weakrefs([self.mlx5dr_matchers])
             rc = dr.mlx5dr_table_destroy(<dr.mlx5dr_table *>(self.table))
             if rc:
                 raise PydiruError('Failed to destroy Mlx5drTable.', rc)

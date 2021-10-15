@@ -11,3 +11,5 @@ cdef class Mlx5drTableAttr(PydiruObject):
 cdef class Mlx5drTable(PydiruCM):
     cdef dr.mlx5dr_table *table
     cdef Mlx5drContext mlx5dr_context
+    cdef object mlx5dr_matchers
+    cdef add_ref(self, obj)

@@ -8,3 +8,10 @@ cdef extern  from '../../../../drivers/net/mlx5/steering/mlx5dr.h':
         MLX5DR_TABLE_TYPE_NIC_TX
         MLX5DR_TABLE_TYPE_FDB
         MLX5DR_TABLE_TYPE_MAX
+
+    cpdef enum mlx5dr_matcher_resource_mode:
+        MLX5DR_MATCHER_RESOURCE_MODE_RULE
+        MLX5DR_MATCHER_RESOURCE_MODE_HTABLE
+
+    cpdef enum mlx5dr_match_template_flags:
+        MLX5DR_MATCH_TEMPLATE_FLAG_RELAXED_MATCH
