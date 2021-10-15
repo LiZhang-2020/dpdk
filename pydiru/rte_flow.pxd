@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: BSD-3-Clause
 # Copyright (c) 2021, Nvidia Inc. All rights reserved.
 
-from pydiru.base cimport PydiruCM
+from pydiru.base cimport PydiruCM, PydiruObject
 cimport pydiru.libpydiru as pdr
 
 
@@ -13,3 +13,6 @@ cdef class RteFlowItem(PydiruCM):
 
 cdef class RteFlowItemEnd(RteFlowItem):
     pass
+
+cdef class RteFlowResult(PydiruObject):
+    cdef pdr.rte_flow_q_op_res flow_res

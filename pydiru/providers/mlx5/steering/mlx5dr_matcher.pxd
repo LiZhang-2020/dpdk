@@ -17,3 +17,5 @@ cdef class Mlx5drMatcher(PydiruCM):
     cdef dr.mlx5dr_matcher *matcher
     cdef Mlx5drTable mlx5dr_table
     cdef object matcher_templates
+    cdef object mlx5dr_rules
+    cdef add_ref(self, obj)

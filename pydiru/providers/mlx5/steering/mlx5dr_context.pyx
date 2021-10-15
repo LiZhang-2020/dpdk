@@ -4,9 +4,14 @@
 from pydiru.providers.mlx5.steering.libmlx5dr cimport mlx5dr_context_close
 from pydiru.providers.mlx5.steering.mlx5dr_table cimport Mlx5drTable
 from pydiru.pydiru_error import PydiruError
+from pydiru.rte_flow cimport RteFlowResult
 from pydiru.base cimport close_weakrefs
+from libc.stdlib cimport calloc, free
 from pydiru.base import PydiruErrno
+from libc.stdint cimport uintptr_t
+cimport pydiru.libpydiru as pdr
 cimport pydiru.libibverbs as v
+import pydiru.pydiru_enums as e
 import weakref
 
 
@@ -87,6 +92,29 @@ cdef class Mlx5drContext(PydiruCM):
             raise PydiruError('Failed initializing RTE')
 
         RTE_INITIALIZED = True
+
+    def poll_send_queue(self, queue_id, res_nb):
+        """
+        Poll send queue for completions
+        :param queue_id: The queue ID to poll
+        :param res_nb: Number of expected completeions
+        :return: List of RteFlowResult
+        """
+        cdef pdr.rte_flow_q_op_res* res_list_ptr = <pdr.rte_flow_q_op_res *>calloc(res_nb, sizeof(pdr.rte_flow_q_op_res))
+        if res_list_ptr == NULL:
+            raise MemoryError('Failed allocating memory')
+        results = []
+        res = dr.mlx5dr_send_queue_poll(self.context, queue_id, res_list_ptr, res_nb)
+        if res > 0:
+            for r in range(res):
+                if res_list_ptr[r].status == e.RTE_FLOW_Q_OP_ERROR:
+                    self.logger.warning(f'ERROR completion returned from queue {queue_id}.')
+                results.append(RteFlowResult(res_list_ptr[r].status,
+                                             <uintptr_t><void*>res_list_ptr[r].user_data))
+        free(res_list_ptr)
+        if res < 0:
+            raise PydiruError('Polling for completion failed', res)
+        return results
 
     def __dealloc__(self):
         self.close()

@@ -42,6 +42,27 @@ cdef extern  from '../../../../drivers/net/mlx5/steering/mlx5dr.h':
         rule_ rule
 
 
+    cdef struct mlx5dr_action:
+        pass
+
+    cdef struct tag_:
+        uint32_t value
+
+    cdef struct mlx5dr_rule_action:
+        mlx5dr_action *action
+        tag_ tag
+        uint32_t offset
+        uint8_t *data
+        uint32_t vlan_hdr
+
+    cdef struct mlx5dr_rule:
+        pass
+
+    cdef struct mlx5dr_rule_attr:
+        uint16_t queue_id
+        void *user_data
+        uint32_t burst
+
     mlx5dr_context *mlx5dr_context_open(v.ibv_context *ibv_ctx,
                                         mlx5dr_context_attr *attr)
     int mlx5dr_context_close(mlx5dr_context *ctx)
@@ -56,3 +77,18 @@ cdef extern  from '../../../../drivers/net/mlx5/steering/mlx5dr.h':
                                           uint8_t num_of_mt,
                                           mlx5dr_matcher_attr *attr)
     int mlx5dr_matcher_destroy(mlx5dr_matcher *matcher)
+
+    int mlx5dr_rule_get_handle_size()
+    int mlx5dr_rule_create(mlx5dr_matcher *matcher, uint8_t mt_idx, pdr.rte_flow_item *items,
+                           mlx5dr_rule_action rule_actions[], uint8_t num_of_actions,
+                           mlx5dr_rule_attr *attr, mlx5dr_rule *rule_handle)
+    int mlx5dr_rule_destroy(mlx5dr_rule *rule, mlx5dr_rule_attr *attr)
+
+    mlx5dr_action *mlx5dr_action_create_dest_drop(mlx5dr_context *ctx, me.mlx5dr_action_flags flags)
+    mlx5dr_action *mlx5dr_action_create_tag(mlx5dr_context *ctx, me.mlx5dr_action_flags flags)
+    mlx5dr_action *mlx5dr_action_create_dest_table(mlx5dr_context *ctx, mlx5dr_table *tbl,
+                                                   me.mlx5dr_action_flags flags)
+    int mlx5dr_action_destroy(mlx5dr_action *action)
+
+    int mlx5dr_send_queue_poll(mlx5dr_context *ctx, uint16_t queue_id, pdr.rte_flow_q_op_res *res,
+                               uint32_t res_nb)

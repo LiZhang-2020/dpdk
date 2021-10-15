@@ -2,6 +2,7 @@
 # Copyright (c) 2021, Nvidia Inc. All rights reserved.
 
 from pydiru.providers.mlx5.steering.mlx5dr_table cimport Mlx5drTable
+from pydiru.providers.mlx5.steering.mlx5dr_rule cimport Mlx5drRule
 import pydiru.providers.mlx5.steering.mlx5dr_enums as me
 from pydiru.pydiru_error import PydiruError
 from pydiru.rte_flow cimport RteFlowItem
@@ -106,6 +107,13 @@ cdef class Mlx5drMatcher(PydiruCM):
             (<Mlx5drMacherTemplate>m).add_ref(self)
         table.add_ref(self)
         self.mlx5dr_table = table
+        self.mlx5dr_rules = weakref.WeakSet()
+
+    cdef add_ref(self, obj):
+        if isinstance(obj, Mlx5drRule):
+            self.mlx5dr_rules.add(obj)
+        else:
+            raise PydiruError('Unrecognized object type.')
 
     def __dealloc__(self):
         self.close()
@@ -113,6 +121,7 @@ cdef class Mlx5drMatcher(PydiruCM):
     cpdef close(self):
         if self.matcher != NULL:
             self.logger.debug('Closing Mlx5drMatcher.')
+            close_weakrefs([self.mlx5dr_rules])
             rc = dr.mlx5dr_matcher_destroy(self.matcher)
             if rc:
                 raise PydiruError('Failed to destroy Mlx5drMatcher.', rc)

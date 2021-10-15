@@ -27,3 +27,8 @@ cdef extern  from '../../../../lib/librte_ethdev/rte_flow.h':
         uint16_t type
         uint32_t has_vlan
         uint32_t reserved
+
+    cdef struct rte_flow_q_op_res:
+        uint32_t version
+        e.rte_flow_q_op_status status
+        void *user_data

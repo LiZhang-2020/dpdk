@@ -48,3 +48,23 @@ cdef class RteFlowItem(PydiruCM):
 cdef class RteFlowItemEnd(RteFlowItem):
      def __init__(self):
          super().__init__(e.RTE_FLOW_ITEM_TYPE_END)
+
+
+cdef class RteFlowResult(PydiruObject):
+    def __init__(self, status, user_data=None):
+        """
+        Initializes a RteFlowResult object representing rte_flow_q_op_res C struct.
+        :param status: Status of the result
+        :param user_data: Results's user's data
+        """
+        self.flow_res.version = 0
+        self.flow_res.status = status
+        self.flow_res.user_data = <void *>user_data if (user_data is not None) else NULL
+
+    @property
+    def status(self):
+        return self.flow_res.status
+
+    @property
+    def user_data(self):
+        return <object>self.flow_res.user_data
