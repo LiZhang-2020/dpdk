@@ -835,6 +835,7 @@ int mlx5dr_action_get_default_stc(struct mlx5dr_context *ctx,
 		goto free_nop_double;
 	}
 
+	stc_attr.action_type = MLX5_IFC_STC_ACTION_TYPE_ALLOW;
 	stc_attr.action_offset = MLX5DR_ACTION_OFFSET_HIT;
 	ret = mlx5dr_action_alloc_single_stc(ctx, &stc_attr, tbl_type,
 					     &default_stc->default_hit);
