@@ -45,6 +45,19 @@ enum mlx5dr_action_type {
 	MLX5DR_ACTION_TYP_MAX,
 };
 
+enum {
+	MLX5DR_ACTION_DOUBLE_SIZE = 8,
+	MLX5DR_ACTION_INLINE_DATA_SIZE = 4,
+	MLX5DR_ACTION_HDR_LEN_L2_MACS = 12,
+	MLX5DR_ACTION_HDR_LEN_L2_VLAN = 4,
+	MLX5DR_ACTION_HDR_LEN_L2_ETHER = 2,
+	MLX5DR_ACTION_HDR_LEN_L2 = (MLX5DR_ACTION_HDR_LEN_L2_MACS + MLX5DR_ACTION_HDR_LEN_L2_ETHER),
+	MLX5DR_ACTION_HDR_LEN_L2_W_VLAN = (MLX5DR_ACTION_HDR_LEN_L2 + MLX5DR_ACTION_HDR_LEN_L2_VLAN),
+	MLX5DR_ACTION_REFORMAT_DATA_SIZE = 64,
+	DECAP_L3_NUM_ACTIONS_W_NO_VLAN = 6,
+	DECAP_L3_NUM_ACTIONS_W_VLAN = 7,
+};
+
 struct mlx5dr_action_default_stc {
 	struct mlx5dr_pool_chunk nop_ctr;
 	struct mlx5dr_pool_chunk nop_double;
@@ -105,5 +118,8 @@ int mlx5dr_actions_quick_apply(struct mlx5dr_send_engine *queue,
 			       uint8_t num_actions,
 			       bool is_rx);
 
+void
+mlx5dr_action_prepare_decap_l3_data(uint8_t *src, uint8_t *dst,
+				    uint16_t num_of_actions);
 #endif
 

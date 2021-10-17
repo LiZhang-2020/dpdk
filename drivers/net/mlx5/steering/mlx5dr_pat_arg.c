@@ -63,6 +63,10 @@ static bool mlx5dr_pat_compare_pattern(enum mlx5dr_action_type cur_type,
 	if ((cur_num_of_actions != num_of_actions) || (cur_type != type))
 		return false;
 
+	 /* all decap-l3 look the same, only change is the num of actions */
+	if (type == MLX5DR_ACTION_TYP_TNL_L3_TO_L2)
+		return true;
+
 	for (i = 0; i < num_of_actions; i++) {
 		u8 action_id =
 			MLX5_GET(double_action_add, &actions[i], action_id);
@@ -260,6 +264,41 @@ clean_pattern:
 	return ret;
 }
 
+static void
+mlx5d_arg_init_send_attr(struct mlx5dr_send_engine_post_attr *send_attr,
+			 struct mlx5dr_rule *rule,
+			 uint32_t arg_idx)
+{
+	send_attr->opcode = MLX5DR_WQE_OPCODE_TBL_ACCESS;
+	send_attr->opmod = MLX5DR_WQE_GTA_OPMOD_MOD_ARG;
+	send_attr->len = MLX5DR_WQE_SZ_GTA_CTRL + MLX5DR_WQE_SZ_GTA_DATA;
+	send_attr->rule = rule;
+	send_attr->id = arg_idx;
+}
+
+void mlx5dr_arg_decapl3_write(struct mlx5dr_send_engine *queue,
+			      struct mlx5dr_rule *rule,
+			      uint32_t arg_idx,
+			      uint8_t *arg_data,
+			      uint16_t num_of_actions)
+{
+	struct mlx5dr_send_engine_post_attr send_attr = {0};
+	struct mlx5dr_wqe_gta_data_seg_arg *wqe_arg;
+	struct mlx5dr_send_engine_post_ctrl ctrl;
+	struct mlx5dr_wqe_gta_ctrl_seg *wqe_ctrl;
+	size_t wqe_len;
+
+	mlx5d_arg_init_send_attr(&send_attr, rule, arg_idx);
+
+	ctrl = mlx5dr_send_engine_post_start(queue);
+	mlx5dr_send_engine_post_req_wqe(&ctrl, (void *)&wqe_ctrl, &wqe_len);
+	memset(wqe_ctrl, 0, wqe_len);
+	mlx5dr_send_engine_post_req_wqe(&ctrl, (void *)&wqe_arg, &wqe_len);
+	mlx5dr_action_prepare_decap_l3_data(arg_data, (uint8_t *) wqe_arg,
+					    num_of_actions);
+	mlx5dr_send_engine_post_end(&ctrl, &send_attr);
+}
+
 void mlx5dr_arg_write(struct mlx5dr_send_engine *queue,
 		      struct mlx5dr_rule *rule,
 		      uint32_t arg_idx,
@@ -277,10 +316,7 @@ void mlx5dr_arg_write(struct mlx5dr_send_engine *queue,
 	full_iter = data_size / MLX5DR_ARG_DATA_SIZE;
 	leftover = data_size & (MLX5DR_ARG_DATA_SIZE - 1);
 
-	send_attr.opcode = MLX5DR_WQE_OPCODE_TBL_ACCESS;
-	send_attr.opmod = MLX5DR_WQE_GTA_OPMOD_MOD_ARG;
-	send_attr.len = MLX5DR_WQE_SZ_GTA_CTRL + MLX5DR_WQE_SZ_GTA_DATA;
-	send_attr.rule = rule;
+	mlx5d_arg_init_send_attr(&send_attr, rule, arg_idx);
 
 	for (i = 0; i < full_iter; i++) {
 		ctrl = mlx5dr_send_engine_post_start(queue);

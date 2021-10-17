@@ -60,8 +60,11 @@ void mlx5dr_arg_write(struct mlx5dr_send_engine *queue,
 		      uint32_t arg_idx,
 		      uint8_t *arg_data,
 		      size_t data_size);
+void mlx5dr_arg_decapl3_write(struct mlx5dr_send_engine *queue,
+			      struct mlx5dr_rule *rule,
+			      uint32_t arg_idx,
+			      uint8_t *arg_data,
+			      uint16_t num_of_actions);
 int mlx5dr_arg_write_inline_arg_data(struct mlx5dr_action *action,
 				     __be64 *pattern);
-
-
 #endif

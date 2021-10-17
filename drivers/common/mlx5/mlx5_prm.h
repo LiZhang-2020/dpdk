@@ -651,6 +651,7 @@ enum {
 	MLX5_MODIFICATION_TYPE_COPY = 0x3,
 	MLX5_MODIFICATION_TYPE_INSERT = 0x4,
 	MLX5_MODIFICATION_TYPE_REMOVE = 0x5,
+	MLX5_MODIFICATION_TYPE_REMOVE_WORDS = 0x7,
 };
 
 /* The field of packet to be modified. */
@@ -2989,6 +2990,7 @@ enum mlx5_ifc_header_anchors {
 	MLX5_HEADER_START_OF_PACKET = 0x0,
 	MLX5_HEADER_ANCHOR_IPV6_IPV4 = 0x07,
 	MLX5_HEADER_ANCHOR_INNER_MAC = 0x13,
+	MLX5_HEADER_ANCHOR_INNER_IPV6_IPV4 = 0x19,
 };
 
 struct mlx5_ifc_stc_ste_param_remove_bits {
@@ -2999,6 +3001,16 @@ struct mlx5_ifc_stc_ste_param_remove_bits {
 	u8 reserved_at_10[0x2];
 	u8 remove_end_anchor[0x6];
 	u8 reserved_at_18[0x8];
+};
+
+struct mlx5_ifc_stc_ste_param_remove_words_bits {
+	u8 action_type[0x4];
+	u8 reserved_at_4[0x6];
+	u8 remove_start_anchor[0x6];
+	u8 reserved_at_10[0x1];
+	u8 remove_offset[0x7];
+	u8 reserved_at_18[0x2];
+	u8 remove_size[0x6];
 };
 
 struct mlx5_ifc_stc_ste_param_insert_bits {

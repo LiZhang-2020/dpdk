@@ -135,6 +135,7 @@ static void mlx5dr_action_fill_stc_attr(struct mlx5dr_action *action,
 		attr->action_offset = MLX5DR_ACTION_OFFSET_HIT;
 		attr->dest_tir_num = obj->id;
 		break;
+	case MLX5DR_ACTION_TYP_TNL_L3_TO_L2:
 	case MLX5DR_ACTION_TYP_MODIFY_HDR:
 		attr->action_type = MLX5_IFC_STC_ACTION_TYPE_ACC_MODIFY_LIST;
 		attr->action_offset = MLX5DR_ACTION_OFFSET_DW5;
@@ -763,6 +764,93 @@ free_arg:
 	return ret;
 }
 
+static void mlx5dr_action_prepare_decap_l3_actions(size_t data_sz,
+						   uint8_t *mh_data,
+						   int *num_of_actions)
+{
+	int actions;
+	uint32_t i;
+
+	/* Remove L2L3 outer headers */
+	MLX5_SET(stc_ste_param_remove, mh_data, action_type,
+		 MLX5_MODIFICATION_TYPE_REMOVE);
+	MLX5_SET(stc_ste_param_remove, mh_data, decap, 0x1);
+	MLX5_SET(stc_ste_param_remove, mh_data, remove_start_anchor,
+		 MLX5_HEADER_START_OF_PACKET);
+	MLX5_SET(stc_ste_param_remove, mh_data, remove_end_anchor,
+		 MLX5_HEADER_ANCHOR_INNER_IPV6_IPV4);
+	mh_data += MLX5DR_ACTION_DOUBLE_SIZE; /* assume every action is 2 dw */
+	actions = 1;
+
+	/* Add the new header using inline action 4Byte at a time, the header
+	 * is added in reversed order to the beginning of the packet to avoid
+	 * incorrect parsing by the HW. Since header is 14B or 18B an extra
+	 * two bytes are padded and later removed.
+	 */
+	for (i = 0; i < data_sz / MLX5DR_ACTION_INLINE_DATA_SIZE + 1; i++) {
+		MLX5_SET(stc_ste_param_insert, mh_data, action_type,
+			 MLX5_MODIFICATION_TYPE_INSERT);
+		MLX5_SET(stc_ste_param_insert, mh_data, encap, 0x1);
+		MLX5_SET(stc_ste_param_insert, mh_data, inline_data, 0x1);
+		MLX5_SET(stc_ste_param_insert, mh_data, insert_anchor,
+			 MLX5_HEADER_START_OF_PACKET);
+		MLX5_SET(stc_ste_param_insert, mh_data, insert_size, 2);
+		mh_data += MLX5DR_ACTION_DOUBLE_SIZE;
+		actions++;
+	}
+
+	/* Remove first 2 extra bytes */
+	MLX5_SET(stc_ste_param_remove_words, mh_data, action_type,
+		 MLX5_MODIFICATION_TYPE_REMOVE_WORDS);
+	MLX5_SET(stc_ste_param_remove_words, mh_data, remove_start_anchor,
+		 MLX5_HEADER_START_OF_PACKET);
+	/* The hardware expects here size in words (2 bytes) */
+	MLX5_SET(stc_ste_param_remove_words, mh_data, remove_size, 1);
+	actions++;
+
+	*num_of_actions = actions;
+}
+
+static int
+mlx5dr_action_handle_tunnel_l3_to_l2(struct mlx5dr_context *ctx,
+				     size_t data_sz,
+				     uint32_t bulk_size,
+				     struct mlx5dr_action *action)
+{
+	uint8_t mh_data[MLX5DR_ACTION_REFORMAT_DATA_SIZE] = {0};
+	int num_of_actions;
+	int mh_data_size;
+	int ret;
+
+	if (data_sz != MLX5DR_ACTION_HDR_LEN_L2 &&
+	    data_sz != MLX5DR_ACTION_HDR_LEN_L2_W_VLAN) {
+		DR_LOG(ERR, "data size is not supported for decap-l3\n");
+		rte_errno = EINVAL;
+		return rte_errno;
+	}
+
+	mlx5dr_action_prepare_decap_l3_actions(data_sz, mh_data, &num_of_actions);
+
+	mh_data_size = num_of_actions * MLX5DR_MODIFY_ACTION_SIZE;
+
+	ret = mlx5dr_pat_arg_create_modify_header(ctx, action, mh_data_size,
+						  (__be64 *) mh_data, bulk_size);
+	if (ret) {
+		DR_LOG(ERR, "Failed allocating modify-header for decap-l3\n");
+		return ret;
+	}
+
+	ret = mlx5dr_action_create_stcs(action, NULL);
+	if (ret)
+		goto free_mh_obj;
+
+	return 0;
+
+free_mh_obj:
+	mlx5dr_pat_arg_destroy_modify_header(ctx, action);
+	return ret;
+}
+
 static int
 mlx5dr_action_create_reformat_hws(struct mlx5dr_context *ctx,
 				  size_t data_sz,
@@ -782,6 +870,10 @@ mlx5dr_action_create_reformat_hws(struct mlx5dr_context *ctx,
 	case MLX5DR_ACTION_TYP_L2_TO_TNL_L3:
 		ret = mlx5dr_action_handle_l2_to_tunnel_l3(ctx, data_sz, data, bulk_size, action);
 		break;
+	case MLX5DR_ACTION_TYP_TNL_L3_TO_L2:
+		ret = mlx5dr_action_handle_tunnel_l3_to_l2(ctx, data_sz, bulk_size, action);
+		break;
+
 	default:
 		assert(false);
 		rte_errno = ENOTSUP;
@@ -935,6 +1027,7 @@ static void mlx5dr_action_destroy_hws(struct mlx5dr_action *action)
 	case MLX5DR_ACTION_TYP_TNL_L2_TO_L2:
 		mlx5dr_action_destroy_stcs(action);
 		break;
+	case MLX5DR_ACTION_TYP_TNL_L3_TO_L2:
 	case MLX5DR_ACTION_TYP_MODIFY_HDR:
 		mlx5dr_pat_arg_destroy_modify_header(action->ctx, action);
 		mlx5dr_action_destroy_stcs(action);
@@ -1085,6 +1178,42 @@ static void mlx5dr_action_arg_write(struct mlx5dr_send_engine *queue,
 			 num_of_actions * MLX5DR_MODIFY_ACTION_SIZE);
 }
 
+void
+mlx5dr_action_prepare_decap_l3_data(uint8_t *src, uint8_t *dst,
+				    uint16_t num_of_actions)
+{
+	uint8_t *e_src;
+	int i;
+
+	/* num_of_actions = remove l3l2 + 4/5 inserts + remove extra 2 bytes
+	 * copy from end of src to the start of dst.
+	 * move to the end, 2 is the leftover from 14B or 18B
+	 */
+	if (num_of_actions == DECAP_L3_NUM_ACTIONS_W_NO_VLAN)
+		e_src = src + MLX5DR_ACTION_HDR_LEN_L2;
+	else
+		e_src = src + MLX5DR_ACTION_HDR_LEN_L2_W_VLAN;
+
+	/* move dst over the first remove action + zero data */
+	dst += MLX5DR_ACTION_DOUBLE_SIZE;
+	/* move dst over the first insert ctrl action */
+	dst += MLX5DR_ACTION_DOUBLE_SIZE / 2;
+	/* actions:
+	 * no vlan: r_h-insert_4b-insert_4b-insert_4b-insert_4b-remove_2b.
+	 * with vlan: r_h-insert_4b-insert_4b-insert_4b-insert_4b-insert_4b-remove_2b.
+	 * the loop is without the last insertion.
+	 */
+	for (i = 0; i < num_of_actions - 3; i++) {
+		e_src -= MLX5DR_ACTION_INLINE_DATA_SIZE;
+		memcpy(dst, e_src, MLX5DR_ACTION_INLINE_DATA_SIZE); /* data */
+		dst += MLX5DR_ACTION_DOUBLE_SIZE;
+	}
+	/* copy the last 2 bytes after a gap of 2 bytes which will be removed */
+	e_src -= MLX5DR_ACTION_INLINE_DATA_SIZE / 2;
+	dst += MLX5DR_ACTION_INLINE_DATA_SIZE / 2;
+	memcpy(dst, e_src, 2);
+}
+
 int mlx5dr_actions_quick_apply(struct mlx5dr_send_engine *queue,
 			       struct mlx5dr_rule *rule,
 			       struct mlx5dr_context_common_res *common_res,
@@ -1151,11 +1280,15 @@ int mlx5dr_actions_quick_apply(struct mlx5dr_send_engine *queue,
 						 action->reformat.header_size);
 			break;
 		case MLX5DR_ACTION_TYP_TNL_L3_TO_L2:
-			/* Modify header: remove L2L3 + insert inline */
-			raw_wqe[MLX5DR_ACTION_OFFSET_DW6] = htobe32(rule_actions[i].reformat.offset);
+			arg_sz = 1 << mlx5dr_arg_get_arg_log_size(action->modify_header.num_of_actions);
+			arg_idx = rule_actions[i].reformat.offset * arg_sz;
+			raw_wqe[MLX5DR_ACTION_OFFSET_DW6] = htobe32(arg_idx);
 			wqe_ctrl->stc_ix[MLX5DR_ACTION_STC_IDX_DOUBLE] = htobe32(stc_idx);
-			// TODO if not inline mlx5dr_send_arg()
-			assert(0);
+
+			if (!(action->flags & MLX5DR_ACTION_FLAG_INLINE))
+				mlx5dr_arg_decapl3_write(queue, rule, arg_idx,
+							 rule_actions[i].reformat.data,
+							 action->modify_header.num_of_actions);
 			break;
 		case MLX5DR_ACTION_TYP_L2_TO_TNL_L3:
 			/* Remove L2 header, shared stc - single */
