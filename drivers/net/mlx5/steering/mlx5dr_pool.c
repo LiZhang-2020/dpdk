@@ -256,6 +256,13 @@ mlx5dr_pool_chunk_alloc(struct mlx5dr_pool *pool,
 {
 	int ret;
 
+	if ((long unsigned int) pool->alloc_log_sz < (long unsigned int)chunk->order) {
+		DR_LOG(ERR, "chunk order: %d is bigger than the pool allows %zu",
+			chunk->order, pool->alloc_log_sz);
+		rte_errno = ENOMEM;
+		return rte_errno;
+	}
+
 	pthread_spin_lock(&pool->lock);
 	ret = pool->p_get_chunk(pool, chunk);
 	pthread_spin_unlock(&pool->lock);
@@ -308,8 +315,6 @@ mlx5dr_pool_resource_alloc(struct mlx5dr_pool *pool, uint32_t log_range)
 		stc_attr.table_type = pool->fw_ft_type;
 		devx_obj = mlx5dr_cmd_stc_create(pool->ctx->ibv_ctx, &stc_attr);
 		break;
-	case MLX5DR_POOL_TYPE_NONE:
-		return resource;
 	default:
 		assert(0);
 		break;
@@ -364,9 +369,6 @@ mlx5dr_pool_create(struct mlx5dr_context *ctx, struct mlx5dr_pool_attr *pool_att
 		break;
 	case MLX5DR_TABLE_TYPE_FDB:
 		pool->fw_ft_type = FS_FT_FDB;
-		break;
-	case MLX5DR_TABLE_TYPE_MAX:
-		pool->fw_ft_type = MLX5DR_POOL_TYPE_NONE;
 		break;
 	default:
 		DR_LOG(ERR, "Unsupported memory pool type");

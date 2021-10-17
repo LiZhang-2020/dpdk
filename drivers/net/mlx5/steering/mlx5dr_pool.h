@@ -8,7 +8,6 @@
 enum mlx5dr_pool_type {
 	MLX5DR_POOL_TYPE_STE,
 	MLX5DR_POOL_TYPE_STC,
-	MLX5DR_POOL_TYPE_NONE = 0x77, /* TODO: testing only, will be removed */
 };
 
 #define MLX5DR_POOL_STC_LOG_SZ 14
