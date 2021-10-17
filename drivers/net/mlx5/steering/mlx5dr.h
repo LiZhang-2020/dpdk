@@ -5,6 +5,8 @@
 #ifndef MLX5DR_H_
 #define MLX5DR_H_
 
+#include <rte_flow.h>
+
 struct mlx5dr_context;
 struct mlx5dr_table;
 struct mlx5dr_matcher;
