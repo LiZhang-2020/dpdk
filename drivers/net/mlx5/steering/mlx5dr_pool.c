@@ -16,6 +16,15 @@ static int mlx5dr_onesize_db_get_chunk(struct mlx5dr_pool *pool,
 	uint64_t slab = 0;
 	uint32_t iidx = 0;
 
+	if (!pool->resource[0]) {
+		pool->resource[0] =
+			mlx5dr_pool_resource_alloc(pool, pool->alloc_log_sz);
+		if (!pool->resource[0]) {
+			DR_LOG(ERR, "Failed to allocate first and only resources for db: %d",
+			       pool->type);
+			return rte_errno;
+		}
+	}
 	__rte_bitmap_scan_init(pool->db.bitmap);
 
 	if (!rte_bitmap_scan(pool->db.bitmap, &iidx, &slab)) {
@@ -342,6 +351,13 @@ mlx5dr_pool_create(struct mlx5dr_context *ctx, struct mlx5dr_pool_attr *pool_att
 	enum mlx5dr_db_type res_db_type;
 	struct mlx5dr_pool *pool;
 
+	if (pool_attr->inital_log_sz) {
+		DR_LOG(ERR, "Unsupported pool_attr->inital_log_sz ");
+		/* TBD: Add support inital_log_sz != 0 */
+		rte_errno = ENOTSUP;
+		return NULL;
+	}
+
 	pool = simple_calloc(1, sizeof(*pool));
 	if (!pool)
 		return NULL;
@@ -363,7 +379,6 @@ mlx5dr_pool_create(struct mlx5dr_context *ctx, struct mlx5dr_pool_attr *pool_att
 		pool->fw_ft_type = FS_FT_FDB;
 		break;
 	case MLX5DR_TABLE_TYPE_MAX:
-		printf("%s create pool for Test only !!\n", __func__);
 		pool->fw_ft_type = MLX5DR_POOL_TYPE_NONE;
 		break;
 	default:
@@ -383,17 +398,8 @@ mlx5dr_pool_create(struct mlx5dr_context *ctx, struct mlx5dr_pool_attr *pool_att
 	if (mlx5dr_pool_db_init(pool, res_db_type))
 		goto free_pool;
 
-	if (pool_attr->alloc_log_sz) {
-		pool->resource[0] =
-			mlx5dr_pool_resource_alloc(pool, pool_attr->alloc_log_sz);
-		if (!pool->resource[0])
-			goto free_db;
-	}
-
 	return pool;
 
-free_db:
-	mlx5dr_pool_db_unint(pool);
 free_pool:
 	pthread_spin_destroy(&pool->lock);
 	simple_free(pool);
