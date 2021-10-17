@@ -2855,12 +2855,9 @@ enum {
 	MLX5_GENERAL_OBJ_TYPE_FLOW_HIT_ASO = 0x0025,
 	MLX5_GENERAL_OBJ_TYPE_CONN_TRACK_OFFLOAD = 0x0031,
 	MLX5_GENERAL_OBJ_TYPE_ARG = 0x0023,
-	MLX5_GENERAL_OBJ_TYPE_STC = 0x0024, // TODO PRM valex value not from PRM and already taken
-	MLX5_GENERAL_OBJ_TYPE_STE = 0x0025, // TODO PRM valex value not from PRM and already taken
-	MLX5_GENERAL_OBJ_TYPE_RTC = 0x0026, // TODO PRM valex value not from PRM and already taken
-//	MLX5_GENERAL_OBJ_TYPE_STC = 0x0040,
-//	MLX5_GENERAL_OBJ_TYPE_RTC = 0x0041,
-//	MLX5_GENERAL_OBJ_TYPE_STE = 0x0042,
+	MLX5_GENERAL_OBJ_TYPE_STC = 0x0040,
+	MLX5_GENERAL_OBJ_TYPE_RTC = 0x0041,
+	MLX5_GENERAL_OBJ_TYPE_STE = 0x0042,
 	MLX5_GENERAL_OBJ_TYPE_MODIFY_HEADER_PATTERN = 0x0043,
 };
 
@@ -2911,12 +2908,9 @@ struct mlx5_ifc_geneve_tlv_option_bits {
 };
 
 
-// TODO below values are different from PRM
 enum mlx5_ifc_rtc_update_mode {
-	MLX5_IFC_RTC_STE_UPDATE_MODE_BY_HASH = 0x1,
-	MLX5_IFC_RTC_STE_UPDATE_MODE_BY_OFFSET = 0x2,
-//	MLX5_IFC_RTC_STE_UPDATE_MODE_BY_HASH = 0x0,
-//	MLX5_IFC_RTC_STE_UPDATE_MODE_BY_OFFSET = 0x1,
+	MLX5_IFC_RTC_STE_UPDATE_MODE_BY_HASH = 0x0,
+	MLX5_IFC_RTC_STE_UPDATE_MODE_BY_OFFSET = 0x1,
 };
 
 enum mlx5_ifc_rtc_ste_format {
@@ -3031,31 +3025,18 @@ union mlx5_ifc_stc_param_bits {
 };
 
 enum {
-	MLX5_IFC_MODIFY_STC_FIELD_SELECT_STE_OFFSET = 1 << 0,
-	MLX5_IFC_MODIFY_STC_FIELD_SELECT_ACTION_TYPE= 1 << 1,
-	MLX5_IFC_MODIFY_STC_FIELD_SELECT_STC_PARAM = 1 << 2,
+	MLX5_IFC_MODIFY_STC_FIELD_SELECT_NEW_STC = 1 << 0,
 };
 
-// TODO this it the REAL PRM format
-//struct mlx5_ifc_stc_bits {
-//	u8 modify_field_select[0x40];
-//	u8 reserved_at_40[0x48];
-//	u8 table_type[0x8];
-//	u8 ste_action_offset[0x8];
-//	u8 action_type[0x8];
-//	u8 reserved_at_a0[0x60];
-//	union mlx5_ifc_stc_param_bits stc_param;
-//	u8 reserved_at_180[0x280];
-//};
-
-// TODO this it the "FW" PRM format
 struct mlx5_ifc_stc_bits {
-	u8 reserved_0[0x10];
+	u8 modify_field_select[0x40];
+	u8 reserved_at_40[0x48];
+	u8 table_type[0x8];
 	u8 ste_action_offset[0x8];
 	u8 action_type[0x8];
+	u8 reserved_at_a0[0x60];
 	union mlx5_ifc_stc_param_bits stc_param;
-	u8 table_type[0x8]; // just for compilation
-	u8 modify_field_select[0x40]; // just for compilation
+	u8 reserved_at_180[0x280];
 };
 
 struct mlx5_ifc_ste_bits {
@@ -4360,7 +4341,7 @@ struct mlx5_ifc_create_flow_table_out_bits {
 
 enum {
 	MLX5_IFC_MODIFY_FLOW_TABLE_MISS_ACTION = 1 << 0,
-	MLX5_IFC_MODIFY_FLOW_TABLE_RTC_ID = 1 << 14,
+	MLX5_IFC_MODIFY_FLOW_TABLE_RTC_ID = 1 << 1,
 };
 
 struct mlx5_ifc_modify_flow_table_in_bits {
