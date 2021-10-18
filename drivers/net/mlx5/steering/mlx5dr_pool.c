@@ -217,24 +217,11 @@ static int mlx5dr_buddy_db_init(struct mlx5dr_pool *pool, uint32_t log_range)
 		return rte_errno;
 	}
 
-	/* init the first buddy object */
-	pool->db.buddy_manager->buddies[0] = mlx5dr_buddy_create(log_range);
-	if (!pool->db.buddy_manager->buddies[0]) {
-		DR_LOG(ERR, "failed create first buddy log_range: %d",
-			log_range);
-		goto free_buddy_manager;
-	}
-	pool->db.buddy_manager->num_of_buddies = 1;
-
 	pool->p_db_uninit = mlx5dr_buddy_db_uninit;
 	pool->p_get_chunk = mlx5dr_buddy_db_get_chunk;
 	pool->p_put_chunk = mlx5dr_buddy_db_put_chunk;
 
 	return 0;
-
-free_buddy_manager:
-	simple_free(pool->db.buddy_manager);
-	return rte_errno;
 }
 
 static int mlx5dr_pool_db_init(struct mlx5dr_pool *pool,
@@ -394,7 +381,6 @@ mlx5dr_pool_create(struct mlx5dr_context *ctx, struct mlx5dr_pool_attr *pool_att
 
 	pool->alloc_log_sz = pool_attr->alloc_log_sz;
 
-	/* the first resource that allocated use this tracking db */
 	if (mlx5dr_pool_db_init(pool, res_db_type))
 		goto free_pool;
 
