@@ -446,6 +446,9 @@ New Features
 
   See the :doc:`../compressdevs/mlx5` for more details.
 
+* **Updated mlx5 compress PMD.**
+  * Added devarg to allow manual setting of Huffman block size.
+
 Removed Items
 -------------
 
