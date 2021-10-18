@@ -5134,8 +5134,10 @@ enter_send_single:
 	 *   will be issued on the next burst (after descriptor writing,
 	 *   at least).
 	 */
-	mlx5_tx_dbrec_cond_wmb(txq, loc.wqe_last, !txq->db_nc &&
-			(!txq->db_heu || pkts_n % MLX5_TX_DEFAULT_BURST));
+	mlx5_doorbell_ring(mlx5_tx_bfreg(txq),
+			   *(volatile uint64_t *)loc.wqe_last, txq->wqe_ci,
+			   txq->qp_db, !txq->db_nc &&
+			   (!txq->db_heu || pkts_n % MLX5_TX_DEFAULT_BURST));
 	/* Not all of the mbufs may be stored into elts yet. */
 	part = MLX5_TXOFF_CONFIG(INLINE) ? 0 : loc.pkts_sent - loc.pkts_copy;
 	if (!MLX5_TXOFF_CONFIG(INLINE) && part) {

@@ -57,7 +57,8 @@ INTERNAL {
 	mlx5_devx_cmd_register_read;
 	mlx5_devx_cmd_register_write;
 	mlx5_devx_cmd_wq_query;
-	mlx5_devx_alloc_uar;
+	mlx5_devx_uar_prepare;
+	mlx5_devx_uar_release;
 
 	mlx5_devx_cq_create;
 	mlx5_devx_cq_destroy;

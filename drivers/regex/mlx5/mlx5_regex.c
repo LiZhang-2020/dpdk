@@ -104,17 +104,8 @@ mlx5_regex_dev_probe(struct mlx5_common_device *cdev)
 		rte_errno = rte_errno ? rte_errno : EINVAL;
 		goto dev_error;
 	}
-	/*
-	 * This PMD always claims the write memory barrier on UAR
-	 * registers writings, it is safe to allocate UAR with any
-	 * memory mapping type.
-	 */
-	priv->uar = mlx5_devx_alloc_uar(priv->cdev);
-	if (!priv->uar) {
-		DRV_LOG(ERR, "can't allocate uar.");
-		rte_errno = ENOMEM;
+	if (mlx5_devx_uar_prepare(cdev, &priv->uar))
 		goto error;
-	}
 	priv->regexdev->dev_ops = &mlx5_regexdev_ops;
 	priv->regexdev->enqueue = mlx5_regexdev_enqueue;
 #ifdef HAVE_MLX5_UMR_IMKEY
@@ -133,8 +124,6 @@ mlx5_regex_dev_probe(struct mlx5_common_device *cdev)
 	return 0;
 
 error:
-	if (priv->uar)
-		mlx5_glue->devx_free_uar(priv->uar);
 	if (priv->regexdev)
 		rte_regexdev_unregister(priv->regexdev);
 dev_error:
@@ -156,8 +145,7 @@ mlx5_regex_dev_remove(struct mlx5_common_device *cdev)
 		return 0;
 	priv = dev->data->dev_private;
 	if (priv) {
-		if (priv->uar)
-			mlx5_glue->devx_free_uar(priv->uar);
+		mlx5_devx_uar_release(&priv->uar);
 		if (priv->regexdev)
 			rte_regexdev_unregister(priv->regexdev);
 		rte_free(priv);
