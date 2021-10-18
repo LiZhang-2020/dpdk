@@ -161,10 +161,7 @@ static void mlx5dr_send_engine_update_rule(struct mlx5dr_send_engine *queue,
 
 	enum rte_flow_q_op_res_status status;
 
-	/* TODO: this used with fw version 3223 which isn't PRM defined.
-	 * PRM defines bit 31 to indicate succsess or failure
-	 */
-	if (!cqe || (likely(rte_be_to_cpu_32(cqe->byte_cnt) >> 24 != 0xff) &&
+	if (!cqe || (likely(rte_be_to_cpu_32(cqe->byte_cnt) >> 31 == 0) &&
 	    likely(mlx5dv_get_cqe_opcode(cqe) == MLX5_CQE_REQ))) {
 		status = RTE_FLOW_Q_OP_RES_SUCCESS;
 		--priv->rule->wait_on_wqes;
