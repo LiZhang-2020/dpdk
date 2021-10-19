@@ -455,6 +455,7 @@ static struct mlx5_devx_obj *
 mlx5_rxq_create_devx_rq(struct mlx5_rxq_priv *rxq)
 {
 	struct mlx5_priv *priv = rxq->priv;
+	struct mlx5_common_device *cdev = priv->sh->cdev;
 	struct mlx5_rxq_ctrl *rxq_ctrl = rxq->ctrl;
 	struct mlx5_rxq_data *rxq_data = &rxq->ctrl->rxq;
 	struct mlx5_devx_create_rq_attr rq_attr = { 0 };
@@ -464,7 +465,8 @@ mlx5_rxq_create_devx_rq(struct mlx5_rxq_priv *rxq)
 	/* Fill RQ attributes. */
 	rq_attr.user_index = rte_cpu_to_be_16(priv->dev_data->port_id);
 	mlx5_devx_create_rq_attr_fill(rxq_data, cqn, &rq_attr);
-	rq_attr.ts_format = mlx5_ts_format_conv(priv->sh->rq_ts_format);
+	rq_attr.ts_format =
+		mlx5_ts_format_conv(cdev->config.hca_attr.rq_ts_format);
 	if (rxq_data->shared) {
 		rq_attr.mem_rq_type = MLX5_RQC_MEM_RQ_TYPE_MEMORY_RQ_RMP;
 		rq_attr.rmpn = rxq_ctrl->obj->devx_rmp->id;
@@ -476,8 +478,7 @@ mlx5_rxq_create_devx_rq(struct mlx5_rxq_priv *rxq)
 	}
 	rq_attr.counter_set_id = priv->counter_set_id;
 	rq_attr.delay_drop_en = rxq_data->delay_drop;
-	rq = mlx5_devx_cmd_create_rq(priv->sh->cdev->ctx, &rq_attr,
-				     rxq_ctrl->socket);
+	rq = mlx5_devx_cmd_create_rq(cdev->ctx, &rq_attr, rxq_ctrl->socket);
 	return rq;
 }
 
@@ -1432,6 +1433,7 @@ mlx5_txq_create_devx_sq_resources(struct rte_eth_dev *dev, uint16_t idx,
 				  uint16_t log_desc_n)
 {
 	struct mlx5_priv *priv = dev->data->dev_private;
+	struct mlx5_common_device *cdev = priv->sh->cdev;
 	struct mlx5_txq_data *txq_data = (*priv->txqs)[idx];
 	struct mlx5_txq_ctrl *txq_ctrl =
 			container_of(txq_data, struct mlx5_txq_ctrl, txq);
@@ -1445,15 +1447,16 @@ mlx5_txq_create_devx_sq_resources(struct rte_eth_dev *dev, uint16_t idx,
 		.tis_lst_sz = 1,
 		.tis_num = mlx5_get_txq_tis_num(dev, idx),
 		.wq_attr = (struct mlx5_devx_wq_attr){
-			.pd = priv->sh->cdev->pdn,
+			.pd = cdev->pdn,
 			.uar_page =
 				 mlx5_os_get_devx_uar_page_id(priv->sh->tx_uar),
 		},
-		.ts_format = mlx5_ts_format_conv(priv->sh->sq_ts_format),
+		.ts_format =
+			mlx5_ts_format_conv(cdev->config.hca_attr.sq_ts_format),
 	};
 
 	/* Create Send Queue object with DevX. */
-	return mlx5_devx_sq_create(priv->sh->cdev->ctx, &txq_obj->sq_obj,
+	return mlx5_devx_sq_create(cdev->ctx, &txq_obj->sq_obj,
 				   log_desc_n, &sq_attr, priv->sh->numa_node);
 }
 #endif

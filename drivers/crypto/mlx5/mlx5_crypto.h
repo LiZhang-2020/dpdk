@@ -30,7 +30,6 @@ struct mlx5_crypto_priv {
 	struct rte_cryptodev *crypto_dev;
 	void *uar; /* User Access Region. */
 	volatile uint64_t *uar_addr;
-	uint8_t qp_ts_format; /* Whether QP supports timestamp formats. */
 	struct mlx5_hlist *dek_hlist; /* Dek hash list. */
 	struct rte_cryptodev_config dev_config;
 	struct mlx5_mr_share_cache mr_scache; /* Global shared MR cache. */

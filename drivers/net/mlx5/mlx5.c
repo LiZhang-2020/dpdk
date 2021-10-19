@@ -1374,7 +1374,7 @@ mlx5_alloc_shared_dev_ctx(const struct mlx5_dev_spawn_data *spawn,
 	sh->devx = sh->cdev->config.devx;
 	if (spawn->bond_info)
 		sh->bond = *spawn->bond_info;
-	err = mlx5_os_get_dev_attr(sh->cdev->ctx, &sh->device_attr);
+	err = mlx5_os_get_dev_attr(sh->cdev, &sh->device_attr);
 	if (err) {
 		DRV_LOG(DEBUG, "mlx5_os_get_dev_attr() failed");
 		goto error;

@@ -233,15 +233,13 @@ mlx5_aso_ct_init_sq(struct mlx5_aso_sq *sq)
  *   Socket to use for allocation.
  * @param[in] uar
  *   User Access Region object.
- * @param[in] ts
- *   Timestamp format for the queue
  *
  * @return
  *   0 on success, a negative errno value otherwise and rte_errno is set.
  */
 static int
 mlx5_aso_sq_create(struct mlx5_common_device *cdev, struct mlx5_aso_sq *sq,
-		   int socket, struct mlx5dv_devx_uar *uar, int ts)
+		   int socket, struct mlx5dv_devx_uar *uar)
 {
 	struct mlx5_devx_create_sq_attr attr = {
 		.user_index = 0xFFFF,
@@ -250,7 +248,8 @@ mlx5_aso_sq_create(struct mlx5_common_device *cdev, struct mlx5_aso_sq *sq,
 			.uar_page = mlx5_os_get_devx_uar_page_id(uar),
 		},
 		.state = MLX5_SQC_STATE_RST,
-		.ts_format = ts,
+		.ts_format =
+			mlx5_ts_format_conv(cdev->config.hca_attr.sq_ts_format),
 	};
 	struct mlx5_devx_modify_sq_attr modify_attr = {
 		.state = MLX5_SQC_STATE_RDY,
@@ -314,8 +313,7 @@ mlx5_aso_queue_init(struct mlx5_dev_ctx_shared *sh,
 				    sq_desc_n, &sh->aso_age_mng->aso_sq.mr, 0))
 			return -1;
 		if (mlx5_aso_sq_create(cdev, &sh->aso_age_mng->aso_sq, 0,
-				       sh->tx_uar,
-				       mlx5_ts_format_conv(sh->sq_ts_format))) {
+				       sh->tx_uar)) {
 			mlx5_aso_dereg_mr(sh, &sh->aso_age_mng->aso_sq.mr);
 			return -1;
 		}
@@ -323,8 +321,7 @@ mlx5_aso_queue_init(struct mlx5_dev_ctx_shared *sh,
 		break;
 	case ASO_OPC_MOD_POLICER:
 		if (mlx5_aso_sq_create(cdev, &sh->mtrmng->pools_mng.sq, 0,
-				       sh->tx_uar,
-				       mlx5_ts_format_conv(sh->sq_ts_format)))
+				       sh->tx_uar))
 			return -1;
 		mlx5_aso_mtr_init_sq(&sh->mtrmng->pools_mng.sq);
 		break;
@@ -335,8 +332,7 @@ mlx5_aso_queue_init(struct mlx5_dev_ctx_shared *sh,
 					    &sh->ct_mng->aso_sqs[i].mr, 0))
 				goto error;
 			if (mlx5_aso_sq_create(cdev, &sh->ct_mng->aso_sqs[i],
-					       0, sh->tx_uar,
-					mlx5_ts_format_conv(sh->sq_ts_format)))
+					       0, sh->tx_uar))
 				goto error;
 			mlx5_aso_ct_init_sq(&sh->ct_mng->aso_sqs[i]);
 		}

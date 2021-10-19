@@ -686,8 +686,8 @@ mlx5_crypto_queue_pair_setup(struct rte_cryptodev *dev, uint16_t qp_id,
 	attr.cqn = qp->cq_obj.cq->id;
 	attr.num_of_receive_wqes =  0;
 	attr.num_of_send_wqbbs = RTE_BIT32(log_wqbb_n);
-	attr.ts_format = mlx5_ts_format_conv(priv->qp_ts_format);
-
+	attr.ts_format =
+		mlx5_ts_format_conv(priv->cdev->config.hca_attr.qp_ts_format);
 	ret = mlx5_devx_qp_create(priv->cdev->ctx, &qp->qp_obj,
 				  attr.num_of_send_wqbbs * MLX5_SEND_WQE_BB,
 				  &attr, socket_id);
@@ -1003,7 +1003,7 @@ mlx5_crypto_dev_probe(struct mlx5_common_device *cdev)
 	struct mlx5_devx_obj *login;
 	struct mlx5_crypto_priv *priv;
 	struct mlx5_crypto_devarg_params devarg_prms = { 0 };
-	struct mlx5_hca_attr attr = { 0 };
+	struct mlx5_hca_attr *attr = &cdev->config.hca_attr;
 	struct rte_cryptodev_pmd_init_params init_params = {
 		.name = "",
 		.private_data_size = sizeof(struct mlx5_crypto_priv),
@@ -1019,8 +1019,7 @@ mlx5_crypto_dev_probe(struct mlx5_common_device *cdev)
 		rte_errno = ENOTSUP;
 		return -rte_errno;
 	}
-	if (mlx5_devx_cmd_query_hca_attr(cdev->ctx, &attr) != 0 ||
-	    attr.crypto == 0 || attr.aes_xts == 0) {
+	if (attr->crypto == 0 || attr->aes_xts == 0) {
 		DRV_LOG(ERR, "Not enough capabilities to support crypto "
 			"operations, maybe old FW/OFED version?");
 		rte_errno = ENOTSUP;
@@ -1047,7 +1046,6 @@ mlx5_crypto_dev_probe(struct mlx5_common_device *cdev)
 	priv = crypto_dev->data->dev_private;
 	priv->cdev = cdev;
 	priv->crypto_dev = crypto_dev;
-	priv->qp_ts_format = attr.qp_ts_format;
 	if (mlx5_crypto_uar_prepare(priv) != 0) {
 		rte_cryptodev_pmd_destroy(priv->crypto_dev);
 		return -1;
@@ -1073,8 +1071,8 @@ mlx5_crypto_dev_probe(struct mlx5_common_device *cdev)
 	}
 	priv->login_obj = login;
 	priv->keytag = rte_cpu_to_be_64(devarg_prms.keytag);
-	ret = mlx5_crypto_configure_wqe_size(priv,
-		attr.max_wqe_sz_sq, devarg_prms.max_segs_num);
+	ret = mlx5_crypto_configure_wqe_size(priv, attr->max_wqe_sz_sq,
+					     devarg_prms.max_segs_num);
 	if (ret) {
 		claim_zero(mlx5_devx_cmd_destroy(priv->login_obj));
 		mlx5_mr_release_cache(&priv->mr_scache);

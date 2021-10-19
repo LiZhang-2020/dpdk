@@ -109,17 +109,12 @@ static int
 mlx5_regex_dev_probe(struct mlx5_common_device *cdev)
 {
 	struct mlx5_regex_priv *priv = NULL;
-	struct mlx5_hca_attr attr;
+	struct mlx5_hca_attr *attr = &cdev->config.hca_attr;
 	char name[RTE_REGEXDEV_NAME_MAX_LEN];
 	int ret;
 
-	ret = mlx5_devx_cmd_query_hca_attr(cdev->ctx, &attr);
-	if (ret) {
-		DRV_LOG(ERR, "Unable to read HCA capabilities.");
-		rte_errno = ENOTSUP;
-		return -rte_errno;
-	} else if (((!attr.regexp_params) && (!attr.mmo_regex_sq_en) &&
-		(!attr.mmo_regex_qp_en)) || attr.regexp_num_of_engines == 0) {
+	if ((!attr->regexp_params && !attr->mmo_regex_sq_en &&
+	     !attr->mmo_regex_qp_en) || attr->regexp_num_of_engines == 0) {
 		DRV_LOG(ERR, "Not enough capabilities to support RegEx, maybe "
 			"old FW/OFED version?");
 		rte_errno = ENOTSUP;
@@ -132,12 +127,11 @@ mlx5_regex_dev_probe(struct mlx5_common_device *cdev)
 		rte_errno = ENOMEM;
 		return -rte_errno;
 	}
-	priv->mmo_regex_qp_cap = attr.mmo_regex_qp_en;
-	priv->mmo_regex_sq_cap = attr.mmo_regex_sq_en;
-	priv->qp_ts_format = attr.qp_ts_format;
+	priv->mmo_regex_qp_cap = attr->mmo_regex_qp_en;
+	priv->mmo_regex_sq_cap = attr->mmo_regex_sq_en;
 	priv->cdev = cdev;
 	priv->nb_engines = 2; /* attr.regexp_num_of_engines */
-	if (attr.regexp_version == MLX5_RXP_BF2_IDENTIFIER)
+	if (attr->regexp_version == MLX5_RXP_BF2_IDENTIFIER)
 		priv->is_bf2 = 1;
 	/* Default RXP programming mode to Shared. */
 	priv->prog_mode = MLX5_RXP_SHARED_PROG_MODE;
@@ -162,8 +156,8 @@ mlx5_regex_dev_probe(struct mlx5_common_device *cdev)
 	priv->regexdev->dev_ops = &mlx5_regexdev_ops;
 	priv->regexdev->enqueue = mlx5_regexdev_enqueue;
 #ifdef HAVE_MLX5_UMR_IMKEY
-	if (!attr.umr_indirect_mkey_disabled &&
-	    !attr.umr_modify_entity_size_disabled)
+	if (!attr->umr_indirect_mkey_disabled &&
+	    !attr->umr_modify_entity_size_disabled)
 		priv->has_umr = 1;
 	if (priv->has_umr)
 		priv->regexdev->enqueue = mlx5_regexdev_enqueue_gga;
