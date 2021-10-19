@@ -10,8 +10,6 @@ INTERNAL {
 	mlx5_common_verbs_reg_mr;
 	mlx5_common_verbs_dereg_mr;
 
-	mlx5_create_mr_ext;
-
 	mlx5_dev_is_pci;
 
 	mlx5_devx_cmd_create_cq;
@@ -91,17 +89,10 @@ INTERNAL {
 	mlx5_mp_req_verbs_cmd_fd;
 
 	mlx5_mr_addr2mr_bh;
-	mlx5_mr_btree_dump;
 	mlx5_mr_btree_free;
 	mlx5_mr_create_primary;
 	mlx5_mr_ctrl_init;
-	mlx5_mr_dump_cache;
 	mlx5_mr_flush_local_cache;
-	mlx5_mr_free;
-	mlx5_mr_insert_cache;
-	mlx5_mr_lookup_cache;
-	mlx5_mr_lookup_list;
-	mlx5_mr_rebuild_cache;
 
 	mlx5_nl_allmulti;
 	mlx5_nl_ifindex;
