@@ -8109,8 +8109,8 @@ mlx5_flow_create_counter_stat_mem_mng(struct mlx5_dev_ctx_shared *sh)
 	}
 	mem_mng = (struct mlx5_counter_stats_mem_mng *)(mem + size) - 1;
 	size = sizeof(*raw_data) * MLX5_COUNTERS_PER_POOL * raws_n;
-	ret = mlx5_os_wrapped_mkey_create(sh->ctx, sh->pd, sh->pdn, mem, size,
-					  &mem_mng->wm);
+	ret = mlx5_os_wrapped_mkey_create(sh->cdev->ctx, sh->pd, sh->pdn, mem,
+					  size, &mem_mng->wm);
 	if (ret) {
 		rte_errno = errno;
 		mlx5_free(mem);

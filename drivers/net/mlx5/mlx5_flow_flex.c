@@ -910,7 +910,7 @@ mlx5_flex_translate_sample(struct mlx5_hca_flex_attr *attr,
 	 * offsets in any order.
 	 *
 	 * Gather all similar fields together, build array of bit intervals
-	 * in asсending order and try to cover with the smallest set of sample
+	 * in as ending order and try to cover with the smallest set of sample
 	 * registers.
 	 */
 	memset(&cover, 0, sizeof(cover));
@@ -1295,7 +1295,7 @@ mlx5_flex_parser_create_cb(void *list_ctx, void *ctx)
 	fp->num_samples = conf->num_samples;
 	memcpy(&fp->devx_conf, &conf->devx_conf, sizeof(fp->devx_conf));
 	/* Create DevX flex parser. */
-	fp->devx_obj = mlx5_devx_cmd_create_flex_parser(sh->ctx,
+	fp->devx_obj = mlx5_devx_cmd_create_flex_parser(sh->cdev->ctx,
 							&fp->devx_conf);
 	if (!fp->devx_obj)
 		goto error;

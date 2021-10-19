@@ -939,7 +939,7 @@ mlx5_flex_parser_ecpri_alloc(struct rte_eth_dev *dev)
 	 * start after the common header that with the length of a DW(u32).
 	 */
 	node.sample[1].flow_match_sample_field_base_offset = sizeof(uint32_t);
-	prf->obj = mlx5_devx_cmd_create_flex_parser(priv->sh->ctx, &node);
+	prf->obj = mlx5_devx_cmd_create_flex_parser(priv->sh->cdev->ctx, &node);
 	if (!prf->obj) {
 		DRV_LOG(ERR, "Failed to create flex parser node object.");
 		return (rte_errno == 0) ? -ENODEV : -rte_errno;
@@ -1013,7 +1013,8 @@ mlx5_alloc_rxtx_uars(struct mlx5_dev_ctx_shared *sh,
 		 */
 		uar_mapping = 0;
 #endif
-		sh->tx_uar = mlx5_glue->devx_alloc_uar(sh->ctx, uar_mapping);
+		sh->tx_uar = mlx5_glue->devx_alloc_uar(sh->cdev->ctx,
+						       uar_mapping);
 #ifdef MLX5DV_UAR_ALLOC_TYPE_NC
 		if (!sh->tx_uar &&
 		    uar_mapping == MLX5DV_UAR_ALLOC_TYPE_BF) {
@@ -1031,8 +1032,8 @@ mlx5_alloc_rxtx_uars(struct mlx5_dev_ctx_shared *sh,
 			 */
 			DRV_LOG(DEBUG, "Failed to allocate Tx DevX UAR (BF)");
 			uar_mapping = MLX5DV_UAR_ALLOC_TYPE_NC;
-			sh->tx_uar = mlx5_glue->devx_alloc_uar
-							(sh->ctx, uar_mapping);
+			sh->tx_uar = mlx5_glue->devx_alloc_uar(sh->cdev->ctx,
+							       uar_mapping);
 		} else if (!sh->tx_uar &&
 			   uar_mapping == MLX5DV_UAR_ALLOC_TYPE_NC) {
 			if (config->dbnc == MLX5_TXDB_NCACHED)
@@ -1044,8 +1045,8 @@ mlx5_alloc_rxtx_uars(struct mlx5_dev_ctx_shared *sh,
 			 */
 			DRV_LOG(DEBUG, "Failed to allocate Tx DevX UAR (NC)");
 			uar_mapping = MLX5DV_UAR_ALLOC_TYPE_BF;
-			sh->tx_uar = mlx5_glue->devx_alloc_uar
-							(sh->ctx, uar_mapping);
+			sh->tx_uar = mlx5_glue->devx_alloc_uar(sh->cdev->ctx,
+							       uar_mapping);
 		}
 #endif
 		if (!sh->tx_uar) {
@@ -1072,8 +1073,8 @@ mlx5_alloc_rxtx_uars(struct mlx5_dev_ctx_shared *sh,
 	}
 	for (retry = 0; retry < MLX5_ALLOC_UAR_RETRY; ++retry) {
 		uar_mapping = 0;
-		sh->devx_rx_uar = mlx5_glue->devx_alloc_uar
-							(sh->ctx, uar_mapping);
+		sh->devx_rx_uar = mlx5_glue->devx_alloc_uar(sh->cdev->ctx,
+							    uar_mapping);
 #ifdef MLX5DV_UAR_ALLOC_TYPE_NC
 		if (!sh->devx_rx_uar &&
 		    uar_mapping == MLX5DV_UAR_ALLOC_TYPE_BF) {
@@ -1085,7 +1086,7 @@ mlx5_alloc_rxtx_uars(struct mlx5_dev_ctx_shared *sh,
 			DRV_LOG(DEBUG, "Failed to allocate Rx DevX UAR (BF)");
 			uar_mapping = MLX5DV_UAR_ALLOC_TYPE_NC;
 			sh->devx_rx_uar = mlx5_glue->devx_alloc_uar
-							(sh->ctx, uar_mapping);
+						   (sh->cdev->ctx, uar_mapping);
 		}
 #endif
 		if (!sh->devx_rx_uar) {
@@ -1271,7 +1272,7 @@ mlx5_setup_tis(struct mlx5_dev_ctx_shared *sh)
 
 	tis_attr.transport_domain = sh->td->id;
 	if (sh->bond.n_port) {
-		if (!mlx5_devx_cmd_query_lag(sh->ctx, &lag_ctx)) {
+		if (!mlx5_devx_cmd_query_lag(sh->cdev->ctx, &lag_ctx)) {
 			sh->lag.tx_remap_affinity[0] =
 				lag_ctx.tx_remap_affinity_1;
 			sh->lag.tx_remap_affinity[1] =
@@ -1286,8 +1287,8 @@ mlx5_setup_tis(struct mlx5_dev_ctx_shared *sh)
 				tis_attr.lag_tx_port_affinity =
 					MLX5_IFC_LAG_MAP_TIS_AFFINITY(i,
 							sh->bond.n_port);
-				sh->tis[i] = mlx5_devx_cmd_create_tis(sh->ctx,
-						&tis_attr);
+				sh->tis[i] = mlx5_devx_cmd_create_tis
+						     (sh->cdev->ctx, &tis_attr);
 				if (!sh->tis[i]) {
 					DRV_LOG(ERR, "Failed to TIS %d/%d for bonding device"
 						" %s.", i, sh->bond.n_port,
@@ -1305,7 +1306,7 @@ mlx5_setup_tis(struct mlx5_dev_ctx_shared *sh)
 					sh->ibdev_name);
 	}
 	tis_attr.lag_tx_port_affinity = 0;
-	sh->tis[0] = mlx5_devx_cmd_create_tis(sh->ctx, &tis_attr);
+	sh->tis[0] = mlx5_devx_cmd_create_tis(sh->cdev->ctx, &tis_attr);
 	if (!sh->tis[0]) {
 		DRV_LOG(ERR, "Failed to TIS 0 for bonding device"
 			" %s.", sh->ibdev_name);
@@ -1336,7 +1337,7 @@ mlx5_setup_tis(struct mlx5_dev_ctx_shared *sh)
  */
 struct mlx5_dev_ctx_shared *
 mlx5_alloc_shared_dev_ctx(const struct mlx5_dev_spawn_data *spawn,
-			   const struct mlx5_dev_config *config)
+			  const struct mlx5_dev_config *config)
 {
 	struct mlx5_dev_ctx_shared *sh;
 	int err = 0;
@@ -1348,8 +1349,7 @@ mlx5_alloc_shared_dev_ctx(const struct mlx5_dev_spawn_data *spawn,
 	pthread_mutex_lock(&mlx5_dev_ctx_list_mutex);
 	/* Search for IB context by device name. */
 	LIST_FOREACH(sh, &mlx5_dev_ctx_list, next) {
-		if (!strcmp(sh->ibdev_name,
-			mlx5_os_get_ctx_device_name(spawn->ctx))) {
+		if (!strcmp(sh->ibdev_name, spawn->phys_dev_name)) {
 			sh->refcnt++;
 			goto exit;
 		}
@@ -1370,10 +1370,9 @@ mlx5_alloc_shared_dev_ctx(const struct mlx5_dev_spawn_data *spawn,
 	sh->numa_node = spawn->cdev->dev->numa_node;
 	sh->cdev = spawn->cdev;
 	sh->devx = sh->cdev->config.devx;
-	sh->ctx = spawn->ctx;
 	if (spawn->bond_info)
 		sh->bond = *spawn->bond_info;
-	err = mlx5_os_get_dev_attr(sh->ctx, &sh->device_attr);
+	err = mlx5_os_get_dev_attr(sh->cdev->ctx, &sh->device_attr);
 	if (err) {
 		DRV_LOG(DEBUG, "mlx5_os_get_dev_attr() failed");
 		goto error;
@@ -1381,9 +1380,9 @@ mlx5_alloc_shared_dev_ctx(const struct mlx5_dev_spawn_data *spawn,
 	sh->refcnt = 1;
 	sh->max_port = spawn->max_port;
 	sh->reclaim_mode = config->reclaim_mode;
-	strncpy(sh->ibdev_name, mlx5_os_get_ctx_device_name(sh->ctx),
+	strncpy(sh->ibdev_name, mlx5_os_get_ctx_device_name(sh->cdev->ctx),
 		sizeof(sh->ibdev_name) - 1);
-	strncpy(sh->ibdev_path, mlx5_os_get_ctx_device_path(sh->ctx),
+	strncpy(sh->ibdev_path, mlx5_os_get_ctx_device_path(sh->cdev->ctx),
 		sizeof(sh->ibdev_path) - 1);
 	/*
 	 * Setting port_id to max unallowed value means
@@ -1394,7 +1393,7 @@ mlx5_alloc_shared_dev_ctx(const struct mlx5_dev_spawn_data *spawn,
 		sh->port[i].ih_port_id = RTE_MAX_ETHPORTS;
 		sh->port[i].devx_ih_port_id = RTE_MAX_ETHPORTS;
 	}
-	sh->pd = mlx5_glue->alloc_pd(sh->ctx);
+	sh->pd = mlx5_glue->alloc_pd(sh->cdev->ctx);
 	if (sh->pd == NULL) {
 		DRV_LOG(ERR, "PD allocation failure");
 		err = ENOMEM;
@@ -1406,7 +1405,7 @@ mlx5_alloc_shared_dev_ctx(const struct mlx5_dev_spawn_data *spawn,
 			DRV_LOG(ERR, "Fail to extract pdn from PD");
 			goto error;
 		}
-		sh->td = mlx5_devx_cmd_create_td(sh->ctx);
+		sh->td = mlx5_devx_cmd_create_td(sh->cdev->ctx);
 		if (!sh->td) {
 			DRV_LOG(ERR, "TD allocation failure");
 			err = ENOMEM;
@@ -1491,8 +1490,6 @@ error:
 		mlx5_glue->devx_free_uar(sh->tx_uar);
 	if (sh->pd)
 		claim_zero(mlx5_glue->dealloc_pd(sh->pd));
-	if (sh->ctx)
-		claim_zero(mlx5_glue->close_device(sh->ctx));
 	mlx5_free(sh);
 	MLX5_ASSERT(err > 0);
 	rte_errno = err;
@@ -1590,8 +1587,6 @@ mlx5_free_shared_dev_ctx(struct mlx5_dev_ctx_shared *sh)
 		claim_zero(mlx5_devx_cmd_destroy(sh->td));
 	if (sh->devx_rx_uar)
 		mlx5_glue->devx_free_uar(sh->devx_rx_uar);
-	if (sh->ctx)
-		claim_zero(mlx5_glue->close_device(sh->ctx));
 	MLX5_ASSERT(sh->geneve_tlv_option_resource == NULL);
 	pthread_mutex_destroy(&sh->txpp.mutex);
 	mlx5_free(sh);
@@ -1801,8 +1796,8 @@ mlx5_dev_close(struct rte_eth_dev *dev)
 		return 0;
 	DRV_LOG(DEBUG, "port %u closing device \"%s\"",
 		dev->data->port_id,
-		((priv->sh->ctx != NULL) ?
-		mlx5_os_get_ctx_device_name(priv->sh->ctx) : ""));
+		((priv->sh->cdev->ctx != NULL) ?
+		mlx5_os_get_ctx_device_name(priv->sh->cdev->ctx) : ""));
 	/*
 	 * If default mreg copy action is removed at the stop stage,
 	 * the search will return none and nothing will be done anymore.

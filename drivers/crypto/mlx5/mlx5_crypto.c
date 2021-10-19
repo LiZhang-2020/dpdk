@@ -626,7 +626,7 @@ mlx5_crypto_indirect_mkeys_prepare(struct mlx5_crypto_priv *priv,
 	for (umr = (struct mlx5_umr_wqe *)qp->qp_obj.umem_buf, i = 0;
 	   i < qp->entries_n; i++, umr = RTE_PTR_ADD(umr, priv->wqe_set_size)) {
 		attr.klm_array = (struct mlx5_klm *)&umr->kseg[0];
-		qp->mkey[i] = mlx5_devx_cmd_mkey_create(priv->ctx, &attr);
+		qp->mkey[i] = mlx5_devx_cmd_mkey_create(priv->cdev->ctx, &attr);
 		if (!qp->mkey[i])
 			goto error;
 	}
@@ -666,7 +666,7 @@ mlx5_crypto_queue_pair_setup(struct rte_cryptodev *dev, uint16_t qp_id,
 		rte_errno = ENOMEM;
 		return -rte_errno;
 	}
-	if (mlx5_devx_cq_create(priv->ctx, &qp->cq_obj, log_nb_desc,
+	if (mlx5_devx_cq_create(priv->cdev->ctx, &qp->cq_obj, log_nb_desc,
 				&cq_attr, socket_id) != 0) {
 		DRV_LOG(ERR, "Failed to create CQ.");
 		goto error;
@@ -688,8 +688,9 @@ mlx5_crypto_queue_pair_setup(struct rte_cryptodev *dev, uint16_t qp_id,
 	attr.num_of_send_wqbbs = RTE_BIT32(log_wqbb_n);
 	attr.ts_format = mlx5_ts_format_conv(priv->qp_ts_format);
 
-	ret = mlx5_devx_qp_create(priv->ctx, &qp->qp_obj, attr.num_of_send_wqbbs
-					* MLX5_SEND_WQE_BB, &attr, socket_id);
+	ret = mlx5_devx_qp_create(priv->cdev->ctx, &qp->qp_obj,
+				  attr.num_of_send_wqbbs * MLX5_SEND_WQE_BB,
+				  &attr, socket_id);
 	if (ret) {
 		DRV_LOG(ERR, "Failed to create QP.");
 		goto error;
@@ -784,7 +785,7 @@ mlx5_crypto_pd_create(struct mlx5_crypto_priv *priv)
 	struct mlx5dv_pd pd_info;
 	int ret;
 
-	priv->pd = mlx5_glue->alloc_pd(priv->ctx);
+	priv->pd = mlx5_glue->alloc_pd(priv->cdev->ctx);
 	if (priv->pd == NULL) {
 		DRV_LOG(ERR, "Failed to allocate PD.");
 		return errno ? -errno : -ENOMEM;
@@ -812,7 +813,7 @@ mlx5_crypto_hw_global_prepare(struct mlx5_crypto_priv *priv)
 {
 	if (mlx5_crypto_pd_create(priv) != 0)
 		return -1;
-	priv->uar = mlx5_devx_alloc_uar(priv->ctx, -1);
+	priv->uar = mlx5_devx_alloc_uar(priv->cdev->ctx, -1);
 	if (priv->uar)
 		priv->uar_addr = mlx5_os_get_devx_uar_reg_addr(priv->uar);
 	if (priv->uar == NULL || priv->uar_addr == NULL) {
@@ -948,7 +949,8 @@ mlx5_crypto_mr_mem_event_cb(enum rte_mem_event event_type, const void *addr,
 		/* Iterate all the existing mlx5 devices. */
 		TAILQ_FOREACH(priv, &mlx5_crypto_priv_list, next)
 			mlx5_free_mr_by_addr(&priv->mr_scache,
-					     priv->ctx->device->name,
+					     mlx5_os_get_ctx_device_name
+							      (priv->cdev->ctx),
 					     addr, len);
 		pthread_mutex_unlock(&priv_list_lock);
 		break;
@@ -1035,9 +1037,7 @@ mlx5_crypto_configure_wqe_size(struct mlx5_crypto_priv *priv,
 static int
 mlx5_crypto_dev_probe(struct mlx5_common_device *cdev)
 {
-	struct ibv_device *ibv;
 	struct rte_cryptodev *crypto_dev;
-	struct ibv_context *ctx;
 	struct mlx5_devx_obj *login;
 	struct mlx5_crypto_priv *priv;
 	struct mlx5_crypto_devarg_params devarg_prms = { 0 };
@@ -1049,6 +1049,7 @@ mlx5_crypto_dev_probe(struct mlx5_common_device *cdev)
 		.max_nb_queue_pairs =
 				RTE_CRYPTODEV_PMD_DEFAULT_MAX_NB_QUEUE_PAIRS,
 	};
+	const char *ibdev_name = mlx5_os_get_ctx_device_name(cdev->ctx);
 	int ret;
 
 	if (rte_eal_process_type() != RTE_PROC_PRIMARY) {
@@ -1056,50 +1057,37 @@ mlx5_crypto_dev_probe(struct mlx5_common_device *cdev)
 		rte_errno = ENOTSUP;
 		return -rte_errno;
 	}
-	ibv = mlx5_os_get_ibv_dev(cdev->dev);
-	if (ibv == NULL)
-		return -rte_errno;
-	ctx = mlx5_glue->dv_open_device(ibv);
-	if (ctx == NULL) {
-		DRV_LOG(ERR, "Failed to open IB device \"%s\".", ibv->name);
-		rte_errno = ENODEV;
-		return -rte_errno;
-	}
-	if (mlx5_devx_cmd_query_hca_attr(ctx, &attr) != 0 ||
+	if (mlx5_devx_cmd_query_hca_attr(cdev->ctx, &attr) != 0 ||
 	    attr.crypto == 0 || attr.aes_xts == 0) {
 		DRV_LOG(ERR, "Not enough capabilities to support crypto "
 			"operations, maybe old FW/OFED version?");
-		claim_zero(mlx5_glue->close_device(ctx));
 		rte_errno = ENOTSUP;
 		return -ENOTSUP;
 	}
 	ret = mlx5_crypto_parse_devargs(cdev->dev->devargs, &devarg_prms);
 	if (ret) {
 		DRV_LOG(ERR, "Failed to parse devargs.");
-		claim_zero(mlx5_glue->close_device(ctx));
 		return -rte_errno;
 	}
-	crypto_dev = rte_cryptodev_pmd_create(ibv->name, cdev->dev,
+	crypto_dev = rte_cryptodev_pmd_create(ibdev_name, cdev->dev,
 					      &init_params);
 	if (crypto_dev == NULL) {
-		DRV_LOG(ERR, "Failed to create device \"%s\".", ibv->name);
-		claim_zero(mlx5_glue->close_device(ctx));
+		DRV_LOG(ERR, "Failed to create device \"%s\".", ibdev_name);
 		return -ENODEV;
 	}
 	DRV_LOG(INFO,
-		"Crypto device %s was created successfully.", ibv->name);
+		"Crypto device %s was created successfully.", ibdev_name);
 	crypto_dev->dev_ops = &mlx5_crypto_ops;
 	crypto_dev->dequeue_burst = mlx5_crypto_dequeue_burst;
 	crypto_dev->enqueue_burst = mlx5_crypto_enqueue_burst;
 	crypto_dev->feature_flags = MLX5_CRYPTO_FEATURE_FLAGS;
 	crypto_dev->driver_id = mlx5_crypto_driver_id;
 	priv = crypto_dev->data->dev_private;
-	priv->ctx = ctx;
+	priv->cdev = cdev;
 	priv->crypto_dev = crypto_dev;
 	priv->qp_ts_format = attr.qp_ts_format;
 	if (mlx5_crypto_hw_global_prepare(priv) != 0) {
 		rte_cryptodev_pmd_destroy(priv->crypto_dev);
-		claim_zero(mlx5_glue->close_device(priv->ctx));
 		return -1;
 	}
 	if (mlx5_mr_btree_init(&priv->mr_scache.cache,
@@ -1107,20 +1095,18 @@ mlx5_crypto_dev_probe(struct mlx5_common_device *cdev)
 		DRV_LOG(ERR, "Failed to allocate shared cache MR memory.");
 		mlx5_crypto_hw_global_release(priv);
 		rte_cryptodev_pmd_destroy(priv->crypto_dev);
-		claim_zero(mlx5_glue->close_device(priv->ctx));
 		rte_errno = ENOMEM;
 		return -rte_errno;
 	}
 	priv->mr_scache.reg_mr_cb = mlx5_common_verbs_reg_mr;
 	priv->mr_scache.dereg_mr_cb = mlx5_common_verbs_dereg_mr;
-	login = mlx5_devx_cmd_create_crypto_login_obj(ctx,
+	login = mlx5_devx_cmd_create_crypto_login_obj(cdev->ctx,
 						      &devarg_prms.login_attr);
 	if (login == NULL) {
 		DRV_LOG(ERR, "Failed to configure login.");
 		mlx5_mr_release_cache(&priv->mr_scache);
 		mlx5_crypto_hw_global_release(priv);
 		rte_cryptodev_pmd_destroy(priv->crypto_dev);
-		claim_zero(mlx5_glue->close_device(priv->ctx));
 		return -rte_errno;
 	}
 	priv->login_obj = login;
@@ -1132,7 +1118,6 @@ mlx5_crypto_dev_probe(struct mlx5_common_device *cdev)
 		mlx5_mr_release_cache(&priv->mr_scache);
 		mlx5_crypto_hw_global_release(priv);
 		rte_cryptodev_pmd_destroy(priv->crypto_dev);
-		claim_zero(mlx5_glue->close_device(priv->ctx));
 		return -1;
 	}
 	DRV_LOG(INFO, "Max number of segments: %u.",
@@ -1170,7 +1155,6 @@ mlx5_crypto_dev_remove(struct mlx5_common_device *cdev)
 		mlx5_mr_release_cache(&priv->mr_scache);
 		mlx5_crypto_hw_global_release(priv);
 		rte_cryptodev_pmd_destroy(priv->crypto_dev);
-		claim_zero(mlx5_glue->close_device(priv->ctx));
 	}
 	return 0;
 }

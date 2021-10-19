@@ -59,7 +59,8 @@ rxp_create_mkey(struct mlx5_regex_priv *priv, void *ptr, size_t size,
 	struct mlx5_devx_mkey_attr mkey_attr;
 
 	/* Register the memory. */
-	mkey->umem = mlx5_glue->devx_umem_reg(priv->ctx, ptr, size, access);
+	mkey->umem = mlx5_glue->devx_umem_reg(priv->cdev->ctx, ptr, size,
+					      access);
 	if (!mkey->umem) {
 		DRV_LOG(ERR, "Failed to register memory!");
 		return -ENODEV;
@@ -78,7 +79,7 @@ rxp_create_mkey(struct mlx5_regex_priv *priv, void *ptr, size_t size,
 		return -ENODEV;
 	}
 #endif
-	mkey->mkey = mlx5_devx_cmd_mkey_create(priv->ctx, &mkey_attr);
+	mkey->mkey = mlx5_devx_cmd_mkey_create(priv->cdev->ctx, &mkey_attr);
 	if (!mkey->mkey) {
 		DRV_LOG(ERR, "Failed to create direct mkey!");
 		return -ENODEV;
@@ -128,7 +129,7 @@ mlx5_regex_rules_db_import(struct rte_regexdev *dev,
 		return ret;
 
 	for (id = 0; id < priv->nb_engines; id++) {
-		ret = mlx5_devx_regex_rules_program(priv->ctx, id,
+		ret = mlx5_devx_regex_rules_program(priv->cdev->ctx, id,
 			mkey.mkey->id, rule_db_len, (uintptr_t)ptr);
 		if (ret < 0) {
 			DRV_LOG(ERR, "Failed to program rxp rules.");
