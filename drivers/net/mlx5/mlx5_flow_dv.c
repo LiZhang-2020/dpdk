@@ -3433,7 +3433,7 @@ flow_dv_validate_action_count(struct rte_eth_dev *dev, bool shared,
 {
 	struct mlx5_priv *priv = dev->data->dev_private;
 
-	if (!priv->config.devx)
+	if (!priv->sh->devx)
 		goto notsup_err;
 	if (action_flags & MLX5_FLOW_ACTION_COUNT)
 		return rte_flow_error_set(error, EINVAL,
@@ -5481,7 +5481,7 @@ flow_dv_validate_action_age(uint64_t action_flags,
 	struct mlx5_priv *priv = dev->data->dev_private;
 	const struct rte_flow_action_age *age = action->conf;
 
-	if (!priv->config.devx || (priv->sh->cmng.counter_fallback &&
+	if (!priv->sh->devx || (priv->sh->cmng.counter_fallback &&
 	    !priv->sh->aso_age_mng))
 		return rte_flow_error_set(error, ENOTSUP,
 					  RTE_FLOW_ERROR_TYPE_UNSPECIFIED,
@@ -5772,7 +5772,7 @@ flow_dv_validate_action_sample(uint64_t *action_flags,
 		return rte_flow_error_set(error, EINVAL,
 					  RTE_FLOW_ERROR_TYPE_ACTION, action,
 					  "ratio value starts from 1");
-	if (!priv->config.devx || (sample->ratio > 0 && !priv->sampler_en))
+	if (!priv->sh->devx || (sample->ratio > 0 && !priv->sampler_en))
 		return rte_flow_error_set(error, ENOTSUP,
 					  RTE_FLOW_ERROR_TYPE_UNSPECIFIED,
 					  NULL,
@@ -6396,7 +6396,7 @@ flow_dv_counter_alloc(struct rte_eth_dev *dev, uint32_t age)
 			age ? MLX5_COUNTER_TYPE_AGE : MLX5_COUNTER_TYPE_ORIGIN;
 	uint32_t cnt_idx;
 
-	if (!priv->config.devx) {
+	if (!priv->sh->devx) {
 		rte_errno = ENOTSUP;
 		return 0;
 	}
@@ -6786,7 +6786,7 @@ flow_dv_mtr_alloc(struct rte_eth_dev *dev)
 	struct mlx5_aso_mtr_pool *pool;
 	uint32_t mtr_idx = 0;
 
-	if (!priv->config.devx) {
+	if (!priv->sh->devx) {
 		rte_errno = ENOTSUP;
 		return 0;
 	}
@@ -13361,7 +13361,7 @@ flow_dv_aso_ct_alloc(struct rte_eth_dev *dev, struct rte_flow_error *error)
 	uint32_t ct_idx;
 
 	MLX5_ASSERT(mng);
-	if (!priv->config.devx) {
+	if (!priv->sh->devx) {
 		rte_errno = ENOTSUP;
 		return 0;
 	}
@@ -13827,7 +13827,7 @@ flow_dv_translate(struct rte_eth_dev *dev,
 			}
 			break;
 		case RTE_FLOW_ACTION_TYPE_COUNT:
-			if (!dev_conf->devx) {
+			if (!priv->sh->devx) {
 				return rte_flow_error_set
 					      (error, ENOTSUP,
 					       RTE_FLOW_ERROR_TYPE_UNSPECIFIED,
@@ -16744,7 +16744,7 @@ flow_dv_query_count(const struct rte_eth_dev *dev, uint32_t cnt_idx, void *data,
 	struct mlx5_priv *priv = dev->data->dev_private;
 	struct rte_flow_query_count *qc = data;
 
-	if (!priv->config.devx)
+	if (!priv->sh->devx)
 		return rte_flow_error_set(error, ENOTSUP,
 					  RTE_FLOW_ERROR_TYPE_UNSPECIFIED,
 					  NULL,
@@ -18403,7 +18403,7 @@ flow_dv_counter_query(struct rte_eth_dev *dev, uint32_t counter, bool clear,
 	uint64_t inn_pkts, inn_bytes;
 	int ret;
 
-	if (!priv->config.devx)
+	if (!priv->sh->devx)
 		return -1;
 
 	ret = _flow_dv_query_count(dev, counter, &inn_pkts, &inn_bytes);

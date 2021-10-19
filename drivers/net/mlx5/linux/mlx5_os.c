@@ -690,7 +690,7 @@ mlx5_flow_counter_mode_config(struct rte_eth_dev *dev __rte_unused)
 	fallback = true;
 #else
 	fallback = false;
-	if (!priv->config.devx || !priv->config.dv_flow_en ||
+	if (!sh->devx || !priv->config.dv_flow_en ||
 	    !priv->config.hca_attr.flow_counters_dump ||
 	    !(priv->config.hca_attr.flow_counter_bulk_alloc_bitmap & 0x4) ||
 	    (mlx5_flow_dv_discover_counter_offset_support(dev) == -ENOTSUP))
@@ -1002,8 +1002,6 @@ err_secondary:
 	sh = mlx5_alloc_shared_dev_ctx(spawn, config);
 	if (!sh)
 		return NULL;
-	sh->numa_node = dpdk_dev->numa_node;
-	config->devx = sh->devx;
 #ifdef HAVE_MLX5DV_DR_ACTION_DEST_DEVX_TIR
 	config->dest_tir = 1;
 #endif
@@ -1329,7 +1327,7 @@ err_secondary:
 		DRV_LOG(WARNING, "Rx CQE compression isn't supported");
 		config->cqe_comp = 0;
 	}
-	if (config->devx) {
+	if (sh->devx) {
 		err = mlx5_devx_cmd_query_hca_attr(sh->ctx, &config->hca_attr);
 		if (err) {
 			err = -err;
@@ -1462,13 +1460,13 @@ err_secondary:
 		config->cqe_comp = 0;
 	}
 	if (config->cqe_comp_fmt == MLX5_CQE_RESP_FORMAT_FTAG_STRIDX &&
-	    (!config->devx || !config->hca_attr.mini_cqe_resp_flow_tag)) {
+	    (!sh->devx || !config->hca_attr.mini_cqe_resp_flow_tag)) {
 		DRV_LOG(WARNING, "Flow Tag CQE compression"
 				 " format isn't supported.");
 		config->cqe_comp = 0;
 	}
 	if (config->cqe_comp_fmt == MLX5_CQE_RESP_FORMAT_L34H_STRIDX &&
-	    (!config->devx || !config->hca_attr.mini_cqe_resp_l3_l4_tag)) {
+	    (!sh->devx || !config->hca_attr.mini_cqe_resp_l3_l4_tag)) {
 		DRV_LOG(WARNING, "L3/L4 Header CQE compression"
 				 " format isn't supported.");
 		config->cqe_comp = 0;
@@ -1491,7 +1489,7 @@ err_secondary:
 			config->hca_attr.log_max_static_sq_wq);
 		DRV_LOG(DEBUG, "WQE rate PP mode is %ssupported",
 			config->hca_attr.qos.wqe_rate_pp ? "" : "not ");
-		if (!config->devx) {
+		if (!sh->devx) {
 			DRV_LOG(ERR, "DevX is required for packet pacing");
 			err = ENODEV;
 			goto error;
@@ -1547,7 +1545,7 @@ err_secondary:
 				priv->dev_port);
 		}
 	}
-	if (config->devx) {
+	if (sh->devx) {
 		uint32_t reg[MLX5_ST_SZ_DW(register_mtutc)];
 
 		err = config->hca_attr.access_register_user ?
@@ -1737,7 +1735,7 @@ err_secondary:
 		if (mlx5_flex_item_port_init(eth_dev) < 0)
 			goto error;
 	}
-	if (config->devx && config->dv_flow_en && config->dest_tir) {
+	if (sh->devx && config->dv_flow_en && config->dest_tir) {
 		priv->obj_ops = devx_obj_ops;
 		mlx5_queue_counter_id_prepare(eth_dev);
 	} else if (spawn->max_port > UINT8_MAX) {
