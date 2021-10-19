@@ -19,6 +19,7 @@
 #include "mlx5_glue.h"
 #include "mlx5_common_mp.h"
 #include "mlx5_common_defs.h"
+#include "mlx5_common.h"
 
 /* mlx5 PMD MR struct. */
 struct mlx5_pmd_mr {
@@ -86,6 +87,14 @@ struct mlx5_mr_share_cache {
 	mlx5_dereg_mr_t dereg_mr_cb; /* Callback to dereg_mr func */
 } __rte_packed;
 
+__rte_internal
+uint32_t mlx5_mr_addr2mr_bh(void *pd, struct mlx5_mp_id *mp_id,
+			    struct mlx5_mr_share_cache *share_cache,
+			    struct mlx5_mr_ctrl *mr_ctrl,
+			    uintptr_t addr, unsigned int mr_ext_memseg_en);
+__rte_internal
+void mlx5_mr_flush_local_cache(struct mlx5_mr_ctrl *mr_ctrl);
+
 /**
  * Look up LKey from given lookup table by linear search. Firstly look up the
  * last-hit entry. If miss, the entire array is searched. If found, update the
@@ -123,6 +132,44 @@ mlx5_mr_lookup_lkey(struct mr_cache_entry *lkp_tbl, uint16_t *cached_idx,
 	return UINT32_MAX;
 }
 
+/**
+ * Query LKey from a packet buffer.
+ *
+ * @param cdev
+ *   Pointer to the mlx5 device structure.
+ * @param mp_id
+ *   Multi-process identifier, may be NULL for the primary process.
+ * @param mr_ctrl
+ *   Pointer to per-queue MR control structure.
+ * @param mbuf
+ *   Pointer to mbuf.
+ * @param share_cache
+ *   Pointer to a global shared MR cache.
+ *
+ * @return
+ *   Searched LKey on success, UINT32_MAX on no match.
+ */
+static __rte_always_inline uint32_t
+mlx5_mr_mb2mr(struct mlx5_common_device *cdev, struct mlx5_mp_id *mp_id,
+	      struct mlx5_mr_ctrl *mr_ctrl, struct rte_mbuf *mbuf,
+	      struct mlx5_mr_share_cache *share_cache)
+{
+	uint32_t lkey;
+	uintptr_t addr = (uintptr_t)mbuf->buf_addr;
+
+	/* Check generation bit to see if there's any change on existing MRs. */
+	if (unlikely(*mr_ctrl->dev_gen_ptr != mr_ctrl->cur_gen))
+		mlx5_mr_flush_local_cache(mr_ctrl);
+	/* Linear search on MR cache array. */
+	lkey = mlx5_mr_lookup_lkey(mr_ctrl->cache, &mr_ctrl->mru,
+				   MLX5_MR_CACHE_N, (uintptr_t)mbuf->buf_addr);
+	if (likely(lkey != UINT32_MAX))
+		return lkey;
+	/* Take slower bottom-half on miss. */
+	return mlx5_mr_addr2mr_bh(cdev->pd, mp_id, share_cache, mr_ctrl,
+				  addr, cdev->config.mr_ext_memseg_en);
+}
+
 __rte_internal
 int mlx5_mr_ctrl_init(struct mlx5_mr_ctrl *mr_ctrl, uint32_t *dev_gen_ptr,
 		      int socket);
@@ -130,11 +177,6 @@ __rte_internal
 void mlx5_mr_btree_free(struct mlx5_mr_btree *bt);
 __rte_internal
 void mlx5_mr_btree_dump(struct mlx5_mr_btree *bt __rte_unused);
-__rte_internal
-uint32_t mlx5_mr_addr2mr_bh(void *pd, struct mlx5_mp_id *mp_id,
-			    struct mlx5_mr_share_cache *share_cache,
-			    struct mlx5_mr_ctrl *mr_ctrl,
-			    uintptr_t addr, unsigned int mr_ext_memseg_en);
 __rte_internal
 uint32_t mlx5_mr_mempool2mr_bh(struct mlx5_mr_share_cache *share_cache,
 			       struct mlx5_mr_ctrl *mr_ctrl,
@@ -147,8 +189,6 @@ __rte_internal
 void mlx5_mr_dump_cache(struct mlx5_mr_share_cache *share_cache __rte_unused);
 __rte_internal
 void mlx5_mr_rebuild_cache(struct mlx5_mr_share_cache *share_cache);
-__rte_internal
-void mlx5_mr_flush_local_cache(struct mlx5_mr_ctrl *mr_ctrl);
 __rte_internal
 void mlx5_free_mr_by_addr(struct mlx5_mr_share_cache *share_cache,
 			  const char *ibdev_name, const void *addr, size_t len);

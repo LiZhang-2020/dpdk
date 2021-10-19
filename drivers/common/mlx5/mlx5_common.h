@@ -489,6 +489,8 @@ __rte_internal
 void
 mlx5_os_wrapped_mkey_destroy(struct mlx5_pmd_wrapped_mr *pmd_mr);
 
+/* mlx5_common_os.c */
+
 int mlx5_os_open_device(struct mlx5_common_device *cdev, uint32_t classes);
 int mlx5_os_pd_create(struct mlx5_common_device *cdev);
 

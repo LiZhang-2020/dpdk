@@ -575,6 +575,8 @@ mr_find_contig_memsegs_cb(const struct rte_memseg_list *msl,
  *
  * @param pd
  *   Pointer to pd of a device (net, regex, vdpa,...).
+ * @param mp_id
+ *   Multi-process identifier, may be NULL for the primary process.
  * @param share_cache
  *   Pointer to a global shared MR cache.
  * @param[out] entry
@@ -865,6 +867,8 @@ err_nolock:
  *
  * @param pd
  *   Pointer to pd handle of a device (net, regex, vdpa,...).
+ * @param mp_id
+ *   Multi-process identifier, may be NULL for the primary process.
  * @param share_cache
  *   Pointer to a global shared MR cache.
  * @param[out] entry
@@ -872,6 +876,8 @@ err_nolock:
  *   created. If failed to create one, this will not be updated.
  * @param addr
  *   Target virtual address to register.
+ * @param mr_ext_memseg_en
+ *   Configurable flag about external memory segment enable or not.
  *
  * @return
  *   Searched LKey on success, UINT32_MAX on failure and rte_errno is set.
@@ -905,6 +911,8 @@ mlx5_mr_create(void *pd, struct mlx5_mp_id *mp_id,
  *
  * @param pd
  *   Pointer to pd of a device (net, regex, vdpa,...).
+ * @param mp_id
+ *   Multi-process identifier, may be NULL for the primary process.
  * @param share_cache
  *   Pointer to a global shared MR cache.
  * @param mr_ctrl
@@ -914,6 +922,8 @@ mlx5_mr_create(void *pd, struct mlx5_mp_id *mp_id,
  *   created. If failed to create one, this is not written.
  * @param addr
  *   Search key.
+ * @param mr_ext_memseg_en
+ *   Configurable flag about external memory segment enable or not.
  *
  * @return
  *   Searched LKey on success, UINT32_MAX on no match.
@@ -969,12 +979,16 @@ mr_lookup_caches(void *pd, struct mlx5_mp_id *mp_id,
  *
  * @param pd
  *   Pointer to pd of a device (net, regex, vdpa,...).
+ * @param mp_id
+ *   Multi-process identifier, may be NULL for the primary process.
  * @param share_cache
  *   Pointer to a global shared MR cache.
  * @param mr_ctrl
  *   Pointer to per-queue MR control structure.
  * @param addr
  *   Search key.
+ * @param mr_ext_memseg_en
+ *   Configurable flag about external memory segment enable or not.
  *
  * @return
  *   Searched LKey on success, UINT32_MAX on no match.
