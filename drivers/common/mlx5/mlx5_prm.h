@@ -4297,9 +4297,11 @@ struct mlx5_ifc_flow_table_context_bits {
 	u8 reserved_at_40[0x8];
 	u8 lag_master_next_table_id[0x18];
 
+	u8 reserved_at_60[0x20];
+
 	u8 rtc_id[0x20];
 
-	u8 reserved_at_80[0x40];
+	u8 reserved_at_a0[0x20];
 
 	u8 sw_owner_icm_root_1[0x40];
 
