@@ -28,10 +28,12 @@
 #include "mlx5_utils.h"
 #include "mlx5.h"
 #include "mlx5_autoconf.h"
-#include "mlx5_mr.h"
 
 /* Support tunnel matching. */
 #define MLX5_FLOW_TUNNEL 10
+
+/* First entry must be NULL for comparison. */
+#define mlx5_mr_btree_len(bt) ((bt)->len - 1)
 
 #define RXQ_PORT(rxq_ctrl) LIST_FIRST(&(rxq_ctrl)->owners)->priv
 #define RXQ_DEV(rxq_ctrl) ETH_DEV(RXQ_PORT(rxq_ctrl))
@@ -588,7 +590,6 @@ static __rte_always_inline uint32_t
 mlx5_rx_addr2mr(struct mlx5_rxq_data *rxq, uintptr_t addr)
 {
 	struct mlx5_mr_ctrl *mr_ctrl = &rxq->mr_ctrl;
-	struct mlx5_rxq_ctrl *rxq_ctrl;
 	struct rte_mempool *mp;
 	uint32_t lkey;
 
@@ -597,14 +598,9 @@ mlx5_rx_addr2mr(struct mlx5_rxq_data *rxq, uintptr_t addr)
 				   MLX5_MR_CACHE_N, addr);
 	if (likely(lkey != UINT32_MAX))
 		return lkey;
-	/*
-	 * Slower search in the mempool database on miss.
-	 * During queue creation rxq->sh is not yet set, so we use rxq_ctrl.
-	 */
-	rxq_ctrl = container_of(rxq, struct mlx5_rxq_ctrl, rxq);
+	/* Slower search in the mempool database on miss. */
 	mp = mlx5_rxq_mprq_enabled(rxq) ? rxq->mprq_mp : rxq->mp;
-	return mlx5_mr_mempool2mr_bh(&rxq_ctrl->sh->share_cache,
-				     mr_ctrl, mp, addr);
+	return mlx5_mr_mempool2mr_bh(mr_ctrl, mp, addr);
 }
 
 /**
@@ -625,7 +621,6 @@ mlx5_rx_mb2mr(struct mlx5_rxq_data *rxq, struct rte_mbuf *mb)
 {
 	struct mlx5_mr_ctrl *mr_ctrl = &rxq->mr_ctrl;
 	uintptr_t addr = (uintptr_t)mb->buf_addr;
-	struct mlx5_rxq_ctrl *rxq_ctrl;
 	uint32_t lkey;
 
 	/* Linear search on MR cache array. */
@@ -633,13 +628,8 @@ mlx5_rx_mb2mr(struct mlx5_rxq_data *rxq, struct rte_mbuf *mb)
 				   MLX5_MR_CACHE_N, addr);
 	if (likely(lkey != UINT32_MAX))
 		return lkey;
-	/*
-	 * Slower search in the mempool database on miss.
-	 * During queue creation rxq->sh is not yet set, so we use rxq_ctrl.
-	 */
-	rxq_ctrl = container_of(rxq, struct mlx5_rxq_ctrl, rxq);
-	return mlx5_mr_mempool2mr_bh(&rxq_ctrl->sh->share_cache,
-				     mr_ctrl, mb->pool, addr);
+	/* Slower search in the mempool database on miss. */
+	return mlx5_mr_mempool2mr_bh(mr_ctrl, mb->pool, addr);
 }
 
 /**

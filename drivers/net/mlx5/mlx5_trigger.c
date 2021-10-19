@@ -14,7 +14,6 @@
 
 #include "mlx5.h"
 #include "mlx5_flow.h"
-#include "mlx5_mr.h"
 #include "mlx5_rxtx.h"
 #include "mlx5_utils.h"
 #include "rte_pmd_mlx5.h"
@@ -152,7 +151,7 @@ mlx5_rxq_mempool_register(struct rte_eth_dev *dev,
 
 		mp = rxq_ctrl->rxq.rxseg[s].mp;
 		flags = rte_pktmbuf_priv_flags(mp);
-		ret = mlx5_mr_mempool_register(&priv->sh->share_cache,
+		ret = mlx5_mr_mempool_register(&priv->sh->cdev->mr_scache,
 					       priv->sh->cdev->pd, mp,
 					       &priv->mp_id);
 		if (ret < 0 && rte_errno != EEXIST)

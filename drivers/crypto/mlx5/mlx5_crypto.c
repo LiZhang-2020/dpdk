@@ -310,9 +310,9 @@ mlx5_crypto_get_block_size(struct rte_crypto_op *op)
 }
 
 static __rte_always_inline uint32_t
-mlx5_crypto_klm_set(struct mlx5_crypto_priv *priv, struct mlx5_crypto_qp *qp,
-		      struct rte_mbuf *mbuf, struct mlx5_wqe_dseg *klm,
-		      uint32_t offset, uint32_t *remain)
+mlx5_crypto_klm_set(struct mlx5_crypto_qp *qp, struct rte_mbuf *mbuf,
+		    struct mlx5_wqe_dseg *klm, uint32_t offset,
+		    uint32_t *remain)
 {
 	uint32_t data_len = (rte_pktmbuf_data_len(mbuf) - offset);
 	uintptr_t addr = rte_pktmbuf_mtod_offset(mbuf, uintptr_t, offset);
@@ -322,23 +322,21 @@ mlx5_crypto_klm_set(struct mlx5_crypto_priv *priv, struct mlx5_crypto_qp *qp,
 	*remain -= data_len;
 	klm->bcount = rte_cpu_to_be_32(data_len);
 	klm->pbuf = rte_cpu_to_be_64(addr);
-	klm->lkey = mlx5_mr_mb2mr(priv->cdev, 0, &qp->mr_ctrl, mbuf,
-				  &priv->mr_scache);
+	klm->lkey = mlx5_mr_mb2mr(&qp->mr_ctrl, mbuf, 0);
 	return klm->lkey;
 
 }
 
 static __rte_always_inline uint32_t
-mlx5_crypto_klms_set(struct mlx5_crypto_priv *priv, struct mlx5_crypto_qp *qp,
-		     struct rte_crypto_op *op, struct rte_mbuf *mbuf,
-		     struct mlx5_wqe_dseg *klm)
+mlx5_crypto_klms_set(struct mlx5_crypto_qp *qp, struct rte_crypto_op *op,
+		     struct rte_mbuf *mbuf, struct mlx5_wqe_dseg *klm)
 {
 	uint32_t remain_len = op->sym->cipher.data.length;
 	uint32_t nb_segs = mbuf->nb_segs;
 	uint32_t klm_n = 1u;
 
 	/* First mbuf needs to take the cipher offset. */
-	if (unlikely(mlx5_crypto_klm_set(priv, qp, mbuf, klm,
+	if (unlikely(mlx5_crypto_klm_set(qp, mbuf, klm,
 		     op->sym->cipher.data.offset, &remain_len) == UINT32_MAX)) {
 		op->status = RTE_CRYPTO_OP_STATUS_ERROR;
 		return 0;
@@ -350,7 +348,7 @@ mlx5_crypto_klms_set(struct mlx5_crypto_priv *priv, struct mlx5_crypto_qp *qp,
 			op->status = RTE_CRYPTO_OP_STATUS_INVALID_ARGS;
 			return 0;
 		}
-		if (unlikely(mlx5_crypto_klm_set(priv, qp, mbuf, ++klm, 0,
+		if (unlikely(mlx5_crypto_klm_set(qp, mbuf, ++klm, 0,
 						 &remain_len) == UINT32_MAX)) {
 			op->status = RTE_CRYPTO_OP_STATUS_ERROR;
 			return 0;
@@ -376,7 +374,7 @@ mlx5_crypto_wqe_set(struct mlx5_crypto_priv *priv,
 	uint32_t ds;
 	bool ipl = op->sym->m_dst == NULL || op->sym->m_dst == op->sym->m_src;
 	/* Set UMR WQE. */
-	uint32_t klm_n = mlx5_crypto_klms_set(priv, qp, op,
+	uint32_t klm_n = mlx5_crypto_klms_set(qp, op,
 				   ipl ? op->sym->m_src : op->sym->m_dst, klms);
 
 	if (unlikely(klm_n == 0))
@@ -402,8 +400,7 @@ mlx5_crypto_wqe_set(struct mlx5_crypto_priv *priv,
 	cseg = RTE_PTR_ADD(cseg, priv->umr_wqe_size);
 	klms = RTE_PTR_ADD(cseg, sizeof(struct mlx5_rdma_write_wqe));
 	if (!ipl) {
-		klm_n = mlx5_crypto_klms_set(priv, qp, op, op->sym->m_src,
-					     klms);
+		klm_n = mlx5_crypto_klms_set(qp, op, op->sym->m_src, klms);
 		if (unlikely(klm_n == 0))
 			return 0;
 	} else {
@@ -653,7 +650,7 @@ mlx5_crypto_queue_pair_setup(struct rte_cryptodev *dev, uint16_t qp_id,
 		DRV_LOG(ERR, "Failed to create QP.");
 		goto error;
 	}
-	if (mlx5_mr_ctrl_init(&qp->mr_ctrl, &priv->mr_scache.dev_gen,
+	if (mlx5_mr_ctrl_init(&qp->mr_ctrl, &priv->cdev->mr_scache.dev_gen,
 			      priv->dev_config.socket_id) != 0) {
 		DRV_LOG(ERR, "Cannot allocate MR Btree for qp %u.",
 			(uint32_t)qp_id);
@@ -852,40 +849,6 @@ mlx5_crypto_parse_devargs(struct rte_devargs *devargs,
 	return 0;
 }
 
-/**
- * Callback for memory event.
- *
- * @param event_type
- *   Memory event type.
- * @param addr
- *   Address of memory.
- * @param len
- *   Size of memory.
- */
-static void
-mlx5_crypto_mr_mem_event_cb(enum rte_mem_event event_type, const void *addr,
-			    size_t len, void *arg __rte_unused)
-{
-	struct mlx5_crypto_priv *priv;
-
-	/* Must be called from the primary process. */
-	MLX5_ASSERT(rte_eal_process_type() == RTE_PROC_PRIMARY);
-	switch (event_type) {
-	case RTE_MEM_EVENT_FREE:
-		pthread_mutex_lock(&priv_list_lock);
-		/* Iterate all the existing mlx5 devices. */
-		TAILQ_FOREACH(priv, &mlx5_crypto_priv_list, next)
-			mlx5_free_mr_by_addr(&priv->mr_scache,
-					     mlx5_os_get_ctx_device_name
-							      (priv->cdev->ctx),
-					     addr, len);
-		pthread_mutex_unlock(&priv_list_lock);
-		break;
-	case RTE_MEM_EVENT_ALLOC:
-	default:
-		break;
-	}
-}
 /*
  * Calculate UMR WQE size and RDMA Write WQE size with the
  * following limitations:
@@ -1015,18 +978,10 @@ mlx5_crypto_dev_probe(struct mlx5_common_device *cdev)
 		rte_cryptodev_pmd_destroy(priv->crypto_dev);
 		return -1;
 	}
-	if (mlx5_mr_create_cache(&priv->mr_scache, rte_socket_id()) != 0) {
-		DRV_LOG(ERR, "Failed to allocate shared cache MR memory.");
-		mlx5_crypto_uar_release(priv);
-		rte_cryptodev_pmd_destroy(priv->crypto_dev);
-		rte_errno = ENOMEM;
-		return -rte_errno;
-	}
 	login = mlx5_devx_cmd_create_crypto_login_obj(cdev->ctx,
 						      &devarg_prms.login_attr);
 	if (login == NULL) {
 		DRV_LOG(ERR, "Failed to configure login.");
-		mlx5_mr_release_cache(&priv->mr_scache);
 		mlx5_crypto_uar_release(priv);
 		rte_cryptodev_pmd_destroy(priv->crypto_dev);
 		return -rte_errno;
@@ -1037,7 +992,6 @@ mlx5_crypto_dev_probe(struct mlx5_common_device *cdev)
 					     devarg_prms.max_segs_num);
 	if (ret) {
 		claim_zero(mlx5_devx_cmd_destroy(priv->login_obj));
-		mlx5_mr_release_cache(&priv->mr_scache);
 		mlx5_crypto_uar_release(priv);
 		rte_cryptodev_pmd_destroy(priv->crypto_dev);
 		return -1;
@@ -1046,11 +1000,6 @@ mlx5_crypto_dev_probe(struct mlx5_common_device *cdev)
 		(unsigned int)RTE_MIN(
 			MLX5_CRYPTO_KLM_SEGS_NUM(priv->umr_wqe_size),
 			(uint16_t)(priv->max_rdmar_ds - 2)));
-	/* Register callback function for global shared MR cache management. */
-	if (TAILQ_EMPTY(&mlx5_crypto_priv_list))
-		rte_mem_event_callback_register("MLX5_MEM_EVENT_CB",
-						mlx5_crypto_mr_mem_event_cb,
-						NULL);
 	pthread_mutex_lock(&priv_list_lock);
 	TAILQ_INSERT_TAIL(&mlx5_crypto_priv_list, priv, next);
 	pthread_mutex_unlock(&priv_list_lock);
@@ -1070,11 +1019,7 @@ mlx5_crypto_dev_remove(struct mlx5_common_device *cdev)
 		TAILQ_REMOVE(&mlx5_crypto_priv_list, priv, next);
 	pthread_mutex_unlock(&priv_list_lock);
 	if (priv) {
-		if (TAILQ_EMPTY(&mlx5_crypto_priv_list))
-			rte_mem_event_callback_unregister("MLX5_MEM_EVENT_CB",
-							  NULL);
 		claim_zero(mlx5_devx_cmd_destroy(priv->login_obj));
-		mlx5_mr_release_cache(&priv->mr_scache);
 		mlx5_crypto_uar_release(priv);
 		rte_cryptodev_pmd_destroy(priv->crypto_dev);
 	}

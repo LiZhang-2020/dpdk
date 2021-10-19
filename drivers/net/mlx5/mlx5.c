@@ -33,7 +33,6 @@
 #include "mlx5_utils.h"
 #include "mlx5_rxtx.h"
 #include "mlx5_autoconf.h"
-#include "mlx5_mr.h"
 #include "mlx5_flow.h"
 #include "mlx5_flow_os.h"
 #include "rte_pmd_mlx5.h"
@@ -1129,7 +1128,7 @@ mlx5_dev_ctx_shared_mempool_unregister(struct mlx5_dev_ctx_shared *sh,
 	struct mlx5_mp_id mp_id;
 
 	mlx5_mp_id_init(&mp_id, 0);
-	if (mlx5_mr_mempool_unregister(&sh->share_cache, mp, &mp_id) < 0)
+	if (mlx5_mr_mempool_unregister(&sh->cdev->mr_scache, mp, &mp_id) < 0)
 		DRV_LOG(WARNING, "Failed to unregister mempool %s for PD %p: %s",
 			mp->name, sh->cdev->pd, rte_strerror(rte_errno));
 }
@@ -1151,7 +1150,7 @@ mlx5_dev_ctx_shared_mempool_register_cb(struct rte_mempool *mp, void *arg)
 	int ret;
 
 	mlx5_mp_id_init(&mp_id, 0);
-	ret = mlx5_mr_mempool_register(&sh->share_cache, sh->cdev->pd, mp,
+	ret = mlx5_mr_mempool_register(&sh->cdev->mr_scache, sh->cdev->pd, mp,
 				       &mp_id);
 	if (ret < 0 && rte_errno != EEXIST)
 		DRV_LOG(ERR, "Failed to register existing mempool %s for PD %p: %s",
@@ -1198,8 +1197,8 @@ mlx5_dev_ctx_shared_mempool_event_cb(enum rte_mempool_event event,
 		if (extmem)
 			break;
 		mlx5_mp_id_init(&mp_id, 0);
-		if (mlx5_mr_mempool_register(&sh->share_cache, sh->cdev->pd, mp,
-					     &mp_id) < 0)
+		if (mlx5_mr_mempool_register(&sh->cdev->mr_scache, sh->cdev->pd,
+					     mp, &mp_id) < 0)
 			DRV_LOG(ERR, "Failed to register new mempool %s for PD %p: %s",
 				mp->name, sh->cdev->pd,
 				rte_strerror(rte_errno));
@@ -1422,20 +1421,6 @@ mlx5_alloc_shared_dev_ctx(const struct mlx5_dev_spawn_data *spawn,
 	for (i = 0; i < MLX5_UAR_PAGE_NUM_MAX; i++)
 		rte_spinlock_init(&sh->uar_lock[i]);
 #endif
-	/*
-	 * Once the device is added to the list of memory event
-	 * callback, its global MR cache table cannot be expanded
-	 * on the fly because of deadlock. If it overflows, lookup
-	 * should be done by searching MR list linearly, which is slow.
-	 *
-	 * At this point the device is not added to the memory
-	 * event list yet, context is just being created.
-	 */
-	err = mlx5_mr_create_cache(&sh->share_cache, sh->numa_node);
-	if (err) {
-		err = rte_errno;
-		goto error;
-	}
 	mlx5_os_dev_shared_handler_install(sh);
 	sh->cnt_id_tbl = mlx5_l3t_create(MLX5_L3T_TYPE_DWORD);
 	if (!sh->cnt_id_tbl) {
@@ -1445,11 +1430,6 @@ mlx5_alloc_shared_dev_ctx(const struct mlx5_dev_spawn_data *spawn,
 	mlx5_flow_aging_init(sh);
 	mlx5_flow_counters_mng_init(sh);
 	mlx5_flow_ipool_create(sh, config);
-	/* Add device to memory callback list. */
-	rte_rwlock_write_lock(&mlx5_shared_data->mem_event_rwlock);
-	LIST_INSERT_HEAD(&mlx5_shared_data->mem_event_cb_list,
-			 sh, mem_event_cb);
-	rte_rwlock_write_unlock(&mlx5_shared_data->mem_event_rwlock);
 	/* Add context to the global device list. */
 	LIST_INSERT_HEAD(&mlx5_dev_ctx_list, sh, next);
 	rte_spinlock_init(&sh->geneve_tlv_opt_sl);
@@ -1462,8 +1442,6 @@ error:
 	MLX5_ASSERT(sh);
 	if (sh->cnt_id_tbl)
 		mlx5_l3t_destroy(sh->cnt_id_tbl);
-	if (sh->share_cache.cache.table)
-		mlx5_mr_btree_free(&sh->share_cache.cache);
 	if (sh->td)
 		claim_zero(mlx5_devx_cmd_destroy(sh->td));
 	i = 0;
@@ -1523,12 +1501,6 @@ mlx5_free_shared_dev_ctx(struct mlx5_dev_ctx_shared *sh)
 	if (ret == 0)
 		rte_mempool_walk(mlx5_dev_ctx_shared_mempool_unregister_cb,
 				 sh);
-	/* Remove from memory callback device list. */
-	rte_rwlock_write_lock(&mlx5_shared_data->mem_event_rwlock);
-	LIST_REMOVE(sh, mem_event_cb);
-	rte_rwlock_write_unlock(&mlx5_shared_data->mem_event_rwlock);
-	/* Release created Memory Regions. */
-	mlx5_mr_release_cache(&sh->share_cache);
 	/* Remove context from the global device list. */
 	LIST_REMOVE(sh, next);
 	/* Release flow workspaces objects on the last device. */

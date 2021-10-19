@@ -19,6 +19,7 @@
 #include "mlx5_prm.h"
 #include "mlx5_devx_cmds.h"
 #include "mlx5_common_os.h"
+#include "mlx5_common_mr.h"
 
 /* Reported driver name. */
 #define MLX5_PCI_DRIVER_NAME "mlx5_pci"
@@ -373,6 +374,7 @@ struct mlx5_common_device {
 	void *ctx; /* Verbs/DV/DevX context. */
 	void *pd; /* Protection Domain. */
 	uint32_t pdn; /* Protection Domain Number. */
+	struct mlx5_mr_share_cache mr_scache; /* Global shared MR cache. */
 	struct mlx5_common_dev_config config; /* Device configuration. */
 };
 
