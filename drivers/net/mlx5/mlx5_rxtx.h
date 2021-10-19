@@ -492,8 +492,6 @@ uint16_t mlx5_rx_burst_mprq_vec(void *dpdk_txq, struct rte_mbuf **pkts,
 /* mlx5_mr.c */
 
 uint32_t mlx5_tx_mb2mr_bh(struct mlx5_txq_data *txq, struct rte_mbuf *mb);
-uint32_t mlx5_tx_update_ext_mp(struct mlx5_txq_data *txq, uintptr_t addr,
-			       struct rte_mempool *mp);
 int mlx5_net_dma_map(struct rte_device *rte_dev, void *addr, uint64_t iova,
 		     size_t len);
 int mlx5_net_dma_unmap(struct rte_device *rte_dev, void *addr, uint64_t iova,
