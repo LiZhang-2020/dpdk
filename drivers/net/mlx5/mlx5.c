@@ -1431,15 +1431,11 @@ mlx5_alloc_shared_dev_ctx(const struct mlx5_dev_spawn_data *spawn,
 	 * At this point the device is not added to the memory
 	 * event list yet, context is just being created.
 	 */
-	err = mlx5_mr_btree_init(&sh->share_cache.cache,
-				 MLX5_MR_BTREE_CACHE_N * 2,
-				 sh->numa_node);
+	err = mlx5_mr_create_cache(&sh->share_cache, sh->numa_node);
 	if (err) {
 		err = rte_errno;
 		goto error;
 	}
-	mlx5_os_set_reg_mr_cb(&sh->share_cache.reg_mr_cb,
-			      &sh->share_cache.dereg_mr_cb);
 	mlx5_os_dev_shared_handler_install(sh);
 	sh->cnt_id_tbl = mlx5_l3t_create(MLX5_L3T_TYPE_DWORD);
 	if (!sh->cnt_id_tbl) {
