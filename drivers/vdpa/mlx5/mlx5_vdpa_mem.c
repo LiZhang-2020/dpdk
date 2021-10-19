@@ -197,7 +197,7 @@ mlx5_vdpa_mem_register(struct mlx5_vdpa_priv *priv)
 	if (!mem)
 		return -rte_errno;
 	priv->vmem = mem;
-	priv->null_mr = mlx5_glue->alloc_null_mr(priv->pd);
+	priv->null_mr = mlx5_glue->alloc_null_mr(priv->cdev->pd);
 	if (!priv->null_mr) {
 		DRV_LOG(ERR, "Failed to allocate null MR.");
 		ret = -errno;
@@ -213,7 +213,7 @@ mlx5_vdpa_mem_register(struct mlx5_vdpa_priv *priv)
 			goto error;
 		}
 		entry->mr = mlx5_glue->reg_mr_iova
-				      (priv->pd,
+				      (priv->cdev->pd,
 				       (void *)(uintptr_t)(reg->host_user_addr),
 				       reg->size, reg->guest_phys_addr,
 				       IBV_ACCESS_LOCAL_WRITE);
@@ -260,7 +260,7 @@ mlx5_vdpa_mem_register(struct mlx5_vdpa_priv *priv)
 	memset(&mkey_attr, 0, sizeof(mkey_attr));
 	mkey_attr.addr = (uintptr_t)(mem->regions[0].guest_phys_addr);
 	mkey_attr.size = mem_size;
-	mkey_attr.pd = priv->pdn;
+	mkey_attr.pd = priv->cdev->pdn;
 	mkey_attr.umem_id = 0;
 	/* Must be zero for KLM mode. */
 	mkey_attr.log_entity_size = mode == MLX5_MKC_ACCESS_MODE_KLM_FBS ?

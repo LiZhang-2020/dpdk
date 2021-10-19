@@ -42,10 +42,8 @@ mlx5_vdpa_dirty_bitmap_set(struct mlx5_vdpa_priv *priv, uint64_t log_base,
 		.dirty_bitmap_size = log_size,
 	};
 	int i;
-	int ret = mlx5_os_wrapped_mkey_create(priv->cdev->ctx, priv->pd,
-					      priv->pdn,
-					      (void *)log_base, log_size,
-					      &priv->lm_mr);
+	int ret = mlx5_os_wrapped_mkey_create(priv->cdev, (void *)log_base,
+					      log_size, &priv->lm_mr);
 
 	if (ret) {
 		DRV_LOG(ERR, "Failed to allocate wrapped MR for lm.");

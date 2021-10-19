@@ -407,6 +407,49 @@ glue_error:
 	mlx5_glue = NULL;
 }
 
+/**
+ * Allocate Protection Domain object and extract its pdn using DV API.
+ *
+ * @param[out] cdev
+ *   Pointer to the mlx5 device.
+ *
+ * @return
+ *   0 on success, a negative errno value otherwise and rte_errno is set.
+ */
+int
+mlx5_os_pd_create(struct mlx5_common_device *cdev)
+{
+#ifdef HAVE_IBV_FLOW_DV_SUPPORT
+	struct mlx5dv_obj obj;
+	struct mlx5dv_pd pd_info;
+	int ret;
+#endif
+
+	cdev->pd = mlx5_glue->alloc_pd(cdev->ctx);
+	if (cdev->pd == NULL) {
+		DRV_LOG(ERR, "Failed to allocate PD.");
+		return errno ? -errno : -ENOMEM;
+	}
+	if (cdev->config.devx == 0)
+		return 0;
+#ifdef HAVE_IBV_FLOW_DV_SUPPORT
+	obj.pd.in = cdev->pd;
+	obj.pd.out = &pd_info;
+	ret = mlx5_glue->dv_init_obj(&obj, MLX5DV_OBJ_PD);
+	if (ret != 0) {
+		DRV_LOG(ERR, "Fail to get PD object info.");
+		mlx5_glue->dealloc_pd(cdev->pd);
+		cdev->pd = NULL;
+		return -errno;
+	}
+	cdev->pdn = pd_info.pdn;
+	return 0;
+#else
+	DRV_LOG(ERR, "Cannot get pdn - no DV support.");
+	return -ENOTSUP;
+#endif /* HAVE_IBV_FLOW_DV_SUPPORT */
+}
+
 static struct ibv_device *
 mlx5_os_get_ibv_device(const struct rte_pci_addr *addr)
 {
@@ -704,7 +747,7 @@ mlx5_get_device_guid(const struct rte_pci_addr *dev, uint8_t *guid, size_t len)
 }
 
 int
-mlx5_os_wrapped_mkey_create(void *ctx, void *pd, uint32_t pdn, void *addr,
+mlx5_os_wrapped_mkey_create(struct mlx5_common_device *cdev, void *addr,
 			    size_t length, struct mlx5_pmd_wrapped_mr *pmd_mr)
 {
 	struct mlx5_klm klm = {
@@ -712,12 +755,12 @@ mlx5_os_wrapped_mkey_create(void *ctx, void *pd, uint32_t pdn, void *addr,
 		.address = (uintptr_t)addr,
 	};
 	struct mlx5_devx_mkey_attr mkey_attr = {
-		.pd = pdn,
+		.pd = cdev->pdn,
 		.klm_array = &klm,
 		.klm_num = 1,
 	};
 	struct mlx5_devx_obj *mkey;
-	struct ibv_mr *ibv_mr = mlx5_glue->reg_mr(pd, addr, length,
+	struct ibv_mr *ibv_mr = mlx5_glue->reg_mr(cdev->pd, addr, length,
 						  IBV_ACCESS_LOCAL_WRITE |
 						  (haswell_broadwell_cpu ? 0 :
 						  IBV_ACCESS_RELAXED_ORDERING));
@@ -729,7 +772,7 @@ mlx5_os_wrapped_mkey_create(void *ctx, void *pd, uint32_t pdn, void *addr,
 	klm.mkey = ibv_mr->lkey;
 	mkey_attr.addr = (uintptr_t)addr;
 	mkey_attr.size = length;
-	mkey = mlx5_devx_cmd_mkey_create(ctx, &mkey_attr);
+	mkey = mlx5_devx_cmd_mkey_create(cdev->ctx, &mkey_attr);
 	if (!mkey) {
 		claim_zero(mlx5_glue->dereg_mr(ibv_mr));
 		return -rte_errno;

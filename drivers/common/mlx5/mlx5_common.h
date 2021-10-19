@@ -370,6 +370,8 @@ struct mlx5_common_device {
 	TAILQ_ENTRY(mlx5_common_device) next;
 	uint32_t classes_loaded;
 	void *ctx; /* Verbs/DV/DevX context. */
+	void *pd; /* Protection Domain. */
+	uint32_t pdn; /* Protection Domain Number. */
 	struct mlx5_common_dev_config config; /* Device configuration. */
 };
 
@@ -479,7 +481,7 @@ struct mlx5_pmd_wrapped_mr {
 
 __rte_internal
 int
-mlx5_os_wrapped_mkey_create(void *ctx, void *pd, uint32_t pdn, void *addr,
+mlx5_os_wrapped_mkey_create(struct mlx5_common_device *cdev, void *addr,
 			    size_t length, struct mlx5_pmd_wrapped_mr *pmd_mr);
 
 __rte_internal
@@ -487,5 +489,6 @@ void
 mlx5_os_wrapped_mkey_destroy(struct mlx5_pmd_wrapped_mr *pmd_mr);
 
 int mlx5_os_open_device(struct mlx5_common_device *cdev, uint32_t classes);
+int mlx5_os_pd_create(struct mlx5_common_device *cdev);
 
 #endif /* RTE_PMD_MLX5_COMMON_H_ */

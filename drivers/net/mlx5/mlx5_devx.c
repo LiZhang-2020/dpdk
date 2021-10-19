@@ -313,7 +313,7 @@ mlx5_devx_wq_attr_fill(struct mlx5_priv *priv, struct mlx5_rxq_ctrl *rxq_ctrl,
 	wq_attr->end_padding_mode = priv->config.hw_padding ?
 					MLX5_WQ_END_PAD_MODE_ALIGN :
 					MLX5_WQ_END_PAD_MODE_NONE;
-	wq_attr->pd = rxq_ctrl->sh->pdn;
+	wq_attr->pd = rxq_ctrl->sh->cdev->pdn;
 	if (mlx5_rxq_mprq_enabled(rxq_data)) {
 		wq_attr->wq_type = MLX5_WQ_TYPE_CYCLIC_STRIDING_RQ;
 		/*
@@ -1445,7 +1445,7 @@ mlx5_txq_create_devx_sq_resources(struct rte_eth_dev *dev, uint16_t idx,
 		.tis_lst_sz = 1,
 		.tis_num = mlx5_get_txq_tis_num(dev, idx),
 		.wq_attr = (struct mlx5_devx_wq_attr){
-			.pd = priv->sh->pdn,
+			.pd = priv->sh->cdev->pdn,
 			.uar_page =
 				 mlx5_os_get_devx_uar_page_id(priv->sh->tx_uar),
 		},

@@ -153,7 +153,8 @@ mlx5_rxq_mempool_register(struct rte_eth_dev *dev,
 		mp = rxq_ctrl->rxq.rxseg[s].mp;
 		flags = rte_pktmbuf_priv_flags(mp);
 		ret = mlx5_mr_mempool_register(&priv->sh->share_cache,
-					       priv->sh->pd, mp, &priv->mp_id);
+					       priv->sh->cdev->pd, mp,
+					       &priv->mp_id);
 		if (ret < 0 && rte_errno != EEXIST)
 			return ret;
 		if ((flags & RTE_PKTMBUF_POOL_F_PINNED_EXT_BUF) == 0)

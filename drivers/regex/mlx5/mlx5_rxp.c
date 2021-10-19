@@ -72,13 +72,8 @@ rxp_create_mkey(struct mlx5_regex_priv *priv, void *ptr, size_t size,
 		.umem_id = mlx5_os_get_umem_id(mkey->umem),
 		.pg_access = 1,
 		.umr_en = 0,
+		.pd = priv->cdev->pdn,
 	};
-#ifdef HAVE_IBV_FLOW_DV_SUPPORT
-	if (regex_get_pdn(priv->pd, &mkey_attr.pd) < 0) {
-		DRV_LOG(ERR, "Failed to get pdn!");
-		return -ENODEV;
-	}
-#endif
 	mkey->mkey = mlx5_devx_cmd_mkey_create(priv->cdev->ctx, &mkey_attr);
 	if (!mkey->mkey) {
 		DRV_LOG(ERR, "Failed to create direct mkey!");
