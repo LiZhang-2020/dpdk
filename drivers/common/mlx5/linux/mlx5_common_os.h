@@ -227,4 +227,7 @@ mlx5_os_get_ibv_dev(const struct rte_device *dev);
 int
 mlx5_get_device_guid(const struct rte_pci_addr *dev, uint8_t *guid, size_t len);
 
+void
+mlx5_set_context_attr(struct rte_device *dev, struct ibv_context *ctx);
+
 #endif /* RTE_PMD_MLX5_COMMON_OS_H_ */

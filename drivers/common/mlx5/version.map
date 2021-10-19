@@ -126,6 +126,7 @@ INTERNAL {
 	mlx5_nl_vlan_vmwa_delete;
 
 	mlx5_os_get_ibv_dev;
+	mlx5_os_open_device;
 	mlx5_os_wrapped_mkey_create;
 	mlx5_os_wrapped_mkey_destroy;
 
