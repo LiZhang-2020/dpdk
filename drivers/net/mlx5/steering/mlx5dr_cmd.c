@@ -67,9 +67,6 @@ mlx5dr_cmd_flow_table_modify(struct mlx5dr_devx_obj *devx_obj,
 
 	ft_ctx = MLX5_ADDR_OF(modify_flow_table_in, in, flow_table_context);
 	MLX5_SET(flow_table_context, ft_ctx, rtc_id, ft_attr->rtc_id);
-	// TODO This is not needed PRM wise this is due to current FW
-	MLX5_SET(flow_table_context, ft_ctx, wqe_based_flow_update,
-		 ft_attr->wqe_based_flow_update);
 
 	ret = mlx5_glue->devx_obj_modify(devx_obj->obj, in, sizeof(in), out, sizeof(out));
 	if (ret) {
@@ -265,9 +262,7 @@ mlx5dr_cmd_stc_modify(struct mlx5dr_devx_obj *devx_obj,
 	MLX5_SET(stc, attr, ste_action_offset, stc_attr->action_offset);
 	MLX5_SET(stc, attr, action_type, stc_attr->action_type);
 	MLX5_SET64(stc, attr, modify_field_select,
-		   MLX5_IFC_MODIFY_STC_FIELD_SELECT_STE_OFFSET |
-		   MLX5_IFC_MODIFY_STC_FIELD_SELECT_ACTION_TYPE |
-		   MLX5_IFC_MODIFY_STC_FIELD_SELECT_STC_PARAM);
+		   MLX5_IFC_MODIFY_STC_FIELD_SELECT_NEW_STC);
 
 	/* Set destination TIRN, TAG, FT ID, STE ID */
 	stc_parm = MLX5_ADDR_OF(stc, attr, stc_param);
@@ -592,8 +587,7 @@ int mlx5dr_cmd_query_caps(struct ibv_context *ctx,
 					capability.flow_table_nic_cap.
 					flow_table_properties_nic_receive.reparse);
 
-	// TODO Allow below later on
-	if (caps->wqe_based_update && 0) {
+	if (caps->wqe_based_update) {
 		MLX5_SET(query_hca_cap_in, in, op_mod,
 			 MLX5_GET_HCA_CAP_OP_MOD_WQE_BASED_FLOW_TABLE |
 			 MLX5_HCA_CAP_OPMOD_GET_CUR);
@@ -638,17 +632,8 @@ int mlx5dr_cmd_query_caps(struct ibv_context *ctx,
 						    stc_alloc_log_granularity);
 	}
 
-	// TODO Remove once we have a working FW
-	caps->wqe_based_update = 1;
-	caps->rtc_reparse_mode = 1 << MLX5_IFC_RTC_REPARSE_ALWAYS;
+	// TODO Current FW don't set this bit (yet)
 	caps->nic_ft.reparse = 1;
-	caps->ste_format = 1 << MLX5_IFC_RTC_STE_FORMAT_8DW;
-	caps->rtc_log_depth_max = 3;
-	caps->rtc_index_mode = 1 << MLX5_IFC_RTC_STE_UPDATE_MODE_BY_HASH;
-	caps->ste_alloc_log_max = MLX5DR_POOL_STE_LOG_SZ;
-	caps->ste_alloc_log_gran = 0;
-	caps->stc_alloc_log_max = 8; // curent FW supp
-	caps->stc_alloc_log_gran = 0;
 
 	return ret;
 }
