@@ -80,6 +80,8 @@ LIST_HEAD(mlx5_mempool_reg_list, mlx5_mempool_reg);
 struct mlx5_mr_share_cache {
 	uint32_t dev_gen; /* Generation number to flush local caches. */
 	rte_rwlock_t rwlock; /* MR cache Lock. */
+	rte_rwlock_t mprwlock; /* Mempool Registration Lock. */
+	uint8_t mp_cb_registered; /* Mempool are Registered. */
 	struct mlx5_mr_btree cache; /* Global MR cache table. */
 	struct mlx5_mr_list mr_list; /* Registered MR list. */
 	struct mlx5_mr_list mr_free_list; /* Freed MR list. */
@@ -88,9 +90,42 @@ struct mlx5_mr_share_cache {
 	mlx5_dereg_mr_t dereg_mr_cb; /* Callback to dereg_mr func */
 } __rte_packed;
 
+/* Multi-Packet RQ buffer header. */
+struct mlx5_mprq_buf {
+	struct rte_mempool *mp;
+	uint16_t refcnt; /* Atomically accessed refcnt. */
+	struct rte_mbuf_ext_shared_info shinfos[];
+	/*
+	 * Shared information per stride.
+	 * More memory will be allocated for the first stride head-room and for
+	 * the strides data.
+	 */
+} __rte_cache_aligned;
+
 __rte_internal
-uint32_t mlx5_mr_addr2mr_bh(struct mlx5_mr_ctrl *mr_ctrl,
-			    struct mlx5_mp_id *mp_id, uintptr_t addr);
+void mlx5_mprq_buf_free_cb(void *addr, void *opaque);
+
+/**
+ * Get Memory Pool (MP) from mbuf. If mbuf is indirect, the pool from which the
+ * cloned mbuf is allocated is returned instead.
+ *
+ * @param buf
+ *   Pointer to mbuf.
+ *
+ * @return
+ *   Memory pool where data is located for given mbuf.
+ */
+static inline struct rte_mempool *
+mlx5_mb2mp(struct rte_mbuf *buf)
+{
+	if (unlikely(RTE_MBUF_CLONED(buf)))
+		return rte_mbuf_from_indirect(buf)->pool;
+	return buf->pool;
+}
+
+__rte_internal
+uint32_t mlx5_mr_mb2mr_bh(struct mlx5_mr_ctrl *mr_ctrl, struct rte_mbuf *mbuf,
+			  struct mlx5_mp_id *mp_id);
 __rte_internal
 void mlx5_mr_flush_local_cache(struct mlx5_mr_ctrl *mr_ctrl);
 
@@ -149,7 +184,6 @@ mlx5_mr_mb2mr(struct mlx5_mr_ctrl *mr_ctrl, struct rte_mbuf *mbuf,
 	      struct mlx5_mp_id *mp_id)
 {
 	uint32_t lkey;
-	uintptr_t addr = (uintptr_t)mbuf->buf_addr;
 
 	/* Check generation bit to see if there's any change on existing MRs. */
 	if (unlikely(*mr_ctrl->dev_gen_ptr != mr_ctrl->cur_gen))
@@ -160,7 +194,7 @@ mlx5_mr_mb2mr(struct mlx5_mr_ctrl *mr_ctrl, struct rte_mbuf *mbuf,
 	if (likely(lkey != UINT32_MAX))
 		return lkey;
 	/* Take slower bottom-half on miss. */
-	return mlx5_mr_addr2mr_bh(mr_ctrl, mp_id, addr);
+	return mlx5_mr_mb2mr_bh(mr_ctrl, mbuf, mp_id);
 }
 
 /* mlx5_common_mr.c */

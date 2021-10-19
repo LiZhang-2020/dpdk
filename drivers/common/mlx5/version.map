@@ -11,6 +11,8 @@ INTERNAL {
 	mlx5_common_verbs_dereg_mr;
 
 	mlx5_dev_is_pci;
+	mlx5_dev_mempool_unregister;
+	mlx5_dev_mempool_subscribe;
 
 	mlx5_devx_cmd_create_cq;
 	mlx5_devx_cmd_create_credential_obj;
@@ -88,7 +90,8 @@ INTERNAL {
 	mlx5_mp_req_queue_state_modify;
 	mlx5_mp_req_verbs_cmd_fd;
 
-	mlx5_mr_addr2mr_bh;
+	mlx5_mprq_buf_free_cb;
+	mlx5_mr_mb2mr_bh;
 	mlx5_mr_btree_free;
 	mlx5_mr_create_primary;
 	mlx5_mr_ctrl_init;

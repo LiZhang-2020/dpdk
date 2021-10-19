@@ -1599,20 +1599,6 @@ mlx5_lro_update_hdr(uint8_t *__rte_restrict padd,
 }
 
 void
-mlx5_mprq_buf_free_cb(void *addr __rte_unused, void *opaque)
-{
-	struct mlx5_mprq_buf *buf = opaque;
-
-	if (__atomic_load_n(&buf->refcnt, __ATOMIC_RELAXED) == 1) {
-		rte_mempool_put(buf->mp, buf);
-	} else if (unlikely(__atomic_sub_fetch(&buf->refcnt, 1,
-					       __ATOMIC_RELAXED) == 0)) {
-		__atomic_store_n(&buf->refcnt, 1, __ATOMIC_RELAXED);
-		rte_mempool_put(buf->mp, buf);
-	}
-}
-
-void
 mlx5_mprq_buf_free(struct mlx5_mprq_buf *buf)
 {
 	mlx5_mprq_buf_free_cb(NULL, buf);

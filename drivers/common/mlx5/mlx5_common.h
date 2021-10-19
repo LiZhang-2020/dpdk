@@ -450,6 +450,15 @@ __rte_internal
 void
 mlx5_os_wrapped_mkey_destroy(struct mlx5_pmd_wrapped_mr *pmd_mr);
 
+__rte_internal
+int
+mlx5_dev_mempool_subscribe(struct mlx5_common_device *cdev);
+
+__rte_internal
+void
+mlx5_dev_mempool_unregister(struct mlx5_common_device *cdev,
+			    struct rte_mempool *mp);
+
 /* mlx5_common_os.c */
 
 int mlx5_os_open_device(struct mlx5_common_device *cdev, uint32_t classes);

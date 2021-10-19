@@ -73,18 +73,6 @@ struct rxq_zip {
 	uint32_t cqe_cnt; /* Number of CQEs. */
 };
 
-/* Multi-Packet RQ buffer header. */
-struct mlx5_mprq_buf {
-	struct rte_mempool *mp;
-	uint16_t refcnt; /* Atomically accessed refcnt. */
-	struct rte_mbuf_ext_shared_info shinfos[];
-	/*
-	 * Shared information per stride.
-	 * More memory will be allocated for the first stride head-room and for
-	 * the strides data.
-	 */
-} __rte_cache_aligned;
-
 /* Get pointer to the first stride. */
 #define mlx5_mprq_buf_addr(ptr, strd_n) (RTE_PTR_ADD((ptr), \
 				sizeof(struct mlx5_mprq_buf) + \
@@ -459,7 +447,6 @@ void mlx5_set_swp_types_table(void);
 uint16_t mlx5_rx_burst(void *dpdk_rxq, struct rte_mbuf **pkts, uint16_t pkts_n);
 void mlx5_rxq_initialize(struct mlx5_rxq_data *rxq);
 __rte_noinline int mlx5_rx_err_handle(struct mlx5_rxq_data *rxq, uint8_t vec);
-void mlx5_mprq_buf_free_cb(void *addr, void *opaque);
 void mlx5_mprq_buf_free(struct mlx5_mprq_buf *buf);
 uint16_t mlx5_rx_burst_mprq(void *dpdk_rxq, struct rte_mbuf **pkts,
 			    uint16_t pkts_n);
@@ -490,10 +477,6 @@ uint16_t mlx5_rx_burst_vec(void *dpdk_txq, struct rte_mbuf **pkts,
 			   uint16_t pkts_n);
 uint16_t mlx5_rx_burst_mprq_vec(void *dpdk_txq, struct rte_mbuf **pkts,
 				uint16_t pkts_n);
-
-/* mlx5_mr.c */
-
-uint32_t mlx5_tx_mb2mr_bh(struct mlx5_txq_data *txq, struct rte_mbuf *mb);
 
 /**
  * Provide safe 64bit store operation to mlx5 UAR region for both 32bit and
@@ -550,24 +533,6 @@ __mlx5_uar_write64(uint64_t val, void *addr, rte_spinlock_t *lock)
 		__mlx5_uar_write64_relaxed(val, dst, lock)
 #define mlx5_uar_write64(val, dst, lock) __mlx5_uar_write64(val, dst, lock)
 #endif
-
-/**
- * Get Memory Pool (MP) from mbuf. If mbuf is indirect, the pool from which the
- * cloned mbuf is allocated is returned instead.
- *
- * @param buf
- *   Pointer to mbuf.
- *
- * @return
- *   Memory pool where data is located for given mbuf.
- */
-static inline struct rte_mempool *
-mlx5_mb2mp(struct rte_mbuf *buf)
-{
-	if (unlikely(RTE_MBUF_CLONED(buf)))
-		return rte_mbuf_from_indirect(buf)->pool;
-	return buf->pool;
-}
 
 /**
  * Query LKey for an address on Rx. No need to flush local caches
@@ -642,20 +607,11 @@ mlx5_rx_mb2mr(struct mlx5_rxq_data *rxq, struct rte_mbuf *mb)
 static __rte_always_inline uint32_t
 mlx5_tx_mb2mr(struct mlx5_txq_data *txq, struct rte_mbuf *mb)
 {
-	struct mlx5_mr_ctrl *mr_ctrl = &txq->mr_ctrl;
-	uintptr_t addr = (uintptr_t)mb->buf_addr;
-	uint32_t lkey;
+	struct mlx5_txq_ctrl *txq_ctrl =
+			container_of(txq, struct mlx5_txq_ctrl, txq);
 
-	/* Check generation bit to see if there's any change on existing MRs. */
-	if (unlikely(*mr_ctrl->dev_gen_ptr != mr_ctrl->cur_gen))
-		mlx5_mr_flush_local_cache(mr_ctrl);
-	/* Linear search on MR cache array. */
-	lkey = mlx5_mr_lookup_lkey(mr_ctrl->cache, &mr_ctrl->mru,
-				   MLX5_MR_CACHE_N, addr);
-	if (likely(lkey != UINT32_MAX))
-		return lkey;
 	/* Take slower bottom-half on miss. */
-	return mlx5_tx_mb2mr_bh(txq, mb);
+	return mlx5_mr_mb2mr(&txq->mr_ctrl, mb, &txq_ctrl->priv->mp_id);
 }
 
 /**
