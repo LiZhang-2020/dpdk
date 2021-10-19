@@ -201,13 +201,6 @@ mlx5_os_get_devx_uar_page_id(void *uar)
 #endif
 }
 
-struct ibv_device *
-mlx5_os_get_ibv_device(const struct rte_pci_addr *addr);
-
-__rte_internal
-struct ibv_device *
-mlx5_os_get_ibv_dev(const struct rte_device *dev);
-
 /**
  * This is used to query system_image_guid as describing in PRM.
  *

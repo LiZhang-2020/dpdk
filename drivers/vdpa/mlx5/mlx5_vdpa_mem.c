@@ -274,7 +274,7 @@ mlx5_vdpa_mem_register(struct mlx5_vdpa_priv *priv)
 		ret = -ENOMEM;
 		goto error;
 	}
-	entry->mkey = mlx5_devx_cmd_mkey_create(priv->ctx, &mkey_attr);
+	entry->mkey = mlx5_devx_cmd_mkey_create(priv->cdev->ctx, &mkey_attr);
 	if (!entry->mkey) {
 		DRV_LOG(ERR, "Failed to create indirect Mkey.");
 		ret = -rte_errno;
