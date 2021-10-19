@@ -341,7 +341,7 @@ mlx5dr_action_create_reformat(struct mlx5dr_context *ctx,
 			      enum mlx5dr_action_reformat_type reformat_type,
 			      size_t data_sz,
 			      void *data,
-			      uint32_t bulk_size,
+			      uint32_t log_bulk_size,
 			      enum mlx5dr_action_flags flags);
 
 /* Create direct rule modify header action.
@@ -362,7 +362,7 @@ struct mlx5dr_action *
 mlx5dr_action_create_modify_header(struct mlx5dr_context *ctx,
 				   size_t pattern_sz,
 				   __be64 pattern[],
-				   uint32_t bulk_size,
+				   uint32_t log_bulk_size,
 				   enum mlx5dr_action_flags flags);
 
 /* Destroy direct rule action.

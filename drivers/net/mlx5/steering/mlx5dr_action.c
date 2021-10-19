@@ -888,7 +888,7 @@ mlx5dr_action_create_reformat(struct mlx5dr_context *ctx,
 			      enum mlx5dr_action_reformat_type reformat_type,
 			      size_t data_sz,
 			      void *data,
-			      uint32_t bulk_size,
+			      uint32_t log_bulk_size,
 			      enum mlx5dr_action_flags flags)
 {
 	struct mlx5dr_action *action;
@@ -904,7 +904,7 @@ mlx5dr_action_create_reformat(struct mlx5dr_context *ctx,
 		return NULL;
 
 	if (mlx5dr_action_is_root_flags(flags)) {
-		if (bulk_size) {
+		if (log_bulk_size) {
 			DR_LOG(ERR, "Bulk reformat not supported over root");
 			rte_errno = ENOTSUP;
 			goto free_action;
@@ -918,14 +918,14 @@ mlx5dr_action_create_reformat(struct mlx5dr_context *ctx,
 	}
 
 	if (!mlx5dr_action_is_hws_flags(flags)||
-	    ((flags & MLX5DR_ACTION_FLAG_INLINE) && bulk_size)) {
+	    ((flags & MLX5DR_ACTION_FLAG_INLINE) && log_bulk_size)) {
 		DR_LOG(ERR, "reformat flags don't fit hws (flags: %x0x)\n",
 			flags);
 		rte_errno = EINVAL;
 		goto free_action;
 	}
 
-	ret = mlx5dr_action_create_reformat_hws(ctx, data_sz, data, bulk_size, action);
+	ret = mlx5dr_action_create_reformat_hws(ctx, data_sz, data, log_bulk_size, action);
 	if (ret) {
 		DR_LOG(ERR, "Failed to create reformat.\n");
 		rte_errno = EINVAL;
@@ -966,7 +966,7 @@ struct mlx5dr_action *
 mlx5dr_action_create_modify_header(struct mlx5dr_context *ctx,
 				   size_t pattern_sz,
 				   __be64 pattern[],
-				   uint32_t bulk_size,
+				   uint32_t log_bulk_size,
 				   enum mlx5dr_action_flags flags)
 {
 	struct mlx5dr_action *action;
@@ -977,7 +977,7 @@ mlx5dr_action_create_modify_header(struct mlx5dr_context *ctx,
 		return NULL;
 
 	if (mlx5dr_action_is_root_flags(flags)) {
-		if (bulk_size) {
+		if (log_bulk_size) {
 			DR_LOG(ERR, "Bulk modify-header not supported over root");
 			rte_errno = ENOTSUP;
 			goto free_action;
@@ -990,15 +990,15 @@ mlx5dr_action_create_modify_header(struct mlx5dr_context *ctx,
 	}
 
 	if (!mlx5dr_action_is_hws_flags(flags) ||
-	    ((flags & MLX5DR_ACTION_FLAG_INLINE) && bulk_size)) {
-		DR_LOG(ERR, "flags don't fit hws (flags: %x0x, bulk_size: %d)\n",
-			flags, bulk_size);
+	    ((flags & MLX5DR_ACTION_FLAG_INLINE) && log_bulk_size)) {
+		DR_LOG(ERR, "flags don't fit hws (flags: %x0x, log_bulk_size: %d)\n",
+			flags, log_bulk_size);
 		rte_errno = EINVAL;
 		goto free_action;
 	}
 
 	ret = mlx5dr_pat_arg_create_modify_header(ctx, action, pattern_sz,
-						  pattern, bulk_size);
+						  pattern, log_bulk_size);
 	if (ret) {
 		DR_LOG(ERR, "Failed allocating modify-header\n");
 		goto free_action;
