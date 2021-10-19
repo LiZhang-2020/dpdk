@@ -1711,13 +1711,11 @@ mlx5_rxq_new(struct rte_eth_dev *dev, struct mlx5_rxq_priv *rxq,
 		goto error;
 	}
 	tmpl->type = MLX5_RXQ_TYPE_STANDARD;
-	if (mlx5_mr_btree_init(&tmpl->rxq.mr_ctrl.cache_bh,
-			       MLX5_MR_BTREE_CACHE_N, socket)) {
+	if (mlx5_mr_ctrl_init(&tmpl->rxq.mr_ctrl,
+			      &priv->sh->share_cache.dev_gen, socket)) {
 		/* rte_errno is already set. */
 		goto error;
 	}
-	/* Rx queues don't use this pointer, but we want a valid structure. */
-	tmpl->rxq.mr_ctrl.dev_gen_ptr = &priv->sh->share_cache.dev_gen;
 	tmpl->socket = socket;
 	if (dev->data->dev_conf.intr_conf.rxq)
 		tmpl->irq = 1;

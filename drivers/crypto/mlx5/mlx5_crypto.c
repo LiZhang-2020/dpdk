@@ -671,14 +671,6 @@ mlx5_crypto_queue_pair_setup(struct rte_cryptodev *dev, uint16_t qp_id,
 		DRV_LOG(ERR, "Failed to create CQ.");
 		goto error;
 	}
-	qp->mr_ctrl.dev_gen_ptr = &priv->mr_scache.dev_gen;
-	if (mlx5_mr_btree_init(&qp->mr_ctrl.cache_bh, MLX5_MR_BTREE_CACHE_N,
-			       priv->dev_config.socket_id) != 0) {
-		DRV_LOG(ERR, "Cannot allocate MR Btree for qp %u.",
-			(uint32_t)qp_id);
-		rte_errno = ENOMEM;
-		goto error;
-	}
 	log_wqbb_n = rte_log2_u32(RTE_BIT32(log_nb_desc) *
 				(priv->wqe_set_size / MLX5_SEND_WQE_BB));
 	attr.pd = priv->cdev->pdn;
@@ -693,6 +685,13 @@ mlx5_crypto_queue_pair_setup(struct rte_cryptodev *dev, uint16_t qp_id,
 				  &attr, socket_id);
 	if (ret) {
 		DRV_LOG(ERR, "Failed to create QP.");
+		goto error;
+	}
+	if (mlx5_mr_ctrl_init(&qp->mr_ctrl, &priv->mr_scache.dev_gen,
+			      priv->dev_config.socket_id) != 0) {
+		DRV_LOG(ERR, "Cannot allocate MR Btree for qp %u.",
+			(uint32_t)qp_id);
+		rte_errno = ENOMEM;
 		goto error;
 	}
 	qp->mkey = (struct mlx5_devx_obj **)RTE_ALIGN((uintptr_t)(qp + 1),
