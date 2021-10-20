@@ -6,6 +6,7 @@ from libc.string cimport memcpy
 import socket
 
 import pydiru.pydiru_enums as e
+import ipaddress
 
 
 cdef class RteFlowItemEth(PydiruCM):
@@ -18,6 +19,22 @@ cdef class RteFlowItemEth(PydiruCM):
         self.item.has_vlan = has_vlan
 
 
+cdef class RteFlowItemIpv4(PydiruCM):
+    def __init__(self, version=0, ihl=0, tos=0, tot_length=0, pkt_id=0, fragment_offset=0,
+                 ttl=0, next_proto=0, hdr_chksum=0, src_addr=0, dst_addr=0):
+        self.item.hdr.version = version
+        self.item.hdr.ihl = ihl
+        self.item.hdr.type_of_service = tos
+        self.item.hdr.total_length = tot_length
+        self.item.hdr.packet_id = pkt_id
+        self.item.hdr.fragment_offset = fragment_offset
+        self.item.hdr.time_to_live = ttl
+        self.item.hdr.next_proto_id = next_proto
+        self.item.hdr.hdr_checksum = hdr_chksum
+        self.item.hdr.src_addr = socket.htonl(int(ipaddress.ip_address(src_addr)))
+        self.item.hdr.dst_addr = socket.htonl(int(ipaddress.ip_address(dst_addr)))
+
+
 cdef class RteFlowItem(PydiruCM):
     def __init__(self, flow_item_type, spec=None, mask=None, last=None):
         self.item.type = flow_item_type
@@ -25,6 +42,8 @@ cdef class RteFlowItem(PydiruCM):
         self.item.mask = NULL
         if flow_item_type == e.RTE_FLOW_ITEM_TYPE_ETH:
             size = sizeof(pdr.rte_flow_item_eth)
+        if flow_item_type == e.RTE_FLOW_ITEM_TYPE_IPV4:
+            size = sizeof(pdr.rte_flow_item_ipv4)
         if spec:
             self.item.spec = calloc(1, size)
             memcpy(self.item.spec, <void *>&((<RteFlowItemEth>spec).item), size)

@@ -8,6 +8,9 @@ cimport pydiru.libpydiru as pdr
 cdef class RteFlowItemEth(PydiruCM):
     cdef pdr.rte_flow_item_eth item
 
+cdef class RteFlowItemIpv4(PydiruCM):
+    cdef pdr.rte_flow_item_ipv4 item
+
 cdef class RteFlowItem(PydiruCM):
     cdef pdr.rte_flow_item item
 
