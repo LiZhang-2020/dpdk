@@ -1014,6 +1014,11 @@ void add_tx_dynf_callback(portid_t portid);
 void remove_tx_dynf_callback(portid_t portid);
 int update_jumbo_frame_offload(portid_t portid);
 
+extern int flow_parse(const char *src, void *result, unsigned int size,
+		      struct rte_flow_attr **attr,
+		      struct rte_flow_item **pattern,
+		      struct rte_flow_action **actions);
+
 /*
  * Work-around of a compilation error with ICC on invocations of the
  * rte_be_to_cpu_16() function.
