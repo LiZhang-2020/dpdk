@@ -164,6 +164,14 @@ struct rte_flow_ops {
 		 struct rte_flow_item *pmd_items,
 		 uint32_t num_of_items,
 		 struct rte_flow_error *err);
+	struct rte_flow_item_flex_handle *(*flex_item_create)
+		(struct rte_eth_dev *dev,
+		 const struct rte_flow_item_flex_conf *conf,
+		 struct rte_flow_error *error);
+	int (*flex_item_release)
+		(struct rte_eth_dev *dev,
+		 const struct rte_flow_item_flex_handle *handle,
+		 struct rte_flow_error *error);
 };
 
 /**
