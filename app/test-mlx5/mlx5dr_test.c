@@ -18,6 +18,7 @@ struct test_structs {
 
 static struct test_structs tests[] = {
 	MLX5DR_INIT_TEST(rule_insert, run_test_rule_insert),
+	MLX5DR_INIT_TEST(rule_insert_mult, run_test_rule_insert_mult),
 	MLX5DR_INIT_TEST(post_send, run_test_post_send),
 	MLX5DR_INIT_TEST(modify_header, run_test_modify_header_action),
 	MLX5DR_INIT_TEST(test_pool, run_test_pool),
@@ -55,6 +56,9 @@ static int test_selection(void)
 		goto out;
 
 	for (i = 0; i < sizeof(tests)/ sizeof(tests[0]); i++) {
+		if (strlen(s) != strlen(tests[i].test_name))
+			continue;
+
 		if (memcmp(tests[i].test_name, s, min(strlen(s), strlen(tests[i].test_name))))
 			continue;
 		test = tests[i];

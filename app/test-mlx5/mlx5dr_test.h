@@ -123,6 +123,7 @@ enum {
 
 int run_test_post_send(struct ibv_context *ibv_ctx);
 int run_test_rule_insert(struct ibv_context *ibv_ctx);
+int run_test_rule_insert_mult(struct ibv_context *ibv_ctx);
 int run_test_modify_header_action(struct ibv_context *ibv_ctx);
 int run_test_pool(struct ibv_context *ibv_ctx);
 #endif
