@@ -3,6 +3,7 @@
 
 from libc.stdint cimport uint8_t, uint16_t, uint32_t, uint64_t, uintptr_t
 cimport pydiru.providers.mlx5.steering.mlx5dr_enums_c as me
+cimport pydiru.providers.mlx5.libmlx5 as dv
 cimport pydiru.libpydiru as pdr
 cimport pydiru.libibverbs as v
 
@@ -63,6 +64,10 @@ cdef extern  from '../../../../drivers/net/mlx5/steering/mlx5dr.h':
         void *user_data
         uint32_t burst
 
+    cdef struct mlx5dr_devx_obj:
+        dv.mlx5dv_devx_obj *obj
+        uint32_t id
+
     mlx5dr_context *mlx5dr_context_open(v.ibv_context *ibv_ctx,
                                         mlx5dr_context_attr *attr)
     int mlx5dr_context_close(mlx5dr_context *ctx)
@@ -88,6 +93,8 @@ cdef extern  from '../../../../drivers/net/mlx5/steering/mlx5dr.h':
     mlx5dr_action *mlx5dr_action_create_tag(mlx5dr_context *ctx, me.mlx5dr_action_flags flags)
     mlx5dr_action *mlx5dr_action_create_dest_table(mlx5dr_context *ctx, mlx5dr_table *tbl,
                                                    me.mlx5dr_action_flags flags)
+    mlx5dr_action *mlx5dr_action_create_dest_tir(mlx5dr_context *ctx, mlx5dr_devx_obj *obj,
+                                                 me.mlx5dr_action_flags flags)
     int mlx5dr_action_destroy(mlx5dr_action *action)
 
     int mlx5dr_send_queue_poll(mlx5dr_context *ctx, uint16_t queue_id, pdr.rte_flow_q_op_res *res,

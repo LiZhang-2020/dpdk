@@ -74,6 +74,21 @@ cdef class Mlx5drActionDestTable(Mlx5drAction):
             raise PydiruErrno('Mlx5drActionDestTable creation failed.')
 
 
+cdef class Mlx5drActionDestTir(Mlx5drAction):
+    def __init__(self, Mlx5drContext ctx, Mlx5drDevxObj tir, flags):
+        """
+        Initializes a destination TIR action.
+        :param ctx: Mlx5drContext context
+        :param tir: Destination TIR
+        :param flags: Action flags
+        """
+        super().__init__()
+        self.action = dr.mlx5dr_action_create_dest_tir(ctx.context, &tir.dr_devx_obj, flags)
+        if self.action == NULL:
+            raise PydiruErrno('Mlx5drActionDestTir creation failed.')
+        self.tir = tir
+        tir.dr_actions.add(self)
+
 cdef class Mlx5drRuleAction(PydiruObject):
     """
     Class Mlx5drRuleAction representing mlx5dr_rule_action struct.
