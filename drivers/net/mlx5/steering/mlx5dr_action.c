@@ -562,11 +562,12 @@ static int mlx5dr_action_handle_l2_to_tunnel_l2(struct mlx5dr_context *ctx,
 	}
 
 	/* when INLINE need to write the arg data */
-	if (action->flags & MLX5DR_ACTION_FLAG_INLINE)
+	if (action->flags & MLX5DR_ACTION_FLAG_INLINE) {
 		ret = mlx5dr_arg_write_inline_arg_data(action, data);
-	if (ret) {
-		DR_LOG(ERR, "failed to write inline arg for reformat");
-		goto free_arg;
+		if (ret) {
+			DR_LOG(ERR, "failed to write inline arg for reformat");
+			goto free_arg;
+		}
 	}
 
 	ret = mlx5dr_action_create_stcs(action, NULL);
