@@ -37,6 +37,12 @@
 		*((rte_be32_t *)(p) + (byte_off / 4)) = (v); \
 	} while (0)
 
+/* Setter function based on byte offset to directly set BE16 value  */
+#define DR_SET_BE16(p, v, byte_off, bit_off, mask) \
+	do { \
+		*((rte_be16_t *)(p) + (byte_off / 2)) = (v); \
+	} while (0)
+
 /* Helper to calculate data used by DR_SET */
 #define DR_CALC_SET(fc, hdr, field, is_inner) \
 	do { \
@@ -125,26 +131,26 @@ struct mlx5dr_definer_conv_data {
 
 /* Xmacro used to create generic item setter from items */
 #define LIST_OF_FIELDS_INFO \
-	X(SET,		eth_type,		v->type,				rte_flow_item_eth) \
-	X(SET,		ipv4_ihl,		v->ihl,					rte_ipv4_hdr) \
-	X(SET,		ipv4_time_to_live,	v->time_to_live,			rte_ipv4_hdr) \
-	X(SET_BE32,	ipv4_dst_addr,		v->dst_addr,				rte_ipv4_hdr) \
-	X(SET_BE32,	ipv4_src_addr,		v->src_addr,				rte_ipv4_hdr) \
-	X(SET,		ipv4_next_proto,	v->next_proto_id,			rte_ipv4_hdr) \
-	X(SET,		ipv4_version,		STE_IPV4,				rte_ipv4_hdr) \
-	X(SET,		udp_protocol,		STE_UDP,				rte_flow_item_udp) \
-	X(SET,		udp_src_port,		rte_be_to_cpu_16(v->hdr.src_port),	rte_flow_item_udp) \
-	X(SET,		udp_dst_port,		rte_be_to_cpu_16(v->hdr.dst_port),	rte_flow_item_udp) \
-	X(SET,		tcp_protocol,		STE_TCP,				rte_flow_item_tcp) \
-	X(SET,		tcp_src_port,		rte_be_to_cpu_16(v->hdr.src_port),	rte_flow_item_tcp) \
-	X(SET,		tcp_dst_port,		rte_be_to_cpu_16(v->hdr.dst_port),	rte_flow_item_tcp) \
-	X(SET,		gtp_udp_port,		RTE_GTPU_UDP_PORT,			rte_flow_item_gtp) \
-	X(SET_BE32,	gtp_teid,		v->teid,				rte_flow_item_gtp) \
-	X(SET,		gtp_msg_type,		v->msg_type,				rte_flow_item_gtp) \
-	X(SET,		gtp_ext_flag,		!!v->v_pt_rsv_flags,			rte_flow_item_gtp) \
-	X(SET,		gtp_next_ext_hdr,	GTP_PDU_SC,				rte_flow_item_gtp_psc) \
-	X(SET,		gtp_ext_hdr_pdu,	v->pdu_type,				rte_flow_item_gtp_psc) \
-	X(SET,		gtp_ext_hdr_qfi,	v->qfi,					rte_flow_item_gtp_psc)
+	X(SET,		eth_type,		v->type,		rte_flow_item_eth) \
+	X(SET,		ipv4_ihl,		v->ihl,			rte_ipv4_hdr) \
+	X(SET,		ipv4_time_to_live,	v->time_to_live,	rte_ipv4_hdr) \
+	X(SET_BE32,	ipv4_dst_addr,		v->dst_addr,		rte_ipv4_hdr) \
+	X(SET_BE32,	ipv4_src_addr,		v->src_addr,		rte_ipv4_hdr) \
+	X(SET,		ipv4_next_proto,	v->next_proto_id,	rte_ipv4_hdr) \
+	X(SET,		ipv4_version,		STE_IPV4,		rte_ipv4_hdr) \
+	X(SET,		udp_protocol,		STE_UDP,		rte_flow_item_udp) \
+	X(SET_BE16,	udp_src_port,		v->hdr.src_port,	rte_flow_item_udp) \
+	X(SET_BE16,	udp_dst_port,		v->hdr.dst_port,	rte_flow_item_udp) \
+	X(SET,		tcp_protocol,		STE_TCP,		rte_flow_item_tcp) \
+	X(SET_BE16,	tcp_src_port,		v->hdr.src_port,	rte_flow_item_tcp) \
+	X(SET_BE16,	tcp_dst_port,		v->hdr.dst_port,	rte_flow_item_tcp) \
+	X(SET,		gtp_udp_port,		RTE_GTPU_UDP_PORT,	rte_flow_item_gtp) \
+	X(SET_BE32,	gtp_teid,		v->teid,		rte_flow_item_gtp) \
+	X(SET,		gtp_msg_type,		v->msg_type,		rte_flow_item_gtp) \
+	X(SET,		gtp_ext_flag,		!!v->v_pt_rsv_flags,	rte_flow_item_gtp) \
+	X(SET,		gtp_next_ext_hdr,	GTP_PDU_SC,		rte_flow_item_gtp_psc) \
+	X(SET,		gtp_ext_hdr_pdu,	v->pdu_type,		rte_flow_item_gtp_psc) \
+	X(SET,		gtp_ext_hdr_qfi,	v->qfi,			rte_flow_item_gtp_psc)
 
 /* Item set function format */
 #define X(set_type, func_name, value, itme_type) \
