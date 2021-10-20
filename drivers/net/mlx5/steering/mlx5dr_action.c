@@ -939,7 +939,7 @@ int mlx5dr_actions_quick_apply(struct mlx5dr_send_engine *queue,
 
 		switch (action->type) {
 		case MLX5DR_ACTION_TYP_TAG:
-			raw_wqe[MLX5DR_ACTION_OFFSET_DW5] = htobe32(rule_actions[i].tag.value);
+			raw_wqe[MLX5DR_ACTION_OFFSET_DW7] = htobe32(rule_actions[i].tag.value);
 			wqe_ctrl->stc_ix[MLX5DR_ACTION_STC_IDX_SINGLE] = htobe32(stc_idx);
 			break;
 		case MLX5DR_ACTION_TYP_CTR:

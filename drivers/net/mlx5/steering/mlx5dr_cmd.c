@@ -239,6 +239,7 @@ mlx5dr_cmd_stc_modify(struct mlx5dr_devx_obj *devx_obj,
 	if (stc_attr->action_type != MLX5_IFC_STC_ACTION_TYPE_DROP &&
 	    stc_attr->action_type != MLX5_IFC_STC_ACTION_TYPE_ACC_MODIFY_LIST &&
 	    stc_attr->action_type != MLX5_IFC_STC_ACTION_TYPE_NOP &&
+	    stc_attr->action_type != MLX5_IFC_STC_ACTION_TYPE_TAG &&
 	    stc_attr->action_type != MLX5_IFC_STC_ACTION_TYPE_ALLOW &&
 	    stc_attr->action_type != MLX5_IFC_STC_ACTION_TYPE_JUMP_TO_TIR &&
 	    stc_attr->action_type != MLX5_IFC_STC_ACTION_TYPE_HEADER_REMOVE &&
