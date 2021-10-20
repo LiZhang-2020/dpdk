@@ -745,7 +745,7 @@ mlx5dr_definer_find_best_hl_fit(struct mlx5dr_match_template *mt,
 		return 0;
 
 	fail = false;
-	*format_id = 33;
+	*format_id = 34;
 	// GTPU TEID
 	definer->dw_selector[5] =
 		mlx5dr_definer_get_flex_parser_off(caps->flex_parser_id_gtpu_teid) / DW_SIZE;
@@ -765,7 +765,7 @@ mlx5dr_definer_find_best_hl_fit(struct mlx5dr_match_template *mt,
 	definer->byte_selector[1] = 25;  // L3 & L4 type INNER
 	definer->byte_selector[0] = 9;   // L3 & L4 type OUT
 
-	/* Check if all fields are supported by definer 33 */
+	/* Check if all fields are supported by definer 34 */
 	for (i = 0; i < mt->fc_sz; i++) {
 		ret = mlx5dr_definer_find_byte_in_tag(definer, mt->fc->byte_off, &tag_offset);
 		if (ret) {
