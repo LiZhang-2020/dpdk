@@ -53,7 +53,8 @@ int mlx5dr_pat_arg_create_modify_header(struct mlx5dr_context *ctx,
 
 void mlx5dr_pat_arg_destroy_modify_header(struct mlx5dr_context *ctx,
 					  struct mlx5dr_action *action);
-
+bool mlx5dr_arg_is_valid_arg_request_size(struct mlx5dr_context *ctx,
+					  uint32_t arg_size);
 void mlx5dr_arg_write(struct mlx5dr_send_engine *queue,
 		      struct mlx5dr_rule *rule,
 		      uint32_t arg_idx,

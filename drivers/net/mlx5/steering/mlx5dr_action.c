@@ -544,7 +544,7 @@ static int mlx5dr_action_handle_reformat_args(struct mlx5dr_context *ctx,
 					      struct mlx5dr_action *action)
 {
 	uint32_t args_log_size;
-	int ret;
+	int ret = 0;
 
 	if (data_sz % 2 != 0) {
 		DR_LOG(ERR, "data size should be multiply of 2");
@@ -560,6 +560,14 @@ static int mlx5dr_action_handle_reformat_args(struct mlx5dr_context *ctx,
 		return rte_errno;
 	}
 	args_log_size += bulk_size;
+
+	if (!mlx5dr_arg_is_valid_arg_request_size(ctx, args_log_size)) {
+		DR_LOG(ERR, "arg size %d does not fit FW requests",
+		       args_log_size);
+		rte_errno = EINVAL;
+		return rte_errno;
+	}
+
 	action->reformat.arg_obj = mlx5dr_cmd_arg_create(ctx->ibv_ctx,
 							 args_log_size,
 							 ctx->pd_num);

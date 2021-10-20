@@ -316,6 +316,16 @@ int mlx5dr_arg_write_inline_arg_data(struct mlx5dr_action *action,
 	return 0;
 }
 
+bool mlx5dr_arg_is_valid_arg_request_size(struct mlx5dr_context *ctx,
+					  uint32_t arg_size)
+{
+	if (arg_size < ctx->caps->log_header_modify_argument_granularity ||
+	    arg_size > ctx->caps->log_header_modify_argument_max_alloc) {
+		return false;
+	}
+	return true;
+}
+
 static int
 mlx5dr_arg_create_modify_header_arg(struct mlx5dr_context *ctx,
 				    struct mlx5dr_action *action,
@@ -332,6 +342,13 @@ mlx5dr_arg_create_modify_header_arg(struct mlx5dr_context *ctx,
 	if (args_log_size >= MLX5DR_ARG_CHUNK_SIZE_MAX) {
 		DR_LOG(ERR, "exceed number of allowed actions %u",
 			num_of_actions);
+		rte_errno = EINVAL;
+		return rte_errno;
+	}
+
+	if (!mlx5dr_arg_is_valid_arg_request_size(ctx, args_log_size + bulk_size)) {
+		DR_LOG(ERR, "arg size %d does not fit FW capability",
+		       args_log_size + bulk_size);
 		rte_errno = EINVAL;
 		return rte_errno;
 	}
