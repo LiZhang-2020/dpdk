@@ -878,6 +878,13 @@ int port_flow_table_create(portid_t port_id, uint32_t id,
 		   uint32_t nb_action_templates, uint32_t *action_templates);
 int port_flow_table_destroy(portid_t port_id,
 			    uint32_t n, const uint32_t *table);
+int port_queue_flow_create(portid_t port_id,
+			   queueid_t queue_id, uint32_t table_id,
+			   uint32_t item_id, uint32_t action_id,
+			   const struct rte_flow_item *pattern,
+			   const struct rte_flow_action *actions);
+int port_queue_flow_destroy(portid_t port_id, queueid_t queue_id,
+			    uint32_t n, const uint32_t *rule);
 int port_flow_validate(portid_t port_id,
 		       const struct rte_flow_attr *attr,
 		       const struct rte_flow_item *pattern,

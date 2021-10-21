@@ -2573,6 +2573,147 @@ port_flow_table_destroy(portid_t port_id,
 	return ret;
 }
 
+/** Enqueue create flow rule operation. */
+int
+port_queue_flow_create(portid_t port_id,
+		       queueid_t queue_id, uint32_t table_id,
+		       uint32_t item_id, uint32_t action_id,
+		       const struct rte_flow_item *pattern,
+		       const struct rte_flow_action *actions)
+{
+	struct rte_flow_q_ops_attr ops_attr = { .drain = 1 };
+	struct rte_flow_q_op_res comp = { 0 };
+	struct rte_flow *flow;
+	struct rte_port *port;
+	struct port_flow *pf;
+	struct port_table *pt;
+	uint32_t id = 0;
+	bool found;
+	int ret = 0;
+	struct rte_flow_error error;
+	struct rte_flow_action_age *age = age_action_get(actions);
+
+	port = &ports[port_id];
+	if (port->flow_list) {
+		if (port->flow_list->id == UINT32_MAX) {
+			printf("Highest rule ID is already assigned, delete"
+			       " it first");
+			return -ENOMEM;
+		}
+		id = port->flow_list->id + 1;
+	}
+
+	found = false;
+	pt = port->table_list;
+	while (pt) {
+		if (table_id == pt->id) {
+			found = true;
+			break;
+		}
+		pt = pt->next;
+	}
+	if (!found) {
+		printf("Table #%u is invalid\n", table_id);
+		return -EINVAL;
+	}
+
+	pf = port_flow_new(NULL, pattern, actions, &error);
+	if (!pf)
+		return port_flow_complain(&error);
+	if (age) {
+		pf->age_type = ACTION_AGE_CONTEXT_TYPE_FLOW;
+		age->context = &pf->age_type;
+	}
+	/* Poisoning to make sure PMDs update it in case of error. */
+	memset(&error, 0x11, sizeof(error));
+	flow = rte_flow_q_flow_create(port_id, queue_id, &ops_attr,
+		pt->table, pattern, item_id, actions, action_id, &error);
+	if (!flow) {
+		free(pf);
+		return port_flow_complain(&error);
+	}
+
+	while (ret == 0) {
+		/* Poisoning to make sure PMDs update it in case of error. */
+		memset(&error, 0x22, sizeof(error));
+		ret = rte_flow_q_dequeue(port_id, queue_id, &comp, 1, &error);
+		if (ret < 0) {
+			printf("Failed to poll queue\n");
+			return -EINVAL;
+		}
+	}
+
+	pf->next = port->flow_list;
+	pf->id = id;
+	pf->flow = flow;
+	port->flow_list = pf;
+	printf("Flow rule #%u creation enqueued\n", pf->id);
+	return 0;
+}
+
+/** Enqueue number of destroy flow rules operations. */
+int
+port_queue_flow_destroy(portid_t port_id, queueid_t queue_id,
+			uint32_t n, const uint32_t *rule)
+{
+	struct rte_flow_q_ops_attr op_attr = { .drain = 1 };
+	struct rte_flow_q_op_res comp = { 0 };
+	struct rte_port *port;
+	struct port_flow **tmp;
+	uint32_t c = 0;
+	int ret = 0;
+
+	if (port_id_is_invalid(port_id, ENABLED_WARN) ||
+	    port_id == (portid_t)RTE_PORT_ALL)
+		return -EINVAL;
+	port = &ports[port_id];
+	tmp = &port->flow_list;
+	while (*tmp) {
+		uint32_t i;
+
+		for (i = 0; i != n; ++i) {
+			struct rte_flow_error error;
+			struct port_flow *pf = *tmp;
+
+			if (rule[i] != pf->id)
+				continue;
+			/*
+			 * Poisoning to make sure PMD
+			 * update it in case of error.
+			 */
+			memset(&error, 0x33, sizeof(error));
+			if (rte_flow_q_flow_destroy(port_id, queue_id, &op_attr,
+						    pf->flow, &error)) {
+				ret = port_flow_complain(&error);
+				continue;
+			}
+
+			while (ret == 0) {
+				/*
+				 * Poisoning to make sure PMD
+				 * update it in case of error.
+				 */
+				memset(&error, 0x44, sizeof(error));
+				ret = rte_flow_q_dequeue(port_id, queue_id,
+							 &comp, 1, &error);
+				if (ret < 0) {
+					printf("Failed to poll queue\n");
+					return -EINVAL;
+				}
+			}
+
+			printf("Flow rule #%u destruction enqueued\n", pf->id);
+			*tmp = pf->next;
+			free(pf);
+			break;
+		}
+		if (i == n)
+			tmp = &(*tmp)->next;
+		++c;
+	}
+	return ret;
+}
+
 /** Create flow rule. */
 int
 port_flow_create(portid_t port_id,
