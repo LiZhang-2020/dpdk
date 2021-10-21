@@ -20,6 +20,7 @@ sources = files('5tswap.c',
 	'noisy_vnf.c',
 	'parameters.c',
 	'rxonly.c',
+        'shared_rxq_fwd.c',
 	'testpmd.c',
 	'txonly.c',
 	'util.c')
