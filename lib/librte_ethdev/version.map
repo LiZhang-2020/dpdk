@@ -266,6 +266,7 @@ EXPERIMENTAL {
 	rte_mtr_meter_policy_delete;
 	rte_mtr_meter_policy_update;
 	rte_mtr_meter_policy_validate;
+	rte_eth_dev_capability_name;
 };
 
 INTERNAL {
