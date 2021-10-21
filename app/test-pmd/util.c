@@ -100,6 +100,9 @@ dump_pkt_burst(uint16_t port_id, uint16_t queue, struct rte_mbuf *pkts[],
 		struct rte_flow_restore_info info = { 0, };
 
 		mb = pkts[i];
+		if (rxq_share > 0)
+			MKDUMPSTR(print_buf, buf_size, cur_len, "port %u, ",
+				  mb->port);
 		eth_hdr = rte_pktmbuf_read(mb, 0, sizeof(_eth_hdr), &_eth_hdr);
 		eth_type = RTE_BE_TO_CPU_16(eth_hdr->ether_type);
 		packet_type = mb->packet_type;
