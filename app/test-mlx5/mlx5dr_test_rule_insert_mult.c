@@ -161,7 +161,7 @@ static void set_match_mavneir(struct rte_flow_item_eth *eth_m,
 	items->type = RTE_FLOW_ITEM_TYPE_END;
 }
 
-static int run_loop(void)
+static int run_loop(__rte_unused void *nothing)
 {
 	struct rte_flow_item items[MAX_ITEMS] = {{0}};
 	struct mlx5dr_rule_action rule_actions[10];
