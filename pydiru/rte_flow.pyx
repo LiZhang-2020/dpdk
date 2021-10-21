@@ -35,6 +35,31 @@ cdef class RteFlowItemIpv4(PydiruCM):
         self.item.hdr.dst_addr = socket.htonl(int(ipaddress.ip_address(dst_addr)))
 
 
+cdef class RteFlowItemTcp(PydiruCM):
+    def __init__(self, src_port=0, dst_port=0, sent_seq=0, recv_ack=0, data_off=0,
+                 rsrv=0, dt_off=0, tcp_flags=0, fin=0, syn=0, rst=0, psh=0, ack=0,
+                 urg=0, ecne=0, cwr=0, rx_win=0, cksum=0, tcp_urp=0):
+        self.item.hdr.src_port = socket.htons(src_port)
+        self.item.hdr.dst_port = socket.htons(dst_port)
+        self.item.hdr.sent_seq = sent_seq
+        self.item.hdr.recv_ack = recv_ack
+        self.item.hdr.data_off = data_off
+        self.item.hdr.rsrv = rsrv
+        self.item.hdr.dt_off = dt_off
+        self.item.hdr.tcp_flags = tcp_flags
+        self.item.hdr.fin = fin
+        self.item.hdr.syn = syn
+        self.item.hdr.rst = rst
+        self.item.hdr.psh = psh
+        self.item.hdr.ack = ack
+        self.item.hdr.urg = urg
+        self.item.hdr.ecne = ecne
+        self.item.hdr.cwr = cwr
+        self.item.hdr.rx_win = rx_win
+        self.item.hdr.cksum = cksum
+        self.item.hdr.tcp_urp = tcp_urp
+
+
 cdef class RteFlowItem(PydiruCM):
     def __init__(self, flow_item_type, spec=None, mask=None, last=None):
         self.item.type = flow_item_type
@@ -44,6 +69,8 @@ cdef class RteFlowItem(PydiruCM):
             size = sizeof(pdr.rte_flow_item_eth)
         if flow_item_type == e.RTE_FLOW_ITEM_TYPE_IPV4:
             size = sizeof(pdr.rte_flow_item_ipv4)
+        if flow_item_type == e.RTE_FLOW_ITEM_TYPE_TCP:
+            size = sizeof(pdr.rte_flow_item_tcp)
         if spec:
             self.item.spec = calloc(1, size)
             memcpy(self.item.spec, <void *>&((<RteFlowItemEth>spec).item), size)

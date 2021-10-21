@@ -26,6 +26,29 @@ cdef extern from '../../../../lib/librte_net/rte_ip.h':
         uint32_t src_addr
         uint32_t dst_addr
 
+cdef extern from '../../../../lib/librte_net/rte_tcp.h':
+
+    cdef struct rte_tcp_hdr:
+        uint16_t src_port
+        uint16_t dst_port
+        uint32_t sent_seq
+        uint32_t recv_ack
+        uint8_t data_off
+        uint8_t rsrv
+        uint8_t dt_off
+        uint8_t tcp_flags
+        uint8_t fin
+        uint8_t syn
+        uint8_t rst
+        uint8_t psh
+        uint8_t ack
+        uint8_t urg
+        uint8_t ecne
+        uint8_t cwr
+        uint16_t rx_win
+        uint16_t cksum
+        uint16_t tcp_urp
+
 cdef extern  from '../../../../lib/librte_ethdev/rte_flow.h':
 
     cdef struct rte_flow_item:
@@ -46,6 +69,9 @@ cdef extern  from '../../../../lib/librte_ethdev/rte_flow.h':
 
     cdef struct rte_flow_item_ipv4:
         rte_ipv4_hdr hdr
+
+    cdef struct rte_flow_item_tcp:
+        rte_tcp_hdr hdr
 
     cdef struct rte_flow_q_op_res:
         uint32_t version
