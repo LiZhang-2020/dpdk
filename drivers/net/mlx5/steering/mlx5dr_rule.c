@@ -36,6 +36,7 @@ static int mlx5dr_rule_create_hws(struct mlx5dr_rule *rule,
 	struct mlx5dr_table *tbl = matcher->tbl;
 	struct mlx5dr_context *ctx = tbl->ctx;
 	struct mlx5dr_send_engine *queue;
+	bool is_rx;
 
 	queue = &ctx->send_queue[attr->queue_id];
 	if (unlikely(mlx5dr_send_engine_err(queue))) {
@@ -50,9 +51,11 @@ static int mlx5dr_rule_create_hws(struct mlx5dr_rule *rule,
 	/* Today we assume all rules have a dependent WQE.
 	 * This is inefficient and should be optimised.
 	 */
+	is_rx = tbl->type == MLX5DR_TABLE_TYPE_NIC_RX;
 	dep_wqe = mlx5dr_send_add_new_dep_wqe(queue);
 	dep_wqe->rule = rule;
 	dep_wqe->user_data = attr->user_data;
+	dep_wqe->rtc_id = is_rx ? matcher->rx.rtc->id : matcher->tx.rtc->id;
 
 	/* Apply action on */
 	mlx5dr_actions_quick_apply(queue, rule,
@@ -60,7 +63,7 @@ static int mlx5dr_rule_create_hws(struct mlx5dr_rule *rule,
 				   &dep_wqe->wqe_ctrl,
 				   &dep_wqe->wqe_data,
 				   rule_actions, num_actions,
-				   tbl->type == MLX5DR_TABLE_TYPE_NIC_RX);
+				   is_rx);
 
 	/* Create tag directly on WQE and backup it on the rule for deletion */
 	mlx5dr_definer_create_tag(items,

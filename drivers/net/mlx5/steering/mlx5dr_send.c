@@ -47,7 +47,7 @@ int mlx5dr_send_all_dep_wqe(struct mlx5dr_send_engine *queue)
 		/* Notify HW on the last WQE */
 		send_attr.notify_hw = (send_sq->tail_dep_idx == send_sq->head_dep_idx);
 		send_attr.user_data = dep_wqe->user_data;
-		send_attr.id = dep_wqe->rule->matcher->rx.rtc->id;
+		send_attr.id = dep_wqe->rtc_id;
 
 		mlx5dr_send_engine_post_end(&ctrl, &send_attr);
 

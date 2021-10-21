@@ -88,6 +88,7 @@ struct mlx5dr_send_ring_dep_wqe {
 	struct mlx5dr_wqe_gta_ctrl_seg wqe_ctrl;
 	struct mlx5dr_wqe_gta_data_seg_ste wqe_data;
 	struct mlx5dr_rule *rule;
+	uint32_t rtc_id;
 	void *user_data;
 };
 
