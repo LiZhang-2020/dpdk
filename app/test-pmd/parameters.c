@@ -165,6 +165,7 @@ usage(char* progname)
 	printf("  --txonly-multi-flow: generate multiple flows in txonly mode\n");
 	printf("  --tx-ip=src,dst: IP addresses in Tx-only mode\n");
 	printf("  --tx-udp=src[,dst]: UDP ports in Tx-only mode\n");
+	printf("  --rxq-share=X: number of ports per shared Rx queue groups, defaults to UINT32_MAX (1 group)\n");
 	printf("  --disable-link-check: disable check on link status when "
 	       "starting/stopping ports.\n");
 	printf("  --disable-device-start: do not automatically start port\n");
@@ -558,6 +559,7 @@ launch_args_parse(int argc, char** argv)
 		{ "rxpkts",			1, 0, 0 },
 		{ "txpkts",			1, 0, 0 },
 		{ "txonly-multi-flow",		0, 0, 0 },
+		{ "rxq-share",			2, 0, 0 },
 		{ "disable-link-check",		0, 0, 0 },
 		{ "disable-device-start",	0, 0, 0 },
 		{ "no-lsc-interrupt",		0, 0, 0 },
@@ -1201,6 +1203,17 @@ launch_args_parse(int argc, char** argv)
 			}
 			if (!strcmp(lgopts[opt_idx].name, "txonly-multi-flow"))
 				txonly_multi_flow = 1;
+			if (!strcmp(lgopts[opt_idx].name, "rxq-share")) {
+				if (optarg == NULL) {
+					rxq_share = UINT32_MAX;
+				} else {
+					n = atoi(optarg);
+					if (n >= 0)
+						rxq_share = (uint32_t)n;
+					else
+						rte_exit(EXIT_FAILURE, "rxq-share must be >= 0\n");
+				}
+			}
 			if (!strcmp(lgopts[opt_idx].name, "no-flush-rx"))
 				no_flush_rx = 1;
 			if (!strcmp(lgopts[opt_idx].name, "disable-link-check"))
