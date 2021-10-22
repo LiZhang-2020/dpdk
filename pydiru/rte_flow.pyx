@@ -60,6 +60,14 @@ cdef class RteFlowItemTcp(PydiruCM):
         self.item.hdr.tcp_urp = tcp_urp
 
 
+cdef class RteFlowItemUdp(PydiruCM):
+    def __init__(self, src_port=0, dst_port=0, length=0, cksum=0):
+        self.item.hdr.src_port = socket.htons(src_port)
+        self.item.hdr.dst_port = socket.htons(dst_port)
+        self.item.hdr.dgram_len = length
+        self.item.hdr.dgram_cksum = cksum
+
+
 cdef class RteFlowItem(PydiruCM):
     def __init__(self, flow_item_type, spec=None, mask=None, last=None):
         self.item.type = flow_item_type
@@ -71,6 +79,8 @@ cdef class RteFlowItem(PydiruCM):
             size = sizeof(pdr.rte_flow_item_ipv4)
         if flow_item_type == e.RTE_FLOW_ITEM_TYPE_TCP:
             size = sizeof(pdr.rte_flow_item_tcp)
+        if flow_item_type == e.RTE_FLOW_ITEM_TYPE_UDP:
+            size = sizeof(pdr.rte_flow_item_udp)
         if spec:
             self.item.spec = calloc(1, size)
             memcpy(self.item.spec, <void *>&((<RteFlowItemEth>spec).item), size)

@@ -49,6 +49,14 @@ cdef extern from '../../../../lib/librte_net/rte_tcp.h':
         uint16_t cksum
         uint16_t tcp_urp
 
+cdef extern  from '../../../../lib/librte_net/rte_udp.h':
+
+    cdef struct rte_udp_hdr:
+        uint16_t src_port
+        uint16_t dst_port
+        uint16_t dgram_len
+        uint16_t dgram_cksum
+
 cdef extern  from '../../../../lib/librte_ethdev/rte_flow.h':
 
     cdef struct rte_flow_item:
@@ -72,6 +80,9 @@ cdef extern  from '../../../../lib/librte_ethdev/rte_flow.h':
 
     cdef struct rte_flow_item_tcp:
         rte_tcp_hdr hdr
+
+    cdef struct rte_flow_item_udp:
+        rte_udp_hdr hdr
 
     cdef struct rte_flow_q_op_res:
         uint32_t version
