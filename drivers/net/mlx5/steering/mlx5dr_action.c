@@ -953,9 +953,8 @@ int mlx5dr_actions_quick_apply(struct mlx5dr_send_engine *queue,
 		case MLX5DR_ACTION_TYP_L2_TO_TNL_L2:
 			arg_sz =
 				1 << mlx5dr_arg_data_size_to_arg_log_size(action->reformat.header_size);
-			/* Argument base + offset based on number of actions */
-			arg_idx = action->reformat.arg_obj->id;
-			arg_idx += rule_actions[i].reformat.offset * arg_sz;
+			/* Argument offset multiple on number of actions */
+			arg_idx = rule_actions[i].reformat.offset * arg_sz;
 			raw_wqe[MLX5DR_ACTION_OFFSET_DW6] = htobe32(arg_idx);
 			wqe_ctrl->stc_ix[MLX5DR_ACTION_STC_IDX_DOUBLE] = htobe32(stc_idx);
 
@@ -979,9 +978,8 @@ int mlx5dr_actions_quick_apply(struct mlx5dr_send_engine *queue,
 			break;
 		case MLX5DR_ACTION_TYP_MODIFY_HDR:
 			arg_sz = 1 << mlx5dr_arg_get_arg_log_size(action->modify_header.num_of_actions);
-			/* Argument base + offset based on number of actions */
-			arg_idx = action->modify_header.arg_obj->id;
-			arg_idx += rule_actions[i].modify_header.offset * arg_sz;
+			/* Argument offset multiple with number of args per these actions */
+			arg_idx = rule_actions[i].modify_header.offset * arg_sz;
 			raw_wqe[MLX5DR_ACTION_OFFSET_DW6] = htobe32(arg_idx);
 			wqe_ctrl->stc_ix[MLX5DR_ACTION_STC_IDX_DOUBLE] = htobe32(stc_idx);
 
