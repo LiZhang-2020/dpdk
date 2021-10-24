@@ -174,14 +174,14 @@ mlx5dr_action_create_reformat(struct mlx5dr_context *ctx,
 			      size_t data_sz,
 			      void *data,
 			      uint32_t bulk_size,
-			      uint32_t flags);
+			      enum mlx5dr_action_flags flags);
 
 struct mlx5dr_action *
 mlx5dr_action_create_modify_header(struct mlx5dr_context *ctx,
 				   size_t pattern_sz,
 				   __be64 pattern[],
 				   uint32_t bulk_size,
-				   uint32_t flags);
+				   enum mlx5dr_action_flags flags);
 
 int mlx5dr_action_destroy(struct mlx5dr_action *action);
 
