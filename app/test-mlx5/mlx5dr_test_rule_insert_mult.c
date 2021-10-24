@@ -311,7 +311,7 @@ int run_test_rule_insert_mult(struct ibv_context *ibv_ctx)
 			  NULL, NULL,
 			  items);
 
-	mt = mlx5dr_match_template_create(items);
+	mt = mlx5dr_match_template_create(items, 0);
 	if (!mt) {
 		printf("Failed HWS template\n");
 		goto destroy_hws_tbl;

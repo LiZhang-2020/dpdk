@@ -223,7 +223,7 @@ int run_test_rule_insert(struct ibv_context *ibv_ctx)
 
 	set_match_simple(&ipv_mask_conn, &ipv_value_conn, items_conn);
 
-	mt_root = mlx5dr_match_template_create(items_conn);
+	mt_root = mlx5dr_match_template_create(items_conn, 0);
 	if (!mt_root) {
 		printf("Failed root template\n");
 		goto destroy_hws_tbl;
@@ -246,7 +246,7 @@ int run_test_rule_insert(struct ibv_context *ibv_ctx)
 			  NULL, NULL,
 			  items);
 
-	mt = mlx5dr_match_template_create(items);
+	mt = mlx5dr_match_template_create(items, 0);
 	if (!mt) {
 		printf("Failed HWS template\n");
 		goto destroy_root_matcher;
