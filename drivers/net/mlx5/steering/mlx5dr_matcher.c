@@ -567,11 +567,18 @@ int mlx5dr_matcher_destroy(struct mlx5dr_matcher *matcher)
 }
 
 struct mlx5dr_match_template *
-mlx5dr_match_template_create(struct rte_flow_item items[])
+mlx5dr_match_template_create(struct rte_flow_item items[],
+			     enum mlx5dr_match_template_flags flags)
 {
 	struct mlx5dr_match_template *mt;
 	struct rte_flow_error error;
 	int ret, len;
+
+	if (flags > MLX5DR_MATCH_TEMPLATE_FLAG_RELAXED_MATCH) {
+		DR_LOG(ERR, "Unsupported match template flag provided");
+                rte_errno = EINVAL;
+                return NULL;
+	}
 
 	mt = simple_calloc(1, sizeof(*mt));
 	if (!mt) {
@@ -579,6 +586,8 @@ mlx5dr_match_template_create(struct rte_flow_item items[])
                 rte_errno = ENOMEM;
                 return NULL;
 	}
+
+	mt->flags = flags;
 
 	/* Duplicate the user given items */
 	ret = rte_flow_conv(RTE_FLOW_CONV_OP_PATTERN, NULL, 0, items, &error);

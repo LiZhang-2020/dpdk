@@ -125,6 +125,7 @@ struct mlx5dr_definer_fc {
 struct mlx5dr_definer_conv_data {
 	struct mlx5dr_cmd_query_caps *caps;
 	struct mlx5dr_definer_fc *fc;
+	uint8_t relaxed;
 	uint8_t tunnel;
 	uint8_t *hl;
 };
@@ -297,14 +298,16 @@ mlx5dr_definer_conv_item_ipv4(struct mlx5dr_definer_conv_data *cd,
 		return rte_errno;
 	}
 
-	fc = &cd->fc[DR_CALC_FNAME(IPV4_VERSION, inner)];
-	fc->item_idx = item_idx;
-	fc->tag_set = &mlx5dr_definer_ipv4_version_set;
-	fc->tag_mask_set = &mlx5dr_definer_ones_set;
-	DR_CALC_SET(fc, eth_l2, l3_type, inner);
+	if (!cd->relaxed) {
+		fc = &cd->fc[DR_CALC_FNAME(IPV4_VERSION, inner)];
+		fc->item_idx = item_idx;
+		fc->tag_set = &mlx5dr_definer_ipv4_version_set;
+		fc->tag_mask_set = &mlx5dr_definer_ones_set;
+		DR_CALC_SET(fc, eth_l2, l3_type, inner);
 
-	/* Unset ethertype if present */
-	memset(&cd->fc[DR_CALC_FNAME(ETH_TYPE, inner)], 0, sizeof(*fc));
+		/* Overwrite - Unset ethertype if present */
+		memset(&cd->fc[DR_CALC_FNAME(ETH_TYPE, inner)], 0, sizeof(*fc));
+	}
 
 	if (m->next_proto_id) {
 		fc = &cd->fc[DR_CALC_FNAME(IP_PROTOCOL, inner)];
@@ -359,11 +362,13 @@ mlx5dr_definer_conv_item_udp(struct mlx5dr_definer_conv_data *cd,
 	}
 
 	/* Set match on L4 type UDP */
-	fc = &cd->fc[DR_CALC_FNAME(IP_PROTOCOL, inner)];
-	fc->item_idx = item_idx;
-	fc->tag_set = &mlx5dr_definer_udp_protocol_set;
-	fc->tag_mask_set = &mlx5dr_definer_ones_set;
-	DR_CALC_SET(fc, eth_l2, l4_type_bwc, inner);
+	if (!cd->relaxed) {
+		fc = &cd->fc[DR_CALC_FNAME(IP_PROTOCOL, inner)];
+		fc->item_idx = item_idx;
+		fc->tag_set = &mlx5dr_definer_udp_protocol_set;
+		fc->tag_mask_set = &mlx5dr_definer_ones_set;
+		DR_CALC_SET(fc, eth_l2, l4_type_bwc, inner);
+	}
 
 	if (m->hdr.src_port) {
 		fc = &cd->fc[DR_CALC_FNAME(L4_SPORT, inner)];
@@ -399,11 +404,13 @@ mlx5dr_definer_conv_item_tcp(struct mlx5dr_definer_conv_data *cd,
 	}
 
 	/* Overwrite match on L4 type TCP */
-	fc = &cd->fc[DR_CALC_FNAME(IP_PROTOCOL, inner)];
-	fc->item_idx = item_idx;
-	fc->tag_set = &mlx5dr_definer_tcp_protocol_set;
-	fc->tag_mask_set = &mlx5dr_definer_ones_set;
-	DR_CALC_SET(fc, eth_l2, l4_type_bwc, inner);
+	if (!cd->relaxed) {
+		fc = &cd->fc[DR_CALC_FNAME(IP_PROTOCOL, inner)];
+		fc->item_idx = item_idx;
+		fc->tag_set = &mlx5dr_definer_tcp_protocol_set;
+		fc->tag_mask_set = &mlx5dr_definer_ones_set;
+		DR_CALC_SET(fc, eth_l2, l4_type_bwc, inner);
+	}
 
 	if (m->hdr.src_port) {
 		fc = &cd->fc[DR_CALC_FNAME(L4_SPORT, inner)];
@@ -438,7 +445,7 @@ mlx5dr_definer_conv_item_gtp(struct mlx5dr_definer_conv_data *cd,
 
 	/* Overwrite GTPU dest port if not present */
 	fc = &cd->fc[DR_CALC_FNAME(L4_DPORT, false)];
-	if (!fc->tag_set) {
+	if (!fc->tag_set && !cd->relaxed) {
 		fc->item_idx = item_idx;
 		fc->tag_set = &mlx5dr_definer_gtp_udp_port_set;
 		fc->tag_mask_set = &mlx5dr_definer_ones_set;
@@ -499,31 +506,35 @@ mlx5dr_definer_conv_item_gtp_psc(struct mlx5dr_definer_conv_data *cd,
 	uint8_t flex_idx;
 
 	/* Overwrite GTP extension flag to be 1 */
-	if (cd->caps->flex_protocols & MLX5_HCA_FLEX_GTPU_DW_0_ENABLED) {
-		rte_errno = ENOTSUP;
-		return rte_errno;
+	if (!cd->relaxed) {
+		if (cd->caps->flex_protocols & MLX5_HCA_FLEX_GTPU_DW_0_ENABLED) {
+			rte_errno = ENOTSUP;
+			return rte_errno;
+		}
+		flex_idx = cd->caps->flex_parser_id_gtpu_dw_0;
+		fc = &cd->fc[MLX5DR_DEFINER_FNAME_GTP_EXT_FLAG];
+		fc->item_idx = item_idx;
+		fc->tag_set = &mlx5dr_definer_ones_set;
+		fc->bit_mask = __mlx5_mask(header_gtp, ext_hdr_flag);
+		fc->bit_off = __mlx5_dw_bit_off(header_gtp, ext_hdr_flag);
+		fc->byte_off = mlx5dr_definer_get_flex_parser_off(flex_idx);
 	}
-	flex_idx = cd->caps->flex_parser_id_gtpu_dw_0;
-	fc = &cd->fc[MLX5DR_DEFINER_FNAME_GTP_EXT_FLAG];
-	fc->item_idx = item_idx;
-	fc->tag_set = &mlx5dr_definer_ones_set;
-	fc->bit_mask = __mlx5_mask(header_gtp, ext_hdr_flag);
-	fc->bit_off = __mlx5_dw_bit_off(header_gtp, ext_hdr_flag);
-	fc->byte_off = mlx5dr_definer_get_flex_parser_off(flex_idx);
 
 	/* Overwrite next extension header type */
-	if (cd->caps->flex_protocols & MLX5_HCA_FLEX_GTPU_DW_2_ENABLED) {
-		rte_errno = ENOTSUP;
-		return rte_errno;
+	if (!cd->relaxed) {
+		if (cd->caps->flex_protocols & MLX5_HCA_FLEX_GTPU_DW_2_ENABLED) {
+			rte_errno = ENOTSUP;
+			return rte_errno;
+		}
+		flex_idx = cd->caps->flex_parser_id_gtpu_dw_2;
+		fc = &cd->fc[MLX5DR_DEFINER_FNAME_GTP_NEXT_EXT_HDR];
+		fc->item_idx = item_idx;
+		fc->tag_set = &mlx5dr_definer_gtp_next_ext_hdr_set;
+		fc->tag_mask_set = &mlx5dr_definer_ones_set;
+		fc->bit_mask = __mlx5_mask(header_opt_gtp, next_ext_hdr_type);
+		fc->bit_off = __mlx5_dw_bit_off(header_opt_gtp, next_ext_hdr_type);
+		fc->byte_off = mlx5dr_definer_get_flex_parser_off(flex_idx);
 	}
-	flex_idx = cd->caps->flex_parser_id_gtpu_dw_2;
-	fc = &cd->fc[MLX5DR_DEFINER_FNAME_GTP_NEXT_EXT_HDR];
-	fc->item_idx = item_idx;
-	fc->tag_set = &mlx5dr_definer_gtp_next_ext_hdr_set;
-	fc->tag_mask_set = &mlx5dr_definer_ones_set;
-	fc->bit_mask = __mlx5_mask(header_opt_gtp, next_ext_hdr_type);
-	fc->bit_off = __mlx5_dw_bit_off(header_opt_gtp, next_ext_hdr_type);
-	fc->byte_off = mlx5dr_definer_get_flex_parser_off(flex_idx);
 
 	if (m->pdu_type) {
 		flex_idx = cd->caps->flex_parser_id_gtpu_first_ext_dw_0;
@@ -572,6 +583,7 @@ mlx5dr_definer_conv_items_to_hl(struct mlx5dr_context *ctx,
 	cd.fc = fc;
 	cd.hl = hl;
 	cd.caps = ctx->caps;
+	cd.relaxed = mt->flags & MLX5DR_MATCH_TEMPLATE_FLAG_RELAXED_MATCH;
 
 	/* Collect all RTE fields to the field array and set header layout */
 	for (i = 0; items->type != RTE_FLOW_ITEM_TYPE_END; i++, items++) {

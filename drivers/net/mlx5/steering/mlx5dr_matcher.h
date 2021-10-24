@@ -14,6 +14,7 @@ struct mlx5dr_match_template {
 	struct mlx5dr_definer *definer;
 	struct mlx5dr_definer_fc *fc;
 	uint32_t fc_sz;
+	enum mlx5dr_match_template_flags flags;
 	uint32_t refcount;
 };
 

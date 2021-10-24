@@ -41,6 +41,10 @@ enum mlx5dr_action_reformat_type {
 	MLX5DR_ACTION_REFORMAT_TYPE_L2_TO_TNL_L3,
 };
 
+enum mlx5dr_match_template_flags {
+	MLX5DR_MATCH_TEMPLATE_FLAG_RELAXED_MATCH = 1 << 0,
+};
+
 struct mlx5dr_context_attr {
 	uint16_t queues;
 	uint16_t queue_size;
@@ -111,7 +115,8 @@ mlx5dr_table_create(struct mlx5dr_context *ctx,
 int mlx5dr_table_destroy(struct mlx5dr_table *tbl);
 
 struct mlx5dr_match_template *
-mlx5dr_match_template_create(struct rte_flow_item items[]);
+mlx5dr_match_template_create(struct rte_flow_item items[],
+			     enum mlx5dr_match_template_flags flags);
 
 int mlx5dr_match_template_destroy(struct mlx5dr_match_template *mt);
 
