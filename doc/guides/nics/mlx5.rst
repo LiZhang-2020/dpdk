@@ -457,6 +457,10 @@ Limitations
 
   - Needs OFED 5.4+.
 
+- HW hashed bonding
+
+  - TXQ affinity subjects to HW hash once enabled.
+
 Statistics
 ----------
 
