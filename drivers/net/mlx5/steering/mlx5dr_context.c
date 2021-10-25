@@ -11,7 +11,7 @@ static int mlx5dr_context_pools_init(struct mlx5dr_context *ctx,
 	uint8_t max_log_sz;
 	int i;
 
-	if (mlx5dr_pat_init_pattern_cache(ctx->pattern_cache))
+	if (mlx5dr_pat_init_pattern_cache(&ctx->pattern_cache))
 		return rte_errno;
 
 	/* Create an STC pool per FT type */

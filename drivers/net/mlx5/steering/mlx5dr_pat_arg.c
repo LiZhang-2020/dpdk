@@ -29,15 +29,19 @@ mlx5dr_arg_get_arg_log_size(uint16_t num_of_actions)
 }
 
 /* cache and cache element handling */
-int mlx5dr_pat_init_pattern_cache(struct mlx5dr_pattern_cache *cache)
+int mlx5dr_pat_init_pattern_cache(struct mlx5dr_pattern_cache **cache)
 {
-	cache = simple_calloc(1, sizeof(*cache));
-	if (!cache) {
+	struct mlx5dr_pattern_cache *new_cache;
+
+	new_cache = simple_calloc(1, sizeof(*new_cache));
+	if (!new_cache) {
 		rte_errno = ENOMEM;
 		return rte_errno;
 	}
-	LIST_INIT(&cache->head);
-	pthread_spin_init(&cache->lock, PTHREAD_PROCESS_PRIVATE);
+	LIST_INIT(&new_cache->head);
+	pthread_spin_init(&new_cache->lock, PTHREAD_PROCESS_PRIVATE);
+
+	*cache = new_cache;
 
 	return 0;
 }
