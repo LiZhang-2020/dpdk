@@ -6,6 +6,7 @@ from pydiru.providers.mlx5.steering.mlx5dr_table cimport Mlx5drTable
 from pydiru.providers.mlx5.steering.mlx5dr_rule cimport Mlx5drRule
 from pydiru.pydiru_error import PydiruError
 from pydiru.base cimport close_weakrefs
+from libc.stdlib cimport free, calloc
 from pydiru.base import PydiruErrno
 import weakref
 
@@ -88,6 +89,36 @@ cdef class Mlx5drActionDestTir(Mlx5drAction):
             raise PydiruErrno('Mlx5drActionDestTir creation failed.')
         self.tir = tir
         tir.dr_actions.add(self)
+
+
+cdef class Mlx5drActionReformat(Mlx5drAction):
+    def __init__(self, Mlx5drContext ctx, ref_type, data_sz, data, bulk_size, flags):
+        """
+        Initializes a packet reformat action.
+        :param ctx: Mlx5drContext context
+        :param ref_type: Reformat type
+        :param data_sz: Size of the data
+        :param data: Data
+        :param bulk_size: Bulk size
+        :param flags: Action flags
+        """
+        super().__init__()
+        cdef char* c_data = NULL
+        if data:
+            arr = bytearray(data)
+            c_data = <char *>calloc(1, data_sz)
+            if c_data == NULL:
+                raise MemoryError('Memory allocation failed.')
+            for i in range(data_sz):
+                c_data[i] = arr[i]
+        self.action = dr.mlx5dr_action_create_reformat(ctx.context, ref_type, data_sz,
+                                                       c_data if data else NULL,
+                                                       bulk_size, flags)
+        if c_data != NULL:
+            free(c_data)
+        if self.action == NULL:
+            raise PydiruErrno('Mlx5drActionReformat creation failed.')
+
 
 cdef class Mlx5drRuleAction(PydiruObject):
     """

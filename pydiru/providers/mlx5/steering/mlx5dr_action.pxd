@@ -23,6 +23,9 @@ cdef class Mlx5drActionDestTable(Mlx5drAction):
 cdef class Mlx5drActionDestTir(Mlx5drAction):
     cdef Mlx5drDevxObj tir
 
+cdef class Mlx5drActionReformat(Mlx5drAction):
+    pass
+
 cdef class Mlx5drRuleAction(PydiruObject):
     cdef dr.mlx5dr_rule_action rule_action
     cdef Mlx5drAction action

@@ -24,3 +24,9 @@ cdef extern  from '../../../../drivers/net/mlx5/steering/mlx5dr.h':
         MLX5DR_ACTION_FLAG_HWS_TX
         MLX5DR_ACTION_FLAG_HWS_FDB
         MLX5DR_ACTION_FLAG_SHARED
+
+    cpdef enum mlx5dr_action_reformat_type:
+        MLX5DR_ACTION_REFORMAT_TYPE_TNL_L2_TO_L2
+        MLX5DR_ACTION_REFORMAT_TYPE_L2_TO_TNL_L2
+        MLX5DR_ACTION_REFORMAT_TYPE_TNL_L3_TO_L2
+        MLX5DR_ACTION_REFORMAT_TYPE_L2_TO_TNL_L3
