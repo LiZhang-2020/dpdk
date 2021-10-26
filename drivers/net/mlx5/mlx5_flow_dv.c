@@ -1481,9 +1481,13 @@ flow_dv_convert_action_modify_ipv6_dscp
 }
 
 static int
-mlx5_flow_item_field_width(struct mlx5_priv *priv,
-			   enum rte_flow_field_id field)
+mlx5_flow_item_field_width(struct rte_eth_dev *dev,
+			   enum rte_flow_field_id field,
+			   const struct rte_flow_attr *attr,
+			   struct rte_flow_error *error)
 {
+	struct mlx5_priv *priv = dev->data->dev_private;
+
 	switch (field) {
 	case RTE_FLOW_FIELD_START:
 		return 32;
@@ -1530,7 +1534,8 @@ mlx5_flow_item_field_width(struct mlx5_priv *priv,
 	case RTE_FLOW_FIELD_MARK:
 		return __builtin_popcount(priv->sh->dv_mark_mask);
 	case RTE_FLOW_FIELD_META:
-		return __builtin_popcount(priv->sh->dv_meta_mask);
+		return (flow_dv_get_metadata_reg(dev, attr, error) == REG_C_0) ?
+			__builtin_popcount(priv->sh->dv_meta_mask) : 32;
 	case RTE_FLOW_FIELD_POINTER:
 	case RTE_FLOW_FIELD_VALUE:
 		return 64;
@@ -1989,7 +1994,6 @@ flow_dv_convert_action_modify_field
 			 const struct rte_flow_attr *attr,
 			 struct rte_flow_error *error)
 {
-	struct mlx5_priv *priv = dev->data->dev_private;
 	const struct rte_flow_action_modify_field *conf =
 		(const struct rte_flow_action_modify_field *)(action->conf);
 	struct rte_flow_item item;
@@ -2001,7 +2005,8 @@ flow_dv_convert_action_modify_field
 	uint32_t value[MLX5_ACT_MAX_MOD_FIELDS] = {0, 0, 0, 0, 0};
 	uint32_t type;
 	uint32_t shift = 0;
-	uint32_t dst_width = mlx5_flow_item_field_width(priv, conf->dst.field);
+	uint32_t dst_width = mlx5_flow_item_field_width(dev, conf->dst.field,
+							attr, error);
 
 	if (conf->src.field == RTE_FLOW_FIELD_POINTER ||
 		conf->src.field == RTE_FLOW_FIELD_VALUE) {
@@ -5070,10 +5075,12 @@ flow_dv_validate_action_modify_field(struct rte_eth_dev *dev,
 	struct mlx5_dev_config *config = &priv->config;
 	const struct rte_flow_action_modify_field *action_modify_field =
 		action->conf;
-	uint32_t dst_width = mlx5_flow_item_field_width(priv,
-				action_modify_field->dst.field);
-	uint32_t src_width = mlx5_flow_item_field_width(priv,
-				action_modify_field->src.field);
+	uint32_t dst_width = mlx5_flow_item_field_width(dev,
+				action_modify_field->dst.field,
+				attr, error);
+	uint32_t src_width = mlx5_flow_item_field_width(dev,
+				action_modify_field->src.field,
+				attr, error);
 
 	ret = flow_dv_validate_action_modify_hdr(action_flags, action, error);
 	if (ret)
