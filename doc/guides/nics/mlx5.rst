@@ -453,6 +453,10 @@ Limitations
   - Counter of received packets and bytes number of devices in same share group are same.
   - Counter of received packets and bytes number of queues in same group and queue ID are same.
 
+- Bonding under socket direct mode
+
+  - Needs OFED 5.4+.
+
 Statistics
 ----------
 
