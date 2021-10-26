@@ -208,4 +208,23 @@ __rte_internal
 struct ibv_device *
 mlx5_os_get_ibv_dev(const struct rte_device *dev);
 
+/**
+ * This is used to query system_image_guid as describing in PRM.
+ *
+ * @param dev[in]
+ *  Pointer to a device instance as PCIe id.
+ * @param guid[out]
+ *  Pointer to the buffer to hold device guid.
+ *  Guid is uint64_t and corresponding to 17 bytes string.
+ * @param len[in]
+ *  Guid buffer length, 17 bytes at least.
+ *
+ * @return
+ *  -1 if internal failure.
+ *  0 if OFED doesn't support.
+ *  >0 if success.
+ */
+int
+mlx5_get_device_guid(const struct rte_pci_addr *dev, uint8_t *guid, size_t len);
+
 #endif /* RTE_PMD_MLX5_COMMON_OS_H_ */
