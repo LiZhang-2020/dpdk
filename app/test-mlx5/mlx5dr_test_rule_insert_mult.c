@@ -8,13 +8,22 @@
 #define MAX_ITEMS 10
 #define BIG_LOOP 100
 #define MAX_ITEMS 10
-#define NUM_OF_QUEUES 16
 #define QUEUE_SIZE 1024
-#define NUM_OF_RULES (QUEUE_SIZE * 3906) // Almost 1M
-#define BURST_TH (64)
+#define NUM_OF_RULES (1 << 22)
+#define BURST_TH (32)
 #define NUM_CORES 8
+#define QUEUE_PER_CORE 4
+#define NUM_OF_QUEUES (QUEUE_PER_CORE * NUM_CORES)
 #define COL_LOG 0
 #define ROW_LOG 22
+
+struct queue_info {
+	uint32_t queue_id;
+	uint32_t pending;
+	uint32_t miss_count;
+	uint32_t bp;
+	uint32_t rules;
+};
 
 struct thread_info {
 	struct mlx5dr_context *ctx;
@@ -22,6 +31,7 @@ struct thread_info {
 	const char *thread_name;
 	struct mlx5dr_matcher *matcher;
 	struct mlx5dr_action *drop;
+	struct queue_info queue[QUEUE_PER_CORE];
 };
 
 struct thread_info th_info[8];
@@ -169,22 +179,25 @@ static int run_loop(__rte_unused void *nothing)
 	struct rte_ipv4_hdr ipv_mask, ipv_value;
 	struct mlx5dr_rule_attr rule_attr = {0};
 	struct mlx5dr_matcher *hws_matcher;
+	struct thread_info *my_th_info;
 	int lcore_id = rte_lcore_id();
 	struct mlx5dr_rule *hws_rule;
 	struct mlx5dr_action *drop;
 	struct mlx5dr_context *ctx;
-	uint32_t miss_count, hw_bp;
-	uint32_t pending_rules = 0;
+	struct queue_info *queue;
+	struct queue_info total;
 	uint64_t start, end;
 	int j, i, ret;
-	int queue_id;
+	int core_id;
 
 	printf("Starting lcore_id %d\n", lcore_id);
 
-	ctx = th_info[lcore_id % NUM_CORES].ctx;
-	queue_id = lcore_id % NUM_CORES;
-	hws_matcher = th_info[lcore_id % NUM_CORES].matcher;
-	drop = th_info[lcore_id % NUM_CORES].drop;
+	core_id = lcore_id % NUM_CORES;
+	my_th_info = &th_info[core_id];
+
+	ctx = my_th_info->ctx;
+	hws_matcher = my_th_info->matcher;
+	drop = my_th_info->drop;
 
 	set_match_mavneir(&eth_mask, &eth_value,
 			  &ipv_mask, &ipv_value,
@@ -202,18 +215,27 @@ static int run_loop(__rte_unused void *nothing)
 	}
 
 	for (j = 0; j < BIG_LOOP; j++) {
-		miss_count = 0;
-		hw_bp = 0;
+
+		for (i = 0; i < QUEUE_PER_CORE; i++) {
+			my_th_info->queue[i].queue_id = core_id * QUEUE_PER_CORE + i;
+			my_th_info->queue[i].bp = 0;
+			my_th_info->queue[i].miss_count = 0;
+			my_th_info->queue[i].pending = 0;
+			my_th_info->queue[i].rules = 0;
+		}
+
 		start = rte_rdtsc();
 
 		/* Create HWS rules */
 		for (i = 0; i < NUM_OF_RULES; i++) {
-			rule_attr.queue_id = queue_id;
+			queue = &my_th_info->queue[i % QUEUE_PER_CORE];
+			queue->rules++;
+
+			rule_attr.queue_id = queue->queue_id;
 			rule_attr.user_data = &hws_rule[i];
-			rule_attr.burst = !((i + 1) % BURST_TH == 0); /* Ring doorbell */
+			rule_attr.burst = !((queue->rules) % BURST_TH == 0); /* Ring doorbell */
 
 			ipv_value.src_addr = i;
-			//ipv_value.dst_addr = i;
 
 			rule_actions[0].action = drop;
 
@@ -223,28 +245,64 @@ static int run_loop(__rte_unused void *nothing)
 				return -1;
 			}
 
-			pending_rules++;
+			queue->pending++;
 
-			poll_for_comp(ctx, rule_attr.queue_id, &pending_rules, BURST_TH, &miss_count, &hw_bp, false);
+			poll_for_comp(ctx, queue->queue_id, &queue->pending, BURST_TH, &queue->miss_count, &queue->bp, false);
 		}
 
 		end = rte_rdtsc();
 		/* Drain the queue */
-		poll_for_comp(ctx, rule_attr.queue_id, &pending_rules, BURST_TH, &miss_count, &hw_bp, true);
-		printf("%d K-Rules/Sec: %lf Insertion. Total misses: %u (out of: %u) HW bp %u\n", lcore_id, (double) ((double) NUM_OF_RULES / 1000) / ((double) (end - start) / rte_get_tsc_hz()),
-		       miss_count, NUM_OF_RULES, hw_bp);
 
-		miss_count = 0;
-		hw_bp = 0;
+		memset(&total, 0, sizeof(total));
+
+		for (i = 0; i < QUEUE_PER_CORE; i++) {
+			poll_for_comp(ctx,
+				      my_th_info->queue[i].queue_id,
+				      &my_th_info->queue[i].pending,
+				      BURST_TH,
+				      &my_th_info->queue[i].miss_count,
+				      &my_th_info->queue[i].bp,
+				      true);
+
+			printf("core [%d] queue [%d] K-Rules/Sec: %lf Insertion. Total misses: %u (out of: %u) HW bp %u\n",
+			       lcore_id,
+			       my_th_info->queue[i].queue_id,
+			       (double) ((double) my_th_info->queue[i].rules / 1000) / ((double) (end - start) / rte_get_tsc_hz()),
+			       my_th_info->queue[i].miss_count,
+			       my_th_info->queue[i].rules,
+			       my_th_info->queue[i].bp);
+
+			total.bp += my_th_info->queue[i].bp;
+			total.miss_count += my_th_info->queue[i].miss_count;
+			total.pending += my_th_info->queue[i].pending;
+			total.rules += my_th_info->queue[i].rules;
+
+			my_th_info->queue[i].bp = 0;
+			my_th_info->queue[i].miss_count = 0;
+			my_th_info->queue[i].pending = 0;
+			my_th_info->queue[i].rules = 0;
+		}
+
+		printf("core [%d] queue [ALL %d] K-Rules/Sec: %lf Insertion. Total misses: %u (out of: %u) HW bp %u\n",
+		       lcore_id,
+		       QUEUE_PER_CORE,
+		       (double) ((double) total.rules / 1000) / ((double) (end - start) / rte_get_tsc_hz()),
+		       total.miss_count,
+		       total.rules,
+		       total.bp);
+
 		start = rte_rdtsc();
 
 		/* Delete HWS rules */
 		for (i = 0; i < NUM_OF_RULES; i++) {
-			rule_attr.queue_id = queue_id;
+			queue = &my_th_info->queue[i % QUEUE_PER_CORE];
+			queue->rules++;
+
+			rule_attr.queue_id = queue->queue_id;;
 			rule_attr.user_data = &hws_rule[i];
 
 			/* Ring doorbell */
-			rule_attr.burst = !((i + 1) % (BURST_TH) == 0);
+			rule_attr.burst = !((queue->rules) % (BURST_TH) == 0);
 
 			ret = mlx5dr_rule_destroy(&hws_rule[i], &rule_attr);
 			if (ret) {
@@ -252,17 +310,49 @@ static int run_loop(__rte_unused void *nothing)
 				return -1;
 			}
 
-			pending_rules++;
+			queue->pending++;
 
-			poll_for_comp(ctx, rule_attr.queue_id, &pending_rules, BURST_TH, &miss_count, &hw_bp, false);
+			poll_for_comp(ctx, queue->queue_id, &queue->pending, BURST_TH, &queue->miss_count, &queue->bp, false);
 		}
 
 		end = rte_rdtsc();
 		/* Drain the queue */
-		poll_for_comp(ctx, rule_attr.queue_id, &pending_rules, BURST_TH, &miss_count, &hw_bp, true);
-		printf("%d K-Rules/Sec: %lf Deletion. Total misses: %u (out of: %u) HW bp %u\n", lcore_id, (double) ((double) NUM_OF_RULES / 1000) / ((double) (end - start) / rte_get_tsc_hz()),
-		       miss_count, NUM_OF_RULES, hw_bp);
+
+		memset(&total, 0, sizeof(total));
+
+		for (i = 0; i < QUEUE_PER_CORE; i++) {
+			poll_for_comp(ctx,
+				      my_th_info->queue[i].queue_id,
+				      &my_th_info->queue[i].pending,
+				      BURST_TH,
+				      &my_th_info->queue[i].miss_count,
+				      &my_th_info->queue[i].bp,
+				      true);
+
+			printf("core [%d] queue [%d] K-Rules/Sec: %lf Deletion. Total misses: %u (out of: %u) HW bp %u\n",
+			       lcore_id,
+			       my_th_info->queue[i].queue_id,
+			       (double) ((double) my_th_info->queue[i].rules / 1000) / ((double) (end - start) / rte_get_tsc_hz()),
+			       my_th_info->queue[i].miss_count,
+			       my_th_info->queue[i].rules,
+			       my_th_info->queue[i].bp);
+
+			total.bp += my_th_info->queue[i].bp;
+			total.miss_count += my_th_info->queue[i].miss_count;
+			total.pending += my_th_info->queue[i].pending;
+			total.rules += my_th_info->queue[i].rules;
+
+		}
+
+		printf("core [%d] queue [ALL %d] K-Rules/Sec: %lf Deletion. Total misses: %u (out of: %u) HW bp %u\n",
+		       lcore_id,
+		       QUEUE_PER_CORE,
+		       (double) ((double) total.rules / 1000) / ((double) (end - start) / rte_get_tsc_hz()),
+		       total.miss_count,
+		       total.rules,
+		       total.bp);
 	}
+
 	return 0;
 }
 
