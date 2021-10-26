@@ -33,7 +33,7 @@ static int mlx5dr_context_pools_init(struct mlx5dr_context *ctx,
 	/* Create an STE pool per FT type */
 	pool_attr.single_resource = 0;
 	pool_attr.pool_type = MLX5DR_POOL_TYPE_STE;
-	max_log_sz = RTE_MIN(MLX5DR_POOL_STE_LOG_SZ, ctx->caps->ste_alloc_log_max);
+	max_log_sz = RTE_MIN(MLX5DR_POOL_STE_MIN_LOG_SZ, ctx->caps->ste_alloc_log_max);
 	pool_attr.alloc_log_sz = RTE_MAX(max_log_sz, ctx->caps->ste_alloc_log_gran);
 	pool_attr.inital_log_sz = log_ste_memory;
 

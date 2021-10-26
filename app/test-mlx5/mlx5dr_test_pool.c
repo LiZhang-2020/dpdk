@@ -40,8 +40,8 @@ static int mlx5d_run_test_pool_operations(struct mlx5dr_context *ctx)
 	/* Create an STE pool per FT type */
 	pool_attr.single_resource = 0;
 	pool_attr.pool_type = MLX5DR_POOL_TYPE_STE;
-	pool_attr.alloc_log_sz = MLX5DR_POOL_STE_LOG_SZ;
-	pool_attr.inital_log_sz = MLX5DR_POOL_STE_LOG_SZ;
+	pool_attr.alloc_log_sz = MLX5DR_POOL_STE_MIN_LOG_SZ;
+	pool_attr.inital_log_sz = MLX5DR_POOL_STE_MIN_LOG_SZ;
 
 	ste_pool = mlx5dr_pool_create(ctx, &pool_attr);
 	if (!ste_pool) {

@@ -9,6 +9,8 @@
 
 static struct mlx5dr_pool_resource *
 mlx5dr_pool_resource_alloc(struct mlx5dr_pool *pool, uint32_t log_range);
+static int
+mlx5dr_pool_resource_free(struct mlx5dr_pool_resource *resource);
 
 static int mlx5dr_onesize_db_get_chunk(struct mlx5dr_pool *pool,
 				       struct mlx5dr_pool_chunk *chunk)
@@ -92,8 +94,7 @@ static void mlx5dr_buddy_db_put_chunk(struct mlx5dr_pool *pool,
 	struct mlx5dr_buddy_mem *buddy;
 
 	buddy = pool->db.buddy_manager->buddies[chunk->resource_idx];
-	if (!buddy ||
-	    chunk->resource_idx > pool->db.buddy_manager->num_of_buddies) {
+	if (!buddy) {
 		assert(false);
 		DR_LOG(ERR, "no shuch buddy (%d)", chunk->resource_idx);
 		return;
@@ -104,32 +105,33 @@ static void mlx5dr_buddy_db_put_chunk(struct mlx5dr_pool *pool,
 
 static struct mlx5dr_buddy_mem *
 mlx5dr_pool_buddy_get_next_buddy(struct mlx5dr_pool *pool, int idx,
-				 bool *is_new_buddy)
+				 uint32_t order, bool *is_new_buddy)
 {
 	static struct mlx5dr_buddy_mem *buddy;
+	uint32_t new_buddy_size;
 
 	buddy = pool->db.buddy_manager->buddies[idx];
 	if (buddy)
 		return buddy;
 
+	new_buddy_size = RTE_MAX(pool->alloc_log_sz, order);
 	*is_new_buddy = true;
-	buddy = mlx5dr_buddy_create(pool->alloc_log_sz);
+	buddy = mlx5dr_buddy_create(new_buddy_size);
 	if (!buddy) {
-		DR_LOG(ERR, "Failed to create buddy order: %zu index: %d",
-			pool->alloc_log_sz, idx);
+		DR_LOG(ERR, "Failed to create buddy order: %d index: %d",
+		       new_buddy_size, idx);
 		return NULL;
 	}
 
-	pool->resource[idx] = mlx5dr_pool_resource_alloc(pool, pool->alloc_log_sz);
+	pool->resource[idx] = mlx5dr_pool_resource_alloc(pool, new_buddy_size);
 	if (!pool->resource[idx]) {
-		DR_LOG(ERR, "Failed to create resource type: %d: size %zu index: %d",
-			pool->type, pool->alloc_log_sz, idx);
+		DR_LOG(ERR, "Failed to create resource type: %d: size %d index: %d",
+			pool->type, new_buddy_size, idx);
 		mlx5dr_buddy_cleanup(buddy);
 		return NULL;
 	}
 
 	pool->db.buddy_manager->buddies[idx] = buddy;
-	pool->db.buddy_manager->num_of_buddies++;
 
 	return buddy;
 }
@@ -149,7 +151,9 @@ static int mlx5dr_pool_buddy_get_mem_chunk(struct mlx5dr_pool *pool,
 	/* find the next free place from the buddy array */
 	while (*seg == -1) {
 		for (i = 0; i < MLX5DR_POOL_RESOURCE_ARR_SZ; i++) {
-			buddy = mlx5dr_pool_buddy_get_next_buddy(pool, i, &new_mem);
+			buddy = mlx5dr_pool_buddy_get_next_buddy(pool, i,
+								 order,
+								 &new_mem);
 			if (!buddy) {
 				err = rte_errno;
 				goto out;
@@ -198,11 +202,13 @@ static void mlx5dr_buddy_db_uninit(struct mlx5dr_pool *pool)
 	struct mlx5dr_buddy_mem *buddy;
 	int i;
 
-	for (i = 0; i < pool->db.buddy_manager->num_of_buddies; i++) {
+	for (i = 0; i < MLX5DR_POOL_RESOURCE_ARR_SZ; i++) {
 		buddy = pool->db.buddy_manager->buddies[i];
-		assert(buddy);
-		mlx5dr_buddy_cleanup(buddy);
-		simple_free(buddy);
+		if (buddy) {
+			mlx5dr_buddy_cleanup(buddy);
+			simple_free(buddy);
+			pool->db.buddy_manager->buddies[i] = NULL;
+		}
 	}
 
 	simple_free(pool->db.buddy_manager);
@@ -255,13 +261,6 @@ mlx5dr_pool_chunk_alloc(struct mlx5dr_pool *pool,
 			struct mlx5dr_pool_chunk *chunk)
 {
 	int ret;
-
-	if ((long unsigned int) pool->alloc_log_sz < (long unsigned int)chunk->order) {
-		DR_LOG(ERR, "chunk order: %d is bigger than the pool allows %zu",
-			chunk->order, pool->alloc_log_sz);
-		rte_errno = ENOMEM;
-		return rte_errno;
-	}
 
 	pthread_spin_lock(&pool->lock);
 	ret = pool->p_get_chunk(pool, chunk);
@@ -355,7 +354,7 @@ mlx5dr_pool_create(struct mlx5dr_context *ctx, struct mlx5dr_pool_attr *pool_att
 		return NULL;
 
 	pool->ctx = ctx;
-	pool->type = pool_attr->pool_type; // STC / STE
+	pool->type = pool_attr->pool_type;
 	pool->alloc_log_sz = pool_attr->alloc_log_sz;
 
 	pthread_spin_init(&pool->lock, PTHREAD_PROCESS_PRIVATE);

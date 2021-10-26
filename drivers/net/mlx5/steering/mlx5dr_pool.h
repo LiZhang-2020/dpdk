@@ -11,7 +11,7 @@ enum mlx5dr_pool_type {
 };
 
 #define MLX5DR_POOL_STC_LOG_SZ 14
-#define MLX5DR_POOL_STE_LOG_SZ 25
+#define MLX5DR_POOL_STE_MIN_LOG_SZ 16 /* defines the minimum allocation */
 
 #define MLX5DR_POOL_RESOURCE_ARR_SZ 100
 
@@ -46,7 +46,6 @@ enum mlx5dr_db_type {
 };
 
 struct mlx5dr_buddy_manager {
-	uint16_t num_of_buddies;
 	struct mlx5dr_buddy_mem *buddies[MLX5DR_POOL_RESOURCE_ARR_SZ];
 };
 
