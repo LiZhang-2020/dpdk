@@ -1117,6 +1117,7 @@ struct rte_flow {
 } __rte_packed;
 
 struct rte_flow_hw {
+	LIST_ENTRY(rte_flow_hw) next;
 	uint32_t idx;
 	struct rte_flow_table *table;
 	struct mlx5dr_rule rule;
@@ -1701,6 +1702,9 @@ mlx5_validate_integrity_item(const struct rte_flow_item_integrity *item)
 	return (test.value == 0);
 }
 
+int flow_hw_q_flow_flush(struct rte_eth_dev *dev,
+			 uint32_t queue,
+			 struct rte_flow_error *error);
 int mlx5_flow_group_to_table(struct rte_eth_dev *dev,
 			     const struct mlx5_flow_tunnel *tunnel,
 			     uint32_t group, uint32_t *table,

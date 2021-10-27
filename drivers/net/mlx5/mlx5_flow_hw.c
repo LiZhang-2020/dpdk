@@ -212,11 +212,63 @@ flow_hw_q_dequeue(struct rte_eth_dev *dev,
 		job = (struct mlx5_hw_q_job *)res[i].user_data;
 		/* Restore user data. */
 		res[i].user_data = job->user_data;
-		if (job->type == MLX5_HW_Q_JOB_TYPE_DESTROY)
+		if (job->type == MLX5_HW_Q_JOB_TYPE_DESTROY) {
+			LIST_REMOVE(job->flow, next);
 			mlx5_ipool_free(job->flow->table->flow, job->flow->idx);
+		} else {
+			LIST_INSERT_HEAD(&priv->hw_q[queue].flow_list,
+					 job->flow, next);
+		}
 		priv->hw_q[queue].job[priv->hw_q[queue].job_idx++] = job;
 	}
 	return ret;
+}
+
+int
+flow_hw_q_flow_flush(struct rte_eth_dev *dev,
+		     uint32_t queue,
+		     struct rte_flow_error *error)
+{
+#define BURST_THR 32u
+	struct mlx5_priv *priv = dev->data->dev_private;
+	struct mlx5_hw_q *hw_q = &priv->hw_q[queue];
+	struct rte_flow_hw *flow, *flow_next;
+	struct rte_flow_q_ops_attr attr = {
+		.drain = 0,
+	};
+	struct rte_flow_q_op_res comp[BURST_THR];
+	int ret, i = 0, j;
+	uint32_t pending_rules = 0, flush_thr;
+
+	flush_thr = RTE_MIN(rte_align32prevpow2(hw_q->size), BURST_THR);
+	flow_next = LIST_FIRST(&hw_q->flow_list);
+	while (flow_next) {
+		flow = flow_next;
+		flow_next = LIST_NEXT(flow, next);
+		attr.drain = (((++i) % flush_thr == 0) ||
+			     (flow_next && (flow_next->table != flow->table)) ||
+			     !flow_next);
+		ret = flow_hw_q_flow_destroy(dev, queue, &attr,
+					     (struct rte_flow *)flow, error);
+		if (unlikely(ret))
+			return -1;
+		pending_rules++;
+		while (pending_rules >= flush_thr ||
+		       pending_rules >= hw_q->size ||
+		       (pending_rules && !flow_next)) {
+			ret = flow_hw_q_dequeue(dev, queue, comp,
+						flush_thr, error);
+			if (ret < 0)
+				return -1;
+			for (j = 0; j < ret; j++) {
+				if (comp[j].status == RTE_FLOW_Q_OP_ERROR)
+					return -1;
+			}
+			pending_rules -= ret;
+		}
+	}
+	MLX5_ASSERT(!pending_rules && LIST_EMPTY(&hw_q->flow_list));
+	return 0;
 }
 
 static int
@@ -674,9 +726,11 @@ flow_hw_configure(struct rte_eth_dev *dev,
 		rte_errno = ENOMEM;
 		goto err;
 	}
+	priv->nb_queues = port_attr->nb_queues;
 	for (i = 0; i < port_attr->nb_queues; i++) {
 		priv->hw_q[i].job_idx = queue_attr[i]->size;
 		priv->hw_q[i].size = queue_attr[i]->size;
+		LIST_INIT(&priv->hw_q[i].flow_list);
 		if (i == 0)
 			priv->hw_q[i].job = (struct mlx5_hw_q_job **)
 					    &priv->hw_q[port_attr->nb_queues];

@@ -338,6 +338,7 @@ struct mlx5_hw_q_job {
 struct mlx5_hw_q {
 	uint32_t job_idx; /* Free job index. */
 	uint32_t size; /* LIFO size. */
+	LIST_HEAD(flow_list, rte_flow_hw) flow_list; /* Flow list. */
 	struct mlx5_hw_q_job **job; /* LIFO pointer. */
 };
 
@@ -1539,6 +1540,7 @@ struct mlx5_priv {
 	/* Action template list. */
 	LIST_HEAD(flow_hw_at, rte_flow_action_template) flow_hw_at;
 	struct mlx5dr_context *dr_ctx; /**< HW steering DR context. */
+	uint32_t nb_queues; /* HW steering queue number. */
 	struct mlx5_hw_q *hw_q;
 	/**< HW steering queue polling mechanism job descriptor LIFO. */
 	LIST_HEAD(flow_hw_tbl, rte_flow_table) flow_hw_tbl;

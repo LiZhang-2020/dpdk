@@ -7226,7 +7226,15 @@ mlx5_flow_list_flush(struct rte_eth_dev *dev, enum mlx5_flow_type type,
 {
 	struct mlx5_priv *priv = dev->data->dev_private;
 	uint32_t num_flushed = 0, fidx = 1;
+	uint32_t queue;
 	struct rte_flow *flow;
+
+	if (priv->config.dv_flow_en == 2 &&
+	    type == MLX5_FLOW_TYPE_GEN) {
+		for (queue = 0; queue < priv->nb_queues; queue++)
+			flow_hw_q_flow_flush(dev, queue, NULL);
+		return;
+	}
 
 	MLX5_IPOOL_FOREACH(priv->flows[type], fidx, flow) {
 		mlx5_flow_list_destroy(dev, type, fidx);
