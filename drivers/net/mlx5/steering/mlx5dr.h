@@ -216,7 +216,7 @@ size_t mlx5dr_rule_get_handle_size(void);
  * @param[in] attr
  * 	Rule creation attributes.
  * @param[in, out] rule_handle
- * 	Pre-allocated rule handle.
+ * 	A valid rule handle. The handle doesn't require any initilization.
  * @return zero on successful enqueue non zero otherwise.
  */
 int mlx5dr_rule_create(struct mlx5dr_matcher *matcher,

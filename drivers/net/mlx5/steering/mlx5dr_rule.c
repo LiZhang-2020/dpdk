@@ -47,6 +47,7 @@ static int mlx5dr_rule_create_hws(struct mlx5dr_rule *rule,
 	mlx5dr_send_engine_inc_rule(queue);
 
 	rule->status = MLX5DR_RULE_STATUS_CREATING;
+	rule->wait_on_wqes = 0;
 
 	/* Today we assume all rules have a dependent WQE.
 	 * This is inefficient and should be optimised.
