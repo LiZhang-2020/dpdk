@@ -161,10 +161,10 @@ def post_recv(qp, mr, msg_size, n=1):
         qp.post_recv(recv_wr)
 
 
-def send_packets(qp, mr, packet, n=1):
-    for i in range(n):
-        send_sg = SGE(mr.buf + i * len(packet), len(packet), mr.lkey)
-        mr.write(packet, len(packet), i * len(packet))
+def send_packets(qp, mr, packets):
+    for packet in packets:
+        send_sg = SGE(mr.buf, len(packet), mr.lkey)
+        mr.write(packet, len(packet))
         send_wr = SendWR(num_sge=1, sg=[send_sg])
         qp.post_send(send_wr)
 
@@ -177,19 +177,21 @@ def validate_raw(msg_received, msg_expected, skip_idxs = []):
             raise PyverbsError(err_msg)
 
 
-def raw_traffic(client, server, num_msgs, packet):
+def raw_traffic(client, server, num_msgs, packets, expected_packet=None):
     """
     Runs raw ethernet traffic between two sides
     :param client: client side, clients base class is BaseDrResources
     :param server: server side, servers base class is BaseDrResources
     :param num_msgs: number of msgs to send
-    :param packet: packet to send.
+    :param packets: packets to send.
+    :param expected_packet: expected packet to receive.
     :return:
     """
+    expected_packet = packets[0] if expected_packet is None else expected_packet
     for _ in range(num_msgs):
         post_recv(server.wq, server.mr, server.msg_size)
-        send_packets(client.qp, client.mr, packet)
-        poll_cq(client.cq)
+        send_packets(client.qp, client.mr, packets)
+        poll_cq(client.cq, len(packets))
         poll_cq(server.cq)
         msg_received = server.mr.read(server.msg_size, 0)
-        validate_raw(msg_received, packet)
+        validate_raw(msg_received, expected_packet)

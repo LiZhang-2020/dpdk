@@ -5,7 +5,6 @@
 import unittest
 
 from pyverbs.providers.mlx5.mlx5dv import Mlx5Context, Mlx5DVContextAttr
-from pyverbs.pyverbs_error import PyverbsError, PyverbsRDMAError
 from pyverbs.providers.mlx5.mlx5dv import Mlx5DevxObj
 from pyverbs.qp import QPInitAttr, QPAttr, QP, QPCap
 from pyverbs.providers.mlx5 import mlx5_enums as dv
@@ -17,14 +16,13 @@ from pyverbs.cq import CQ
 from pyverbs.mr import MR
 
 from pydiru.providers.mlx5.steering.mlx5dr_matcher import Mlx5drMacherTemplate, Mlx5drMatcherAttr, Mlx5drMatcher
-from pydiru.providers.mlx5.steering.mlx5dr_action import Mlx5drRuleAction, Mlx5drActionDestTable
+from pydiru.providers.mlx5.steering.mlx5dr_action import Mlx5drRuleAction, \
+    Mlx5drActionDestTable, Mlx5drActionDestTir
 from pydiru.providers.mlx5.steering.mlx5dr_context import Mlx5drContextAttr, Mlx5drContext
 from pydiru.providers.mlx5.steering.mlx5dr_table import Mlx5drTableAttr, Mlx5drTable
 from pydiru.providers.mlx5.steering.mlx5dr_rule import Mlx5drRuleAttr, Mlx5drRule
-from pydiru.rte_flow import RteFlowItemEnd, RteFlowItemEth, RteFlowItem
 from pydiru.providers.mlx5.steering.mlx5dr_devx_objects import Mlx5drDevxObj
 import pydiru.providers.mlx5.steering.mlx5dr_enums as me
-import pydiru.pydiru_enums as p
 
 from .prm_structs import Tirc, CreateTirIn
 from args_parser import parser
@@ -184,3 +182,12 @@ class BaseDrResources(object):
         self.root_matcher = self.create_matcher(self.root_table, self.matcher_templates)
         self.matcher = self.create_matcher(self.table, self.matcher_templates, row=MATCHER_ROW,
                                            mode=me.MLX5DR_MATCHER_RESOURCE_MODE_HTABLE)
+
+    def create_rule_action(self, action_str,
+                           flags=me.MLX5DR_ACTION_FLAG_HWS_RX):
+        if action_str == 'tir':
+            action = Mlx5drActionDestTir(self.dr_ctx, self.tir_dr_devx_obj,
+                                         flags)
+        else:
+            raise unittest.SkipTest(f'Unsupported action {action_str}')
+        return action, Mlx5drRuleAction(action)

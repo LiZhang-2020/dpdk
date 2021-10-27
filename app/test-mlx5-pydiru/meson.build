@@ -18,6 +18,7 @@ pydiru_python_tests = [
     'base.py',
     'prm_structs.py',
     'run_tests.py',
+    'test_mlx5dr_actions.py',
     'utils.py'
 ]
 
