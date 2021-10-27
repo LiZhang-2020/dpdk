@@ -17,7 +17,8 @@ pydiru_python_tests = [
     'args_parser.py',
     'base.py',
     'prm_structs.py',
-    'run_tests.py'
+    'run_tests.py',
+    'utils.py'
 ]
 
 
