@@ -393,9 +393,9 @@ struct mlx5_devx_qp_attr {
 	uint32_t uar_index:24;
 	uint32_t cqn:24;
 	uint32_t log_page_size:5;
-	uint32_t rq_size:17; /* Must be power of 2. */
+	uint32_t num_of_receive_wqes:17; /* Must be power of 2. */
 	uint32_t log_rq_stride:3;
-	uint32_t sq_size:17; /* Must be power of 2. */
+	uint32_t num_of_send_wqbbs:17; /* Must be power of 2. */
 	uint32_t ts_format:2;
 	uint32_t dbr_umem_valid:1;
 	uint32_t dbr_umem_id;
