@@ -472,6 +472,7 @@ mlx5_rxq_ibv_res_release(struct mlx5_rxq_priv *rxq)
 	if (rxq_obj->ibv_channel)
 		claim_zero(mlx5_glue->destroy_comp_channel
 							(rxq_obj->ibv_channel));
+	rxq->ctrl->started = false;
 }
 
 /**

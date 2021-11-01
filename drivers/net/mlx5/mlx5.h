@@ -1272,6 +1272,7 @@ struct mlx5_rxq_obj {
 		};
 		struct {
 			struct mlx5_devx_obj *devx_rmp; /* DevX RMP object. */
+			uint32_t rmp_refcnt; /* Reference count of RMP. */
 			struct mlx5_devx_cq cq_obj; /* DevX CQ object. */
 			void *devx_channel;
 		};

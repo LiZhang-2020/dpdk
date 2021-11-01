@@ -214,8 +214,9 @@ mlx5_rxq_devx_res_release(struct mlx5_rxq_priv *rxq)
 		if (rxq->devx_rq) {
 			claim_zero(mlx5_devx_cmd_destroy(rxq->devx_rq));
 			rxq->devx_rq = NULL;
+			rxq_obj->rmp_refcnt--;
 		}
-		if (!RXQ_CTRL_LAST(rxq))
+		if (rxq_obj->rmp_refcnt != 0)
 			return;
 		if (rxq_obj->devx_rmp) {
 			claim_zero(mlx5_devx_cmd_destroy(rxq_obj->devx_rmp));
@@ -228,6 +229,7 @@ mlx5_rxq_devx_res_release(struct mlx5_rxq_priv *rxq)
 		}
 		mlx5_rxq_release_devx_resources(rxq_obj->rxq_ctrl);
 	}
+	rxq_ctrl->started = false;
 }
 
 /**
@@ -741,6 +743,7 @@ mlx5_rxq_devx_res_new(struct mlx5_rxq_priv *rxq)
 		rte_errno = ENOMEM;
 		goto error;
 	}
+	rxq->ctrl->obj->rmp_refcnt++;
 	/* Change queue state to ready. */
 	ret = mlx5_devx_modify_rq(rxq, MLX5_RXQ_MOD_RST2RDY);
 	if (ret)
