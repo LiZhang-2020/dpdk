@@ -414,6 +414,9 @@ mlx5_alloc_shared_dr(struct mlx5_priv *priv)
 	sh->pop_vlan_action = mlx5_glue->dr_create_flow_action_pop_vlan();
 	__mlx5_discovery_misc5_cap(priv);
 	if (!priv->config.allow_duplicate_pattern) {
+#ifndef HAVE_MLX5_DR_ALLOW_DUPLICATE
+		DRV_LOG(WARNING, "Disallow duplicate pattern is not supported - maybe old rdma-core version?");
+#endif
 		mlx5_glue->dr_allow_duplicate_rules(sh->rx_domain, 0);
 		mlx5_glue->dr_allow_duplicate_rules(sh->tx_domain, 0);
 		if (sh->fdb_domain)
