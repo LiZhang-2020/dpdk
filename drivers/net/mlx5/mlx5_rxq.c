@@ -797,8 +797,6 @@ mlx5_shared_rxq_match(struct mlx5_rxq_ctrl *rxq_ctrl, struct rte_eth_dev *dev,
 {
 	struct mlx5_priv *spriv = LIST_FIRST(&rxq_ctrl->owners)->priv;
 	struct mlx5_priv *priv = dev->data->dev_private;
-	unsigned int mprq_stride_nums = priv->config.mprq.stride_num_n ?
-		priv->config.mprq.stride_num_n : MLX5_MPRQ_STRIDE_NUM_N;
 
 	RTE_SET_USED(conf);
 	if (rxq_ctrl->socket != socket) {
@@ -806,8 +804,6 @@ mlx5_shared_rxq_match(struct mlx5_rxq_ctrl *rxq_ctrl, struct rte_eth_dev *dev,
 			dev->data->port_id, idx);
 		return false;
 	}
-	if (priv->config.mprq.enabled)
-		desc >>= mprq_stride_nums;
 	if (rxq_ctrl->rxq.elts_n != log2above(desc)) {
 		DRV_LOG(ERR, "port %u queue index %u failed to join shared group: descriptor number mismatch",
 			dev->data->port_id, idx);
@@ -824,19 +820,13 @@ mlx5_shared_rxq_match(struct mlx5_rxq_ctrl *rxq_ctrl, struct rte_eth_dev *dev,
 			dev->data->port_id, idx);
 		return false;
 	}
-	if (!spriv->config.mprq.enabled && rxq_ctrl->rxq.mp != mp) {
+	if (mp != NULL && rxq_ctrl->rxq.mp != mp) {
 		DRV_LOG(ERR, "port %u queue index %u failed to join shared group: mempool mismatch",
 			dev->data->port_id, idx);
 		return false;
 	}
 	if (priv->config.hw_padding != spriv->config.hw_padding) {
 		DRV_LOG(ERR, "port %u queue index %u failed to join shared group: padding mismatch",
-			dev->data->port_id, idx);
-		return false;
-	}
-	if (memcmp(&priv->config.mprq, &spriv->config.mprq,
-		   sizeof(priv->config.mprq)) != 0) {
-		DRV_LOG(ERR, "port %u queue index %u failed to join shared group: MPRQ mismatch",
 			dev->data->port_id, idx);
 		return false;
 	}
@@ -915,6 +905,12 @@ mlx5_rx_queue_setup(struct rte_eth_dev *dev, uint16_t idx, uint16_t desc,
 		if (priv->obj_ops.rxq_res_new != devx_obj_ops.rxq_res_new) {
 			DRV_LOG(ERR, "port %u queue index %u shared Rx queue needs DevX api",
 				     dev->data->port_id, idx);
+			rte_errno = EINVAL;
+			return -rte_errno;
+		}
+		if (priv->config.mprq.enabled) {
+			DRV_LOG(ERR, "port %u shared Rx queue index %u: not supported when MPRQ enabled",
+				dev->data->port_id, idx);
 			rte_errno = EINVAL;
 			return -rte_errno;
 		}
