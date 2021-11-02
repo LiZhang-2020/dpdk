@@ -797,6 +797,7 @@ mlx5_shared_rxq_match(struct mlx5_rxq_ctrl *rxq_ctrl, struct rte_eth_dev *dev,
 {
 	struct mlx5_priv *spriv = LIST_FIRST(&rxq_ctrl->owners)->priv;
 	struct mlx5_priv *priv = dev->data->dev_private;
+	unsigned int i;
 
 	RTE_SET_USED(conf);
 	if (rxq_ctrl->socket != socket) {
@@ -824,6 +825,17 @@ mlx5_shared_rxq_match(struct mlx5_rxq_ctrl *rxq_ctrl, struct rte_eth_dev *dev,
 		DRV_LOG(ERR, "port %u queue index %u failed to join shared group: mempool mismatch",
 			dev->data->port_id, idx);
 		return false;
+	} else if (mp == NULL) {
+		for (i = 0; i < conf->rx_nseg; i++) {
+			if (conf->rx_seg[i].split.mp !=
+			    rxq_ctrl->rxq.rxseg[i].mp ||
+			    conf->rx_seg[i].split.length !=
+			    rxq_ctrl->rxq.rxseg[i].length) {
+				DRV_LOG(ERR, "port %u queue index %u failed to join shared group: segment %u configuration mismatch",
+					dev->data->port_id, idx, i);
+				return false;
+			}
+		}
 	}
 	if (priv->config.hw_padding != spriv->config.hw_padding) {
 		DRV_LOG(ERR, "port %u queue index %u failed to join shared group: padding mismatch",
