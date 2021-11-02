@@ -10,6 +10,7 @@
 
 #include <mlx5_prm.h>
 #include <mlx5_common.h>
+#include <mlx5_glue.h>
 
 #include "mlx5_vdpa_utils.h"
 #include "mlx5_vdpa.h"
