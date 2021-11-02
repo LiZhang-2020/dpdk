@@ -19,9 +19,11 @@ enum mlx5dr_table_type {
 	MLX5DR_TABLE_TYPE_MAX,
 };
 
-enum mlx5dr_matcher_insertion_mode {
-	MLX5DR_MATCHER_INSERTION_MODE_ASSURED,
-	MLX5DR_MATCHER_INSERTION_MODE_BEST_EFFORT,
+enum mlx5dr_matcher_resource_mode {
+	/* Allocate resources based on number of rules with minimal failure probability */
+	MLX5DR_MATCHER_RESOURCE_MODE_RULE,
+	/* Allocate fixed size hash table based on given column and rows */
+	MLX5DR_MATCHER_RESOURCE_MODE_HTABLE,
 };
 
 enum mlx5dr_action_flags {
@@ -50,7 +52,7 @@ struct mlx5dr_context_attr {
 	uint16_t queues;
 	uint16_t queue_size;
 	size_t initial_log_ste_memory;
-	/* Optional PD used for allocating resources */
+	/* Optional PD used for allocating res ources */
 	struct ibv_pd *pd;
 };
 
@@ -61,9 +63,17 @@ struct mlx5dr_table_attr {
 
 struct mlx5dr_matcher_attr {
 	uint32_t priority;
-	enum mlx5dr_matcher_insertion_mode insertion_mode;
-	uint32_t sz_hint_row_log;
-	uint32_t sz_hint_col_log;
+	enum mlx5dr_matcher_resource_mode mode;
+	union {
+		struct {
+			uint8_t sz_row_log;
+			uint8_t sz_col_log;
+		} table;
+
+		struct {
+			uint8_t num_log;
+		} rule;
+	};
 };
 
 struct mlx5dr_rule_attr {

@@ -4,6 +4,21 @@
 
 #include "mlx5dr_internal.h"
 
+static bool mlx5dr_matcher_requires_col_tbl(uint8_t log_num_of_rules)
+{
+	/* Collision table concatenation is done only for large rule tables */
+	return log_num_of_rules > MLX5DR_MATCHER_ASSURED_RULES_TH;
+}
+
+static uint8_t mlx5dr_matcher_rules_to_tbl_depth(uint8_t log_num_of_rules)
+{
+	if (mlx5dr_matcher_requires_col_tbl(log_num_of_rules))
+		return MLX5DR_MATCHER_ASSURED_MAIN_TBL_DEPTH;
+
+	/* For small rule tables we use a single deep table to assure insertion */
+	return RTE_MIN(log_num_of_rules, MLX5DR_MATCHER_ASSURED_COL_TBL_DEPTH);
+}
+
 static int mlx5dr_matcher_create_end_ft(struct mlx5dr_matcher *matcher)
 {
 	struct mlx5dr_cmd_ft_create_attr ft_attr = {0};
@@ -44,7 +59,7 @@ static int mlx5dr_matcher_connect(struct mlx5dr_matcher *matcher)
 	}
 
 	LIST_FOREACH(tmp_matcher, &tbl->head, next) {
-		if (tmp_matcher->attr.priority >= matcher->attr.priority) {
+		if (tmp_matcher->attr.priority > matcher->attr.priority) {
 			next = tmp_matcher;
 			break;
 		}
@@ -148,8 +163,8 @@ static int mlx5dr_matcher_create_rtc_nic(struct mlx5dr_matcher *matcher,
 	ste_pool = ctx->ste_pool[tbl->type];
 	stc_pool = ctx->stc_pool[tbl->type];
 
-	nic_matcher->ste.order = matcher->attr.sz_hint_col_log +
-				 matcher->attr.sz_hint_row_log;
+	nic_matcher->ste.order = matcher->attr.table.sz_col_log +
+				 matcher->attr.table.sz_row_log;
 
 	ret = mlx5dr_pool_chunk_alloc(ste_pool, &nic_matcher->ste);
 	if (ret) {
@@ -163,8 +178,8 @@ static int mlx5dr_matcher_create_rtc_nic(struct mlx5dr_matcher *matcher,
 	rtc_attr.ste_offset = nic_matcher->ste.offset;
 	rtc_attr.miss_ft_id = matcher->end_ft->id;
 	rtc_attr.update_index_mode = MLX5_IFC_RTC_STE_UPDATE_MODE_BY_HASH;
-	rtc_attr.log_depth = matcher->attr.sz_hint_col_log;
-	rtc_attr.log_size = matcher->attr.sz_hint_row_log;
+	rtc_attr.log_depth = matcher->attr.table.sz_col_log;
+	rtc_attr.log_size = matcher->attr.table.sz_row_log;
 	rtc_attr.table_type = tbl->fw_ft_type;
 	rtc_attr.pd = ctx->pd_num;
 	/* The first match template is used since all share the same definer */
@@ -193,7 +208,7 @@ static void mlx5dr_matcher_destroy_rtc_nic(struct mlx5dr_matcher *matcher,
 	mlx5dr_pool_chunk_free(ctx->ste_pool[tbl->type], &nic_matcher->ste);
 }
 
-static int mlx5dr_matcher_init_fdb(struct mlx5dr_matcher *matcher)
+static int mlx5dr_matcher_create_rtc_fdb(struct mlx5dr_matcher *matcher)
 {
 	int ret;
 
@@ -212,7 +227,7 @@ cleanup_rx:
 	return ret;
 }
 
-static int mlx5dr_matcher_uninit_fdb(struct mlx5dr_matcher *matcher)
+static int mlx5dr_matcher_destroy_rtc_fdb(struct mlx5dr_matcher *matcher)
 {
 	mlx5dr_matcher_destroy_rtc_nic(matcher, &matcher->rx);
 	mlx5dr_matcher_destroy_rtc_nic(matcher, &matcher->tx);
@@ -232,7 +247,7 @@ static int mlx5dr_matcher_create_rtc(struct mlx5dr_matcher *matcher)
 		ret = mlx5dr_matcher_create_rtc_nic(matcher, &matcher->tx);
 		break;
 	case MLX5DR_TABLE_TYPE_FDB:
-		ret = mlx5dr_matcher_init_fdb(matcher);
+		ret = mlx5dr_matcher_create_rtc_fdb(matcher);
 		break;
 	default:
 		assert(0);
@@ -251,7 +266,7 @@ static void mlx5dr_matcher_destroy_rtc(struct mlx5dr_matcher *matcher)
 		mlx5dr_matcher_destroy_rtc_nic(matcher, &matcher->tx);
 		break;
 	case MLX5DR_TABLE_TYPE_FDB:
-		mlx5dr_matcher_uninit_fdb(matcher);
+		mlx5dr_matcher_destroy_rtc_fdb(matcher);
 		break;
 	default:
 		assert(0);
@@ -302,17 +317,53 @@ static void mlx5dr_matcher_unbind_mt(struct mlx5dr_matcher *matcher)
 		mlx5dr_definer_put(matcher->mt[i]);
 }
 
-static int mlx5dr_matcher_init(struct mlx5dr_matcher *matcher)
+static int
+mlx5dr_matcher_process_attr(struct mlx5dr_cmd_query_caps *caps,
+			    struct mlx5dr_matcher_attr *attr,
+			    bool is_root)
 {
-	struct mlx5dr_context *ctx = matcher->tbl->ctx;
-	int ret;
+	if (is_root) {
+		if (attr->mode != MLX5DR_MATCHER_RESOURCE_MODE_RULE) {
+			DR_LOG(ERR, "Root matcher supports only rule resource mode");
+			goto not_supported;
+		}
+		return 0;
+	}
 
-	pthread_spin_lock(&ctx->ctrl_lock);
+	/* Convert number of rules to the required depth */
+	if (attr->mode == MLX5DR_MATCHER_RESOURCE_MODE_RULE)
+		attr->table.sz_col_log = mlx5dr_matcher_rules_to_tbl_depth(attr->rule.num_log);
+
+	if (attr->table.sz_col_log > caps->rtc_log_depth_max) {
+		DR_LOG(ERR, "Matcher depth exceeds limit %d", caps->rtc_log_depth_max);
+		goto not_supported;
+	}
+
+	if (attr->table.sz_col_log + attr->table.sz_row_log > caps->ste_alloc_log_max) {
+		DR_LOG(ERR, "Total matcher size exceeds limit %d", caps->ste_alloc_log_max);
+		goto not_supported;
+	}
+
+	if (attr->table.sz_col_log + attr->table.sz_row_log < caps->ste_alloc_log_gran) {
+		DR_LOG(ERR, "Total matcher size below limit %d", caps->ste_alloc_log_gran);
+		goto not_supported;
+	}
+
+	return 0;
+
+not_supported:
+	rte_errno = EOPNOTSUPP;
+	return rte_errno;
+}
+
+static int mlx5dr_matcher_create_and_connect(struct mlx5dr_matcher *matcher)
+{
+	int ret;
 
 	/* Select and create the definers for current matcher */
 	ret = mlx5dr_matcher_bind_mt(matcher);
 	if (ret)
-		goto unlock_err;
+		return ret;
 
 	/* Create matcher end flow table anchor */
 	ret = mlx5dr_matcher_create_end_ft(matcher);
@@ -329,8 +380,6 @@ static int mlx5dr_matcher_init(struct mlx5dr_matcher *matcher)
 	if (ret)
 		goto destroy_rtc;
 
-	pthread_spin_unlock(&ctx->ctrl_lock);
-
 	return 0;
 
 destroy_rtc:
@@ -339,6 +388,98 @@ destroy_end_ft:
 	mlx5dr_matcher_destroy_end_ft(matcher);
 unbind_mt:
 	mlx5dr_matcher_unbind_mt(matcher);
+	return ret;
+}
+
+static void mlx5dr_matcher_destroy_and_disconnect(struct mlx5dr_matcher *matcher)
+{
+	mlx5dr_matcher_disconnect(matcher);
+	mlx5dr_matcher_destroy_rtc(matcher);
+	mlx5dr_matcher_destroy_end_ft(matcher);
+	mlx5dr_matcher_unbind_mt(matcher);
+}
+
+static int
+mlx5dr_matcher_create_col_matcher(struct mlx5dr_matcher *matcher)
+{
+	struct mlx5dr_context *ctx = matcher->tbl->ctx;
+	struct mlx5dr_matcher *col_matcher;
+	int ret;
+
+	if (matcher->attr.mode != MLX5DR_MATCHER_RESOURCE_MODE_RULE)
+		return 0;
+
+	if (!mlx5dr_matcher_requires_col_tbl(matcher->attr.rule.num_log))
+		return 0;
+
+	col_matcher = simple_calloc(1, sizeof(*matcher));
+	if (!col_matcher) {
+		rte_errno = ENOMEM;
+		return rte_errno;
+	}
+
+	col_matcher->tbl = matcher->tbl;
+	col_matcher->num_of_mt = matcher->num_of_mt;
+	memcpy(col_matcher->mt, matcher->mt, matcher->num_of_mt * sizeof(*matcher->mt));
+
+	col_matcher->attr.priority = matcher->attr.priority;
+	col_matcher->attr.mode = MLX5DR_MATCHER_RESOURCE_MODE_HTABLE;
+	col_matcher->attr.table.sz_row_log = matcher->attr.rule.num_log;
+	col_matcher->attr.table.sz_col_log = MLX5DR_MATCHER_ASSURED_COL_TBL_DEPTH;
+	if (col_matcher->attr.table.sz_row_log > MLX5DR_MATCHER_ASSURED_ROW_RATIO)
+		col_matcher->attr.table.sz_row_log -= MLX5DR_MATCHER_ASSURED_ROW_RATIO;
+
+	ret = mlx5dr_matcher_process_attr(ctx->caps, &col_matcher->attr, false);
+	if (ret)
+		goto free_col_matcher;
+
+	ret = mlx5dr_matcher_create_and_connect(col_matcher);
+	if (ret)
+		goto free_col_matcher;
+
+	matcher->col_matcher = col_matcher;
+
+	return 0;
+
+free_col_matcher:
+	simple_free(col_matcher);
+	DR_LOG(ERR, "Failed to create assured collision matcher");
+	return ret;
+}
+
+static void
+mlx5dr_matcher_destroy_col_matcher(struct mlx5dr_matcher *matcher)
+{
+	if (matcher->attr.mode != MLX5DR_MATCHER_RESOURCE_MODE_RULE)
+		return;
+
+	mlx5dr_matcher_destroy_and_disconnect(matcher->col_matcher);
+	simple_free(matcher->col_matcher);
+}
+
+static int mlx5dr_matcher_init(struct mlx5dr_matcher *matcher)
+{
+	struct mlx5dr_context *ctx = matcher->tbl->ctx;
+	int ret;
+
+	pthread_spin_lock(&ctx->ctrl_lock);
+
+	/* Allocate matcher resource and connect to the packet pipe */
+	ret = mlx5dr_matcher_create_and_connect(matcher);
+	if (ret)
+		goto unlock_err;
+
+	/* Create addtional matcher for collision handling */
+	ret = mlx5dr_matcher_create_col_matcher(matcher);
+	if (ret)
+		goto destory_and_disconnect;
+
+	pthread_spin_unlock(&ctx->ctrl_lock);
+
+	return 0;
+
+destory_and_disconnect:
+	mlx5dr_matcher_destroy_and_disconnect(matcher);
 unlock_err:
 	pthread_spin_unlock(&ctx->ctrl_lock);
 	return ret;
@@ -349,10 +490,8 @@ static int mlx5dr_matcher_uninit(struct mlx5dr_matcher *matcher)
 	struct mlx5dr_context *ctx = matcher->tbl->ctx;
 
 	pthread_spin_lock(&ctx->ctrl_lock);
-	mlx5dr_matcher_disconnect(matcher);
-	mlx5dr_matcher_destroy_rtc(matcher);
-	mlx5dr_matcher_destroy_end_ft(matcher);
-	mlx5dr_matcher_unbind_mt(matcher);
+	mlx5dr_matcher_destroy_col_matcher(matcher);
+	mlx5dr_matcher_destroy_and_disconnect(matcher);
 	pthread_spin_unlock(&ctx->ctrl_lock);
 
 	return 0;
@@ -469,46 +608,6 @@ mlx5dr_matcher_check_template(uint8_t num_of_mt, bool is_root)
 	return 0;
 }
 
-static int
-mlx5dr_macther_check_attr(struct mlx5dr_cmd_query_caps *caps,
-			  struct mlx5dr_matcher_attr *attr,
-			  bool is_root)
-{
-	if (is_root) {
-		if (attr->sz_hint_row_log || attr->sz_hint_col_log) {
-			DR_LOG(ERR, "Root matcher doesn't support non zero hint value");
-			goto not_supported;
-		}
-		return 0;
-	}
-
-	if (attr->sz_hint_col_log > caps->rtc_log_depth_max) {
-		DR_LOG(ERR, "Matcher depth exceeds limit %d", caps->rtc_log_depth_max);
-		goto not_supported;
-	}
-
-	if (attr->sz_hint_col_log + attr->sz_hint_row_log > caps->ste_alloc_log_max) {
-		DR_LOG(ERR, "Total matcher size exceeds limit %d", caps->ste_alloc_log_max);
-		goto not_supported;
-	}
-
-	if (attr->sz_hint_col_log + attr->sz_hint_row_log < caps->ste_alloc_log_gran) {
-		DR_LOG(ERR, "Total matcher size below limit %d", caps->ste_alloc_log_gran);
-		goto not_supported;
-	}
-
-	if (attr->insertion_mode != MLX5DR_MATCHER_INSERTION_MODE_BEST_EFFORT) {
-		DR_LOG(ERR, "HWS Matcher only supports best effort mode");
-		goto not_supported;
-	}
-
-	return 0;
-
-not_supported:
-	rte_errno = EOPNOTSUPP;
-	return rte_errno;
-}
-
 struct mlx5dr_matcher *
 mlx5dr_matcher_create(struct mlx5dr_table *tbl,
 		      struct mlx5dr_match_template *mt[],
@@ -523,10 +622,6 @@ mlx5dr_matcher_create(struct mlx5dr_table *tbl,
 	if (ret)
 		return NULL;
 
-	ret = mlx5dr_macther_check_attr(tbl->ctx->caps, attr, is_root);
-	if (ret)
-		return NULL;
-
 	matcher = simple_calloc(1, sizeof(*matcher));
 	if (!matcher) {
 		rte_errno = ENOMEM;
@@ -537,6 +632,10 @@ mlx5dr_matcher_create(struct mlx5dr_table *tbl,
 	matcher->attr = *attr;
 	matcher->num_of_mt = num_of_mt;
 	memcpy(matcher->mt, mt, num_of_mt * sizeof(*mt));
+
+	ret = mlx5dr_matcher_process_attr(tbl->ctx->caps, &matcher->attr, is_root);
+	if (ret)
+		goto free_matcher;
 
 	if (is_root)
 		ret = mlx5dr_matcher_init_root(matcher);

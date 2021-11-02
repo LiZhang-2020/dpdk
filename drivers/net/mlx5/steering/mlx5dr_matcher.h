@@ -9,6 +9,21 @@
 #define MLX5DR_MATCHER_MAX_MT 2
 #define MLX5DR_MATCHER_MAX_MT_ROOT 1
 
+/* We calculated that concatenating a collision table to the main table with
+ * 3% of the main table rows will be enough resources for high insertion
+ * success probabilty.
+ *
+ * The calculation: log2( 2^x * 3 / 100) = log(2^x) + log(3/100) = x - 5.05 ~ 5
+ */
+#define MLX5DR_MATCHER_ASSURED_ROW_RATIO 5
+/* Thrashold to determine if amount of rules require a collision table */
+#define MLX5DR_MATCHER_ASSURED_RULES_TH 10
+/* Required depth of an assured collision table */
+// TODO Should be 4, but current HW doesn't support
+#define MLX5DR_MATCHER_ASSURED_COL_TBL_DEPTH 3
+/* Required depth of the main large table */
+#define MLX5DR_MATCHER_ASSURED_MAIN_TBL_DEPTH 2
+
 struct mlx5dr_match_template {
 	struct rte_flow_item *items;
 	struct mlx5dr_definer *definer;
@@ -32,6 +47,7 @@ struct mlx5dr_matcher {
 	struct mlx5dr_devx_obj *end_ft;
 	struct mlx5dr_matcher_nic rx;
 	struct mlx5dr_matcher_nic tx;
+	struct mlx5dr_matcher *col_matcher;
 	LIST_ENTRY(mlx5dr_matcher) next;
 };
 
