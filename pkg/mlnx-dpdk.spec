@@ -87,6 +87,32 @@ for fast packet processing on x86 platforms.
 %prep
 %setup -q
 MASON_PARAMS=%{?mason_params}
+ENABLED_DRVS="bus/pci,bus/auxiliary,bus/vdev"
+ENABLED_DRVS="mempool/bucket,mempool/stack,mempool/ring,$ENABLED_DRVS"
+ENABLED_DRVS="common/mlx5,$ENABLED_DRVS"
+ENABLED_DRVS="net/mlx5,net/vhost,net/virtio,net/af_packet,$ENABLED_DRVS"
+ENABLED_DRVS="vdpa/mlx5,compress/mlx5,regex/mlx5,$ENABLED_DRVS"
+ENABLED_DRVS="gpu/cuda,$ENABLED_DRVS"
+disable_drivers () {
+	enabled_drvs=$1
+	types=$(ls -d drivers/*/)
+	for t in $types; do
+		drivers=$(ls -d "$t"*/)
+		for d in $drivers; do
+			enable="False"
+			OIFS=$IFS; IFS=','
+			for e in $enabled_drvs; do
+				if [ -z "${d##*"$e"*}" ]; then enable="True"; fi
+			done
+			IFS=$OIFS
+			if [ "$enable" = "False" ]; then
+				disabled="$(printf '%s' "$d" | cut -d'/' -f2-),$disabled"
+			fi
+		done
+	done
+	printf '%s' "$disabled"
+}
+DISABLED_DRVS=$(disable_drivers "$ENABLED_DRVS")
 
 %if %{with bluefield}
 MASON_PARAMS="$MASON_PARAMS --cross-file config/arm/arm64_bluefield_linux_native_gcc"
@@ -99,7 +125,7 @@ MACHINE=default
 %endif
 %endif
 
-CFLAGS="$CFLAGS -fcommon -Werror" meson %{target} -Dprefix=/opt/mellanox/dpdk --includedir=include/dpdk -Dmachine=$MACHINE -Dmax_ethports=1024 -Ddisable_drivers=vdpa/ifc,net/txgbe,event/octeontx2,mempool/octeontx2,regex/octeontx2,net/mlx4 -Dtests=false -Ddrivers_install_subdir=dpdk/pmds --default-library=shared $MASON_PARAMS
+CFLAGS="$CFLAGS -fcommon -Werror" meson %{target} -Dprefix=/opt/mellanox/dpdk --includedir=include/dpdk -Dmachine=$MACHINE -Dmax_ethports=1024 -Ddisable_drivers=$DISABLED_DRVS -Dtests=false -Ddrivers_install_subdir=dpdk/pmds --default-library=shared $MASON_PARAMS
 
 %build
 %{__ninja} -v -C %{target}
