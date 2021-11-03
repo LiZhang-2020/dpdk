@@ -9,13 +9,13 @@
 #define BIG_LOOP 100
 #define MAX_ITEMS 10
 #define QUEUE_SIZE 1024
-#define NUM_OF_RULES (1 << 22)
+#define COL_LOG 0 // not used
+#define ROW_LOG 21
+#define NUM_OF_RULES (1 << ROW_LOG)
 #define BURST_TH (32)
 #define NUM_CORES 8
 #define QUEUE_PER_CORE 4
 #define NUM_OF_QUEUES (QUEUE_PER_CORE * NUM_CORES)
-#define COL_LOG 0
-#define ROW_LOG 22
 
 struct queue_info {
 	uint32_t queue_id;
@@ -409,9 +409,8 @@ int run_test_rule_insert_mult(struct ibv_context *ibv_ctx)
 
 	/* Create HWS matcher1 */
 	matcher_attr.priority = 0;
-	matcher_attr.insertion_mode = MLX5DR_MATCHER_INSERTION_MODE_BEST_EFFORT;
-	matcher_attr.sz_hint_col_log = COL_LOG;
-	matcher_attr.sz_hint_row_log = ROW_LOG;
+	matcher_attr.mode = MLX5DR_MATCHER_RESOURCE_MODE_RULE;
+	matcher_attr.rule.num_log = ROW_LOG;
 	hws_matcher1 = mlx5dr_matcher_create(hws_tbl, &mt, 1, &matcher_attr);
 	if (!hws_matcher1) {
 		printf("Failed to create HWS matcher 1\n");
@@ -420,9 +419,8 @@ int run_test_rule_insert_mult(struct ibv_context *ibv_ctx)
 
 	/* Create HWS matcher2 */
 	matcher_attr.priority = 2;
-	matcher_attr.insertion_mode = MLX5DR_MATCHER_INSERTION_MODE_BEST_EFFORT;
-	matcher_attr.sz_hint_col_log = COL_LOG;
-	matcher_attr.sz_hint_row_log = ROW_LOG;
+	matcher_attr.mode = MLX5DR_MATCHER_RESOURCE_MODE_RULE;
+	matcher_attr.rule.num_log = ROW_LOG;
 	hws_matcher2 = mlx5dr_matcher_create(hws_tbl, &mt, 1, &matcher_attr);
 	if (!hws_matcher2) {
 		printf("Failed to create HWS matcher 2\n");
@@ -431,9 +429,8 @@ int run_test_rule_insert_mult(struct ibv_context *ibv_ctx)
 
 	/* Create HWS matcher3 */
 	matcher_attr.priority = 3;
-	matcher_attr.insertion_mode = MLX5DR_MATCHER_INSERTION_MODE_BEST_EFFORT;
-	matcher_attr.sz_hint_col_log = COL_LOG;
-	matcher_attr.sz_hint_row_log = ROW_LOG;
+	matcher_attr.mode = MLX5DR_MATCHER_RESOURCE_MODE_RULE;
+	matcher_attr.rule.num_log = ROW_LOG;
 	hws_matcher3 = mlx5dr_matcher_create(hws_tbl, &mt, 1, &matcher_attr);
 	if (!hws_matcher3) {
 		printf("Failed to create HWS matcher 3\n");
@@ -442,9 +439,8 @@ int run_test_rule_insert_mult(struct ibv_context *ibv_ctx)
 
 	/* Create HWS matcher4 */
 	matcher_attr.priority = 4;
-	matcher_attr.insertion_mode = MLX5DR_MATCHER_INSERTION_MODE_BEST_EFFORT;
-	matcher_attr.sz_hint_col_log = COL_LOG;
-	matcher_attr.sz_hint_row_log = ROW_LOG;
+	matcher_attr.mode = MLX5DR_MATCHER_RESOURCE_MODE_RULE;
+	matcher_attr.rule.num_log = ROW_LOG;
 	hws_matcher4 = mlx5dr_matcher_create(hws_tbl, &mt, 1, &matcher_attr);
 	if (!hws_matcher4) {
 		printf("Failed to create HWS matcher 4\n");
@@ -453,9 +449,8 @@ int run_test_rule_insert_mult(struct ibv_context *ibv_ctx)
 
 	/* Create HWS matcher5 */
 	matcher_attr.priority = 5;
-	matcher_attr.insertion_mode = MLX5DR_MATCHER_INSERTION_MODE_BEST_EFFORT;
-	matcher_attr.sz_hint_col_log = COL_LOG;
-	matcher_attr.sz_hint_row_log = ROW_LOG;
+	matcher_attr.mode = MLX5DR_MATCHER_RESOURCE_MODE_RULE;
+	matcher_attr.rule.num_log = ROW_LOG;
 	hws_matcher5 = mlx5dr_matcher_create(hws_tbl, &mt, 1, &matcher_attr);
 	if (!hws_matcher5) {
 		printf("Failed to create HWS matcher 5\n");
@@ -464,9 +459,8 @@ int run_test_rule_insert_mult(struct ibv_context *ibv_ctx)
 
 	/* Create HWS matcher6 */
 	matcher_attr.priority = 6;
-	matcher_attr.insertion_mode = MLX5DR_MATCHER_INSERTION_MODE_BEST_EFFORT;
-	matcher_attr.sz_hint_col_log = COL_LOG;
-	matcher_attr.sz_hint_row_log = ROW_LOG;
+	matcher_attr.mode = MLX5DR_MATCHER_RESOURCE_MODE_RULE;
+	matcher_attr.rule.num_log = ROW_LOG;
 	hws_matcher6 = mlx5dr_matcher_create(hws_tbl, &mt, 1, &matcher_attr);
 	if (!hws_matcher6) {
 		printf("Failed to create HWS matcher 6\n");
@@ -475,9 +469,8 @@ int run_test_rule_insert_mult(struct ibv_context *ibv_ctx)
 
 	/* Create HWS matcher7 */
 	matcher_attr.priority = 7;
-	matcher_attr.insertion_mode = MLX5DR_MATCHER_INSERTION_MODE_BEST_EFFORT;
-	matcher_attr.sz_hint_col_log = COL_LOG;
-	matcher_attr.sz_hint_row_log = ROW_LOG;
+	matcher_attr.mode = MLX5DR_MATCHER_RESOURCE_MODE_RULE;
+	matcher_attr.rule.num_log = ROW_LOG;
 	hws_matcher7 = mlx5dr_matcher_create(hws_tbl, &mt, 1, &matcher_attr);
 	if (!hws_matcher7) {
 		printf("Failed to create HWS matcher 7\n");
@@ -486,9 +479,8 @@ int run_test_rule_insert_mult(struct ibv_context *ibv_ctx)
 
 	/* Create HWS matcher8 */
 	matcher_attr.priority = 8;
-	matcher_attr.insertion_mode = MLX5DR_MATCHER_INSERTION_MODE_BEST_EFFORT;
-	matcher_attr.sz_hint_col_log = COL_LOG;
-	matcher_attr.sz_hint_row_log = ROW_LOG;
+	matcher_attr.mode = MLX5DR_MATCHER_RESOURCE_MODE_RULE;
+	matcher_attr.rule.num_log = ROW_LOG;
 	hws_matcher8 = mlx5dr_matcher_create(hws_tbl, &mt, 1, &matcher_attr);
 	if (!hws_matcher8) {
 		printf("Failed to create HWS matcher 8\n");

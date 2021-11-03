@@ -10,7 +10,7 @@
 #define MAX_ITEMS 10
 #define QUEUE_SIZE 256
 #define NUM_OF_RULES (QUEUE_SIZE * 3906) // Almost 1M
-#define BURST_TH (QUEUE_SIZE / 8)
+#define BURST_TH (32)
 
 static int poll_for_comp(struct mlx5dr_context *ctx,
 			 uint16_t queue_id,
@@ -231,7 +231,7 @@ int run_test_rule_insert(struct ibv_context *ibv_ctx)
 
 	/* Create root matcher */
 	matcher_attr.priority = 0;
-	matcher_attr.insertion_mode = MLX5DR_MATCHER_INSERTION_MODE_ASSURED;
+	matcher_attr.mode = MLX5DR_MATCHER_RESOURCE_MODE_RULE;
 	root_matcher = mlx5dr_matcher_create(root_tbl, &mt_root, 1, &matcher_attr);
 	if (!root_matcher) {
 		printf("Failed to create root matcher\n");
@@ -254,9 +254,8 @@ int run_test_rule_insert(struct ibv_context *ibv_ctx)
 
 	/* Create HWS matcher1 */
 	matcher_attr.priority = 0;
-	matcher_attr.insertion_mode = MLX5DR_MATCHER_INSERTION_MODE_BEST_EFFORT;
-	matcher_attr.sz_hint_col_log = 0;
-	matcher_attr.sz_hint_row_log = 22;
+	matcher_attr.mode = MLX5DR_MATCHER_RESOURCE_MODE_RULE;
+	matcher_attr.rule.num_log = 22;
 	hws_matcher1 = mlx5dr_matcher_create(hws_tbl, &mt, 1, &matcher_attr);
 	if (!hws_matcher1) {
 		printf("Failed to create HWS matcher 1\n");
