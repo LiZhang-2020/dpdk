@@ -267,13 +267,13 @@ ipv4_hdr_cksum(struct rte_ipv4_hdr *ip_h)
 	(((rte_be_to_cpu_32((ipv4_addr)) >> 24) & 0x000000FF) == 0xE0)
 
 /*
- * Lookup for ICMP echo requests in received mbuf and, if any,
- * send back ICMP echo replies to corresponding Tx port.
+ * Receive a burst of packets, lookup for ICMP echo requests, and, if any,
+ * send back ICMP echo replies.
  */
 static void
-reply_to_icmp_echo_rqsts_stream(struct fwd_stream *fs, uint16_t nb_rx,
-		struct rte_mbuf **pkts_burst)
+reply_to_icmp_echo_rqsts(struct fwd_stream *fs)
 {
+	struct rte_mbuf *pkts_burst[MAX_PKT_BURST];
 	struct rte_mbuf *pkt;
 	struct rte_ether_hdr *eth_h;
 	struct rte_vlan_hdr *vlan_h;
@@ -283,6 +283,7 @@ reply_to_icmp_echo_rqsts_stream(struct fwd_stream *fs, uint16_t nb_rx,
 	struct rte_ether_addr eth_addr;
 	uint32_t retry;
 	uint32_t ip_addr;
+	uint16_t nb_rx;
 	uint16_t nb_tx;
 	uint16_t nb_replies;
 	uint16_t eth_type;
@@ -290,9 +291,22 @@ reply_to_icmp_echo_rqsts_stream(struct fwd_stream *fs, uint16_t nb_rx,
 	uint16_t arp_op;
 	uint16_t arp_pro;
 	uint32_t cksum;
-	uint16_t  i;
+	uint8_t  i;
 	int l2_len;
+	uint64_t start_tsc = 0;
 
+	get_start_cycles(&start_tsc);
+
+	/*
+	 * First, receive a burst of packets.
+	 */
+	nb_rx = rte_eth_rx_burst(fs->rx_port, fs->rx_queue, pkts_burst,
+				 nb_pkt_per_burst);
+	inc_rx_burst_stats(fs, nb_rx);
+	if (unlikely(nb_rx == 0))
+		return;
+
+	fs->rx_packets += nb_rx;
 	nb_replies = 0;
 	for (i = 0; i < nb_rx; i++) {
 		if (likely(i < nb_rx - 1))
@@ -495,15 +509,8 @@ reply_to_icmp_echo_rqsts_stream(struct fwd_stream *fs, uint16_t nb_rx,
 			} while (++nb_tx < nb_replies);
 		}
 	}
-}
 
-/*
- * Wrapper of real fwd engine.
- */
-static void
-reply_to_icmp_echo_rqsts(struct fwd_stream *fs)
-{
-	return do_burst_fwd(fs, reply_to_icmp_echo_rqsts_stream);
+	get_end_cycles(fs, start_tsc);
 }
 
 struct fwd_engine icmp_echo_engine = {
