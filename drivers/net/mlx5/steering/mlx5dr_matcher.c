@@ -114,14 +114,19 @@ remove_from_list:
 static int mlx5dr_matcher_disconnect(struct mlx5dr_matcher *matcher)
 {
 	struct mlx5dr_cmd_ft_modify_attr ft_attr = {0};
+	struct mlx5dr_table *tbl = matcher->tbl;
+	struct mlx5dr_matcher *tmp_matcher;
 	struct mlx5dr_devx_obj *prev_ft;
 	struct mlx5dr_matcher *next;
 	int ret;
 
-	if (LIST_FIRST(&matcher->tbl->head) == matcher)
-		prev_ft = matcher->tbl->ft;
-	else
-		prev_ft = (*matcher->next.le_prev)->end_ft;
+	prev_ft = matcher->tbl->ft;
+	LIST_FOREACH(tmp_matcher, &tbl->head, next) {
+		if (tmp_matcher == matcher)
+			break;
+
+		prev_ft = tmp_matcher->end_ft;
+	}
 
 	next = matcher->next.le_next;
 
