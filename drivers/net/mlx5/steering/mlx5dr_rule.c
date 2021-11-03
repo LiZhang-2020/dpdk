@@ -57,6 +57,12 @@ static int mlx5dr_rule_create_hws(struct mlx5dr_rule *rule,
 	dep_wqe->rule = rule;
 	dep_wqe->user_data = attr->user_data;
 	dep_wqe->rtc_id = is_rx ? matcher->rx.rtc->id : matcher->tx.rtc->id;
+	if (matcher->col_matcher) {
+		dep_wqe->col_rtc_id = is_rx ? matcher->col_matcher->rx.rtc->id :
+			matcher->col_matcher->tx.rtc->id;
+	} else {
+		dep_wqe->col_rtc_id = 0;
+	}
 
 	/* Apply action on */
 	mlx5dr_actions_quick_apply(queue, rule,
@@ -158,7 +164,7 @@ static int mlx5dr_rule_destroy_hws(struct mlx5dr_rule *rule,
 	send_attr.notify_hw = !attr->burst;
 	send_attr.fence = 0;
 	send_attr.user_data = attr->user_data;
-	send_attr.id = rule->matcher->rx.rtc->id;
+	send_attr.id = rule->rtc_used;
 
 	mlx5dr_send_engine_post_end(&ctrl, &send_attr);
 

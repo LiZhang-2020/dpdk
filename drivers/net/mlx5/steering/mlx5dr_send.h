@@ -82,6 +82,7 @@ struct mlx5dr_send_ring_priv {
 	struct mlx5dr_rule *rule;
 	void *user_data;
 	uint32_t num_wqebbs;
+	uint32_t backup_id;
 };
 
 struct mlx5dr_send_ring_dep_wqe {
@@ -89,6 +90,7 @@ struct mlx5dr_send_ring_dep_wqe {
 	struct mlx5dr_wqe_gta_data_seg_ste wqe_data;
 	struct mlx5dr_rule *rule;
 	uint32_t rtc_id;
+	uint32_t col_rtc_id;
 	void *user_data;
 };
 
@@ -149,6 +151,7 @@ struct mlx5dr_send_engine_post_attr {
 	size_t len;
 	struct mlx5dr_rule *rule;
 	uint32_t id;
+	uint32_t backup_id;
 	void *user_data;
 	uint8_t notify_hw;
 	uint8_t fence;

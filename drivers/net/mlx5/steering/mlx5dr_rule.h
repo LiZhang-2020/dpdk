@@ -27,6 +27,7 @@ struct mlx5dr_rule {
 	};
 	enum mlx5dr_rule_status status;
 	uint8_t wait_on_wqes; // TODO see if can be moved out of mlx5dr_rule struct
+	uint32_t rtc_used; /* The RTC into which the STE was inserted */
 };
 
 #endif

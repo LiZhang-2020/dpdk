@@ -48,6 +48,7 @@ int mlx5dr_send_all_dep_wqe(struct mlx5dr_send_engine *queue)
 		send_attr.notify_hw = (send_sq->tail_dep_idx == send_sq->head_dep_idx);
 		send_attr.user_data = dep_wqe->user_data;
 		send_attr.id = dep_wqe->rtc_id;
+		send_attr.backup_id = dep_wqe->col_rtc_id;
 
 		mlx5dr_send_engine_post_end(&ctrl, &send_attr);
 
@@ -131,12 +132,61 @@ void mlx5dr_send_engine_post_end(struct mlx5dr_send_engine_post_ctrl *ctrl,
 	sq->wr_priv[idx].rule = attr->rule;
 	attr->rule->wait_on_wqes++;
 	sq->wr_priv[idx].user_data = attr->user_data;
+	if (attr->user_data)
+		attr->rule->rtc_used = attr->id;
+	sq->wr_priv[idx].backup_id = attr->backup_id;
 	sq->wr_priv[idx].num_wqebbs = ctrl->num_wqebbs;
 
 	sq->cur_post += ctrl->num_wqebbs;
 
 	if (attr->notify_hw)
 		mlx5dr_send_engine_post_ring(sq, ctrl->queue->uar, wqe_ctrl);
+}
+
+static void mlx5dr_send_engine_retry_post_send(struct mlx5dr_send_engine *queue,
+					       struct mlx5dr_send_ring_priv *priv,
+					       uint16_t wqe_cnt)
+{
+	struct mlx5dr_send_engine_post_attr send_attr = {0};
+	struct mlx5dr_wqe_gta_data_seg_ste *wqe_data;
+	struct mlx5dr_wqe_gta_ctrl_seg *wqe_ctrl;
+	struct mlx5dr_send_engine_post_ctrl ctrl;
+	struct mlx5dr_send_ring_sq *send_sq;
+	unsigned int idx;
+	size_t wqe_len;
+	char *p;
+
+	send_attr.rule = priv->rule;
+	send_attr.opcode = MLX5DR_WQE_OPCODE_TBL_ACCESS;
+	send_attr.opmod = MLX5DR_WQE_GTA_OPMOD_STE;
+	send_attr.len = MLX5_SEND_WQE_BB * 2 - sizeof(struct mlx5dr_wqe_ctrl_seg);
+	send_attr.notify_hw = 1;
+	send_attr.fence = 0;
+	send_attr.user_data = priv->user_data;
+	send_attr.id = priv->backup_id;
+
+	priv->rule->status = MLX5DR_RULE_STATUS_CREATING;
+	priv->rule->wait_on_wqes = 0;
+
+	ctrl = mlx5dr_send_engine_post_start(queue);
+	mlx5dr_send_engine_post_req_wqe(&ctrl, (void *)&wqe_ctrl, &wqe_len);
+	mlx5dr_send_engine_post_req_wqe(&ctrl, (void *)&wqe_data, &wqe_len);
+
+	send_sq = &ctrl.send_ring->send_sq;
+	idx = wqe_cnt & send_sq->buf_mask;
+	p = send_sq->buf + (idx << MLX5_SEND_WQE_SHIFT);
+
+	/* Copy old gta ctrl */
+	memcpy(wqe_ctrl, p + sizeof(struct mlx5dr_wqe_ctrl_seg),
+	       MLX5_SEND_WQE_BB - sizeof(struct mlx5dr_wqe_ctrl_seg));
+
+	idx = (wqe_cnt + 1) & send_sq->buf_mask;
+	p = send_sq->buf + (idx << MLX5_SEND_WQE_SHIFT);
+
+	/* Copy old gta data */
+	memcpy(wqe_data, p, MLX5_SEND_WQE_BB);
+
+	mlx5dr_send_engine_post_end(&ctrl, &send_attr);
 }
 
 void mlx5dr_send_engine_flush_queue(struct mlx5dr_send_engine *queue)
@@ -156,7 +206,8 @@ static void mlx5dr_send_engine_update_rule(struct mlx5dr_send_engine *queue,
 					   struct mlx5dr_send_ring_priv *priv,
 					   struct rte_flow_q_op_res res[],
 					   int64_t *i,
-					   uint32_t res_nb)
+					   uint32_t res_nb,
+					   uint16_t wqe_cnt)
 {
 
 	enum rte_flow_q_op_res_status status;
@@ -177,7 +228,11 @@ static void mlx5dr_send_engine_update_rule(struct mlx5dr_send_engine *queue,
 		    !priv->rule->wait_on_wqes) {
 			priv->rule->status++;
 		} else {
-			priv->rule->status = MLX5DR_RULE_STATUS_FAILED;
+			if (priv->backup_id) {
+				mlx5dr_send_engine_retry_post_send(queue, priv, wqe_cnt);
+				return;
+                        }
+                        priv->rule->status = MLX5DR_RULE_STATUS_FAILED;
 			status = RTE_FLOW_Q_OP_RES_ERROR;
 		}
 
@@ -227,13 +282,13 @@ static void mlx5dr_send_engine_poll_cq(struct mlx5dr_send_engine *queue,
 
 	while (cq->poll_wqe != wqe_cnt) {
 		priv = &sq->wr_priv[cq->poll_wqe];
-		mlx5dr_send_engine_update_rule(queue, NULL, priv, res, i, res_nb);
+		mlx5dr_send_engine_update_rule(queue, NULL, priv, res, i, res_nb, 0);
 		cq->poll_wqe = (cq->poll_wqe + priv->num_wqebbs) & sq->buf_mask;
 	}
 
 	priv = &sq->wr_priv[wqe_cnt];
 	cq->poll_wqe = (wqe_cnt + priv->num_wqebbs) & sq->buf_mask;
-	mlx5dr_send_engine_update_rule(queue, cqe, priv, res, i, res_nb);
+	mlx5dr_send_engine_update_rule(queue, cqe, priv, res, i, res_nb, wqe_cnt);
 	cq->cons_index++;
 }
 
