@@ -123,12 +123,6 @@ mlx5_mb2mp(struct rte_mbuf *buf)
 	return buf->pool;
 }
 
-__rte_internal
-uint32_t mlx5_mr_mb2mr_bh(struct mlx5_mr_ctrl *mr_ctrl, struct rte_mbuf *mbuf,
-			  struct mlx5_mp_id *mp_id);
-__rte_internal
-void mlx5_mr_flush_local_cache(struct mlx5_mr_ctrl *mr_ctrl);
-
 /**
  * Look up LKey from given lookup table by linear search. Firstly look up the
  * last-hit entry. If miss, the entire array is searched. If found, update the
@@ -166,6 +160,24 @@ mlx5_mr_lookup_lkey(struct mr_cache_entry *lkp_tbl, uint16_t *cached_idx,
 	return UINT32_MAX;
 }
 
+__rte_internal
+void mlx5_mr_flush_local_cache(struct mlx5_mr_ctrl *mr_ctrl);
+
+/**
+ * Bottom-half of LKey search on. If supported, lookup for the address from
+ * the mempool. Otherwise, search in old mechanism caches.
+ *
+ * @param mr_ctrl
+ *   Pointer to per-queue MR control structure.
+ * @param mb
+ *   Pointer to mbuf.
+ *
+ * @return
+ *   Searched LKey on success, UINT32_MAX on no match.
+ */
+__rte_internal
+uint32_t mlx5_mr_mb2mr_bh(struct mlx5_mr_ctrl *mr_ctrl, struct rte_mbuf *mbuf);
+
 /**
  * Query LKey from a packet buffer.
  *
@@ -173,15 +185,12 @@ mlx5_mr_lookup_lkey(struct mr_cache_entry *lkp_tbl, uint16_t *cached_idx,
  *   Pointer to per-queue MR control structure.
  * @param mbuf
  *   Pointer to mbuf.
- * @param mp_id
- *   Multi-process identifier, may be NULL for the primary process.
  *
  * @return
  *   Searched LKey on success, UINT32_MAX on no match.
  */
 static __rte_always_inline uint32_t
-mlx5_mr_mb2mr(struct mlx5_mr_ctrl *mr_ctrl, struct rte_mbuf *mbuf,
-	      struct mlx5_mp_id *mp_id)
+mlx5_mr_mb2mr(struct mlx5_mr_ctrl *mr_ctrl, struct rte_mbuf *mbuf)
 {
 	uint32_t lkey;
 
@@ -194,7 +203,7 @@ mlx5_mr_mb2mr(struct mlx5_mr_ctrl *mr_ctrl, struct rte_mbuf *mbuf,
 	if (likely(lkey != UINT32_MAX))
 		return lkey;
 	/* Take slower bottom-half on miss. */
-	return mlx5_mr_mb2mr_bh(mr_ctrl, mbuf, mp_id);
+	return mlx5_mr_mb2mr_bh(mr_ctrl, mbuf);
 }
 
 /* mlx5_common_mr.c */
@@ -225,10 +234,9 @@ mlx5_create_mr_ext(void *pd, uintptr_t addr, size_t len, int socket_id,
 void mlx5_mr_free(struct mlx5_mr *mr, mlx5_dereg_mr_t dereg_mr_cb);
 __rte_internal
 uint32_t
-mlx5_mr_create_primary(void *pd,
-		       struct mlx5_mr_share_cache *share_cache,
-		       struct mr_cache_entry *entry, uintptr_t addr,
-		       unsigned int mr_ext_memseg_en);
+mlx5_mr_create(struct mlx5_common_device *cdev,
+	       struct mlx5_mr_share_cache *share_cache,
+	       struct mr_cache_entry *entry, uintptr_t addr);
 
 /* mlx5_common_verbs.c */
 
@@ -245,11 +253,11 @@ mlx5_os_set_reg_mr_cb(mlx5_reg_mr_t *reg_mr_cb, mlx5_dereg_mr_t *dereg_mr_cb);
 
 __rte_internal
 int
-mlx5_mr_mempool_register(struct mlx5_mr_share_cache *share_cache, void *pd,
-			 struct rte_mempool *mp, struct mlx5_mp_id *mp_id);
+mlx5_mr_mempool_register(struct mlx5_common_device *cdev,
+			 struct rte_mempool *mp);
 __rte_internal
 int
-mlx5_mr_mempool_unregister(struct mlx5_mr_share_cache *share_cache,
-			   struct rte_mempool *mp, struct mlx5_mp_id *mp_id);
+mlx5_mr_mempool_unregister(struct mlx5_common_device *cdev,
+			   struct rte_mempool *mp);
 
 #endif /* RTE_PMD_MLX5_COMMON_MR_H_ */

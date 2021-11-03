@@ -607,11 +607,7 @@ mlx5_rx_mb2mr(struct mlx5_rxq_data *rxq, struct rte_mbuf *mb)
 static __rte_always_inline uint32_t
 mlx5_tx_mb2mr(struct mlx5_txq_data *txq, struct rte_mbuf *mb)
 {
-	struct mlx5_txq_ctrl *txq_ctrl =
-			container_of(txq, struct mlx5_txq_ctrl, txq);
-
-	/* Take slower bottom-half on miss. */
-	return mlx5_mr_mb2mr(&txq->mr_ctrl, mb, &txq_ctrl->priv->mp_id);
+	return mlx5_mr_mb2mr(&txq->mr_ctrl, mb);
 }
 
 /**

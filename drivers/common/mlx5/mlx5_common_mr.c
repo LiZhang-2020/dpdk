@@ -589,10 +589,8 @@ mr_find_contig_memsegs_cb(const struct rte_memseg_list *msl,
  * list is on the shared memory, following LKey lookup should succeed unless the
  * request fails.
  *
- * @param pd
- *   Pointer to pd of a device (net, regex, vdpa,...).
- * @param mp_id
- *   Multi-process identifier, may be NULL for the primary process.
+ * @param cdev
+ *   Pointer to the mlx5 common device.
  * @param share_cache
  *   Pointer to a global shared MR cache.
  * @param[out] entry
@@ -600,28 +598,19 @@ mr_find_contig_memsegs_cb(const struct rte_memseg_list *msl,
  *   created. If failed to create one, this will not be updated.
  * @param addr
  *   Target virtual address to register.
- * @param mr_ext_memseg_en
- *   Configurable flag about external memory segment enable or not.
  *
  * @return
  *   Searched LKey on success, UINT32_MAX on failure and rte_errno is set.
  */
 static uint32_t
-mlx5_mr_create_secondary(void *pd __rte_unused,
-			 struct mlx5_mp_id *mp_id,
+mlx5_mr_create_secondary(struct mlx5_common_device *cdev,
 			 struct mlx5_mr_share_cache *share_cache,
-			 struct mr_cache_entry *entry, uintptr_t addr,
-			 unsigned int mr_ext_memseg_en __rte_unused)
+			 struct mr_cache_entry *entry, uintptr_t addr)
 {
 	int ret;
 
-	if (mp_id == NULL) {
-		rte_errno = EINVAL;
-		return UINT32_MAX;
-	}
-	DRV_LOG(DEBUG, "port %u requesting MR creation for address (%p)",
-	      mp_id->port_id, (void *)addr);
-	ret = mlx5_mp_req_mr_create(mp_id, addr);
+	DRV_LOG(DEBUG, "Requesting MR creation for address (%p)", (void *)addr);
+	ret = mlx5_mp_req_mr_create(cdev, addr);
 	if (ret) {
 		DEBUG("Fail to request MR creation for address (%p)",
 		      (void *)addr);
@@ -658,7 +647,7 @@ mlx5_mr_create_secondary(void *pd __rte_unused,
  * @return
  *   Searched LKey on success, UINT32_MAX on failure and rte_errno is set.
  */
-uint32_t
+static uint32_t
 mlx5_mr_create_primary(void *pd,
 		       struct mlx5_mr_share_cache *share_cache,
 		       struct mr_cache_entry *entry, uintptr_t addr,
@@ -885,10 +874,8 @@ err_nolock:
  * Create a new global Memory Region (MR) for a missing virtual address.
  * This can be called from primary and secondary process.
  *
- * @param pd
- *   Pointer to pd handle of a device (net, regex, vdpa,...).
- * @param mp_id
- *   Multi-process identifier, may be NULL for the primary process.
+ * @param cdev
+ *   Pointer to the mlx5 common device.
  * @param share_cache
  *   Pointer to a global shared MR cache.
  * @param[out] entry
@@ -896,28 +883,24 @@ err_nolock:
  *   created. If failed to create one, this will not be updated.
  * @param addr
  *   Target virtual address to register.
- * @param mr_ext_memseg_en
- *   Configurable flag about external memory segment enable or not.
  *
  * @return
  *   Searched LKey on success, UINT32_MAX on failure and rte_errno is set.
  */
-static uint32_t
-mlx5_mr_create(void *pd, struct mlx5_mp_id *mp_id,
+uint32_t
+mlx5_mr_create(struct mlx5_common_device *cdev,
 	       struct mlx5_mr_share_cache *share_cache,
-	       struct mr_cache_entry *entry, uintptr_t addr,
-	       unsigned int mr_ext_memseg_en)
+	       struct mr_cache_entry *entry, uintptr_t addr)
 {
 	uint32_t ret = 0;
 
 	switch (rte_eal_process_type()) {
 	case RTE_PROC_PRIMARY:
-		ret = mlx5_mr_create_primary(pd, share_cache, entry,
-					     addr, mr_ext_memseg_en);
+		ret = mlx5_mr_create_primary(cdev->pd, share_cache, entry, addr,
+					     cdev->config.mr_ext_memseg_en);
 		break;
 	case RTE_PROC_SECONDARY:
-		ret = mlx5_mr_create_secondary(pd, mp_id, share_cache, entry,
-					       addr, mr_ext_memseg_en);
+		ret = mlx5_mr_create_secondary(cdev, share_cache, entry, addr);
 		break;
 	default:
 		break;
@@ -931,8 +914,6 @@ mlx5_mr_create(void *pd, struct mlx5_mp_id *mp_id,
  *
  * @param mr_ctrl
  *   Pointer to per-queue MR control structure.
- * @param mp_id
- *   Multi-process identifier, may be NULL for the primary process.
  * @param[out] entry
  *   Pointer to returning MR cache entry, found in the global cache or newly
  *   created. If failed to create one, this is not written.
@@ -943,8 +924,8 @@ mlx5_mr_create(void *pd, struct mlx5_mp_id *mp_id,
  *   Searched LKey on success, UINT32_MAX on no match.
  */
 static uint32_t
-mr_lookup_caches(struct mlx5_mr_ctrl *mr_ctrl, struct mlx5_mp_id *mp_id,
-		 struct mr_cache_entry *entry, uintptr_t addr)
+mr_lookup_caches(struct mlx5_mr_ctrl *mr_ctrl, struct mr_cache_entry *entry,
+		 uintptr_t addr)
 {
 	struct mlx5_mr_share_cache *share_cache =
 		container_of(mr_ctrl->dev_gen_ptr, struct mlx5_mr_share_cache,
@@ -975,8 +956,7 @@ mr_lookup_caches(struct mlx5_mr_ctrl *mr_ctrl, struct mlx5_mp_id *mp_id,
 	}
 	rte_rwlock_read_unlock(&share_cache->rwlock);
 	/* First time to see the address? Create a new MR. */
-	lkey = mlx5_mr_create(cdev->pd, mp_id, share_cache, entry, addr,
-			      cdev->config.mr_ext_memseg_en);
+	lkey = mlx5_mr_create(cdev, share_cache, entry, addr);
 	/*
 	 * Update the local cache if successfully created a new global MR. Even
 	 * if failed to create one, there's no action to take in this datapath
@@ -995,8 +975,6 @@ mr_lookup_caches(struct mlx5_mr_ctrl *mr_ctrl, struct mlx5_mp_id *mp_id,
  *
  * @param mr_ctrl
  *   Pointer to per-queue MR control structure.
- * @param mp_id
- *   Multi-process identifier, may be NULL for the primary process.
  * @param addr
  *   Search key.
  *
@@ -1004,8 +982,7 @@ mr_lookup_caches(struct mlx5_mr_ctrl *mr_ctrl, struct mlx5_mp_id *mp_id,
  *   Searched LKey on success, UINT32_MAX on no match.
  */
 static uint32_t
-mlx5_mr_addr2mr_bh(struct mlx5_mr_ctrl *mr_ctrl, struct mlx5_mp_id *mp_id,
-		   uintptr_t addr)
+mlx5_mr_addr2mr_bh(struct mlx5_mr_ctrl *mr_ctrl, uintptr_t addr)
 {
 	uint32_t lkey;
 	uint16_t bh_idx = 0;
@@ -1023,7 +1000,7 @@ mlx5_mr_addr2mr_bh(struct mlx5_mr_ctrl *mr_ctrl, struct mlx5_mp_id *mp_id,
 		 * and local cache_bh[] will be updated inside if possible.
 		 * Top-half cache entry will also be updated.
 		 */
-		lkey = mr_lookup_caches(mr_ctrl, mp_id, repl, addr);
+		lkey = mr_lookup_caches(mr_ctrl, repl, addr);
 		if (unlikely(lkey == UINT32_MAX))
 			return UINT32_MAX;
 	}
@@ -1711,44 +1688,35 @@ exit:
 }
 
 static int
-mlx5_mr_mempool_register_secondary(struct mlx5_mr_share_cache *share_cache,
-				   void *pd, struct rte_mempool *mp,
-				   struct mlx5_mp_id *mp_id)
+mlx5_mr_mempool_register_secondary(struct mlx5_common_device *cdev,
+				   struct rte_mempool *mp)
 {
-	if (mp_id == NULL) {
-		rte_errno = EINVAL;
-		return -1;
-	}
-	return mlx5_mp_req_mempool_reg(mp_id, share_cache, pd, mp, true);
+	return mlx5_mp_req_mempool_reg(cdev, mp, true);
 }
 
 /**
  * Register the memory of a mempool in the protection domain.
  *
- * @param share_cache
- *   Shared MR cache of the protection domain.
- * @param pd
- *   Protection domain object.
+ * @param cdev
+ *   Pointer to the mlx5 common device.
  * @param mp
  *   Mempool to register.
- * @param mp_id
- *   Multi-process identifier, may be NULL for the primary process.
  *
  * @return
  *   0 on success, (-1) on failure and rte_errno is set.
  */
 int
-mlx5_mr_mempool_register(struct mlx5_mr_share_cache *share_cache, void *pd,
-			 struct rte_mempool *mp, struct mlx5_mp_id *mp_id)
+mlx5_mr_mempool_register(struct mlx5_common_device *cdev,
+			 struct rte_mempool *mp)
 {
 	if (mp->flags & MEMPOOL_F_NON_IO)
 		return 0;
 	switch (rte_eal_process_type()) {
 	case RTE_PROC_PRIMARY:
-		return mlx5_mr_mempool_register_primary(share_cache, pd, mp);
+		return mlx5_mr_mempool_register_primary(&cdev->mr_scache,
+							cdev->pd, mp);
 	case RTE_PROC_SECONDARY:
-		return mlx5_mr_mempool_register_secondary(share_cache, pd, mp,
-							  mp_id);
+		return mlx5_mr_mempool_register_secondary(cdev, mp);
 	default:
 		return -1;
 	}
@@ -1784,42 +1752,34 @@ mlx5_mr_mempool_unregister_primary(struct mlx5_mr_share_cache *share_cache,
 }
 
 static int
-mlx5_mr_mempool_unregister_secondary(struct mlx5_mr_share_cache *share_cache,
-				     struct rte_mempool *mp,
-				     struct mlx5_mp_id *mp_id)
+mlx5_mr_mempool_unregister_secondary(struct mlx5_common_device *cdev,
+				     struct rte_mempool *mp)
 {
-	if (mp_id == NULL) {
-		rte_errno = EINVAL;
-		return -1;
-	}
-	return mlx5_mp_req_mempool_reg(mp_id, share_cache, NULL, mp, false);
+	return mlx5_mp_req_mempool_reg(cdev, mp, false);
 }
 
 /**
  * Unregister the memory of a mempool from the protection domain.
  *
- * @param share_cache
- *   Shared MR cache of the protection domain.
+ * @param cdev
+ *   Pointer to the mlx5 common device.
  * @param mp
  *   Mempool to unregister.
- * @param mp_id
- *   Multi-process identifier, may be NULL for the primary process.
  *
  * @return
  *   0 on success, (-1) on failure and rte_errno is set.
  */
 int
-mlx5_mr_mempool_unregister(struct mlx5_mr_share_cache *share_cache,
-			   struct rte_mempool *mp, struct mlx5_mp_id *mp_id)
+mlx5_mr_mempool_unregister(struct mlx5_common_device *cdev,
+			   struct rte_mempool *mp)
 {
 	if (mp->flags & MEMPOOL_F_NON_IO)
 		return 0;
 	switch (rte_eal_process_type()) {
 	case RTE_PROC_PRIMARY:
-		return mlx5_mr_mempool_unregister_primary(share_cache, mp);
+		return mlx5_mr_mempool_unregister_primary(&cdev->mr_scache, mp);
 	case RTE_PROC_SECONDARY:
-		return mlx5_mr_mempool_unregister_secondary(share_cache, mp,
-							    mp_id);
+		return mlx5_mr_mempool_unregister_secondary(cdev, mp);
 	default:
 		return -1;
 	}
@@ -1954,16 +1914,12 @@ mlx5_mr_mempool2mr_bh(struct mlx5_mr_ctrl *mr_ctrl,
  *   Pointer to per-queue MR control structure.
  * @param mb
  *   Pointer to mbuf.
- * @param mp_id
- *   Multi-process identifier, may be NULL for the primary process.
  *
  * @return
  *   Searched LKey on success, UINT32_MAX on no match.
  */
 uint32_t
-mlx5_mr_mb2mr_bh(struct mlx5_mr_ctrl *mr_ctrl, struct rte_mbuf *mb,
-		 struct mlx5_mp_id *mp_id)
-
+mlx5_mr_mb2mr_bh(struct mlx5_mr_ctrl *mr_ctrl, struct rte_mbuf *mb)
 {
 	uint32_t lkey;
 	uintptr_t addr = (uintptr_t)mb->buf_addr;
@@ -1995,5 +1951,5 @@ mlx5_mr_mb2mr_bh(struct mlx5_mr_ctrl *mr_ctrl, struct rte_mbuf *mb,
 		}
 		/* Fallback for generic mechanism in corner cases. */
 	}
-	return mlx5_mr_addr2mr_bh(mr_ctrl, mp_id, addr);
+	return mlx5_mr_addr2mr_bh(mr_ctrl, addr);
 }
