@@ -2191,12 +2191,10 @@ start_packet_forwarding(int with_tx_first)
 
 	fwd_config_setup();
 
-	pkt_fwd_config_display(&cur_fwd_config);
-	if (!pkt_fwd_shared_rxq_check())
-		return;
 	if(!no_flush_rx)
 		flush_fwd_rx_queues();
 
+	pkt_fwd_config_display(&cur_fwd_config);
 	rxtx_config_display();
 
 	fwd_stats_reset();
