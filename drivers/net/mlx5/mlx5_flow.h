@@ -135,6 +135,7 @@ enum mlx5_feature_name {
 	MLX5_SFT_APP_DATA,
 	MLX5_SFT_APP_STATE,
 	MLX5_SFT_JUMP_GROUP,
+	MLX5_SAMPLE_ID,
 };
 
 /* Default queue number. */
