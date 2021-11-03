@@ -699,20 +699,26 @@ static int mlx5dr_action_get_shared_stc(struct mlx5dr_action *action)
 	struct mlx5dr_context *ctx = action->ctx;
 	int ret;
 
-	if (action->flags & MLX5DR_ACTION_FLAG_HWS_RX)
+	if (action->flags & MLX5DR_ACTION_FLAG_HWS_RX) {
 		ret = mlx5dr_action_get_shared_stc_nic(ctx, MLX5DR_TABLE_TYPE_NIC_RX);
-	if (ret) {
-		DR_LOG(ERR, "Failed to allocate memory for RX shared STCs");
-		return ret;
+		if (ret) {
+			DR_LOG(ERR, "Failed to allocate memory for RX shared STCs");
+			return ret;
+		}
 	}
 
-	if (action->flags & MLX5DR_ACTION_FLAG_HWS_TX)
+	if (action->flags & MLX5DR_ACTION_FLAG_HWS_TX) {
 		ret = mlx5dr_action_get_shared_stc_nic(ctx, MLX5DR_TABLE_TYPE_NIC_TX);
-	if (ret) {
-		DR_LOG(ERR, "Failed to allocate memory for TX shared STCs");
-		mlx5dr_action_put_shared_stc_nic(ctx, MLX5DR_TABLE_TYPE_NIC_RX);
+		if (ret) {
+			DR_LOG(ERR, "Failed to allocate memory for TX shared STCs");
+			goto clean_nic_rx_stc;
+		}
 	}
+	return 0;
 
+clean_nic_rx_stc:
+	if (action->flags & MLX5DR_ACTION_FLAG_HWS_RX)
+		mlx5dr_action_put_shared_stc_nic(ctx, MLX5DR_TABLE_TYPE_NIC_RX);
 	return ret;
 }
 
