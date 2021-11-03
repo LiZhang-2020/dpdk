@@ -250,7 +250,7 @@ struct mlx5_ifc_definer_hl_bits {
 	struct mlx5_ifc_definer_hl_ipv6_addr_bits ipv6_src_inner;
 	u8 unsupported_dest_ib_l3[0x80];
 	u8 unsupported_source_ib_l3[0x80];
-	u8 reserved_at_b80[0x4e0];
+	u8 reserved_at_b80[0x4c0];
 	//	struct x udp_misc_outer;
 	//	struct x udp_misc_inner;
 	//	struct x tcp_misc;
