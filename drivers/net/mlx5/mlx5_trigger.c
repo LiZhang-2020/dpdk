@@ -186,18 +186,13 @@ mlx5_rxq_ctrl_prepare(struct rte_eth_dev *dev, struct mlx5_rxq_ctrl *rxq_ctrl,
 	int ret = 0;
 
 	if (rxq_ctrl->type == MLX5_RXQ_TYPE_STANDARD) {
-		/* Allocate/reuse/resize mempool for MPRQ. */
-		if (mlx5_rxq_mprq_enabled(&rxq_ctrl->rxq))
-			if (mlx5_mprq_alloc_mp(dev, rxq_ctrl) < 0)
-				return -rte_errno;
 		/*
 		 * Pre-register the mempools. Regardless of whether
 		 * the implicit registration is enabled or not,
 		 * Rx mempool destruction is tracked to free MRs.
 		 */
-		ret = mlx5_rxq_mempool_register(dev, rxq_ctrl);
-		if (ret)
-			return ret;
+		if (mlx5_rxq_mempool_register(dev, rxq_ctrl) < 0)
+			return -rte_errno;
 		ret = rxq_alloc_elts(rxq_ctrl);
 		if (ret)
 			return ret;
@@ -233,6 +228,11 @@ mlx5_rxq_start(struct rte_eth_dev *dev)
 	unsigned int i;
 	int ret = 0;
 
+	/* Allocate/reuse/resize mempool for Multi-Packet RQ. */
+	if (mlx5_mprq_alloc_mp(dev)) {
+		/* Should not release Rx queues but return immediately. */
+		return -rte_errno;
+	}
 	DRV_LOG(DEBUG, "Port %u device_attr.max_qp_wr is %d.",
 		dev->data->port_id, priv->sh->device_attr.max_qp_wr);
 	DRV_LOG(DEBUG, "Port %u device_attr.max_sge is %d.",

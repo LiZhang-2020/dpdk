@@ -1849,6 +1849,7 @@ mlx5_dev_close(struct rte_eth_dev *dev)
 		mlx5_drop_action_destroy(dev);
 	if (priv->mreg_cp_tbl)
 		mlx5_hlist_destroy(priv->mreg_cp_tbl);
+	mlx5_mprq_free_mp(dev);
 	mlx5_os_free_shared_dr(priv);
 	if (priv->rss_conf.rss_key != NULL)
 		mlx5_free(priv->rss_conf.rss_key);
