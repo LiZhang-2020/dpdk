@@ -746,7 +746,7 @@ mlx5dr_definer_find_best_hl_fit(struct mlx5dr_match_template *mt,
 
 	/* Check if all fields are supported by definer 22 */
 	for (i = 0; i < mt->fc_sz; i++) {
-		ret = mlx5dr_definer_find_byte_in_tag(definer, mt->fc->byte_off, &tag_offset);
+		ret = mlx5dr_definer_find_byte_in_tag(definer, mt->fc[i].byte_off, &tag_offset);
 		if (ret) {
 			fail = true;
 			break;
@@ -779,7 +779,7 @@ mlx5dr_definer_find_best_hl_fit(struct mlx5dr_match_template *mt,
 
 	/* Check if all fields are supported by definer 34 */
 	for (i = 0; i < mt->fc_sz; i++) {
-		ret = mlx5dr_definer_find_byte_in_tag(definer, mt->fc->byte_off, &tag_offset);
+		ret = mlx5dr_definer_find_byte_in_tag(definer, mt->fc[i].byte_off, &tag_offset);
 		if (ret) {
 			fail = true;
 			break;
