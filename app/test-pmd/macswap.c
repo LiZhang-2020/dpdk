@@ -50,13 +50,27 @@
  * addresses of packets before forwarding them.
  */
 static void
-mac_swap_stream(struct fwd_stream *fs, uint16_t nb_rx,
-		struct rte_mbuf **pkts_burst)
+pkt_burst_mac_swap(struct fwd_stream *fs)
 {
+	struct rte_mbuf  *pkts_burst[MAX_PKT_BURST];
 	struct rte_port  *txp;
+	uint16_t nb_rx;
 	uint16_t nb_tx;
 	uint32_t retry;
+	uint64_t start_tsc = 0;
 
+	get_start_cycles(&start_tsc);
+
+	/*
+	 * Receive a burst of packets and forward them.
+	 */
+	nb_rx = rte_eth_rx_burst(fs->rx_port, fs->rx_queue, pkts_burst,
+				 nb_pkt_per_burst);
+	inc_rx_burst_stats(fs, nb_rx);
+	if (unlikely(nb_rx == 0))
+		return;
+
+	fs->rx_packets += nb_rx;
 	txp = &ports[fs->tx_port];
 
 	do_macswap(pkts_burst, nb_rx, txp);
@@ -81,15 +95,7 @@ mac_swap_stream(struct fwd_stream *fs, uint16_t nb_rx,
 			rte_pktmbuf_free(pkts_burst[nb_tx]);
 		} while (++nb_tx < nb_rx);
 	}
-}
-
-/*
- * Wrapper of real fwd engine.
- */
-static void
-pkt_burst_mac_swap(struct fwd_stream *fs)
-{
-	return do_burst_fwd(fs, mac_swap_stream);
+	get_end_cycles(fs, start_tsc);
 }
 
 struct fwd_engine mac_swap_engine = {
