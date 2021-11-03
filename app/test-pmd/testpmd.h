@@ -1017,30 +1017,6 @@ void add_tx_dynf_callback(portid_t portid);
 void remove_tx_dynf_callback(portid_t portid);
 int update_jumbo_frame_offload(portid_t portid);
 
-static inline void
-do_burst_fwd(struct fwd_stream *fs, packet_fwd_cb fwd)
-{
-	struct rte_mbuf *pkts_burst[MAX_PKT_BURST];
-	uint16_t nb_rx;
-	uint64_t start_tsc = 0;
-
-	get_start_cycles(&start_tsc);
-
-	/*
-	 * Receive a burst of packets and forward them.
-	 */
-	nb_rx = rte_eth_rx_burst(fs->rx_port, fs->rx_queue,
-			pkts_burst, nb_pkt_per_burst);
-	inc_rx_burst_stats(fs, nb_rx);
-	if (unlikely(nb_rx == 0))
-		return;
-	if (unlikely(rxq_share > 0))
-		forward_shared_rxq(fs, nb_rx, pkts_burst, fwd);
-	else
-		(*fwd)(fs, nb_rx, pkts_burst);
-	get_end_cycles(fs, start_tsc);
-}
-
 /*
  * Work-around of a compilation error with ICC on invocations of the
  * rte_be_to_cpu_16() function.
