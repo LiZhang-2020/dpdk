@@ -130,7 +130,6 @@ void mlx5dr_send_engine_post_end(struct mlx5dr_send_engine_post_ctrl *ctrl,
 	wqe_ctrl->flags = rte_cpu_to_be_32(flags);
 
 	sq->wr_priv[idx].rule = attr->rule;
-	attr->rule->wait_on_wqes++;
 	sq->wr_priv[idx].user_data = attr->user_data;
 	if (attr->user_data)
 		attr->rule->rtc_used = attr->id;
@@ -166,7 +165,6 @@ static void mlx5dr_send_engine_retry_post_send(struct mlx5dr_send_engine *queue,
 	send_attr.id = priv->backup_id;
 
 	priv->rule->status = MLX5DR_RULE_STATUS_CREATING;
-	priv->rule->wait_on_wqes = 0;
 
 	ctrl = mlx5dr_send_engine_post_start(queue);
 	mlx5dr_send_engine_post_req_wqe(&ctrl, (void *)&wqe_ctrl, &wqe_len);
@@ -215,7 +213,6 @@ static void mlx5dr_send_engine_update_rule(struct mlx5dr_send_engine *queue,
 	if (!cqe || (likely(rte_be_to_cpu_32(cqe->byte_cnt) >> 31 == 0) &&
 	    likely(mlx5dv_get_cqe_opcode(cqe) == MLX5_CQE_REQ))) {
 		status = RTE_FLOW_Q_OP_RES_SUCCESS;
-		--priv->rule->wait_on_wqes;
 	} else {
 		status = RTE_FLOW_Q_OP_RES_ERROR;
 	}
@@ -224,8 +221,7 @@ static void mlx5dr_send_engine_update_rule(struct mlx5dr_send_engine *queue,
 		/* Increase the status, this only works on good flow as the enum
 		 * is arrange it away creating -> created -> deleting -> deleted
 		 */
-		if (status == RTE_FLOW_Q_OP_RES_SUCCESS &&
-		    !priv->rule->wait_on_wqes) {
+		if (status == RTE_FLOW_Q_OP_RES_SUCCESS) {
 			priv->rule->status++;
 		} else {
 			if (priv->backup_id) {
