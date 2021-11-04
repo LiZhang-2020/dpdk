@@ -443,4 +443,22 @@ __rte_internal
 bool
 mlx5_dev_is_pci(const struct rte_device *dev);
 
+/* mlx5 PMD wrapped MR struct. */
+struct mlx5_pmd_wrapped_mr {
+	uint32_t	     lkey;
+	void		     *addr;
+	size_t		     len;
+	void		     *obj; /* verbs mr object or devx umem object. */
+	void		     *imkey; /* DevX indirect mkey object. */
+};
+
+__rte_internal
+int
+mlx5_os_wrapped_mkey_create(void *ctx, void *pd, uint32_t pdn, void *addr,
+			    size_t length, struct mlx5_pmd_wrapped_mr *pmd_mr);
+
+__rte_internal
+void
+mlx5_os_wrapped_mkey_destroy(struct mlx5_pmd_wrapped_mr *pmd_mr);
+
 #endif /* RTE_PMD_MLX5_COMMON_H_ */
