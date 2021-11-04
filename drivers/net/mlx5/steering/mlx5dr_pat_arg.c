@@ -274,6 +274,7 @@ mlx5d_arg_init_send_attr(struct mlx5dr_send_engine_post_attr *send_attr,
 	send_attr->len = MLX5DR_WQE_SZ_GTA_CTRL + MLX5DR_WQE_SZ_GTA_DATA;
 	send_attr->rule = rule;
 	send_attr->id = arg_idx;
+	send_attr->user_data = rule;
 }
 
 void mlx5dr_arg_decapl3_write(struct mlx5dr_send_engine *queue,
@@ -299,6 +300,27 @@ void mlx5dr_arg_decapl3_write(struct mlx5dr_send_engine *queue,
 	mlx5dr_send_engine_post_end(&ctrl, &send_attr);
 }
 
+static int
+mlx5dr_arg_poll_for_comp(struct mlx5dr_context *ctx, uint16_t queue_id)
+{
+	struct rte_flow_q_op_res comp[1];
+	int ret;
+
+	while (true) {
+		ret = mlx5dr_send_queue_poll(ctx, queue_id, comp, 1);
+		if (ret) {
+			if (ret < 0) {
+				DR_LOG(ERR, "Failed mlx5dr_send_queue_poll");
+			} else if (comp[0].status == RTE_FLOW_Q_OP_ERROR) {
+				DR_LOG(ERR, "Got comp with error");
+				rte_errno = ENOENT;
+			}
+			break;
+		}
+	}
+	return (ret == 1 ? 0 : ret);
+}
+
 void mlx5dr_arg_write(struct mlx5dr_send_engine *queue,
 		      struct mlx5dr_rule *rule,
 		      uint32_t arg_idx,
@@ -312,16 +334,16 @@ void mlx5dr_arg_write(struct mlx5dr_send_engine *queue,
 	int i, full_iter, leftover;
 	size_t wqe_len;
 
+	mlx5d_arg_init_send_attr(&send_attr, rule, arg_idx);
+
 	/* Each WQE can hold 64B of data, it might require multiple iteration */
 	full_iter = data_size / MLX5DR_ARG_DATA_SIZE;
 	leftover = data_size & (MLX5DR_ARG_DATA_SIZE - 1);
 
-	mlx5d_arg_init_send_attr(&send_attr, rule, arg_idx);
-
 	for (i = 0; i < full_iter; i++) {
 		ctrl = mlx5dr_send_engine_post_start(queue);
 		mlx5dr_send_engine_post_req_wqe(&ctrl, (void *)&wqe_ctrl, &wqe_len);
-		memset(wqe_ctrl, 0, wqe_len); // TODO OPT: GTA ctrl might be ignored in case of arg
+		memset(wqe_ctrl, 0, wqe_len);
 		mlx5dr_send_engine_post_req_wqe(&ctrl, (void *)&wqe_arg, &wqe_len);
 		memcpy(wqe_arg, arg_data, wqe_len);
 		send_attr.id = arg_idx++;
@@ -342,14 +364,32 @@ void mlx5dr_arg_write(struct mlx5dr_send_engine *queue,
 	}
 }
 
-/* TBD write arg, needs to know the structure of the arg to be written */
-int mlx5dr_arg_write_inline_arg_data(struct mlx5dr_action *action,
-				     __be64 *pattern)
+int mlx5dr_arg_write_inline_arg_data(struct mlx5dr_context *ctx,
+				     uint32_t arg_idx,
+				     uint8_t *arg_data,
+				     size_t data_size)
 {
-	(void) action;
-	(void) pattern;
+	struct mlx5dr_send_engine *queue;
+	struct mlx5dr_rule rule = {0};
+	int ret;
 
-	return 0;
+	pthread_spin_lock(&ctx->ctrl_lock);
+
+	/* get the control queue */
+	queue = &ctx->send_queue[ctx->queues - 1];
+
+	mlx5dr_arg_write(queue, &rule, arg_idx, arg_data, data_size);
+
+	mlx5dr_send_engine_flush_queue(queue);
+
+	/* poll for completion */
+	ret = mlx5dr_arg_poll_for_comp(ctx, ctx->queues - 1);
+	if (ret)
+		DR_LOG(ERR, "Failed to get completions for shared action");
+
+	pthread_spin_unlock(&ctx->ctrl_lock);
+
+	return ret;
 }
 
 bool mlx5dr_arg_is_valid_arg_request_size(struct mlx5dr_context *ctx,
@@ -400,7 +440,11 @@ mlx5dr_arg_create_modify_header_arg(struct mlx5dr_context *ctx,
 
 	/* when INLINE need to write the arg data */
 	if (flags & MLX5DR_ACTION_FLAG_INLINE)
-		ret = mlx5dr_arg_write_inline_arg_data(action, pattern); // TODO use mlx5dr_arg_write
+		ret = mlx5dr_arg_write_inline_arg_data(ctx,
+						       action->modify_header.arg_obj->id,
+						       (uint8_t *)pattern,
+						       num_of_actions *
+						       MLX5DR_MODIFY_ACTION_SIZE);
 	if (ret) {
 		DR_LOG(ERR, "failed writing INLINE arg in order: %d",
 			args_log_size + bulk_size);

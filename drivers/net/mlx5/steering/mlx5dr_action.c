@@ -565,7 +565,7 @@ static int mlx5dr_action_handle_reformat_args(struct mlx5dr_context *ctx,
 					      struct mlx5dr_action *action)
 {
 	uint32_t args_log_size;
-	int ret = 0;
+	int ret;
 
 	if (data_sz % 2 != 0) {
 		DR_LOG(ERR, "data size should be multiply of 2");
@@ -576,7 +576,7 @@ static int mlx5dr_action_handle_reformat_args(struct mlx5dr_context *ctx,
 
 	args_log_size = mlx5dr_arg_data_size_to_arg_log_size(data_sz);
 	if (args_log_size >= MLX5DR_ARG_CHUNK_SIZE_MAX) {
-		DR_LOG(ERR, "data size is bigger than supported");
+		DR_LOG(ERR, "Data size is bigger than supported");
 		rte_errno = EINVAL;
 		return rte_errno;
 	}
@@ -593,16 +593,20 @@ static int mlx5dr_action_handle_reformat_args(struct mlx5dr_context *ctx,
 							 args_log_size,
 							 ctx->pd_num);
 	if (!action->reformat.arg_obj) {
-		DR_LOG(ERR, "failed to create arg for reformat");
+		DR_LOG(ERR, "Failed to create arg for reformat");
 		return rte_errno;
 	}
 
 	/* when INLINE need to write the arg data */
-	if (action->flags & MLX5DR_ACTION_FLAG_INLINE)
-		ret = mlx5dr_arg_write_inline_arg_data(action, data);
-	if (ret) {
-		DR_LOG(ERR, "failed to write inline arg for reformat");
-		goto free_arg;
+	if (action->flags & MLX5DR_ACTION_FLAG_INLINE) {
+		ret = mlx5dr_arg_write_inline_arg_data(ctx,
+						       action->reformat.arg_obj->id,
+						       data,
+						       data_sz);
+		if (ret) {
+			DR_LOG(ERR, "Failed to write inline arg for reformat");
+			goto free_arg;
+		}
 	}
 
 	return 0;
