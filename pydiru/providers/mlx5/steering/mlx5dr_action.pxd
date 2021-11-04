@@ -5,7 +5,7 @@ from pydiru.providers.mlx5.steering.mlx5dr_devx_objects cimport Mlx5drDevxObj
 from pydiru.providers.mlx5.steering.mlx5dr_context cimport Mlx5drContext
 from pydiru.providers.mlx5.steering.mlx5dr_table cimport Mlx5drTable
 cimport pydiru.providers.mlx5.steering.libmlx5dr as dr
-from pydiru.base cimport PydiruCM, PydiruObject
+from pydiru.base cimport PydiruCM
 
 cdef class Mlx5drAction(PydiruCM):
     cdef dr.mlx5dr_action *action
@@ -28,6 +28,10 @@ cdef class Mlx5drActionDestTir(Mlx5drAction):
 cdef class Mlx5drActionReformat(Mlx5drAction):
     pass
 
-cdef class Mlx5drRuleAction(PydiruObject):
+cdef class Mlx5drActionModify(Mlx5drAction):
+    pass
+
+cdef class Mlx5drRuleAction(PydiruCM):
     cdef dr.mlx5dr_rule_action rule_action
     cdef Mlx5drAction action
+    cdef void *data_buf
