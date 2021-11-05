@@ -46,23 +46,6 @@ enum mlx5_rte_flow_action_type {
 	MLX5_RTE_FLOW_ACTION_TYPE_JUMP,
 };
 
-enum mlx5_header_modify {
-	MLX5_HDR_MODI_SET_MAC_SRC,
-	MLX5_HDR_MODI_SET_MAC_DST,
-	MLX5_HDR_MODI_SET_IPV4_SRC,
-	MLX5_HDR_MODI_SET_IPV4_DST,
-	MLX5_HDR_MODI_SET_IPV6_SRC,
-	MLX5_HDR_MODI_SET_IPV6_DST,
-	MLX5_HDR_MODI_SET_UDP_SRC,
-	MLX5_HDR_MODI_SET_UDP_DST,
-	MLX5_HDR_MODI_SET_TCP_SRC,
-	MLX5_HDR_MODI_SET_TCP_DST,
-	MLX5_HDR_MODI_SET_IPV4_TTL,
-	MLX5_HDR_MODI_SET_IPV6_HOP,
-	MLX5_HDR_MODI_MODIFY_FIELD,
-	MLX5_HDR_MODI_SET_MAX,
-};
-
 #define MLX5_INDIRECT_ACTION_TYPE_OFFSET 30
 
 enum {
@@ -1144,6 +1127,29 @@ struct rte_flow_hw {
 	struct mlx5dr_rule rule;
 } __rte_packed;
 
+struct mlx5_action_construct_data {
+	LIST_ENTRY(mlx5_action_construct_data) next;
+	/* Ensure the action types are same. */
+	enum rte_flow_action_type type;
+	uint32_t idx;  /* Data index. */
+	uint16_t action_src; /* rte_flow_action src offset. */
+	uint16_t action_dst; /* mlx5dr_rule_action dst offset. */
+	union {
+		struct {
+			/* encap src(item) offset. */
+			uint16_t src;
+			/* encap dst data offset. */
+			uint16_t dst;
+			/* encap data len. */
+			uint16_t len;
+		} encap;
+		struct {
+			/* modify header dst action offset. */
+			uint16_t sub_action_dst;
+		} modify_header;
+	};
+};
+
 struct rte_flow_item_template {
 	LIST_ENTRY(rte_flow_item_template) next;
 	/* Template attributes. */
@@ -1176,27 +1182,22 @@ struct mlx5_hw_encap_decap_action {
 	uint8_t data[];
 };
 
-#ifdef PEDANTIC
-#pragma GCC diagnostic ignored "-Wpedantic"
-#endif
-
-struct mlx5_hw_header_modify_action {
-	uint8_t set_cmd_pos[MLX5_HDR_MODI_SET_MAX];
-	struct mlx5_flow_dv_modify_hdr_resource res;
-};
-
-#ifdef PEDANTIC
-#pragma GCC diagnostic error "-Wpedantic"
-#endif
+/* The maximum actions support in the flow. */
+#define MLX5_HW_MAX_ACTS 16
 
 struct mlx5_hw_actions {
-	struct mlx5dr_action *drop; /* Drop action. */
+	LIST_HEAD(act_list, mlx5_action_construct_data) act_list;
 	struct mlx5_hw_jump_action *jump; /* Jump action. */
+	struct mlx5_hrxq *tir; /* TIR action. */
+	/* Modify header action. */
+	struct mlx5_flow_dv_modify_hdr_resource *hdr_modify;
 	/* Encap/Decap action. */
 	struct mlx5_hw_encap_decap_action *encap_decap;
-	struct mlx5_hrxq *tir; /* TIR action. */
-	/* Header modify action. */
-	struct mlx5_hw_header_modify_action *hdr_modify;
+	uint16_t hdr_modify_pos; /* Modify header action position. */
+	uint16_t encap_decap_pos; /* Encap/Decap action position. */
+	uint32_t acts_num; /* Total action number. */
+	/* Rule DR action array. */
+	struct mlx5dr_rule_action rule_acts[MLX5_HW_MAX_ACTS];
 };
 
 struct mlx5_hw_action_template {
@@ -2199,4 +2200,5 @@ int flow_convert_action_modify_field
 			 const struct rte_flow_action *action,
 			 const struct rte_flow_attr *attr,
 			 struct rte_flow_error *error);
+size_t flow_get_item_hdr_len(const enum rte_flow_item_type item_type);
 #endif /* RTE_PMD_MLX5_FLOW_H_ */

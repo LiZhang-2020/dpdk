@@ -1552,6 +1552,7 @@ struct mlx5_priv {
 	/**< HW steering queue polling mechanism job descriptor LIFO. */
 	LIST_HEAD(flow_hw_tbl, rte_flow_table) flow_hw_tbl;
 	/**< HW steering rte flow table list header. */
+	struct mlx5_indexed_pool *acts_ipool; /* Action data indexed pool. */
 };
 
 #define PORT_ID(priv) ((priv)->dev_data->port_id)

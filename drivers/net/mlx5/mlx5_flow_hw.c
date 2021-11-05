@@ -114,7 +114,13 @@ __flow_hw_action_template_destroy(struct rte_eth_dev *dev,
 				 struct mlx5_hw_actions *acts)
 {
 	struct mlx5_priv *priv = dev->data->dev_private;
+	struct mlx5_action_construct_data *data;
 
+	while (!LIST_EMPTY(&acts->act_list)) {
+		data = LIST_FIRST(&acts->act_list);
+		LIST_REMOVE(data, next);
+		mlx5_ipool_free(priv->acts_ipool, data->idx);
+	}
 	if (acts->jump) {
 		struct mlx5_flow_group *grp;
 
@@ -135,6 +141,104 @@ __flow_hw_action_template_destroy(struct rte_eth_dev *dev,
 	}
 }
 
+static __rte_always_inline struct mlx5_action_construct_data *
+__flow_hw_alloc_act_data(struct mlx5_priv *priv,
+			 enum rte_flow_action_type type,
+			 uint16_t action_src,
+			 uint16_t action_dst)
+{
+	struct mlx5_action_construct_data *act_data;
+	uint32_t idx = 0;
+
+	act_data = mlx5_ipool_zmalloc(priv->acts_ipool, &idx);
+	if (!act_data)
+		return NULL;
+	act_data->idx = idx;
+	act_data->type = type;
+	act_data->action_src = action_src;
+	act_data->action_dst = action_dst;
+	return act_data;
+}
+
+static __rte_always_inline int
+__flow_hw_append_act_data_tag(struct mlx5_priv *priv,
+			      struct mlx5_hw_actions *acts,
+			      enum rte_flow_action_type type,
+			      uint16_t action_src,
+			      uint16_t action_dst)
+{	struct mlx5_action_construct_data *act_data;
+
+	act_data = __flow_hw_alloc_act_data(priv, type, action_src, action_dst);
+	if (!act_data)
+		return -1;
+	LIST_INSERT_HEAD(&acts->act_list, act_data, next);
+	return 0;
+}
+
+static __rte_always_inline int
+__flow_hw_append_act_data_encap(struct mlx5_priv *priv,
+				struct mlx5_hw_actions *acts,
+				enum rte_flow_action_type type,
+				uint16_t action_src,
+				uint16_t action_dst,
+				uint16_t encap_src,
+				uint16_t encap_dst,
+				uint16_t len)
+{	struct mlx5_action_construct_data *act_data;
+
+	act_data = __flow_hw_alloc_act_data(priv, type, action_src, action_dst);
+	if (!act_data)
+		return -1;
+	act_data->encap.src = encap_src;
+	act_data->encap.dst = encap_dst;
+	act_data->encap.len = len;
+	LIST_INSERT_HEAD(&acts->act_list, act_data, next);
+	return 0;
+}
+
+static __rte_always_inline int
+__flow_hw_append_act_data_hdr_modify(struct mlx5_priv *priv,
+				     struct mlx5_hw_actions *acts,
+				     enum rte_flow_action_type type,
+				     uint16_t action_src,
+				     uint16_t action_dst,
+				     uint16_t sub_action_dst)
+{	struct mlx5_action_construct_data *act_data;
+
+	act_data = __flow_hw_alloc_act_data(priv, type, action_src, action_dst);
+	if (!act_data)
+		return -1;
+	act_data->modify_header.sub_action_dst = sub_action_dst;
+	LIST_INSERT_HEAD(&acts->act_list, act_data, next);
+	return 0;
+}
+
+static __rte_always_inline int
+flow_hw_construct_encap_item(struct rte_eth_dev *dev,
+			     struct mlx5_hw_actions *acts,
+			     enum rte_flow_action_type type,
+			     uint16_t action_src,
+			     uint16_t action_dst,
+			     const struct rte_flow_item *items,
+			     const struct rte_flow_item *items_m)
+{
+	struct mlx5_priv *priv = dev->data->dev_private;
+	size_t len, total_len = 0;
+	uint32_t i = 0;
+
+	for (; items->type != RTE_FLOW_ITEM_TYPE_END; items++, items_m++, i++) {
+		len = flow_get_item_hdr_len(items->type);
+		if ((!items_m->spec ||
+		    memcmp(items_m->spec, items->spec, len)) &&
+		    __flow_hw_append_act_data_encap(priv, acts, type,
+						    action_src, action_dst, i,
+						    total_len, len))
+			return -1;
+		total_len += len;
+	}
+	return 0;
+}
+
 static int
 flow_hw_actions_translate(struct rte_eth_dev *dev,
 			  const struct rte_flow_table_attr *table_attr,
@@ -146,22 +250,24 @@ flow_hw_actions_translate(struct rte_eth_dev *dev,
 	const struct rte_flow_attr *attr = &table_attr->flow_attr;
 	struct rte_flow_action *actions = at->actions;
 	struct rte_flow_action *masks = at->masks;
+	struct rte_flow_action *action_start = actions;
 	enum mlx5dr_action_reformat_type refmt_type;
 	const struct rte_flow_action_raw_encap *raw_encap_data;
-	const struct rte_flow_item *enc_item = NULL;
+	const struct rte_flow_item *enc_item = NULL, *enc_item_m = NULL;
 	uint8_t *encap_data = NULL;
-	bool encap_decap = false;
 	size_t data_size = 0;
 	union {
-		struct mlx5_hw_header_modify_action act;
-		uint8_t len[sizeof(struct mlx5_hw_header_modify_action) +
+		struct mlx5_flow_dv_modify_hdr_resource act;
+		uint8_t len[sizeof(struct mlx5_flow_dv_modify_hdr_resource) +
 			    sizeof(struct mlx5_modification_cmd) *
 			    (MLX5_MAX_MODIFY_NUM * 2 + 1)];
 	} mhdr_dummy;
-	struct mlx5_hw_header_modify_action *mhdr_act =
+	struct mlx5_flow_dv_modify_hdr_resource *mhdr_act =
 						&mhdr_dummy.act;
 	bool actions_end = false, mark = false;
-	uint32_t type;
+	uint32_t type, i;
+	uint16_t reformat_pos = MLX5_HW_MAX_ACTS, reformat_src = 0;
+	uint16_t mhdr_pos = UINT16_MAX;
 	int err;
 
 	if (attr->transfer)
@@ -171,7 +277,7 @@ flow_hw_actions_translate(struct rte_eth_dev *dev,
 	else
 		type = MLX5DR_TABLE_TYPE_NIC_RX;
 	memset(&mhdr_dummy, 0, sizeof(mhdr_dummy));
-	for (; !actions_end; actions++, masks++) {
+	for (i = 0; !actions_end; actions++, masks++) {
 		uint32_t jump_group;
 
 		switch (actions->type) {
@@ -181,9 +287,15 @@ flow_hw_actions_translate(struct rte_eth_dev *dev,
 			break;
 		case RTE_FLOW_ACTION_TYPE_MARK:
 			mark = true;
+			if (__flow_hw_append_act_data_tag(priv, acts,
+				actions->type, actions - action_start, i))
+				goto err;
+			acts->rule_acts[i++].action =
+				priv->hw_tag[!!attr->group][type];
 			break;
 		case RTE_FLOW_ACTION_TYPE_DROP:
-			acts->drop = priv->hw_drop[!!attr->group][type];
+			acts->rule_acts[i++].action =
+				priv->hw_drop[!!attr->group][type];
 			break;
 		case RTE_FLOW_ACTION_TYPE_JUMP:
 			jump_group = ((const struct rte_flow_action_jump *)
@@ -192,6 +304,9 @@ flow_hw_actions_translate(struct rte_eth_dev *dev,
 						(dev, attr, jump_group, error);
 			if (!acts->jump)
 				goto err;
+			acts->rule_acts[i++].action = (!!attr->group) ?
+						acts->jump->hws_action :
+						acts->jump->root_action;
 			break;
 		case RTE_FLOW_ACTION_TYPE_QUEUE:
 		case RTE_FLOW_ACTION_TYPE_RSS:
@@ -203,25 +318,34 @@ flow_hw_actions_translate(struct rte_eth_dev *dev,
 				goto err;
 			if (mark)
 				flow_hw_rxq_flag_set(dev, acts->tir);
+			acts->rule_acts[i++].action = acts->tir->action;
 			break;
 		case RTE_FLOW_ACTION_TYPE_VXLAN_ENCAP:
-			MLX5_ASSERT(!encap_decap);
+			MLX5_ASSERT(reformat_pos == MLX5_HW_MAX_ACTS);
 			enc_item = ((const struct rte_flow_action_vxlan_encap *)
 				   actions->conf)->definition;
-			encap_decap = true;
+			enc_item_m =
+				((const struct rte_flow_action_vxlan_encap *)
+				 masks->conf)->definition;
+			reformat_pos = i++;
+			reformat_src = actions - action_start;
 			refmt_type = MLX5DR_ACTION_REFORMAT_TYPE_L2_TO_TNL_L2;
 			break;
 		case RTE_FLOW_ACTION_TYPE_NVGRE_ENCAP:
-			MLX5_ASSERT(!encap_decap);
+			MLX5_ASSERT(reformat_pos == MLX5_HW_MAX_ACTS);
 			enc_item = ((const struct rte_flow_action_nvgre_encap *)
 				   actions->conf)->definition;
-			encap_decap = true;
+			enc_item_m =
+				((const struct rte_flow_action_nvgre_encap *)
+				actions->conf)->definition;
+			reformat_pos = i++;
+			reformat_src = actions - action_start;
 			refmt_type = MLX5DR_ACTION_REFORMAT_TYPE_L2_TO_TNL_L2;
 			break;
 		case RTE_FLOW_ACTION_TYPE_VXLAN_DECAP:
 		case RTE_FLOW_ACTION_TYPE_NVGRE_DECAP:
-			MLX5_ASSERT(!encap_decap);
-			encap_decap = true;
+			MLX5_ASSERT(reformat_pos == MLX5_HW_MAX_ACTS);
+			reformat_pos = i++;
 			refmt_type = MLX5DR_ACTION_REFORMAT_TYPE_TNL_L2_TO_L2;
 			break;
 		case RTE_FLOW_ACTION_TYPE_RAW_ENCAP:
@@ -230,156 +354,218 @@ flow_hw_actions_translate(struct rte_eth_dev *dev,
 				 actions->conf;
 			encap_data = raw_encap_data->data;
 			data_size = raw_encap_data->size;
-			if (encap_decap) {
+			if (reformat_pos != MLX5_HW_MAX_ACTS) {
 				refmt_type = data_size <
 				MLX5_ENCAPSULATION_DECISION_SIZE ?
 				MLX5DR_ACTION_REFORMAT_TYPE_TNL_L3_TO_L2 :
 				MLX5DR_ACTION_REFORMAT_TYPE_L2_TO_TNL_L3;
 			} else {
-				encap_decap = true;
+				reformat_pos = i++;
 				refmt_type =
 				MLX5DR_ACTION_REFORMAT_TYPE_L2_TO_TNL_L2;
 			}
+			reformat_src = actions - action_start;
 			break;
 		case RTE_FLOW_ACTION_TYPE_RAW_DECAP:
-			encap_decap = true;
+			reformat_pos = i++;
 			refmt_type = MLX5DR_ACTION_REFORMAT_TYPE_TNL_L2_TO_L2;
 			break;
 		case RTE_FLOW_ACTION_TYPE_SET_MAC_SRC:
-			mhdr_act->set_cmd_pos[MLX5_HDR_MODI_SET_MAC_SRC] =
-				mhdr_act->res.actions_num;
-			if (flow_convert_action_modify_mac
-				(&mhdr_act->res, actions, error))
+			if (mhdr_pos == UINT16_MAX)
+				mhdr_pos = i++;
+			if (__flow_hw_append_act_data_hdr_modify
+				(priv, acts, actions->type,
+				 actions - action_start,
+				 mhdr_pos, mhdr_act->actions_num) ||
+			    flow_convert_action_modify_mac
+				(mhdr_act, actions, error))
 				goto err;
-			MLX5_HW_INS_NOP_ACT(mhdr_act->res.actions_num);
+			MLX5_HW_INS_NOP_ACT(mhdr_act->actions_num);
 			break;
 		case RTE_FLOW_ACTION_TYPE_SET_MAC_DST:
-			mhdr_act->set_cmd_pos[MLX5_HDR_MODI_SET_MAC_DST] =
-				mhdr_act->res.actions_num;
-			if (flow_convert_action_modify_mac
-				(&mhdr_act->res, actions, error))
+			if (mhdr_pos == UINT16_MAX)
+				mhdr_pos = i++;
+			if (__flow_hw_append_act_data_hdr_modify
+				(priv, acts, actions->type,
+				 actions - action_start,
+				 mhdr_pos, mhdr_act->actions_num) ||
+			    flow_convert_action_modify_mac
+				(mhdr_act, actions, error))
 				goto err;
-			MLX5_HW_INS_NOP_ACT(mhdr_act->res.actions_num);
+			MLX5_HW_INS_NOP_ACT(mhdr_act->actions_num);
 			break;
 		case RTE_FLOW_ACTION_TYPE_SET_IPV4_SRC:
-			mhdr_act->set_cmd_pos[MLX5_HDR_MODI_SET_IPV4_SRC] =
-				mhdr_act->res.actions_num;
-			if (flow_convert_action_modify_ipv4
-				(&mhdr_act->res, actions, error))
+			if (mhdr_pos == UINT16_MAX)
+				mhdr_pos = i++;
+			if (__flow_hw_append_act_data_hdr_modify
+				(priv, acts, actions->type,
+				 actions - action_start,
+				 mhdr_pos, mhdr_act->actions_num) ||
+			    flow_convert_action_modify_ipv4
+				(mhdr_act, actions, error))
 				goto err;
-			MLX5_HW_INS_NOP_ACT(mhdr_act->res.actions_num);
+			MLX5_HW_INS_NOP_ACT(mhdr_act->actions_num);
 			break;
 		case RTE_FLOW_ACTION_TYPE_SET_IPV4_DST:
-			mhdr_act->set_cmd_pos[MLX5_HDR_MODI_SET_IPV4_DST] =
-				mhdr_act->res.actions_num;
-			if (flow_convert_action_modify_ipv4
-				(&mhdr_act->res, actions, error))
+			if (mhdr_pos == UINT16_MAX)
+				mhdr_pos = i++;
+			if (__flow_hw_append_act_data_hdr_modify
+				(priv, acts, actions->type,
+				 actions - action_start,
+				 mhdr_pos, mhdr_act->actions_num) ||
+			    flow_convert_action_modify_ipv4
+				(mhdr_act, actions, error))
 				goto err;
-			MLX5_HW_INS_NOP_ACT(mhdr_act->res.actions_num);
+			MLX5_HW_INS_NOP_ACT(mhdr_act->actions_num);
 			break;
 		case RTE_FLOW_ACTION_TYPE_SET_IPV6_SRC:
-			mhdr_act->set_cmd_pos[MLX5_HDR_MODI_SET_IPV6_SRC] =
-				mhdr_act->res.actions_num;
-			if (flow_convert_action_modify_ipv6
-				(&mhdr_act->res, actions, error))
+			if (mhdr_pos == UINT16_MAX)
+				mhdr_pos = i++;
+			if (__flow_hw_append_act_data_hdr_modify
+				(priv, acts, actions->type,
+				 actions - action_start,
+				 mhdr_pos, mhdr_act->actions_num) ||
+			    flow_convert_action_modify_ipv6
+				(mhdr_act, actions, error))
 				goto err;
-			MLX5_HW_INS_NOP_ACT(mhdr_act->res.actions_num);
+			MLX5_HW_INS_NOP_ACT(mhdr_act->actions_num);
 			break;
 		case RTE_FLOW_ACTION_TYPE_SET_IPV6_DST:
-			mhdr_act->set_cmd_pos[MLX5_HDR_MODI_SET_IPV6_DST] =
-				mhdr_act->res.actions_num;
-			if (flow_convert_action_modify_ipv6
-				(&mhdr_act->res, actions, error))
+			if (mhdr_pos == UINT16_MAX)
+				mhdr_pos = i++;
+			if (__flow_hw_append_act_data_hdr_modify
+				(priv, acts, actions->type,
+				 actions - action_start,
+				 mhdr_pos, mhdr_act->actions_num) ||
+			    flow_convert_action_modify_ipv6
+				(mhdr_act, actions, error))
 				goto err;
-			MLX5_HW_INS_NOP_ACT(mhdr_act->res.actions_num);
+			MLX5_HW_INS_NOP_ACT(mhdr_act->actions_num);
 			break;
 		case RTE_FLOW_ACTION_TYPE_SET_UDP_TP_SRC:
-			mhdr_act->set_cmd_pos[MLX5_HDR_MODI_SET_UDP_SRC] =
-				mhdr_act->res.actions_num;
-			if (flow_convert_action_modify_tp
-				(&mhdr_act->res, actions, true, true, error))
+			if (mhdr_pos == UINT16_MAX)
+				mhdr_pos = i++;
+			if (__flow_hw_append_act_data_hdr_modify
+				(priv, acts, actions->type,
+				 actions - action_start,
+				 mhdr_pos, mhdr_act->actions_num) ||
+			    flow_convert_action_modify_tp
+				(mhdr_act, actions, true, true, error))
 				goto err;
-			MLX5_HW_INS_NOP_ACT(mhdr_act->res.actions_num);
+			MLX5_HW_INS_NOP_ACT(mhdr_act->actions_num);
 			break;
 		case RTE_FLOW_ACTION_TYPE_SET_UDP_TP_DST:
-			mhdr_act->set_cmd_pos[MLX5_HDR_MODI_SET_UDP_DST] =
-				mhdr_act->res.actions_num;
-			if (flow_convert_action_modify_tp
-				(&mhdr_act->res, actions, true, false, error))
+			if (mhdr_pos == UINT16_MAX)
+				mhdr_pos = i++;
+			if (__flow_hw_append_act_data_hdr_modify
+				(priv, acts, actions->type,
+				 actions - action_start,
+				 mhdr_pos, mhdr_act->actions_num) ||
+			    flow_convert_action_modify_tp
+				(mhdr_act, actions, true, false, error))
 				goto err;
-			MLX5_HW_INS_NOP_ACT(mhdr_act->res.actions_num);
+			MLX5_HW_INS_NOP_ACT(mhdr_act->actions_num);
 			break;
 		case RTE_FLOW_ACTION_TYPE_SET_TCP_TP_SRC:
-			mhdr_act->set_cmd_pos[MLX5_HDR_MODI_SET_TCP_SRC] =
-				mhdr_act->res.actions_num;
-			if (flow_convert_action_modify_tp
-				(&mhdr_act->res, actions, false, true, error))
+			if (mhdr_pos == UINT16_MAX)
+				mhdr_pos = i++;
+			if (__flow_hw_append_act_data_hdr_modify
+				(priv, acts, actions->type,
+				 actions - action_start,
+				 mhdr_pos, mhdr_act->actions_num) ||
+			    flow_convert_action_modify_tp
+				(mhdr_act, actions, false, true, error))
 				goto err;
-			MLX5_HW_INS_NOP_ACT(mhdr_act->res.actions_num);
+			MLX5_HW_INS_NOP_ACT(mhdr_act->actions_num);
 			break;
 		case RTE_FLOW_ACTION_TYPE_SET_TCP_TP_DST:
-			mhdr_act->set_cmd_pos[MLX5_HDR_MODI_SET_TCP_DST] =
-				mhdr_act->res.actions_num;
-			if (flow_convert_action_modify_tp
-				(&mhdr_act->res, actions, false, false, error))
+			if (mhdr_pos == UINT16_MAX)
+				mhdr_pos = i++;
+			if (__flow_hw_append_act_data_hdr_modify
+				(priv, acts, actions->type,
+				 actions - action_start,
+				 mhdr_pos, mhdr_act->actions_num) ||
+			    flow_convert_action_modify_tp
+				(mhdr_act, actions, false, false, error))
 				goto err;
-			MLX5_HW_INS_NOP_ACT(mhdr_act->res.actions_num);
+			MLX5_HW_INS_NOP_ACT(mhdr_act->actions_num);
 			break;
 		case RTE_FLOW_ACTION_TYPE_SET_IPV4_TTL:
-			mhdr_act->set_cmd_pos[MLX5_HDR_MODI_SET_IPV4_TTL] =
-				mhdr_act->res.actions_num;
-			if (flow_convert_action_modify_ttl
-				(&mhdr_act->res, actions, true, error))
+			if (mhdr_pos == UINT16_MAX)
+				mhdr_pos = i++;
+			if (__flow_hw_append_act_data_hdr_modify
+				(priv, acts, actions->type,
+				 actions - action_start,
+				 mhdr_pos, mhdr_act->actions_num) ||
+			    flow_convert_action_modify_ttl
+				(mhdr_act, actions, true, error))
 				goto err;
-			MLX5_HW_INS_NOP_ACT(mhdr_act->res.actions_num);
+			MLX5_HW_INS_NOP_ACT(mhdr_act->actions_num);
 			break;
 		case RTE_FLOW_ACTION_TYPE_SET_IPV6_HOP:
-			mhdr_act->set_cmd_pos[MLX5_HDR_MODI_SET_IPV6_HOP] =
-				mhdr_act->res.actions_num;
-			if (flow_convert_action_modify_ttl
-				(&mhdr_act->res, actions, false, error))
+			if (mhdr_pos == UINT16_MAX)
+				mhdr_pos = i++;
+			if (__flow_hw_append_act_data_hdr_modify
+				(priv, acts, actions->type,
+				 actions - action_start,
+				 mhdr_pos, mhdr_act->actions_num) ||
+			    flow_convert_action_modify_ttl
+				(mhdr_act, actions, false, error))
 				goto err;
-			MLX5_HW_INS_NOP_ACT(mhdr_act->res.actions_num);
+			MLX5_HW_INS_NOP_ACT(mhdr_act->actions_num);
 			break;
 		case RTE_FLOW_ACTION_TYPE_DEC_IPV4_TTL:
+			if (mhdr_pos == UINT16_MAX)
+				mhdr_pos = i++;
 			if (flow_convert_action_modify_ttl
-				(&mhdr_act->res, NULL, true, error))
+				(mhdr_act, NULL, true, error))
 				goto err;
-			MLX5_HW_INS_NOP_ACT(mhdr_act->res.actions_num);
+			MLX5_HW_INS_NOP_ACT(mhdr_act->actions_num);
 			break;
 		case RTE_FLOW_ACTION_TYPE_DEC_IPV6_HOP:
+			if (mhdr_pos == UINT16_MAX)
+				mhdr_pos = i++;
 			if (flow_convert_action_modify_ttl
-				(&mhdr_act->res, NULL, false, error))
+				(mhdr_act, NULL, false, error))
 				goto err;
-			MLX5_HW_INS_NOP_ACT(mhdr_act->res.actions_num);
+			MLX5_HW_INS_NOP_ACT(mhdr_act->actions_num);
 			break;
 		case RTE_FLOW_ACTION_TYPE_INC_TCP_SEQ:
 		case RTE_FLOW_ACTION_TYPE_DEC_TCP_SEQ:
+			if (mhdr_pos == UINT16_MAX)
+				mhdr_pos = i++;
 			if (flow_convert_action_modify_tcp_seq
-					(&mhdr_act->res, actions, error))
+					(mhdr_act, actions, error))
 				goto err;
-			MLX5_HW_INS_NOP_ACT(mhdr_act->res.actions_num);
+			MLX5_HW_INS_NOP_ACT(mhdr_act->actions_num);
 			break;
 		case RTE_FLOW_ACTION_TYPE_INC_TCP_ACK:
 		case RTE_FLOW_ACTION_TYPE_DEC_TCP_ACK:
+			if (mhdr_pos == UINT16_MAX)
+				mhdr_pos = i++;
 			if (flow_convert_action_modify_tcp_ack
-					(&mhdr_act->res, actions, error))
+					(mhdr_act, actions, error))
 				goto err;
-			MLX5_HW_INS_NOP_ACT(mhdr_act->res.actions_num);
+			MLX5_HW_INS_NOP_ACT(mhdr_act->actions_num);
 			break;
 		case RTE_FLOW_ACTION_TYPE_MODIFY_FIELD:
-			mhdr_act->set_cmd_pos[MLX5_HDR_MODI_MODIFY_FIELD] =
-				mhdr_act->res.actions_num;
-			if (flow_convert_action_modify_field
-					(dev, &mhdr_act->res,
+			if (mhdr_pos == UINT16_MAX)
+				mhdr_pos = i++;
+			if (__flow_hw_append_act_data_hdr_modify
+				(priv, acts, actions->type,
+				 actions - action_start,
+				 mhdr_pos, mhdr_act->actions_num) ||
+			    flow_convert_action_modify_field
+					(dev, mhdr_act,
 					 actions, attr, error))
 				goto err;
-			MLX5_HW_INS_NOP_ACT(mhdr_act->res.actions_num);
+			MLX5_HW_INS_NOP_ACT(mhdr_act->actions_num);
 			break;
 		case RTE_FLOW_ACTION_TYPE_DEC_TTL:
 		case RTE_FLOW_ACTION_TYPE_SET_TTL:
 			/* Not supported now. */
-			break;
+			DRV_LOG(ERR, "Please use IPV4_TTL action.");
+			goto err;
 		case RTE_FLOW_ACTION_TYPE_END:
 			actions_end = true;
 			break;
@@ -387,19 +573,19 @@ flow_hw_actions_translate(struct rte_eth_dev *dev,
 			break;
 		}
 	}
-	if (mhdr_act->res.actions_num) {
+	if (mhdr_act->actions_num) {
 		size_t mhdr_len;
 
 		/* Remove the tail NOP action. */
-		mhdr_act->res.actions_num -= MLX5_HW_NOP_MODI_HDR_ACT;
-		mhdr_len = mhdr_act->res.actions_num *
+		mhdr_act->actions_num -= MLX5_HW_NOP_MODI_HDR_ACT;
+		mhdr_len = mhdr_act->actions_num *
 			   sizeof(struct mlx5_modification_cmd);
-		mhdr_act->res.action = mlx5dr_action_create_modify_header
+		mhdr_act->action = mlx5dr_action_create_modify_header
 				(priv->dr_ctx, mhdr_len,
-				 (__be64 *)mhdr_act->res.actions,
+				 (__be64 *)mhdr_act->actions,
 				 rte_log2_u32(table_attr->nb_flows),
 				 mlx5_hw_dr_ft_flag[!!attr->group][type]);
-		if (!mhdr_act->res.action)
+		if (!mhdr_act->action)
 			goto err;
 		mhdr_len += sizeof(*acts->hdr_modify);
 		acts->hdr_modify = mlx5_malloc(MLX5_MEM_ZERO, mhdr_len,
@@ -407,24 +593,37 @@ flow_hw_actions_translate(struct rte_eth_dev *dev,
 		if (!acts->hdr_modify)
 			goto err;
 		memcpy(acts->hdr_modify, mhdr_act, mhdr_len);
+		acts->rule_acts[mhdr_pos].action = mhdr_act->action;
+		acts->hdr_modify_pos = mhdr_pos;
 	}
-	if (encap_decap) {
+	if (reformat_pos != MLX5_HW_MAX_ACTS) {
 		uint8_t buf[MLX5_ENCAP_MAX_LEN];
 
 		if (enc_item) {
 			MLX5_ASSERT(!encap_data);
 			if (flow_convert_encap_data
-			    (enc_item, buf, &data_size, error))
+				(enc_item, buf, &data_size, error) ||
+			    flow_hw_construct_encap_item
+				(dev, acts, (action_start + reformat_src)->type,
+				 reformat_src, reformat_pos,
+				 enc_item, enc_item_m))
 				goto err;
 			encap_data = buf;
+		} else if (encap_data && __flow_hw_append_act_data_encap
+				(priv, acts,
+				 (action_start + reformat_src)->type,
+				 reformat_src, reformat_pos, 0, 0, data_size)) {
+			goto err;
 		}
 		acts->encap_decap = mlx5_malloc(MLX5_MEM_ZERO,
 				    sizeof(*acts->encap_decap) + data_size,
 				    0, SOCKET_ID_ANY);
 		if (!acts->encap_decap)
 			goto err;
-		acts->encap_decap->data_size = data_size;
-		memcpy(acts->encap_decap->data, encap_data, data_size);
+		if (data_size) {
+			acts->encap_decap->data_size = data_size;
+			memcpy(acts->encap_decap->data, encap_data, data_size);
+		}
 		acts->encap_decap->action = mlx5dr_action_create_reformat
 				(priv->dr_ctx, refmt_type,
 				 data_size, encap_data,
@@ -432,7 +631,11 @@ flow_hw_actions_translate(struct rte_eth_dev *dev,
 				 mlx5_hw_dr_ft_flag[!!attr->group][type]);
 		if (!acts->encap_decap->action)
 			goto err;
+		acts->rule_acts[reformat_pos].action =
+						acts->encap_decap->action;
+		acts->encap_decap_pos = reformat_pos;
 	}
+	acts->acts_num = i;
 	return 0;
 err:
 	err = rte_errno;
@@ -442,7 +645,7 @@ err:
 				  "fail to create rte table");
 }
 
-static void
+static __rte_always_inline void
 flow_hw_actions_construct(struct rte_eth_dev *dev,
 			  struct mlx5_hw_q_job *job,
 			  struct mlx5_hw_actions *hw_acts,
@@ -450,26 +653,23 @@ flow_hw_actions_construct(struct rte_eth_dev *dev,
 			  struct mlx5dr_rule_action *rule_acts,
 			  uint32_t *acts_num)
 {
-	struct mlx5_priv *priv = dev->data->dev_private;
 	struct rte_flow_table *table = job->flow->table;
+	const struct rte_flow_action *action;
+	const struct rte_flow_action_raw_encap *raw_encap_data;
+	const struct rte_flow_item *enc_item = NULL;
+	uint8_t *buf = job->encap_data;
 	struct rte_flow_attr attr = {
 		.ingress = 1,
 	};
-	const struct rte_flow_action_raw_encap *raw_encap_data;
-	const struct rte_flow_item *enc_item = NULL;
-	uint8_t *encap_data = NULL;
-	bool actions_end = false;
-	uint32_t reformat_pos = UINT32_MAX;
-	uint32_t modify_action_position = UINT32_MAX;
 	union {
-		struct mlx5_hw_header_modify_action act;
-		uint8_t len[sizeof(struct mlx5_hw_header_modify_action) +
+		struct mlx5_flow_dv_modify_hdr_resource act;
+		uint8_t len[sizeof(struct mlx5_flow_dv_modify_hdr_resource) +
 			    sizeof(struct mlx5_modification_cmd) *
 			    (MLX5_MAX_MODIFY_NUM * 2 + 1)];
 	} mhdr_dummy;
-	struct mlx5_hw_header_modify_action *mhdr_act =
+	struct mlx5_flow_dv_modify_hdr_resource *mhdr_act =
 						&mhdr_dummy.act;
-	uint32_t i;
+	struct mlx5_action_construct_data *act_data;
 
 	if (table->type == MLX5DR_TABLE_TYPE_FDB) {
 		attr.transfer = 1;
@@ -480,196 +680,144 @@ flow_hw_actions_construct(struct rte_eth_dev *dev,
 	} else {
 		attr.ingress = 1;
 	}
-	mhdr_act->res.actions_num = 0;
-	for (i = 0; !actions_end || (i >= MLX5_HW_MAX_ACTS); actions++) {
+	memcpy(rule_acts, hw_acts->rule_acts,
+	       sizeof(*rule_acts) * hw_acts->acts_num);
+	*acts_num = hw_acts->acts_num;
+	if (hw_acts->hdr_modify)
+		mhdr_act->actions_num = 0;
+	if (hw_acts->encap_decap && hw_acts->encap_decap->data_size)
+		memcpy(buf, hw_acts->encap_decap->data,
+		       hw_acts->encap_decap->data_size);
+	LIST_FOREACH(act_data, &hw_acts->act_list, next) {
 		uint32_t tag;
 
-		switch (actions->type) {
-		case RTE_FLOW_ACTION_TYPE_INDIRECT:
-			break;
-		case RTE_FLOW_ACTION_TYPE_VOID:
-			break;
-		case RTE_FLOW_ACTION_TYPE_DROP:
-			rule_acts[i++].action = hw_acts->drop;
-			break;
-		case RTE_FLOW_ACTION_TYPE_JUMP:
-			rule_acts[i++].action = table->grp->group_id ?
-						hw_acts->jump->hws_action :
-						hw_acts->jump->root_action;
-			break;
+		action = &actions[act_data->action_src];
+		MLX5_ASSERT(action->type == act_data->type);
+		switch (action->type) {
 		case RTE_FLOW_ACTION_TYPE_MARK:
 			tag = mlx5_flow_mark_set
 			      (((const struct rte_flow_action_mark *)
-			      (actions->conf))->id);
-			rule_acts[i].action = priv->hw_tag
-					[!!table->grp->group_id][table->type];
-			rule_acts[i].tag.value = tag;
-			i++;
-			break;
-		case RTE_FLOW_ACTION_TYPE_QUEUE:
-		case RTE_FLOW_ACTION_TYPE_RSS:
-			rule_acts[i++].action = hw_acts->tir->action;
+			      (action->conf))->id);
+			rule_acts[act_data->action_dst].tag.value = tag;
 			break;
 		case RTE_FLOW_ACTION_TYPE_VXLAN_ENCAP:
-			MLX5_ASSERT(!encap_decap);
 			enc_item = ((const struct rte_flow_action_vxlan_encap *)
-				   actions->conf)->definition;
-			reformat_pos = i++;
+				   action->conf)->definition;
+			rte_memcpy((void *)&buf[act_data->encap.dst],
+				   enc_item[act_data->encap.src].spec,
+				   act_data->encap.len);
 			break;
 		case RTE_FLOW_ACTION_TYPE_NVGRE_ENCAP:
 			enc_item = ((const struct rte_flow_action_nvgre_encap *)
-				   actions->conf)->definition;
-			reformat_pos = i++;
-			break;
-		case RTE_FLOW_ACTION_TYPE_VXLAN_DECAP:
-		case RTE_FLOW_ACTION_TYPE_NVGRE_DECAP:
-			reformat_pos = i++;
+				   action->conf)->definition;
+			rte_memcpy((void *)&buf[act_data->encap.dst],
+				   enc_item[act_data->encap.src].spec,
+				   act_data->encap.len);
 			break;
 		case RTE_FLOW_ACTION_TYPE_RAW_ENCAP:
 			raw_encap_data =
 				(const struct rte_flow_action_raw_encap *)
-				 actions->conf;
-			encap_data = raw_encap_data->data;
-			reformat_pos = i++;
-			break;
-		case RTE_FLOW_ACTION_TYPE_RAW_DECAP:
-			if (!hw_acts->encap_decap->data_size)
-				reformat_pos = i++;
+				 action->conf;
+			rte_memcpy((void *)&buf[act_data->encap.dst],
+				   raw_encap_data->data, act_data->encap.len);
+			MLX5_ASSERT(raw_encap_data->size ==
+				    act_data->encap.len);
 			break;
 		case RTE_FLOW_ACTION_TYPE_SET_MAC_SRC:
-			mhdr_act->res.actions_num =
-				hw_acts->hdr_modify->set_cmd_pos
-				[MLX5_HDR_MODI_SET_MAC_SRC];
+			mhdr_act->actions_num =
+				act_data->modify_header.sub_action_dst;
 			flow_convert_action_modify_mac
-				(&mhdr_act->res, actions, NULL);
+				(mhdr_act, action, NULL);
 			break;
 		case RTE_FLOW_ACTION_TYPE_SET_MAC_DST:
-			mhdr_act->res.actions_num =
-				hw_acts->hdr_modify->set_cmd_pos
-				[MLX5_HDR_MODI_SET_MAC_DST];
+			mhdr_act->actions_num =
+				act_data->modify_header.sub_action_dst;
 			flow_convert_action_modify_mac
-				(&mhdr_act->res, actions, NULL);
+				(mhdr_act, action, NULL);
 			break;
 		case RTE_FLOW_ACTION_TYPE_SET_IPV4_SRC:
-			mhdr_act->res.actions_num =
-				hw_acts->hdr_modify->set_cmd_pos
-				[MLX5_HDR_MODI_SET_IPV4_SRC];
+			mhdr_act->actions_num =
+				act_data->modify_header.sub_action_dst;
 			flow_convert_action_modify_ipv4
-				(&mhdr_act->res, actions, NULL);
+				(mhdr_act, action, NULL);
 			break;
 		case RTE_FLOW_ACTION_TYPE_SET_IPV4_DST:
-			mhdr_act->res.actions_num =
-				hw_acts->hdr_modify->set_cmd_pos
-				[MLX5_HDR_MODI_SET_IPV4_DST];
+			mhdr_act->actions_num =
+				act_data->modify_header.sub_action_dst;
 			flow_convert_action_modify_ipv4
-				(&mhdr_act->res, actions, NULL);
+				(mhdr_act, action, NULL);
 			break;
 		case RTE_FLOW_ACTION_TYPE_SET_IPV6_SRC:
-			mhdr_act->res.actions_num =
-				hw_acts->hdr_modify->set_cmd_pos
-				[MLX5_HDR_MODI_SET_IPV6_SRC];
+			mhdr_act->actions_num =
+				act_data->modify_header.sub_action_dst;
 			flow_convert_action_modify_ipv6
-				(&mhdr_act->res, actions, NULL);
+				(mhdr_act, action, NULL);
 			break;
 		case RTE_FLOW_ACTION_TYPE_SET_IPV6_DST:
-			mhdr_act->res.actions_num =
-				hw_acts->hdr_modify->set_cmd_pos
-				[MLX5_HDR_MODI_SET_IPV6_DST];
+			mhdr_act->actions_num =
+				act_data->modify_header.sub_action_dst;
 			flow_convert_action_modify_ipv6
-				(&mhdr_act->res, actions, NULL);
+				(mhdr_act, action, NULL);
 			break;
 		case RTE_FLOW_ACTION_TYPE_SET_UDP_TP_SRC:
-			mhdr_act->res.actions_num =
-				hw_acts->hdr_modify->set_cmd_pos
-				[MLX5_HDR_MODI_SET_UDP_SRC];
+			mhdr_act->actions_num =
+				act_data->modify_header.sub_action_dst;
 			flow_convert_action_modify_tp
-				(&mhdr_act->res, actions, true, true, NULL);
+				(mhdr_act, action, true, true, NULL);
 			break;
 		case RTE_FLOW_ACTION_TYPE_SET_UDP_TP_DST:
-			mhdr_act->res.actions_num =
-				hw_acts->hdr_modify->set_cmd_pos
-				[MLX5_HDR_MODI_SET_UDP_DST];
+			mhdr_act->actions_num =
+				act_data->modify_header.sub_action_dst;
 			flow_convert_action_modify_tp
-				(&mhdr_act->res, actions, true, false, NULL);
+				(mhdr_act, action, true, false, NULL);
 			break;
 		case RTE_FLOW_ACTION_TYPE_SET_TCP_TP_SRC:
-			mhdr_act->res.actions_num =
-				hw_acts->hdr_modify->set_cmd_pos
-				[MLX5_HDR_MODI_SET_TCP_SRC];
+			mhdr_act->actions_num =
+				act_data->modify_header.sub_action_dst;
 			flow_convert_action_modify_tp
-				(&mhdr_act->res, actions, false, true, NULL);
+				(mhdr_act, action, false, true, NULL);
 			break;
 		case RTE_FLOW_ACTION_TYPE_SET_TCP_TP_DST:
-			mhdr_act->res.actions_num =
-				hw_acts->hdr_modify->set_cmd_pos
-				[MLX5_HDR_MODI_SET_TCP_DST];
+			mhdr_act->actions_num =
+				act_data->modify_header.sub_action_dst;
 			flow_convert_action_modify_tp
-				(&mhdr_act->res, actions, false, false, NULL);
+				(mhdr_act, action, false, false, NULL);
 			break;
 		case RTE_FLOW_ACTION_TYPE_SET_IPV4_TTL:
-			mhdr_act->res.actions_num =
-				hw_acts->hdr_modify->set_cmd_pos
-				[MLX5_HDR_MODI_SET_IPV4_TTL];
+			mhdr_act->actions_num =
+				act_data->modify_header.sub_action_dst;
 			flow_convert_action_modify_ttl
-				(&mhdr_act->res, actions, true, NULL);
+				(mhdr_act, action, true, NULL);
 			break;
 		case RTE_FLOW_ACTION_TYPE_SET_IPV6_HOP:
-			mhdr_act->res.actions_num =
-				hw_acts->hdr_modify->set_cmd_pos
-				[MLX5_HDR_MODI_SET_IPV6_HOP];
+			mhdr_act->actions_num =
+				act_data->modify_header.sub_action_dst;
 			flow_convert_action_modify_ttl
-				(&mhdr_act->res, actions, false, NULL);
+				(mhdr_act, action, false, NULL);
 			break;
 		case RTE_FLOW_ACTION_TYPE_MODIFY_FIELD:
-			mhdr_act->res.actions_num =
-				hw_acts->hdr_modify->set_cmd_pos
-				[MLX5_HDR_MODI_MODIFY_FIELD];
+			mhdr_act->actions_num =
+				act_data->modify_header.sub_action_dst;
 			flow_convert_action_modify_field
-					(dev, &mhdr_act->res,
-					 actions, &attr, NULL);
-			break;
-		case RTE_FLOW_ACTION_TYPE_END:
-			actions_end = true;
+					(dev, mhdr_act, action, &attr, NULL);
 			break;
 		default:
 			break;
 		}
-		if (mhdr_act->res.actions_num &&
-		    modify_action_position == UINT32_MAX)
-			modify_action_position = i++;
 	}
-	if (mhdr_act->res.actions_num) {
-		rule_acts[modify_action_position].action =
-					hw_acts->hdr_modify->res.action;
-		rule_acts[modify_action_position].modify_header.offset =
+	if (hw_acts->hdr_modify) {
+		rule_acts[hw_acts->hdr_modify_pos].modify_header.offset =
 					job->flow->idx - 1;
-		rule_acts[modify_action_position].modify_header.data =
+		rule_acts[hw_acts->hdr_modify_pos].modify_header.data =
 					(uint8_t *)job->mhdr_cmd;
-		memcpy(job->mhdr_cmd, mhdr_act->res.actions,
-		       sizeof(*job->mhdr_cmd) * mhdr_act->res.actions_num);
+		memcpy(job->mhdr_cmd, mhdr_act->actions,
+		       sizeof(*job->mhdr_cmd) * mhdr_act->actions_num);
 	}
-	if (reformat_pos != UINT32_MAX) {
-		uint8_t buf[MLX5_ENCAP_MAX_LEN];
-		size_t data_size = 0;
-
-		if (hw_acts->encap_decap->data_size) {
-			if (enc_item) {
-				MLX5_ASSERT(!encap_data);
-				flow_convert_encap_data
-					(enc_item, buf, &data_size, NULL);
-				encap_data = buf;
-			}
-			MLX5_ASSERT(hw_acts->encap_decap->data_size ==
-				    raw_encap_data->size);
-			memcpy(job->encap_data, encap_data,
-			       hw_acts->encap_decap->data_size);
-			rule_acts[reformat_pos].reformat.data = job->encap_data;
-		}
-		rule_acts[reformat_pos].reformat.offset =
+	if (hw_acts->encap_decap) {
+		rule_acts[hw_acts->encap_decap_pos].reformat.offset =
 				job->flow->idx - 1;
-		rule_acts[reformat_pos].action = hw_acts->encap_decap->action;
+		rule_acts[hw_acts->encap_decap_pos].reformat.data = buf;
 	}
-	*acts_num = i;
 }
 
 static struct rte_flow *
@@ -950,6 +1098,7 @@ flow_hw_table_create(struct rte_eth_dev *dev,
 			rte_errno = EINVAL;
 			goto at_error;
 		}
+		LIST_INIT(&tbl->ats[i].acts.act_list);
 		err = flow_hw_actions_translate(dev, attr,
 						&tbl->ats[i].acts,
 						action_templates[i], error);
@@ -1277,6 +1426,15 @@ flow_hw_configure(struct rte_eth_dev *dev,
 	struct mlx5dr_context_attr dr_ctx_attr = {0};
 	struct mlx5_hw_q_job *job = NULL;
 	uint32_t mem_size, i, j;
+	struct mlx5_indexed_pool_config cfg = {
+		.size = sizeof(struct rte_flow_hw),
+		.trunk_size = 4096,
+		.need_lock = 1,
+		.release_mem_en = !!priv->config.reclaim_mode,
+		.malloc = mlx5_malloc,
+		.free = mlx5_free,
+		.type = "mlx5_hw_action_construct_data",
+	};
 
 	if (!port_attr || !port_attr->nb_queues || !queue_attr) {
 		rte_errno = EINVAL;
@@ -1290,6 +1448,9 @@ flow_hw_configure(struct rte_eth_dev *dev,
 	if (!dr_ctx)
 		goto err;
 	priv->dr_ctx = dr_ctx;
+	priv->acts_ipool = mlx5_ipool_create(&cfg);
+	if (!priv->acts_ipool)
+		goto err;
 	/* Allocate the queue job descriptor LIFO. */
 	mem_size = sizeof(priv->hw_q[0]) * port_attr->nb_queues;
 	for (i = 0; i < port_attr->nb_queues; i++)
@@ -1353,6 +1514,8 @@ err:
 				mlx5dr_action_destroy(priv->hw_tag[i][j]);
 		}
 	}
+	if (priv->acts_ipool)
+		mlx5_ipool_destroy(priv->acts_ipool);
 	if (dr_ctx)
 		claim_zero(mlx5dr_context_close(dr_ctx));
 	return rte_flow_error_set(err, rte_errno,
@@ -1382,6 +1545,7 @@ flow_hw_resource_release(struct rte_eth_dev *dev)
 		at = LIST_FIRST(&priv->flow_hw_at);
 		flow_hw_action_template_destroy(dev, at, NULL);
 	}
+	mlx5_ipool_destroy(priv->acts_ipool);
 	mlx5_free(priv->hw_q);
 	claim_zero(mlx5dr_context_close(priv->dr_ctx));
 }

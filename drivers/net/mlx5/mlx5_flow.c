@@ -10574,7 +10574,7 @@ mlx5_flow_expand_rss_adjust_node(const struct rte_flow_item *pattern,
  * @return
  *   sizeof struct item_type, 0 if void or irrelevant.
  */
-static size_t
+size_t
 flow_get_item_hdr_len(const enum rte_flow_item_type item_type)
 {
 	size_t retval;
