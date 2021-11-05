@@ -166,6 +166,22 @@ cdef class Mlx5drActionDefaultMiss(Mlx5drAction):
             raise PydiruErrno('Mlx5drActionDefaultMiss creation failed.')
 
 
+cdef class Mlx5drActionCounter(Mlx5drAction):
+    def __init__(self, Mlx5drContext ctx, Mlx5drDevxObj counter, flags):
+        """
+        Initializes a counter action.
+        :param ctx: Mlx5drContext context
+        :param counter: DR devx counter object
+        :param flags: Action flags
+        """
+        super().__init__(ctx)
+        self.action = dr.mlx5dr_action_create_counter(ctx.context, &counter.dr_devx_obj, flags)
+        if self.action == NULL:
+            raise PydiruErrno('Mlx5drActionCounter creation failed.')
+        self.counter = counter
+        counter.add_ref(self)
+
+
 cdef class Mlx5drRuleAction(PydiruCM):
     """
     Class Mlx5drRuleAction representing mlx5dr_rule_action struct.
@@ -195,6 +211,8 @@ cdef class Mlx5drRuleAction(PydiruCM):
             if data:
                 self.reformat_data = data
             self.reformat_offset = offset
+        elif isinstance(self.action, Mlx5drActionCounter):
+            self.counter_offset = kwargs.get('offset', 0)
 
     @property
     def tag_value(self):
@@ -212,6 +230,14 @@ cdef class Mlx5drRuleAction(PydiruCM):
     def action(self, Mlx5drAction value):
         self.rule_action.action = value.action
         self.action = value
+
+    @property
+    def counter_offset(self):
+        return self.rule_action.counter.offset
+
+    @counter_offset.setter
+    def counter_offset(self, offset):
+        self.rule_action.counter.offset = offset
 
     @property
     def modify_data(self):

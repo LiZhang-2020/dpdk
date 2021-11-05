@@ -57,11 +57,15 @@ cdef extern  from '../../../../drivers/net/mlx5/steering/mlx5dr.h':
         uint32_t offset
         uint8_t *data
 
+    cdef struct counter_:
+        uint32_t offset
+
     cdef struct mlx5dr_rule_action:
         mlx5dr_action *action
         tag_ tag
         modify_header_ modify_header
         reformat_ reformat
+        counter_ counter
         uint32_t vlan_hdr
 
     cdef struct mlx5dr_rule:
@@ -112,6 +116,8 @@ cdef extern  from '../../../../drivers/net/mlx5/steering/mlx5dr.h':
                                                       me.mlx5dr_action_flags flags)
     mlx5dr_action *mlx5dr_action_create_default_miss(mlx5dr_context *ctx,
                                                      me.mlx5dr_action_flags flags)
+    mlx5dr_action *mlx5dr_action_create_counter(mlx5dr_context *ctx, mlx5dr_devx_obj *obj,
+                                                me.mlx5dr_action_flags flags)
     int mlx5dr_action_destroy(mlx5dr_action *action)
 
     int mlx5dr_send_queue_poll(mlx5dr_context *ctx, uint16_t queue_id, pdr.rte_flow_q_op_res *res,

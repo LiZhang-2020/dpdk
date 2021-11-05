@@ -34,6 +34,9 @@ cdef class Mlx5drActionModify(Mlx5drAction):
 cdef class Mlx5drActionDefaultMiss(Mlx5drAction):
     pass
 
+cdef class Mlx5drActionCounter(Mlx5drAction):
+    cdef Mlx5drDevxObj counter
+
 cdef class Mlx5drRuleAction(PydiruCM):
     cdef dr.mlx5dr_rule_action rule_action
     cdef Mlx5drAction action

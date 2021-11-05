@@ -9,3 +9,4 @@ cdef class Mlx5drDevxObj(PydiruCM):
     cdef dr.mlx5dr_devx_obj dr_devx_obj
     cdef object devx_obj
     cdef object dr_actions
+    cdef add_ref(self, obj)
