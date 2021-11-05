@@ -153,6 +153,19 @@ cdef class Mlx5drActionModify(Mlx5drAction):
             raise PydiruErrno('Mlx5drActionModify creation failed.')
 
 
+cdef class Mlx5drActionDefaultMiss(Mlx5drAction):
+    def __init__(self, Mlx5drContext ctx, flags):
+        """
+        Initializes a default miss action.
+        :param ctx:  Mlx5drContext context
+        :param flags: Action flags
+        """
+        super().__init__(ctx)
+        self.action = dr.mlx5dr_action_create_default_miss(ctx.context, flags)
+        if self.action == NULL:
+            raise PydiruErrno('Mlx5drActionDefaultMiss creation failed.')
+
+
 cdef class Mlx5drRuleAction(PydiruCM):
     """
     Class Mlx5drRuleAction representing mlx5dr_rule_action struct.
