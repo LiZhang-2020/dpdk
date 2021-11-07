@@ -687,7 +687,7 @@ mlx5_crypto_queue_pair_setup(struct rte_cryptodev *dev, uint16_t qp_id,
 	attr.num_of_receive_wqes =  0;
 	attr.num_of_send_wqbbs = RTE_BIT32(log_wqbb_n);
 	attr.ts_format = mlx5_ts_format_conv(priv->qp_ts_format);
-	
+
 	ret = mlx5_devx_qp_create(priv->ctx, &qp->qp_obj, attr.num_of_send_wqbbs
 					* MLX5_SEND_WQE_BB, &attr, socket_id);
 	if (ret) {
@@ -1079,13 +1079,6 @@ mlx5_crypto_dev_probe(struct rte_device *dev)
 		claim_zero(mlx5_glue->close_device(ctx));
 		return -rte_errno;
 	}
-	login = mlx5_devx_cmd_create_crypto_login_obj(ctx,
-						      &devarg_prms.login_attr);
-	if (login == NULL) {
-		DRV_LOG(ERR, "Failed to configure login.");
-		claim_zero(mlx5_glue->close_device(ctx));
-		return -rte_errno;
-	}
 	crypto_dev = rte_cryptodev_pmd_create(ibv->name, dev,
 					&init_params);
 	if (crypto_dev == NULL) {
@@ -1102,7 +1095,6 @@ mlx5_crypto_dev_probe(struct rte_device *dev)
 	crypto_dev->driver_id = mlx5_crypto_driver_id;
 	priv = crypto_dev->data->dev_private;
 	priv->ctx = ctx;
-	priv->login_obj = login;
 	priv->crypto_dev = crypto_dev;
 	priv->qp_ts_format = attr.qp_ts_format;
 	if (mlx5_crypto_hw_global_prepare(priv) != 0) {
@@ -1121,12 +1113,26 @@ mlx5_crypto_dev_probe(struct rte_device *dev)
 	}
 	priv->mr_scache.reg_mr_cb = mlx5_common_verbs_reg_mr;
 	priv->mr_scache.dereg_mr_cb = mlx5_common_verbs_dereg_mr;
+	login = mlx5_devx_cmd_create_crypto_login_obj(ctx,
+						      &devarg_prms.login_attr);
+	if (login == NULL) {
+		DRV_LOG(ERR, "Failed to configure login.");
+		mlx5_mr_release_cache(&priv->mr_scache);
+		mlx5_crypto_hw_global_release(priv);
+		rte_cryptodev_pmd_destroy(priv->crypto_dev);
+		claim_zero(mlx5_glue->close_device(priv->ctx));
+		return -rte_errno;
+	}
+	priv->login_obj = login;
 	priv->keytag = rte_cpu_to_be_64(devarg_prms.keytag);
 	ret = mlx5_crypto_configure_wqe_size(priv,
 		attr.max_wqe_sz_sq, devarg_prms.max_segs_num);
 	if (ret) {
+		claim_zero(mlx5_devx_cmd_destroy(priv->login_obj));
+		mlx5_mr_release_cache(&priv->mr_scache);
 		mlx5_crypto_hw_global_release(priv);
 		rte_cryptodev_pmd_destroy(priv->crypto_dev);
+		claim_zero(mlx5_glue->close_device(priv->ctx));
 		return -1;
 	}
 	DRV_LOG(INFO, "Max number of segments: %u.",
@@ -1160,10 +1166,10 @@ mlx5_crypto_dev_remove(struct  rte_device *dev)
 		if (TAILQ_EMPTY(&mlx5_crypto_priv_list))
 			rte_mem_event_callback_unregister("MLX5_MEM_EVENT_CB",
 							  NULL);
+		claim_zero(mlx5_devx_cmd_destroy(priv->login_obj));
 		mlx5_mr_release_cache(&priv->mr_scache);
 		mlx5_crypto_hw_global_release(priv);
 		rte_cryptodev_pmd_destroy(priv->crypto_dev);
-		claim_zero(mlx5_devx_cmd_destroy(priv->login_obj));
 		claim_zero(mlx5_glue->close_device(priv->ctx));
 	}
 	return 0;
