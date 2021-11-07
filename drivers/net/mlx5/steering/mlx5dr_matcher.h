@@ -19,8 +19,7 @@
 /* Thrashold to determine if amount of rules require a collision table */
 #define MLX5DR_MATCHER_ASSURED_RULES_TH 10
 /* Required depth of an assured collision table */
-// TODO Should be 4, but current HW doesn't support
-#define MLX5DR_MATCHER_ASSURED_COL_TBL_DEPTH 3
+#define MLX5DR_MATCHER_ASSURED_COL_TBL_DEPTH 4
 /* Required depth of the main large table */
 #define MLX5DR_MATCHER_ASSURED_MAIN_TBL_DEPTH 2
 
