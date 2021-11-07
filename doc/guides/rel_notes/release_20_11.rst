@@ -453,8 +453,9 @@ New Features
   transformation. A capability for it was added too.
 * **Added support for Nvidia crypto device driver.**
 
-  Added mlx5 crypto driver to support AES-XTS cipher operations.
-  The first device to support it is ConnectX-6.
+    * Added mlx5 crypto driver to support AES-XTS cipher operations.
+      The first device to support it is ConnectX-6.
+    * Added support for Bluefield2 and ConnectX6-DX.
 
 * **Updated mlx5 compress PMD.**
   * Added devarg to allow manual setting of Huffman block size.
