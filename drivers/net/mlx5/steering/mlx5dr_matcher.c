@@ -192,7 +192,7 @@ static int mlx5dr_matcher_create_rtc_nic(struct mlx5dr_matcher *matcher,
 
 	/* STC is a single resource (devx_obj), use any STC for the ID */
 	default_stc = ctx->common_res[tbl->type].default_stc;
-	devx_obj = mlx5dr_pool_chunk_get_base_devx_obj(stc_pool, &default_stc->nop_single);
+	devx_obj = mlx5dr_pool_chunk_get_base_devx_obj(stc_pool, &default_stc->default_hit);
 	rtc_attr.stc_base = devx_obj->id;
 
 	nic_matcher->rtc = mlx5dr_cmd_rtc_create(ctx->ibv_ctx, &rtc_attr);

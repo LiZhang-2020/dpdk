@@ -5,11 +5,16 @@
 #define MLX5DR_ACTION_H_
 
 enum mlx5dr_action_stc_idx {
-	MLX5DR_ACTION_STC_IDX_CTR = 0,
-	MLX5DR_ACTION_STC_IDX_DOUBLE = 1,
-	MLX5DR_ACTION_STC_IDX_SINGLE = 2,
-	MLX5DR_ACTION_STC_IDX_HIT = 3,
-	MLX5DR_ACTION_STC_IDX_MAX = 3,
+	MLX5DR_ACTION_STC_IDX_CTRL = 0,
+	MLX5DR_ACTION_STC_IDX_HIT = 1,
+	MLX5DR_ACTION_STC_IDX_DW5 = 2,
+	MLX5DR_ACTION_STC_IDX_DW6 = 3,
+	MLX5DR_ACTION_STC_IDX_DW7 = 4,
+	MLX5DR_ACTION_STC_IDX_MAX = 5,
+	/* STC combo1: CTR, SINGLE, DOUBLE, Hit */
+	MLX5DR_ACTION_STC_IDX_LAST_COMBO1 = 3,
+	/* STC combo2: CTR, 3 x SINGLE, Hit */
+	MLX5DR_ACTION_STC_IDX_LAST_COMBO2 = 4,
 };
 
 enum mlx5dr_action_offset {
@@ -60,8 +65,9 @@ enum {
 
 struct mlx5dr_action_default_stc {
 	struct mlx5dr_pool_chunk nop_ctr;
-	struct mlx5dr_pool_chunk nop_double;
-	struct mlx5dr_pool_chunk nop_single;
+	struct mlx5dr_pool_chunk nop_dw5;
+	struct mlx5dr_pool_chunk nop_dw6;
+	struct mlx5dr_pool_chunk nop_dw7;
 	struct mlx5dr_pool_chunk default_hit;
 	uint32_t refcount;
 };

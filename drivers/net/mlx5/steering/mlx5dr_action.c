@@ -115,7 +115,7 @@ static void mlx5dr_action_fill_stc_attr(struct mlx5dr_action *action,
 	switch (action->type) {
 	case MLX5DR_ACTION_TYP_TAG:
 		attr->action_type = MLX5_IFC_STC_ACTION_TYPE_TAG;
-		attr->action_offset = MLX5DR_ACTION_OFFSET_DW7;
+		attr->action_offset = MLX5DR_ACTION_OFFSET_DW5;
 		break;
 	case MLX5DR_ACTION_TYP_DROP:
 		attr->action_type = MLX5_IFC_STC_ACTION_TYPE_DROP;
@@ -138,7 +138,7 @@ static void mlx5dr_action_fill_stc_attr(struct mlx5dr_action *action,
 	case MLX5DR_ACTION_TYP_TNL_L3_TO_L2:
 	case MLX5DR_ACTION_TYP_MODIFY_HDR:
 		attr->action_type = MLX5_IFC_STC_ACTION_TYPE_ACC_MODIFY_LIST;
-		attr->action_offset = MLX5DR_ACTION_OFFSET_DW5;
+		attr->action_offset = MLX5DR_ACTION_OFFSET_DW6;
 		attr->modify_header.arg_id = action->modify_header.arg_obj->id;
 		attr->modify_header.pattern_id = action->modify_header.pattern_obj->id;
 		break;
@@ -156,7 +156,7 @@ static void mlx5dr_action_fill_stc_attr(struct mlx5dr_action *action,
 		break;
 	case MLX5DR_ACTION_TYP_L2_TO_TNL_L2:
 		attr->action_type = MLX5_IFC_STC_ACTION_TYPE_HEADER_INSERT;
-		attr->action_offset = MLX5DR_ACTION_OFFSET_DW5;
+		attr->action_offset = MLX5DR_ACTION_OFFSET_DW6;
 		attr->reformat.encap = 1;
 		attr->reformat.insert_anchor = MLX5_HEADER_START_OF_PACKET;
 		attr->reformat.arg_id = action->reformat.arg_obj->id;
@@ -1107,18 +1107,26 @@ int mlx5dr_action_get_default_stc(struct mlx5dr_context *ctx,
 
 	stc_attr.action_offset = MLX5DR_ACTION_OFFSET_DW5;
 	ret = mlx5dr_action_alloc_single_stc(ctx, &stc_attr, tbl_type,
-					     &default_stc->nop_double);
+					     &default_stc->nop_dw5);
 	if (ret) {
-		DR_LOG(ERR, "Failed to allocate default double STC");
+		DR_LOG(ERR, "Failed to allocate default NOP DW5 STC");
 		goto free_nop_ctr;
+	}
+
+	stc_attr.action_offset = MLX5DR_ACTION_OFFSET_DW6;
+	ret = mlx5dr_action_alloc_single_stc(ctx, &stc_attr, tbl_type,
+					     &default_stc->nop_dw6);
+	if (ret) {
+		DR_LOG(ERR, "Failed to allocate default NOP DW6 STC");
+		goto free_nop_dw5;
 	}
 
 	stc_attr.action_offset = MLX5DR_ACTION_OFFSET_DW7;
 	ret = mlx5dr_action_alloc_single_stc(ctx, &stc_attr, tbl_type,
-					     &default_stc->nop_single);
+					     &default_stc->nop_dw7);
 	if (ret) {
-		DR_LOG(ERR, "Failed to allocate default single STC");
-		goto free_nop_double;
+		DR_LOG(ERR, "Failed to allocate default NOP DW7 STC");
+		goto free_nop_dw6;
 	}
 
 	stc_attr.action_type = MLX5_IFC_STC_ACTION_TYPE_ALLOW;
@@ -1127,7 +1135,7 @@ int mlx5dr_action_get_default_stc(struct mlx5dr_context *ctx,
 					     &default_stc->default_hit);
 	if (ret) {
 		DR_LOG(ERR, "Failed to allocate default allow STC");
-		goto free_nop_single;
+		goto free_nop_dw7;
 	}
 
 	ctx->common_res[tbl_type].default_stc = default_stc;
@@ -1137,10 +1145,12 @@ int mlx5dr_action_get_default_stc(struct mlx5dr_context *ctx,
 
 	return 0;
 
-free_nop_single:
-	mlx5dr_action_free_single_stc(ctx, tbl_type, &default_stc->nop_single);
-free_nop_double:
-	mlx5dr_action_free_single_stc(ctx, tbl_type, &default_stc->nop_double);
+free_nop_dw7:
+	mlx5dr_action_free_single_stc(ctx, tbl_type, &default_stc->nop_dw7);
+free_nop_dw6:
+	mlx5dr_action_free_single_stc(ctx, tbl_type, &default_stc->nop_dw6);
+free_nop_dw5:
+	mlx5dr_action_free_single_stc(ctx, tbl_type, &default_stc->nop_dw5);
 free_nop_ctr:
 	mlx5dr_action_free_single_stc(ctx, tbl_type, &default_stc->nop_ctr);
 free_default_stc:
@@ -1165,8 +1175,9 @@ void mlx5dr_action_put_default_stc(struct mlx5dr_context *ctx,
 	}
 
 	mlx5dr_action_free_single_stc(ctx, tbl_type, &default_stc->default_hit);
-	mlx5dr_action_free_single_stc(ctx, tbl_type, &default_stc->nop_single);
-	mlx5dr_action_free_single_stc(ctx, tbl_type, &default_stc->nop_double);
+	mlx5dr_action_free_single_stc(ctx, tbl_type, &default_stc->nop_dw7);
+	mlx5dr_action_free_single_stc(ctx, tbl_type, &default_stc->nop_dw6);
+	mlx5dr_action_free_single_stc(ctx, tbl_type, &default_stc->nop_dw5);
 	mlx5dr_action_free_single_stc(ctx, tbl_type, &default_stc->nop_ctr);
 	simple_free(default_stc);
 	ctx->common_res[tbl_type].default_stc = NULL;
@@ -1230,28 +1241,29 @@ int mlx5dr_actions_quick_apply(struct mlx5dr_send_engine *queue,
 			       bool is_rx)
 {
 	struct mlx5dr_action_default_stc *default_stc = common_res->default_stc;
+	uint32_t stc_arr[MLX5DR_ACTION_STC_IDX_MAX] = {0};
 	uint32_t *raw_wqe = (uint32_t *)wqe_data;
 	struct mlx5dr_action *action;
+	bool require_double = false;;
 	int stc_idx;
 	int i;
 
 	/* Set the default STC, current HW checks require all action fields to
 	 * be covered. This is needed to prevent invalid action creation using
 	 * multiple writes to the same STE.
-	 *
-	 * Current combination allows CTR(0) + Double/Single(5) + Single(7)
 	 */
+
 	wqe_ctrl->op_dirix = htobe32(MLX5DR_WQE_GTA_OP_ACTIVATE << 28);
-	wqe_ctrl->stc_ix[MLX5DR_ACTION_STC_IDX_CTR] = htobe32(default_stc->nop_ctr.offset);
-	wqe_ctrl->stc_ix[MLX5DR_ACTION_STC_IDX_DOUBLE] = htobe32(default_stc->nop_double.offset);
-	wqe_ctrl->stc_ix[MLX5DR_ACTION_STC_IDX_SINGLE] = htobe32(default_stc->nop_single.offset);
-	wqe_ctrl->stc_ix[MLX5DR_ACTION_STC_IDX_HIT] = htobe32(default_stc->default_hit.offset);
+	stc_arr[MLX5DR_ACTION_STC_IDX_CTRL] = default_stc->nop_ctr.offset;
+	stc_arr[MLX5DR_ACTION_STC_IDX_DW5] = default_stc->nop_dw5.offset;
+	stc_arr[MLX5DR_ACTION_STC_IDX_DW6] = default_stc->nop_dw6.offset;
+	stc_arr[MLX5DR_ACTION_STC_IDX_DW7] = default_stc->nop_dw7.offset;
+	stc_arr[MLX5DR_ACTION_STC_IDX_HIT] = default_stc->default_hit.offset;
 
 	/* Perform lazy/quick action apply:
 	 * - Without action pattern (always assume dependent write)
 	 * - Support 0 additional action STEs
 	 * - Location are hardcoded, double, single, hit
-	 * - One single action, one double action and jump
 	 */
 	for (i = 0; i < num_actions; i++) {
 		uint32_t arg_idx;
@@ -1262,23 +1274,24 @@ int mlx5dr_actions_quick_apply(struct mlx5dr_send_engine *queue,
 
 		switch (action->type) {
 		case MLX5DR_ACTION_TYP_TAG:
-			raw_wqe[MLX5DR_ACTION_OFFSET_DW7] = htobe32(rule_actions[i].tag.value);
-			wqe_ctrl->stc_ix[MLX5DR_ACTION_STC_IDX_SINGLE] = htobe32(stc_idx);
+			raw_wqe[MLX5DR_ACTION_OFFSET_DW5] = htobe32(rule_actions[i].tag.value);
+			stc_arr[MLX5DR_ACTION_STC_IDX_DW5] = stc_idx;
 			break;
 		case MLX5DR_ACTION_TYP_CTR:
 			raw_wqe[MLX5DR_ACTION_OFFSET_DW0] = htobe32(rule_actions[i].counter.offset);
-			wqe_ctrl->stc_ix[MLX5DR_ACTION_STC_IDX_CTR] = htobe32(stc_idx);
+			stc_arr[MLX5DR_ACTION_STC_IDX_CTRL] = stc_idx;
 			break;
 		case MLX5DR_ACTION_TYP_TNL_L2_TO_L2:
-			wqe_ctrl->stc_ix[MLX5DR_ACTION_STC_IDX_SINGLE] = htobe32(stc_idx);
+			stc_arr[MLX5DR_ACTION_STC_IDX_DW5] = stc_idx;
 			break;
 		case MLX5DR_ACTION_TYP_L2_TO_TNL_L2:
 			arg_sz =
 				1 << mlx5dr_arg_data_size_to_arg_log_size(action->reformat.header_size);
 			/* Argument offset multiple on number of actions */
 			arg_idx = rule_actions[i].reformat.offset * arg_sz;
-			raw_wqe[MLX5DR_ACTION_OFFSET_DW6] = htobe32(arg_idx);
-			wqe_ctrl->stc_ix[MLX5DR_ACTION_STC_IDX_DOUBLE] = htobe32(stc_idx);
+			raw_wqe[MLX5DR_ACTION_OFFSET_DW7] = htobe32(arg_idx);
+			stc_arr[MLX5DR_ACTION_STC_IDX_DW6] = stc_idx;
+			require_double = true;
 
 			if (!(action->flags & MLX5DR_ACTION_FLAG_INLINE))
 				mlx5dr_arg_write(queue, rule, arg_idx,
@@ -1288,8 +1301,9 @@ int mlx5dr_actions_quick_apply(struct mlx5dr_send_engine *queue,
 		case MLX5DR_ACTION_TYP_TNL_L3_TO_L2:
 			arg_sz = 1 << mlx5dr_arg_get_arg_log_size(action->modify_header.num_of_actions);
 			arg_idx = rule_actions[i].reformat.offset * arg_sz;
-			raw_wqe[MLX5DR_ACTION_OFFSET_DW6] = htobe32(arg_idx);
-			wqe_ctrl->stc_ix[MLX5DR_ACTION_STC_IDX_DOUBLE] = htobe32(stc_idx);
+			raw_wqe[MLX5DR_ACTION_OFFSET_DW7] = htobe32(arg_idx);
+			stc_arr[MLX5DR_ACTION_STC_IDX_DW6] = stc_idx;
+			require_double = true;
 
 			if (!(action->flags & MLX5DR_ACTION_FLAG_INLINE))
 				mlx5dr_arg_decapl3_write(queue, rule, arg_idx,
@@ -1298,16 +1312,16 @@ int mlx5dr_actions_quick_apply(struct mlx5dr_send_engine *queue,
 			break;
 		case MLX5DR_ACTION_TYP_L2_TO_TNL_L3:
 			/* Remove L2 header, shared stc - single */
-			wqe_ctrl->stc_ix[MLX5DR_ACTION_STC_IDX_SINGLE] =
+			stc_arr[MLX5DR_ACTION_STC_IDX_DW5] =
 				mlx5dr_action_get_shared_stc_offset(common_res);
 
 			/* Insert with pointer (arg-id) - double */
 			arg_sz =
 				1 << mlx5dr_arg_data_size_to_arg_log_size(action->reformat.header_size);
 			arg_idx = rule_actions[i].reformat.offset * arg_sz;
-			raw_wqe[MLX5DR_ACTION_OFFSET_DW6] = htobe32(arg_idx);
-
-			wqe_ctrl->stc_ix[MLX5DR_ACTION_STC_IDX_DOUBLE] = htobe32(stc_idx);
+			raw_wqe[MLX5DR_ACTION_OFFSET_DW7] = htobe32(arg_idx);
+			stc_arr[MLX5DR_ACTION_STC_IDX_DW6] = stc_idx;
+			require_double = true;
 
 			if (!(action->flags & MLX5DR_ACTION_FLAG_INLINE))
 				mlx5dr_arg_write(queue, rule, arg_idx,
@@ -1318,8 +1332,9 @@ int mlx5dr_actions_quick_apply(struct mlx5dr_send_engine *queue,
 			arg_sz = 1 << mlx5dr_arg_get_arg_log_size(action->modify_header.num_of_actions);
 			/* Argument offset multiple with number of args per these actions */
 			arg_idx = rule_actions[i].modify_header.offset * arg_sz;
-			raw_wqe[MLX5DR_ACTION_OFFSET_DW6] = htobe32(arg_idx);
-			wqe_ctrl->stc_ix[MLX5DR_ACTION_STC_IDX_DOUBLE] = htobe32(stc_idx);
+			raw_wqe[MLX5DR_ACTION_OFFSET_DW7] = htobe32(arg_idx);
+			stc_arr[MLX5DR_ACTION_STC_IDX_DW6] = stc_idx;
+			require_double = true;
 
 			if (!(action->flags & MLX5DR_ACTION_FLAG_INLINE))
 				mlx5dr_action_arg_write(queue, rule, arg_idx,
@@ -1330,7 +1345,7 @@ int mlx5dr_actions_quick_apply(struct mlx5dr_send_engine *queue,
 		case MLX5DR_ACTION_TYP_FT:
 		case MLX5DR_ACTION_TYP_TIR:
 		case MLX5DR_ACTION_TYP_MISS:
-			wqe_ctrl->stc_ix[MLX5DR_ACTION_STC_IDX_HIT] = htobe32(stc_idx);
+			stc_arr[MLX5DR_ACTION_STC_IDX_HIT] = stc_idx;
 			break;
 		default:
 			DR_LOG(ERR, "Found unsupported action type: %d", action->type);
@@ -1339,8 +1354,22 @@ int mlx5dr_actions_quick_apply(struct mlx5dr_send_engine *queue,
 		}
 	}
 
-	/* Set Fixed number of actions */
-	wqe_ctrl->stc_ix[MLX5DR_ACTION_STC_IDX_CTR] |= htobe32(MLX5DR_ACTION_STC_IDX_MAX << 29);
+	/* Set shared STC for combo1 and combo2 */
+	wqe_ctrl->stc_ix[MLX5DR_ACTION_STC_IDX_CTRL] = htobe32(stc_arr[MLX5DR_ACTION_STC_IDX_CTRL]);
+	wqe_ctrl->stc_ix[MLX5DR_ACTION_STC_IDX_HIT] = htobe32(stc_arr[MLX5DR_ACTION_STC_IDX_HIT]);
+
+	if (require_double) {
+		/* Combo1: Set 1 single (DW5) and 1 double (DW6-7) actions */
+		wqe_ctrl->stc_ix[MLX5DR_ACTION_STC_IDX_DW5] = htobe32(stc_arr[MLX5DR_ACTION_STC_IDX_DW5]);
+		wqe_ctrl->stc_ix[MLX5DR_ACTION_STC_IDX_DW6] = htobe32(stc_arr[MLX5DR_ACTION_STC_IDX_DW6]);
+		wqe_ctrl->stc_ix[MLX5DR_ACTION_STC_IDX_CTRL] |= htobe32(MLX5DR_ACTION_STC_IDX_LAST_COMBO1 << 29);
+	} else {
+		/* Combo2: Set 3 single (DW5-7) actions */
+		wqe_ctrl->stc_ix[MLX5DR_ACTION_STC_IDX_DW5] = htobe32(stc_arr[MLX5DR_ACTION_STC_IDX_DW5]);
+		wqe_ctrl->stc_ix[MLX5DR_ACTION_STC_IDX_DW6] = htobe32(stc_arr[MLX5DR_ACTION_STC_IDX_DW6]);
+		wqe_ctrl->stc_ix[MLX5DR_ACTION_STC_IDX_DW7] = htobe32(stc_arr[MLX5DR_ACTION_STC_IDX_DW7]);
+		wqe_ctrl->stc_ix[MLX5DR_ACTION_STC_IDX_CTRL] |= htobe32(MLX5DR_ACTION_STC_IDX_LAST_COMBO2 << 29);
+	}
 
 	return 0;
 }
