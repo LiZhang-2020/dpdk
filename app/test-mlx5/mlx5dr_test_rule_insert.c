@@ -26,7 +26,7 @@ static int poll_for_comp(struct mlx5dr_context *ctx,
 	int j;
 
 	/* Check if there are any completions at all */
-	if (!got_comp)
+	if (!got_comp && !drain)
 		return 0;
 
 	while (queue_full || ((got_comp || drain) && *pending_rules)) {
