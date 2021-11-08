@@ -14,6 +14,7 @@ apps = [
 	'test-compress-perf',
 	'test-crypto-perf',
 	'test-eventdev',
+	'test-gpudev',
 	'test-fib',
 	'test-flow-perf',
 	'test-pipeline',

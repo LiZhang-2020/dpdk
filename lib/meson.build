@@ -22,6 +22,7 @@ libraries = [
 	'acl', 'bbdev', 'bitratestats', 'cfgfile',
 	'compressdev', 'cryptodev',
 	'distributor', 'efd', 'eventdev',
+	'gpudev',
 	'gro', 'gso', 'jobstats',
 	'kni', 'latencystats', 'lpm', 'member',
 	'power', 'pdump', 'rawdev', 'regexdev',
