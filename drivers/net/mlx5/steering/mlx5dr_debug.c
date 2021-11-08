@@ -4,9 +4,135 @@
 
 #include "mlx5dr_internal.h"
 
+static int mlx5dr_debug_dump_matcher_nic(FILE *f,
+					 enum mlx5dr_debug_res_type type,
+					 struct mlx5dr_matcher *matcher,
+					 struct mlx5dr_matcher_nic *matcher_nic)
+{
+	struct mlx5dr_pool *pool = matcher->tbl->ctx->ste_pool[matcher->tbl->type];
+	struct mlx5dr_devx_obj *ste_obj;
+	int ret;
+
+	ste_obj = pool->resource[matcher_nic->ste.resource_idx]->devx_obj;
+
+	ret = fprintf(f, "%d,0x%" PRIx64 ",%d,%d\n",
+		      type,
+		      (uint64_t)(uintptr_t)matcher,
+		      (matcher->tbl->level == MLX5DR_ROOT_LEVEL) ? 0 : matcher_nic->rtc->id,
+		      ste_obj->id);
+	if (ret < 0) {
+		rte_errno = EINVAL;
+		return rte_errno;
+	}
+
+	return 0;
+}
+
+static int mlx5dr_debug_dump_matcher_template_definer(FILE *f,
+						      struct mlx5dr_match_template *mt)
+{
+	struct mlx5dr_definer *definer = mt->definer;
+	int i, ret;
+
+	ret = fprintf(f, "%d,0x%" PRIx64 ",0x%" PRIx64 ",%d,%d,",
+		      MLX5DR_DEBUG_RES_TYPE_MATCHER_TEMPLATE_DEFINER,
+		      (uint64_t)(uintptr_t)definer,
+		      (uint64_t)(uintptr_t)mt,
+		      definer->obj->id,
+		      0); /*definer type: for now zero is for match */
+	if (ret < 0) {
+		rte_errno = EINVAL;
+		return rte_errno;
+	}
+
+	for (i = 0; i < DW_SELECTORS; i++) {
+		ret = fprintf(f, "0x%x%s", definer->dw_selector[i],
+			      (i == DW_SELECTORS - 1) ? "," : "-");
+		if (ret < 0) {
+			rte_errno = EINVAL;
+			return rte_errno;
+		}
+	}
+
+	for (i = 0; i < BYTE_SELECTORS; i++) {
+		ret = fprintf(f, "0x%x%s", definer->byte_selector[i],
+			      (i == BYTE_SELECTORS - 1) ? "," : "-");
+		if (ret < 0) {
+			rte_errno = EINVAL;
+			return rte_errno;
+		}
+	}
+
+	for (i = 0; i < MLX5DR_MATCH_TAG_SZ; i++) {
+		ret = fprintf(f, "%02x", definer->mask_tag[i]);
+		if (ret < 0) {
+			rte_errno = EINVAL;
+			return rte_errno;
+		}
+	}
+
+	ret = fprintf(f, "\n");
+	if (ret < 0) {
+		rte_errno = EINVAL;
+		return rte_errno;
+	}
+
+	return 0;
+}
+
+static int mlx5dr_debug_dump_matcher_template(FILE *f, struct mlx5dr_matcher *matcher)
+{
+	bool is_root = matcher->tbl->level == MLX5DR_ROOT_LEVEL;
+	int i, ret;
+
+	for (i = 0; i < matcher->num_of_mt; i++) {
+		struct mlx5dr_match_template *mt = matcher->mt[i];
+
+		ret = fprintf(f, "%d,0x%" PRIx64 ",0x%" PRIx64 ",%d,%d\n",
+			      MLX5DR_DEBUG_RES_TYPE_MATCHER_TEMPLATE,
+			      (uint64_t)(uintptr_t)mt,
+			      (uint64_t)(uintptr_t)matcher,
+			      is_root ? 0 : mt->fc_sz,
+			      mt->flags);
+		if (ret < 0) {
+			rte_errno = EINVAL;
+			return rte_errno;
+		}
+
+		if (!is_root) {
+			ret = mlx5dr_debug_dump_matcher_template_definer(f, mt);
+			if (ret)
+				return ret;
+		}
+	}
+
+	return 0;
+}
+
+static int mlx5dr_debug_dump_matcher_attr(FILE *f, struct mlx5dr_matcher *matcher)
+{
+	struct mlx5dr_matcher_attr *attr = &matcher->attr;
+	int ret;
+
+	ret = fprintf(f, "%d,0x%" PRIx64 ",%d,%d,%d,%d\n",
+		      MLX5DR_DEBUG_RES_TYPE_MATCHER_ATTR,
+		      (uint64_t)(uintptr_t)matcher,
+		      attr->priority,
+		      attr->mode,
+		      attr->table.sz_row_log,
+		      attr->table.sz_col_log);
+	if (ret < 0) {
+		rte_errno = EINVAL;
+		return rte_errno;
+	}
+
+	return 0;
+}
+
 static int mlx5dr_debug_dump_matcher(FILE *f, struct mlx5dr_matcher *matcher)
 {
 	bool is_root = matcher->tbl->level == MLX5DR_ROOT_LEVEL;
+	enum mlx5dr_table_type tbl_type = matcher->tbl->type;
 	int ret;
 
 	ret = fprintf(f, "%d,0x%" PRIx64 ",0x%" PRIx64 ",%d,%d,0x%" PRIx64 "\n",
@@ -19,6 +145,32 @@ static int mlx5dr_debug_dump_matcher(FILE *f, struct mlx5dr_matcher *matcher)
 	if (ret < 0) {
 		rte_errno = EINVAL;
 		return rte_errno;
+	}
+
+	ret = mlx5dr_debug_dump_matcher_attr(f, matcher);
+	if (ret)
+		return ret;
+
+	ret = mlx5dr_debug_dump_matcher_template(f, matcher);
+	if (ret)
+		return ret;
+
+	if (tbl_type == MLX5DR_TABLE_TYPE_NIC_RX ||
+	    tbl_type == MLX5DR_TABLE_TYPE_FDB) {
+		ret = mlx5dr_debug_dump_matcher_nic(f,
+				MLX5DR_DEBUG_RES_TYPE_MATCHER_NIC_RX,
+				matcher, &matcher->rx);
+		if (ret)
+			return ret;
+	}
+
+	if (tbl_type == MLX5DR_TABLE_TYPE_NIC_TX ||
+	    tbl_type == MLX5DR_TABLE_TYPE_FDB) {
+		ret = mlx5dr_debug_dump_matcher_nic(f,
+				MLX5DR_DEBUG_RES_TYPE_MATCHER_NIC_TX,
+				matcher, &matcher->tx);
+		if (ret)
+			return ret;
 	}
 
 	return 0;
