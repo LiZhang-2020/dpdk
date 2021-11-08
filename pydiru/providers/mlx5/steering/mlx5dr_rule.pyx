@@ -25,7 +25,8 @@ cdef class Mlx5drRuleAttr(PydiruCM):
 
 cdef class Mlx5drRule(PydiruCM):
     def __init__(self, Mlx5drMatcher matcher, mt_idx, rte_items, rule_actions,
-                 num_of_actions, Mlx5drRuleAttr rule_attr, Mlx5drContext dr_ctx=None):
+                 num_of_actions, Mlx5drRuleAttr rule_attr_create, Mlx5drContext dr_ctx=None,
+                 Mlx5drRuleAttr rule_attr_destroy=None):
         """
         Initializes a Mlx5drRule object representing mlx5dr_rule struct.
         :param matcher: Matcher to create a rule with
@@ -33,8 +34,10 @@ cdef class Mlx5drRule(PydiruCM):
         :param rte_items: Rte items defining values to match on
         :param rule_actions: Actions to perform on match
         :param num_of_actions: Number of rule actions
-        :param rule_attr: Attrubutes for rule creation
+        :param rule_attr_create: Attributes for rule creation
         :param dr_ctx: If provided poll send queue for rule creation completion
+        :param rule_attr_destroy: Attributes for rule destruction (if not provided,
+                                  rule_attr_create is used for destruction instead)
         """
         super().__init__()
         cdef dr.mlx5dr_rule *rule = NULL
@@ -61,7 +64,7 @@ cdef class Mlx5drRule(PydiruCM):
             memcpy(<void *>&(item_ptr[i]), <void *>&(r.item), sizeof(pdr.rte_flow_item))
 
         rc = dr.mlx5dr_rule_create(matcher.matcher, mt_idx, item_ptr, actions_ptr, num_of_actions,
-                                   &rule_attr.attr, rule)
+                                   &rule_attr_create.attr, rule)
         free(item_ptr)
         free(actions_ptr)
         if rc:
@@ -72,17 +75,16 @@ cdef class Mlx5drRule(PydiruCM):
             self.actions.append((<Mlx5drRuleAction>ra).action)
             (<Mlx5drRuleAction>ra).action.add_ref(self)
         self.rule = rule
-        self.rule_attr = rule_attr
+        self.rule_attr_destroy = rule_attr_destroy if rule_attr_destroy else rule_attr_create
         self.mlx5dr_matcher = matcher
         matcher.add_ref(self)
         if dr_ctx:
             res = []
             while not res:
-                res = dr_ctx.poll_send_queue(rule_attr.attr.queue_id, 1)
+                res = dr_ctx.poll_send_queue(rule_attr_create.attr.queue_id, 1)
             if <RteFlowResult>(res[0]).status != e.RTE_FLOW_Q_OP_SUCCESS:
-                raise PydiruError(f'ERROR completion returned from queue ID: {rule_attr.attr.queue_id} '
+                raise PydiruError(f'ERROR completion returned from queue ID: {rule_attr_create.attr.queue_id} '
                                   f'with status: {res[0]).status}.')
-
 
     def __dealloc__(self):
         self.close()
@@ -90,8 +92,7 @@ cdef class Mlx5drRule(PydiruCM):
     cpdef close(self):
         if self.rule != NULL:
             self.logger.debug('Closing Mlx5drRule.')
-            # TODO how to pass the attr from the user to rule_destroy?
-            attr = <Mlx5drRuleAttr>self.rule_attr
+            attr = self.rule_attr_destroy
             rc = dr.mlx5dr_rule_destroy(self.rule, <dr.mlx5dr_rule_attr *>&(attr.attr))
             if rc:
                 raise PydiruError('Failed to destroy Mlx5drRule.', rc)

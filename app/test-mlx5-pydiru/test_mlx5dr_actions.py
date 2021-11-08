@@ -52,7 +52,7 @@ class Mlx5drTrafficTest(PydiruTrafficTestCase):
         _, tir_ra = self.server.create_rule_action('tir')
         self.tir_rule = Mlx5drRule(self.server.matcher, mt_idx=0, rte_items=rte_items,
                                    rule_actions=[tag_ra, tir_ra], num_of_actions=2,
-                                   rule_attr=Mlx5drRuleAttr(user_data=bytes(8)),
+                                   rule_attr_create=Mlx5drRuleAttr(user_data=bytes(8)),
                                    dr_ctx=self.server.dr_ctx)
         packet = gen_packet(self.server.msg_size)
         raw_traffic(self.client, self.server, self.server.num_msgs, [packet],
@@ -82,7 +82,7 @@ class Mlx5drTrafficTest(PydiruTrafficTestCase):
         _, tir_ra = self.server.create_rule_action('tir')
         self.modify_rule = Mlx5drRule(matcher=self.server.matcher, mt_idx=0, rte_items=rte_items,
                                       rule_actions=[self.modify_ra, tir_ra], num_of_actions=2,
-                                      rule_attr=Mlx5drRuleAttr(user_data=bytes(8)),
+                                      rule_attr_create=Mlx5drRuleAttr(user_data=bytes(8)),
                                       dr_ctx=self.server.dr_ctx)
         exp_src_mac = struct.pack('!6s', bytes.fromhex(str_smac.replace(':', '')))
         exp_packet = gen_packet(self.server.msg_size, src_mac=exp_src_mac)
@@ -93,7 +93,7 @@ class Mlx5drTrafficTest(PydiruTrafficTestCase):
     def create_miss_rule(agr_obj, rte_items, rule_actions):
         return Mlx5drRule(matcher=agr_obj.matcher, mt_idx=0, rte_items=rte_items,
                           rule_actions=rule_actions, num_of_actions=len(rule_actions),
-                          rule_attr=Mlx5drRuleAttr(user_data=bytes(8)), dr_ctx=agr_obj.dr_ctx)
+                          rule_attr_create=Mlx5drRuleAttr(user_data=bytes(8)), dr_ctx=agr_obj.dr_ctx)
 
     def test_mlx5dr_default_miss(self):
         """
@@ -132,7 +132,7 @@ class Mlx5drTrafficTest(PydiruTrafficTestCase):
         _, tir_ra = self.server.create_rule_action('tir')
         self.tir_rule = Mlx5drRule(matcher=self.server.dip_matcher, mt_idx=0,
                                    rte_items=dip_rte, rule_actions=[tir_ra],
-                                   num_of_actions=1, rule_attr=Mlx5drRuleAttr(user_data=bytes(8)),
+                                   num_of_actions=1, rule_attr_create=Mlx5drRuleAttr(user_data=bytes(8)),
                                    dr_ctx=self.server.dr_ctx)
         # Traffic
         packet1 = gen_packet(self.server.msg_size)

@@ -11,6 +11,6 @@ cdef class Mlx5drRuleAttr(PydiruCM):
 
 cdef class Mlx5drRule(PydiruCM):
     cdef dr.mlx5dr_rule *rule
-    cdef object rule_attr
+    cdef Mlx5drRuleAttr rule_attr_destroy
     cdef object actions
     cdef Mlx5drMatcher mlx5dr_matcher
