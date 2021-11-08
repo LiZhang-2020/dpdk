@@ -11594,11 +11594,11 @@ mlx5_flow_field_id_to_modify_info
 				info[idx] = (struct field_modify_info){2, 4,
 						MLX5_MODI_OUT_DMAC_15_0};
 				if (width < 16) {
-					mask[idx] = rte_cpu_to_be_16(0xffff >>
+					mask[1] = rte_cpu_to_be_16(0xffff >>
 								 (16 - width));
 					width = 0;
 				} else {
-					mask[idx] = RTE_BE16(0xffff);
+					mask[1] = RTE_BE16(0xffff);
 					width -= 16;
 				}
 				if (!width)
@@ -11607,8 +11607,8 @@ mlx5_flow_field_id_to_modify_info
 			}
 			info[idx] = (struct field_modify_info){4, 0,
 						MLX5_MODI_OUT_DMAC_47_16};
-			mask[idx] = rte_cpu_to_be_32((0xffffffff >>
-						      (32 - width)) << off);
+			mask[0] = rte_cpu_to_be_32((0xffffffff >>
+						    (32 - width)) << off);
 		} else {
 			if (data->offset < 16)
 				info[idx++] = (struct field_modify_info){2, 4,
@@ -11624,11 +11624,11 @@ mlx5_flow_field_id_to_modify_info
 				info[idx] = (struct field_modify_info){2, 4,
 						MLX5_MODI_OUT_SMAC_15_0};
 				if (width < 16) {
-					mask[idx] = rte_cpu_to_be_16(0xffff >>
+					mask[1] = rte_cpu_to_be_16(0xffff >>
 								 (16 - width));
 					width = 0;
 				} else {
-					mask[idx] = RTE_BE16(0xffff);
+					mask[1] = RTE_BE16(0xffff);
 					width -= 16;
 				}
 				if (!width)
@@ -11637,8 +11637,8 @@ mlx5_flow_field_id_to_modify_info
 			}
 			info[idx] = (struct field_modify_info){4, 0,
 						MLX5_MODI_OUT_SMAC_47_16};
-			mask[idx] = rte_cpu_to_be_32((0xffffffff >>
-						      (32 - width)) << off);
+			mask[0] = rte_cpu_to_be_32((0xffffffff >>
+						    (32 - width)) << off);
 		} else {
 			if (data->offset < 16)
 				info[idx++] = (struct field_modify_info){2, 4,
@@ -11706,12 +11706,12 @@ mlx5_flow_field_id_to_modify_info
 				info[idx] = (struct field_modify_info){4, 12,
 						MLX5_MODI_OUT_SIPV6_31_0};
 				if (width < 32) {
-					mask[idx] =
+					mask[3] =
 						rte_cpu_to_be_32(0xffffffff >>
 								 (32 - width));
 					width = 0;
 				} else {
-					mask[idx] = RTE_BE32(0xffffffff);
+					mask[3] = RTE_BE32(0xffffffff);
 					width -= 32;
 				}
 				if (!width)
@@ -11722,12 +11722,12 @@ mlx5_flow_field_id_to_modify_info
 				info[idx] = (struct field_modify_info){4, 8,
 						MLX5_MODI_OUT_SIPV6_63_32};
 				if (width < 32) {
-					mask[idx] =
+					mask[2] =
 						rte_cpu_to_be_32(0xffffffff >>
 								 (32 - width));
 					width = 0;
 				} else {
-					mask[idx] = RTE_BE32(0xffffffff);
+					mask[2] = RTE_BE32(0xffffffff);
 					width -= 32;
 				}
 				if (!width)
@@ -11738,12 +11738,12 @@ mlx5_flow_field_id_to_modify_info
 				info[idx] = (struct field_modify_info){4, 4,
 						MLX5_MODI_OUT_SIPV6_95_64};
 				if (width < 32) {
-					mask[idx] =
+					mask[1] =
 						rte_cpu_to_be_32(0xffffffff >>
 								 (32 - width));
 					width = 0;
 				} else {
-					mask[idx] = RTE_BE32(0xffffffff);
+					mask[1] = RTE_BE32(0xffffffff);
 					width -= 32;
 				}
 				if (!width)
@@ -11752,8 +11752,7 @@ mlx5_flow_field_id_to_modify_info
 			}
 			info[idx] = (struct field_modify_info){4, 0,
 						MLX5_MODI_OUT_SIPV6_127_96};
-			mask[idx] = rte_cpu_to_be_32(0xffffffff >>
-						     (32 - width));
+			mask[0] = rte_cpu_to_be_32(0xffffffff >> (32 - width));
 		} else {
 			if (data->offset < 32)
 				info[idx++] = (struct field_modify_info){4, 12,
@@ -11775,12 +11774,12 @@ mlx5_flow_field_id_to_modify_info
 				info[idx] = (struct field_modify_info){4, 12,
 						MLX5_MODI_OUT_DIPV6_31_0};
 				if (width < 32) {
-					mask[idx] =
+					mask[3] =
 						rte_cpu_to_be_32(0xffffffff >>
 								 (32 - width));
 					width = 0;
 				} else {
-					mask[idx] = RTE_BE32(0xffffffff);
+					mask[3] = RTE_BE32(0xffffffff);
 					width -= 32;
 				}
 				if (!width)
@@ -11791,12 +11790,12 @@ mlx5_flow_field_id_to_modify_info
 				info[idx] = (struct field_modify_info){4, 8,
 						MLX5_MODI_OUT_DIPV6_63_32};
 				if (width < 32) {
-					mask[idx] =
+					mask[2] =
 						rte_cpu_to_be_32(0xffffffff >>
 								 (32 - width));
 					width = 0;
 				} else {
-					mask[idx] = RTE_BE32(0xffffffff);
+					mask[2] = RTE_BE32(0xffffffff);
 					width -= 32;
 				}
 				if (!width)
@@ -11807,12 +11806,12 @@ mlx5_flow_field_id_to_modify_info
 				info[idx] = (struct field_modify_info){4, 4,
 						MLX5_MODI_OUT_DIPV6_95_64};
 				if (width < 32) {
-					mask[idx] =
+					mask[1] =
 						rte_cpu_to_be_32(0xffffffff >>
 								 (32 - width));
 					width = 0;
 				} else {
-					mask[idx] = RTE_BE32(0xffffffff);
+					mask[1] = RTE_BE32(0xffffffff);
 					width -= 32;
 				}
 				if (!width)
@@ -11821,8 +11820,7 @@ mlx5_flow_field_id_to_modify_info
 			}
 			info[idx] = (struct field_modify_info){4, 0,
 						MLX5_MODI_OUT_DIPV6_127_96};
-			mask[idx] = rte_cpu_to_be_32(0xffffffff >>
-						     (32 - width));
+			mask[0] = rte_cpu_to_be_32(0xffffffff >> (32 - width));
 		} else {
 			if (data->offset < 32)
 				info[idx++] = (struct field_modify_info){4, 12,
