@@ -471,6 +471,7 @@ mlx5_rxq_create_devx_rq(struct mlx5_rxq_priv *rxq)
 		mlx5_devx_wq_attr_fill(priv, rxq_ctrl, &rq_attr.wq_attr);
 	}
 	rq_attr.counter_set_id = priv->counter_set_id;
+	rq_attr.delay_drop_en = rxq_data->delay_drop;
 	rq = mlx5_devx_cmd_create_rq(priv->sh->ctx, &rq_attr, rxq_ctrl->socket);
 	return rq;
 }
@@ -626,6 +627,8 @@ mlx5_rxq_obj_hairpin_new(struct mlx5_rxq_priv *rxq)
 			attr.wq_attr.log_hairpin_data_sz -
 			MLX5_HAIRPIN_QUEUE_STRIDE;
 	attr.counter_set_id = priv->counter_set_id;
+	rxq_ctrl->rxq.delay_drop = priv->config.hp_delay_drop;
+	attr.delay_drop_en = priv->config.hp_delay_drop;
 	rxq->devx_rq = mlx5_devx_cmd_create_rq(priv->sh->ctx, &attr,
 					       rxq_ctrl->socket);
 	if (!rxq->devx_rq) {
@@ -735,6 +738,7 @@ mlx5_rxq_devx_res_new(struct mlx5_rxq_priv *rxq)
 		if (ret != 0)
 			goto error;
 	}
+	rxq->ctrl->rxq.delay_drop = priv->config.std_delay_drop;
 	/* Create RQ using DevX API. */
 	rxq->devx_rq = mlx5_rxq_create_devx_rq(rxq);
 	if (!rxq->devx_rq) {
@@ -1177,6 +1181,7 @@ mlx5_rxq_devx_obj_drop_create(struct rte_eth_dev *dev)
 		rte_errno = ENOMEM;
 		goto error;
 	}
+	rxq_ctrl->rxq.delay_drop = 0;
 	rxq->devx_rq = mlx5_rxq_create_devx_rq(rxq);
 	if (rxq->devx_rq == NULL) {
 		DRV_LOG(ERR, "Port %u drop queue RQ creation failed.",
