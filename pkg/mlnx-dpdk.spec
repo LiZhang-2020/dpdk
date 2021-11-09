@@ -125,7 +125,7 @@ MACHINE=default
 %endif
 %endif
 
-CFLAGS="$CFLAGS -fcommon -Werror" meson %{target} -Dprefix=/opt/mellanox/dpdk --includedir=include/dpdk -Dmachine=$MACHINE -Dmax_ethports=1024 -Ddisable_drivers=$DISABLED_DRVS -Dtests=false -Ddrivers_install_subdir=dpdk/pmds --default-library=shared $MASON_PARAMS
+CFLAGS="$CFLAGS -fcommon -Werror" meson %{target} -Dprefix=/opt/mellanox/dpdk -Dlibdir=/opt/mellanox/dpdk/lib64 --includedir=include/dpdk -Dmachine=$MACHINE -Dmax_ethports=1024 -Ddisable_drivers=$DISABLED_DRVS -Dtests=false -Ddrivers_install_subdir=dpdk/pmds --default-library=shared $MASON_PARAMS
 
 %build
 %{__ninja} -v -C %{target}
