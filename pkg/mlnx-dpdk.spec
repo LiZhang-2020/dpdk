@@ -86,7 +86,7 @@ for fast packet processing on x86 platforms.
 
 %prep
 %setup -q
-MASON_PARAMS=%{?mason_params}
+MESON_PARAMS=%{?meson_params}
 ENABLED_DRVS="bus/pci,bus/auxiliary,bus/vdev"
 ENABLED_DRVS="mempool/bucket,mempool/stack,mempool/ring,$ENABLED_DRVS"
 ENABLED_DRVS="common/mlx5,$ENABLED_DRVS"
@@ -115,7 +115,7 @@ disable_drivers () {
 DISABLED_DRVS=$(disable_drivers "$ENABLED_DRVS")
 
 %if %{with bluefield}
-MASON_PARAMS="$MASON_PARAMS --cross-file config/arm/arm64_bluefield_linux_native_gcc"
+MESON_PARAMS="$MESON_PARAMS --cross-file config/arm/arm64_bluefield_linux_native_gcc"
 MACHINE=native
 %else
 %ifarch aarch64
@@ -125,7 +125,7 @@ MACHINE=default
 %endif
 %endif
 
-CFLAGS="$CFLAGS -fcommon -Werror" meson %{target} -Dprefix=/opt/mellanox/dpdk -Dlibdir=/opt/mellanox/dpdk/lib64 --includedir=include/dpdk -Dmachine=$MACHINE -Dmax_ethports=1024 -Ddisable_drivers=$DISABLED_DRVS -Dtests=false -Ddrivers_install_subdir=dpdk/pmds --default-library=shared $MASON_PARAMS
+CFLAGS="$CFLAGS -fcommon -Werror" meson %{target} -Dprefix=/opt/mellanox/dpdk -Dlibdir=/opt/mellanox/dpdk/lib64 --includedir=include/dpdk -Dmachine=$MACHINE -Dmax_ethports=1024 -Ddisable_drivers=$DISABLED_DRVS -Dtests=false -Ddrivers_install_subdir=dpdk/pmds --default-library=shared $MESON_PARAMS
 
 %build
 %{__ninja} -v -C %{target}
