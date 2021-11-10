@@ -458,8 +458,10 @@ mlx5dr_matcher_destroy_col_matcher(struct mlx5dr_matcher *matcher)
 	if (matcher->attr.mode != MLX5DR_MATCHER_RESOURCE_MODE_RULE)
 		return;
 
-	mlx5dr_matcher_destroy_and_disconnect(matcher->col_matcher);
-	simple_free(matcher->col_matcher);
+	if (matcher->col_matcher) {
+		mlx5dr_matcher_destroy_and_disconnect(matcher->col_matcher);
+		simple_free(matcher->col_matcher);
+	}
 }
 
 static int mlx5dr_matcher_init(struct mlx5dr_matcher *matcher)
