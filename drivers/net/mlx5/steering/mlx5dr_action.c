@@ -923,7 +923,7 @@ mlx5dr_action_create_reformat(struct mlx5dr_context *ctx,
 		return action;
 	}
 
-	if (!mlx5dr_action_is_hws_flags(flags)||
+	if (!mlx5dr_action_is_hws_flags(flags) ||
 	    ((flags & MLX5DR_ACTION_FLAG_INLINE) && log_bulk_size)) {
 		DR_LOG(ERR, "reformat flags don't fit hws (flags: %x0x)\n",
 			flags);
@@ -1294,7 +1294,8 @@ int mlx5dr_actions_quick_apply(struct mlx5dr_send_engine *queue,
 			require_double = true;
 
 			if (!(action->flags & MLX5DR_ACTION_FLAG_INLINE))
-				mlx5dr_arg_write(queue, rule, arg_idx,
+				mlx5dr_arg_write(queue, rule,
+						 action->reformat.arg_obj->id + arg_idx,
 						 rule_actions[i].reformat.data,
 						 action->reformat.header_size);
 			break;
@@ -1306,7 +1307,8 @@ int mlx5dr_actions_quick_apply(struct mlx5dr_send_engine *queue,
 			require_double = true;
 
 			if (!(action->flags & MLX5DR_ACTION_FLAG_INLINE))
-				mlx5dr_arg_decapl3_write(queue, rule, arg_idx,
+				mlx5dr_arg_decapl3_write(queue, rule,
+							 action->modify_header.arg_obj->id + arg_idx,
 							 rule_actions[i].reformat.data,
 							 action->modify_header.num_of_actions);
 			break;
@@ -1324,7 +1326,8 @@ int mlx5dr_actions_quick_apply(struct mlx5dr_send_engine *queue,
 			require_double = true;
 
 			if (!(action->flags & MLX5DR_ACTION_FLAG_INLINE))
-				mlx5dr_arg_write(queue, rule, arg_idx,
+				mlx5dr_arg_write(queue, rule,
+						 action->reformat.arg_obj->id + arg_idx,
 						 rule_actions[i].reformat.data,
 						 action->reformat.header_size);
 			break;
@@ -1337,7 +1340,8 @@ int mlx5dr_actions_quick_apply(struct mlx5dr_send_engine *queue,
 			require_double = true;
 
 			if (!(action->flags & MLX5DR_ACTION_FLAG_INLINE))
-				mlx5dr_action_arg_write(queue, rule, arg_idx,
+				mlx5dr_action_arg_write(queue, rule,
+							action->modify_header.arg_obj->id + arg_idx,
 							rule_actions[i].modify_header.data,
 							action->modify_header.num_of_actions);
 			break;
