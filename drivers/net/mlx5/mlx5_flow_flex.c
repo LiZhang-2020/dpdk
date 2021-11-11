@@ -222,9 +222,6 @@ mlx5_flex_flow_translate_item(struct rte_eth_dev *dev,
 			      const struct rte_flow_item *item,
 			      bool is_inner)
 {
-#ifdef RTE_LIBRTE_MLX5_DEBUG
-	struct mlx5_priv *priv = dev->data->dev_private;
-#endif
 	const struct rte_flow_item_flex *spec, *mask;
 	void *misc4_m = MLX5_ADDR_OF(fte_match_param, matcher,
 				     misc_parameters_4);
@@ -237,7 +234,7 @@ mlx5_flex_flow_translate_item(struct rte_eth_dev *dev,
 	spec = item->spec;
 	mask = item->mask;
 	tp = (struct mlx5_flex_item *)spec->handle;
-	MLX5_ASSERT(mlx5_flex_index(priv, tp) >= 0);
+	MLX5_ASSERT(mlx5_flex_index(dev->data->dev_private, tp) >= 0);
 	for (i = 0; i < tp->mapnum; i++) {
 		struct mlx5_flex_pattern_field *map = tp->map + i;
 		uint32_t id = map->reg_id;
