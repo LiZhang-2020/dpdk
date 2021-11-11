@@ -185,8 +185,11 @@ static void
 mlx5_rxq_release_devx_resources(struct mlx5_rxq_ctrl *rxq_ctrl)
 {
 	mlx5_rxq_release_devx_rq_resources(rxq_ctrl);
-	mlx5_devx_cq_destroy(&rxq_ctrl->obj->cq_obj);
-	memset(&rxq_ctrl->obj->cq_obj, 0, sizeof(rxq_ctrl->obj->cq_obj));
+	if (rxq_ctrl->obj) {
+		mlx5_devx_cq_destroy(&rxq_ctrl->obj->cq_obj);
+		memset(&rxq_ctrl->obj->cq_obj, 0,
+			sizeof(rxq_ctrl->obj->cq_obj));
+	}
 }
 
 /**
@@ -216,18 +219,18 @@ mlx5_rxq_devx_res_release(struct mlx5_rxq_priv *rxq)
 			rxq->devx_rq = NULL;
 			rxq_obj->rmp_refcnt--;
 		}
-		if (rxq_obj->rmp_refcnt != 0)
+		if (rxq_obj && rxq_obj->rmp_refcnt != 0)
 			return;
-		if (rxq_obj->devx_rmp) {
+		if (rxq_obj && rxq_obj->devx_rmp) {
 			claim_zero(mlx5_devx_cmd_destroy(rxq_obj->devx_rmp));
 			rxq_obj->devx_rmp = NULL;
 		}
-		if (rxq_obj->devx_channel) {
+		if (rxq_obj && rxq_obj->devx_channel) {
 			mlx5_glue->devx_destroy_event_channel
 							(rxq_obj->devx_channel);
 			rxq_obj->devx_channel = NULL;
 		}
-		mlx5_rxq_release_devx_resources(rxq_obj->rxq_ctrl);
+		mlx5_rxq_release_devx_resources(rxq_ctrl);
 	}
 	rxq_ctrl->started = false;
 }
