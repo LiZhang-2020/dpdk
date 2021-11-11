@@ -353,8 +353,8 @@ mlx5dr_cmd_header_modify_pattern_create(struct ibv_context *ctx,
 		 attr, obj_type, MLX5_GENERAL_OBJ_TYPE_MODIFY_HEADER_PATTERN);
 
 	pattern = MLX5_ADDR_OF(create_header_modify_pattern_in, in, pattern);
-	/* pattern_length is in dwords */
-	MLX5_SET(header_modify_pattern_in, pattern, pattern_length, pattern_length / DW_SIZE);
+	/* pattern_length is in ddwords */
+	MLX5_SET(header_modify_pattern_in, pattern, pattern_length, pattern_length / (2 * DW_SIZE));
 
 	pattern_data = MLX5_ADDR_OF(header_modify_pattern_in, pattern, pattern_data);
 	memcpy(pattern_data, actions, pattern_length);
