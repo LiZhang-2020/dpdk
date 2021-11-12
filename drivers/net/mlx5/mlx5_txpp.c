@@ -445,6 +445,7 @@ mlx5_txpp_create_clock_queue(struct mlx5_dev_ctx_shared *sh)
 	sq_attr.wq_attr.cd_slave = 1;
 	sq_attr.wq_attr.uar_page = mlx5_os_get_devx_uar_page_id(sh->tx_uar);
 	sq_attr.wq_attr.pd = sh->pdn;
+	sq_attr.ts_format = mlx5_ts_format_conv(sh->sq_ts_format);
 	ret = mlx5_devx_sq_create(sh->ctx, &wq->sq_obj, log2above(wq->sq_size),
 				  &sq_attr, sh->numa_node);
 	if (ret) {
