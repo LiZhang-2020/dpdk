@@ -231,7 +231,7 @@ free_value:
 free_attr:
 	simple_free(attr);
 
-	return rte_errno;
+	return -rte_errno;
 }
 
 static int mlx5dr_rule_destroy_root(struct mlx5dr_rule *rule,
@@ -258,58 +258,63 @@ int mlx5dr_rule_create(struct mlx5dr_matcher *matcher,
 		       struct mlx5dr_rule *rule_handle)
 {
 	struct mlx5dr_context *ctx;
+	int ret;
 
 	rule_handle->matcher = matcher;
 	ctx = matcher->tbl->ctx;
 
 	if (unlikely(!attr->user_data)) {
 		rte_errno = EINVAL;
-		return rte_errno;
+		return -rte_errno;
 	}
 
 	/* Check if there is room in queue */
 	if (unlikely(mlx5dr_send_engine_full(&ctx->send_queue[attr->queue_id]))) {
 		rte_errno = EBUSY;
-		return rte_errno;
+		return -rte_errno;
 	}
 
 	assert(matcher->num_of_mt >= mt_idx);
 
-	if (mlx5dr_table_is_root(matcher->tbl))
-		return mlx5dr_rule_create_root(rule_handle,
-					       attr,
-					       items,
-					       rule_actions,
-					       num_of_actions);
-
-	return mlx5dr_rule_create_hws(rule_handle,
-				      mt_idx,
-				      items,
-				      attr,
-				      rule_actions,
-				      num_of_actions);
+	if (unlikely(mlx5dr_table_is_root(matcher->tbl)))
+		ret = mlx5dr_rule_create_root(rule_handle,
+					      attr,
+					      items,
+					      rule_actions,
+					      num_of_actions);
+	else
+		ret = mlx5dr_rule_create_hws(rule_handle,
+					     mt_idx,
+					     items,
+					     attr,
+					     rule_actions,
+					     num_of_actions);
+	return -ret;
 }
 
 int mlx5dr_rule_destroy(struct mlx5dr_rule *rule,
 			struct mlx5dr_rule_attr *attr)
 {
 	struct mlx5dr_context *ctx = rule->matcher->tbl->ctx;
+	int ret;
 
 	if (unlikely(!attr->user_data)) {
 		rte_errno = EINVAL;
-		return rte_errno;
+		return -rte_errno;
 	}
 
 	/* Check if there is room in queue */
 	if (unlikely(mlx5dr_send_engine_full(&ctx->send_queue[attr->queue_id]))) {
 		rte_errno = EBUSY;
-		return rte_errno;
+		return -rte_errno;
 	}
 
-	if (mlx5dr_table_is_root(rule->matcher->tbl))
-		return mlx5dr_rule_destroy_root(rule, attr);
+	if (unlikely(mlx5dr_table_is_root(rule->matcher->tbl)))
+		ret = mlx5dr_rule_destroy_root(rule, attr);
+	else
+		ret = mlx5dr_rule_destroy_hws(rule, attr);
 
-	return mlx5dr_rule_destroy_hws(rule, attr);
+	return -ret;
 }
 
 size_t mlx5dr_rule_get_handle_size(void)
