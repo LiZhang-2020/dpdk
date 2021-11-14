@@ -1185,11 +1185,11 @@ void mlx5dr_action_put_default_stc(struct mlx5dr_context *ctx,
 	pthread_spin_unlock(&ctx->ctrl_lock);
 }
 
-static void mlx5dr_action_arg_write(struct mlx5dr_send_engine *queue,
-				    struct mlx5dr_rule *rule,
-				    uint32_t arg_idx,
-				    uint8_t *arg_data,
-				    uint16_t num_of_actions)
+static void mlx5dr_action_modify_write(struct mlx5dr_send_engine *queue,
+				       struct mlx5dr_rule *rule,
+				       uint32_t arg_idx,
+				       uint8_t *arg_data,
+				       uint16_t num_of_actions)
 {
 	mlx5dr_arg_write(queue, rule, arg_idx, arg_data,
 			 num_of_actions * MLX5DR_MODIFY_ACTION_SIZE);
@@ -1340,10 +1340,10 @@ int mlx5dr_actions_quick_apply(struct mlx5dr_send_engine *queue,
 			require_double = true;
 
 			if (!(action->flags & MLX5DR_ACTION_FLAG_INLINE))
-				mlx5dr_action_arg_write(queue, rule,
-							action->modify_header.arg_obj->id + arg_idx,
-							rule_actions[i].modify_header.data,
-							action->modify_header.num_of_actions);
+				mlx5dr_action_modify_write(queue, rule,
+							   action->modify_header.arg_obj->id + arg_idx,
+							   rule_actions[i].modify_header.data,
+							   action->modify_header.num_of_actions);
 			break;
 		case MLX5DR_ACTION_TYP_DROP:
 		case MLX5DR_ACTION_TYP_FT:
