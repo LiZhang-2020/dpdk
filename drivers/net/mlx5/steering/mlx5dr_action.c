@@ -893,7 +893,7 @@ struct mlx5dr_action *
 mlx5dr_action_create_reformat(struct mlx5dr_context *ctx,
 			      enum mlx5dr_action_reformat_type reformat_type,
 			      size_t data_sz,
-			      void *data,
+			      void *inline_data,
 			      uint32_t log_bulk_size,
 			      enum mlx5dr_action_flags flags)
 {
@@ -916,7 +916,7 @@ mlx5dr_action_create_reformat(struct mlx5dr_context *ctx,
 			goto free_action;
 		}
 
-		ret = mlx5dr_action_create_reformat_root(action, data_sz, data);
+		ret = mlx5dr_action_create_reformat_root(action, data_sz, inline_data);
 		if (ret)
 			goto free_action;
 
@@ -925,13 +925,13 @@ mlx5dr_action_create_reformat(struct mlx5dr_context *ctx,
 
 	if (!mlx5dr_action_is_hws_flags(flags) ||
 	    ((flags & MLX5DR_ACTION_FLAG_INLINE) && log_bulk_size)) {
-		DR_LOG(ERR, "reformat flags don't fit hws (flags: %x0x)\n",
+		DR_LOG(ERR, "Reformat flags don't fit HWS (flags: %x0x)\n",
 			flags);
 		rte_errno = EINVAL;
 		goto free_action;
 	}
 
-	ret = mlx5dr_action_create_reformat_hws(ctx, data_sz, data, log_bulk_size, action);
+	ret = mlx5dr_action_create_reformat_hws(ctx, data_sz, inline_data, log_bulk_size, action);
 	if (ret) {
 		DR_LOG(ERR, "Failed to create reformat.\n");
 		rte_errno = EINVAL;

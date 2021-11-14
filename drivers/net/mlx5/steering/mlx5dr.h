@@ -338,8 +338,8 @@ mlx5dr_action_create_counter(struct mlx5dr_context *ctx,
  * 	Type of reformat.
  * @param[in] data_sz
  * 	Size in bytes of data.
- * @param[in] data
- * 	Header data array.
+ * @param[in] inline_data
+ * 	Header data array in case of inline action.
  * @param[in] log_bulk_size
  * 	Number of unique values used with this pattern.
  * @param[in] flags
@@ -350,7 +350,7 @@ struct mlx5dr_action *
 mlx5dr_action_create_reformat(struct mlx5dr_context *ctx,
 			      enum mlx5dr_action_reformat_type reformat_type,
 			      size_t data_sz,
-			      void *data,
+			      void *inline_data,
 			      uint32_t log_bulk_size,
 			      enum mlx5dr_action_flags flags);
 
