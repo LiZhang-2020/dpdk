@@ -854,7 +854,7 @@ int port_action_handle_update(portid_t port_id, uint32_t id,
 int port_flow_configure(portid_t port_id,
 			const struct rte_flow_port_attr *port_attr,
 			const struct rte_flow_queue_attr *queue_attr);
-int port_flow_item_template_create(portid_t port_id, uint32_t id,
+int port_flow_item_template_create(portid_t port_id, uint32_t id, bool relaxed,
 				   const struct rte_flow_item *pattern);
 int port_flow_item_template_destroy(portid_t port_id, uint32_t n,
 				    const uint32_t *template);

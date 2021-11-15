@@ -2244,12 +2244,13 @@ age_action_get(const struct rte_flow_action *actions)
 /** Create item template */
 int
 port_flow_item_template_create(portid_t port_id, uint32_t id,
-			  const struct rte_flow_item *pattern)
+			  bool relaxed, const struct rte_flow_item *pattern)
 {
 	struct rte_port *port;
 	struct port_template *pit;
 	int ret;
-	struct rte_flow_item_template_attr attr = { 0 };
+	struct rte_flow_item_template_attr attr = {
+					.relaxed_matching = relaxed };
 	struct rte_flow_error error;
 
 	if (port_id_is_invalid(port_id, ENABLED_WARN) ||

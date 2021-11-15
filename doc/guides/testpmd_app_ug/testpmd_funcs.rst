@@ -3308,9 +3308,8 @@ following sections.
        [meters_number {number}] [fixed_resource_size {boolean}]
 
 - Create an item template::
-
    flow item_template {port_id} create [item_template_id {id}]
-       template {item} [/ {item} [...]] / end
+       [relaxed {boolean}] template {item} [/ {item} [...]] / end
 
 - Destroy an item template::
 
@@ -3440,7 +3439,7 @@ Creating item templates
 It is bound to ``rte_flow_item_template_create()``::
 
    flow item_template {port_id} create [item_template_id {id}]
-       template {item} [/ {item} [...]] / end
+       [relaxed {boolean}] template {item} [/ {item} [...]] / end
 
 If successful, it will show::
 

@@ -102,6 +102,7 @@ enum index {
 	ITEM_TEMPLATE_DESTROY,
 	ITEM_TEMPLATE_CREATE_ID,
 	ITEM_TEMPLATE_DESTROY_ID,
+	ITEM_TEMPLATE_RELAXED_MATCHING,
 	ITEM_TEMPLATE_SPEC,
 
 	/* Action template arguments. */
@@ -974,6 +975,7 @@ static const enum index next_it_subcmd[] = {
 
 static const enum index next_it_attr[] = {
 	ITEM_TEMPLATE_CREATE_ID,
+	ITEM_TEMPLATE_RELAXED_MATCHING,
 	ITEM_TEMPLATE_SPEC,
 	ZERO,
 };
@@ -2393,6 +2395,14 @@ static const struct token token_list[] = {
 		.args = ARGS(ARGS_ENTRY_PTR(struct buffer,
 					    args.templ_destroy.template_id)),
 		.call = parse_template_destroy,
+	},
+	[ITEM_TEMPLATE_RELAXED_MATCHING] = {
+		.name = "relaxed",
+		.help = "is matching relaxed",
+		.next = NEXT(next_it_attr,
+			     NEXT_ENTRY(BOOLEAN)),
+		.args = ARGS(ARGS_ENTRY_BF(struct buffer,
+			     args.vc.attr.reserved, 1)),
 	},
 	[ITEM_TEMPLATE_SPEC] = {
 		.name = "template",
@@ -8894,7 +8904,7 @@ cmd_flow_parsed(const struct buffer *in)
 		break;
 	case ITEM_TEMPLATE_CREATE:
 		port_flow_item_template_create(in->port, in->args.vc.it_id,
-				in->args.vc.pattern);
+				in->args.vc.attr.reserved, in->args.vc.pattern);
 		break;
 	case ITEM_TEMPLATE_DESTROY:
 		port_flow_item_template_destroy(in->port,
