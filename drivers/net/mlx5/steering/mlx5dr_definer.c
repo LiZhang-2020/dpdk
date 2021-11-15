@@ -453,7 +453,7 @@ mlx5dr_definer_conv_item_gtp(struct mlx5dr_definer_conv_data *cd,
 	}
 
 	if (m->teid) {
-		if (cd->caps->flex_protocols & MLX5_HCA_FLEX_GTPU_TEID_ENABLED) {
+		if (!(cd->caps->flex_protocols & MLX5_HCA_FLEX_GTPU_TEID_ENABLED)) {
 			rte_errno = ENOTSUP;
 			return rte_errno;
 		}
@@ -466,7 +466,7 @@ mlx5dr_definer_conv_item_gtp(struct mlx5dr_definer_conv_data *cd,
 	}
 
 	if (m->v_pt_rsv_flags) {
-		if (cd->caps->flex_protocols & MLX5_HCA_FLEX_GTPU_DW_0_ENABLED) {
+		if (!(cd->caps->flex_protocols & MLX5_HCA_FLEX_GTPU_DW_0_ENABLED)) {
 			rte_errno = ENOTSUP;
 			return rte_errno;
 		}
@@ -480,7 +480,7 @@ mlx5dr_definer_conv_item_gtp(struct mlx5dr_definer_conv_data *cd,
 	}
 
 	if (m->msg_type) {
-		if (cd->caps->flex_protocols & MLX5_HCA_FLEX_GTPU_DW_0_ENABLED) {
+		if (!(cd->caps->flex_protocols & MLX5_HCA_FLEX_GTPU_DW_0_ENABLED)) {
 			rte_errno = ENOTSUP;
 			return rte_errno;
 		}
@@ -507,7 +507,7 @@ mlx5dr_definer_conv_item_gtp_psc(struct mlx5dr_definer_conv_data *cd,
 
 	/* Overwrite GTP extension flag to be 1 */
 	if (!cd->relaxed) {
-		if (cd->caps->flex_protocols & MLX5_HCA_FLEX_GTPU_DW_0_ENABLED) {
+		if (!(cd->caps->flex_protocols & MLX5_HCA_FLEX_GTPU_DW_0_ENABLED)) {
 			rte_errno = ENOTSUP;
 			return rte_errno;
 		}
@@ -522,7 +522,7 @@ mlx5dr_definer_conv_item_gtp_psc(struct mlx5dr_definer_conv_data *cd,
 
 	/* Overwrite next extension header type */
 	if (!cd->relaxed) {
-		if (cd->caps->flex_protocols & MLX5_HCA_FLEX_GTPU_DW_2_ENABLED) {
+		if (!(cd->caps->flex_protocols & MLX5_HCA_FLEX_GTPU_DW_2_ENABLED)) {
 			rte_errno = ENOTSUP;
 			return rte_errno;
 		}
@@ -537,11 +537,11 @@ mlx5dr_definer_conv_item_gtp_psc(struct mlx5dr_definer_conv_data *cd,
 	}
 
 	if (m->pdu_type) {
-		flex_idx = cd->caps->flex_parser_id_gtpu_first_ext_dw_0;
-		if (cd->caps->flex_protocols & MLX5_HCA_FLEX_GTPU_FIRST_EXT_DW_0_ENABLED) {
+		if (!(cd->caps->flex_protocols & MLX5_HCA_FLEX_GTPU_FIRST_EXT_DW_0_ENABLED)) {
 			rte_errno = ENOTSUP;
 			return rte_errno;
 		}
+		flex_idx = cd->caps->flex_parser_id_gtpu_first_ext_dw_0;
 		fc = &cd->fc[MLX5DR_DEFINER_FNAME_GTP_EXT_HDR_PDU];
 		fc->item_idx = item_idx;
 		fc->tag_set = &mlx5dr_definer_gtp_ext_hdr_pdu_set;
@@ -551,11 +551,11 @@ mlx5dr_definer_conv_item_gtp_psc(struct mlx5dr_definer_conv_data *cd,
 	}
 
 	if (m->qfi) {
-		flex_idx = cd->caps->flex_parser_id_gtpu_first_ext_dw_0;
-		if (cd->caps->flex_protocols & MLX5_HCA_FLEX_GTPU_FIRST_EXT_DW_0_ENABLED) {
+		if (!(cd->caps->flex_protocols & MLX5_HCA_FLEX_GTPU_FIRST_EXT_DW_0_ENABLED)) {
 			rte_errno = ENOTSUP;
 			return rte_errno;
 		}
+		flex_idx = cd->caps->flex_parser_id_gtpu_first_ext_dw_0;
 		fc = &cd->fc[MLX5DR_DEFINER_FNAME_GTP_EXT_HDR_QFI];
 		fc->item_idx = item_idx;
 		fc->tag_set = &mlx5dr_definer_gtp_ext_hdr_qfi_set;
