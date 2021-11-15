@@ -22,6 +22,10 @@ Group: System Environment/Libraries
 License: BSD-3-Clause AND GPL-2.0-only AND LGPL-2.1-only
 
 ExclusiveArch: i686 x86_64 aarch64 ppc64 ppc64le armv7l armv7hl
+
+%global dst_prefix /opt/mellanox/dpdk
+%global dst_lib lib64
+
 %ifarch aarch64
 %global machine armv8a
 %global target arm64-%{machine}-linux-gcc
@@ -125,7 +129,7 @@ MACHINE=default
 %endif
 %endif
 
-CFLAGS="$CFLAGS -fcommon -Werror" meson %{target} -Dprefix=/opt/mellanox/dpdk -Dlibdir=/opt/mellanox/dpdk/lib64 --includedir=include/dpdk -Dmachine=$MACHINE -Dmax_ethports=1024 -Ddisable_drivers=$DISABLED_DRVS -Dtests=false -Ddrivers_install_subdir=dpdk/pmds --default-library=shared $MESON_PARAMS
+CFLAGS="$CFLAGS -fcommon -Werror" meson %{target} -Dprefix=%{dst_prefix} -Dlibdir=%{dst_prefix}/%{dst_lib} --includedir=include/dpdk -Dmachine=$MACHINE -Dmax_ethports=1024 -Ddisable_drivers=$DISABLED_DRVS -Dtests=false -Ddrivers_install_subdir=dpdk/pmds --default-library=shared $MESON_PARAMS
 
 %build
 %{__ninja} -v -C %{target}
@@ -137,29 +141,29 @@ DESTDIR=%{buildroot} %{__ninja} -v -C %{target} install
 # Create ld.so.conf.d entry
 mkdir -p %{buildroot}%{_sysconfdir}/ld.so.conf.d
 cat > %{buildroot}%{_sysconfdir}/ld.so.conf.d/%{name}-%{_arch}.conf << EOF
-/opt/mellanox/dpdk/lib64
+%{dst_prefix}/%{dst_lib}
 EOF
 
 # Export PKG_CONFIG_PATH
 mkdir -p %{buildroot}%{_sysconfdir}/profile.d
 cat > %{buildroot}%{_sysconfdir}/profile.d/%{name}-%{_arch}.sh << 'EOF'
-export PKG_CONFIG_PATH=${PKG_CONFIG_PATH}:/opt/mellanox/dpdk/lib64/pkgconfig
+export PKG_CONFIG_PATH=${PKG_CONFIG_PATH}:%{dst_prefix}/%{dst_lib}/pkgconfig
 EOF
 
 %files
-%dir /opt/mellanox/dpdk/lib64/dpdk
-%dir /opt/mellanox/dpdk/lib64/dpdk/pmds
-/opt/mellanox/dpdk/bin/*
-/opt/mellanox/dpdk/lib64/*.so.*
-/opt/mellanox/dpdk/lib64/dpdk/*/*.so.*
+%dir %{dst_prefix}/%{dst_lib}/dpdk
+%dir %{dst_prefix}/%{dst_lib}/dpdk/pmds
+%{dst_prefix}/bin/*
+%{dst_prefix}/%{dst_lib}/*.so.*
+%{dst_prefix}/%{dst_lib}/dpdk/*/*.so.*
 /etc/ld.so.conf.d/%{name}-%{_arch}.conf
 
 %files devel
-/opt/mellanox/dpdk/include/dpdk
-/opt/mellanox/dpdk/lib64/*.so
-/opt/mellanox/dpdk/lib64/dpdk/*/*.so
-/opt/mellanox/dpdk/lib64/*.a
-/opt/mellanox/dpdk/lib64/pkgconfig/*.pc
+%{dst_prefix}/include/dpdk
+%{dst_prefix}/%{dst_lib}/*.so
+%{dst_prefix}/%{dst_lib}/dpdk/*/*.so
+%{dst_prefix}/%{dst_lib}/*.a
+%{dst_prefix}/%{dst_lib}/pkgconfig/*.pc
 /etc/ld.so.conf.d/%{name}-%{_arch}.conf
 /etc/profile.d/%{name}-%{_arch}.sh
 
