@@ -19,6 +19,7 @@ pydiru_python_tests = [
     'prm_structs.py',
     'run_tests.py',
     'test_mlx5dr_actions.py',
+    'test_mlx5dr_matchers.py',
     'utils.py'
 ]
 

@@ -71,6 +71,10 @@ def gen_packet(msg_size, l3=PacketConsts.IP_V4, l4=PacketConsts.UDP_PROTO,
     :param kwargs: Arguments:
             * *src_mac*
                 Source MAC address to use in the packet.
+            * *src_ip*
+                Source IPv4 address to use in the packet.
+            * *src_port*
+                Source L4 port to use in the packet.
     :return: Bytes of the generated packet
     """
     l3_header_size = getattr(PacketConsts, f'IPV{str(l3)}_HEADER_SIZE')
@@ -97,11 +101,12 @@ def gen_packet(msg_size, l3=PacketConsts.IP_V4, l4=PacketConsts.UDP_PROTO,
 
     if l3 == PacketConsts.IP_V4:
         # IPv4 header
+        src_ip = kwargs.get('src_ip', PacketConsts.SRC_IP)
         packet += struct.pack('!2B3H2BH4s4s', (PacketConsts.IP_V4 << 4) +
                               PacketConsts.IHL, 0, ip_total_len, 0,
                               PacketConsts.IP_V4_FLAGS << 13,
                               PacketConsts.TTL_HOP_LIMIT, next_hdr, 0,
-                              socket.inet_aton(PacketConsts.SRC_IP),
+                              socket.inet_aton(src_ip),
                               socket.inet_aton(PacketConsts.DST_IP))
     else:
         # IPv6 header
@@ -110,15 +115,14 @@ def gen_packet(msg_size, l3=PacketConsts.IP_V4, l4=PacketConsts.UDP_PROTO,
                        socket.inet_pton(socket.AF_INET6, PacketConsts.SRC_IP6),
                        socket.inet_pton(socket.AF_INET6, PacketConsts.DST_IP6))
 
+    src_port = kwargs.get('src_port', PacketConsts.SRC_PORT)
     if l4 == PacketConsts.UDP_PROTO:
         # UDP header
-        packet += struct.pack('!4H', PacketConsts.SRC_PORT,
-                              PacketConsts.DST_PORT,
+        packet += struct.pack('!4H', src_port, PacketConsts.DST_PORT,
                               payload_size + PacketConsts.UDP_HEADER_SIZE, 0)
     else:
         # TCP header
-        packet += struct.pack('!2H2I4H', PacketConsts.SRC_PORT,
-                              PacketConsts.DST_PORT, 0, 0,
+        packet += struct.pack('!2H2I4H', src_port, PacketConsts.DST_PORT, 0, 0,
                               PacketConsts.TCP_HEADER_SIZE_WORDS << 12,
                               PacketConsts.WINDOW_SIZE, 0, 0)
     # Payload
