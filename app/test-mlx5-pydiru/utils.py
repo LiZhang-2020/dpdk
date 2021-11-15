@@ -5,6 +5,8 @@
 import unittest
 import socket
 import struct
+import time
+
 
 from pyverbs.pyverbs_error import PyverbsError, PyverbsRDMAError
 from pyverbs.wr import SGE, SendWR, RecvWR
@@ -144,7 +146,9 @@ def wc_status_to_str(status):
 
 
 def poll_cq(cq, count=1):
-    while count > 0:
+    polling_timeout = 5
+    start_poll_t = time.perf_counter()
+    while count > 0 and (time.perf_counter() - start_poll_t) < polling_timeout:
         nc, tmp_wcs = cq.poll(count)
         for wc in tmp_wcs:
             if wc.status != v.IBV_WC_SUCCESS:
@@ -152,6 +156,9 @@ def poll_cq(cq, count=1):
                                        format(s=wc_status_to_str(wc.status)),
                                        wc.status)
         count -= nc
+
+    if count > 0:
+        raise PyverbsError(f'Got timeout on polling ({count} CQEs remaining)')
 
 
 def post_recv(qp, mr, msg_size, n=1):
