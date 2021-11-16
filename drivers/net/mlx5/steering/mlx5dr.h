@@ -165,7 +165,7 @@ int mlx5dr_table_destroy(struct mlx5dr_table *tbl);
  * @return pointer to mlx5dr_match_template on success NULL otherwise
  */
 struct mlx5dr_match_template *
-mlx5dr_match_template_create(struct rte_flow_item items[],
+mlx5dr_match_template_create(const struct rte_flow_item items[],
 			     enum mlx5dr_match_template_flags flags);
 
 /* Destroy match template.
@@ -231,7 +231,7 @@ size_t mlx5dr_rule_get_handle_size(void);
  */
 int mlx5dr_rule_create(struct mlx5dr_matcher *matcher,
 		       uint8_t mt_idx,
-		       struct rte_flow_item items[],
+		       const struct rte_flow_item items[],
 		       struct mlx5dr_rule_action rule_actions[],
 		       uint8_t num_of_actions,
 		       struct mlx5dr_rule_attr *attr,

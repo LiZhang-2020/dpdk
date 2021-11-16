@@ -306,7 +306,7 @@ struct mlx5_ifc_header_gtp_psc_bits {
 	u8 reserved2[0x8];
 };
 
-void mlx5dr_definer_create_tag(struct rte_flow_item *items,
+void mlx5dr_definer_create_tag(const struct rte_flow_item *items,
 			       struct mlx5dr_definer_fc *fc,
 			       uint32_t fc_sz,
 			       uint8_t *tag);

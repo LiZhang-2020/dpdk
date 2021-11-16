@@ -518,7 +518,7 @@ mlx5dr_action_create_reformat_root(struct mlx5dr_action *action,
 				   void *data)
 {
 	enum mlx5dv_flow_table_type ft_type = 0; /*fix compilation warn*/
-	uint32_t verb_reformat_type;
+	uint32_t verb_reformat_type = 0;
 
 	/* Convert action to FT type and verbs reformat type */
 	mlx5dr_action_conv_flags_to_ft_type(action->flags, &ft_type);
@@ -951,7 +951,7 @@ mlx5dr_action_create_modify_header_root(struct mlx5dr_action *action,
 					size_t actions_sz,
 					__be64 *actions)
 {
-	enum mlx5dv_flow_table_type ft_type;
+	enum mlx5dv_flow_table_type ft_type = 0;
 
 	mlx5dr_action_conv_flags_to_ft_type(action->flags, &ft_type);
 

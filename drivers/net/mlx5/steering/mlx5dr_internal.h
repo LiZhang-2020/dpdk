@@ -7,8 +7,15 @@
 
 #include <stdint.h>
 #include <sys/queue.h>
+/* Verbs headers do not support -pedantic. */
+#ifdef PEDANTIC
+#pragma GCC diagnostic ignored "-Wpedantic"
+#endif
 #include <infiniband/verbs.h>
 #include <infiniband/mlx5dv.h>
+#ifdef PEDANTIC
+#pragma GCC diagnostic error "-Wpedantic"
+#endif
 #include <rte_flow.h>
 #include <rte_gtp.h>
 

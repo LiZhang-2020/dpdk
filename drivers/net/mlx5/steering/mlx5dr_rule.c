@@ -26,7 +26,7 @@ static inline void mlx5dr_rule_gen_comp(struct mlx5dr_send_engine *queue,
 
 static int mlx5dr_rule_create_hws(struct mlx5dr_rule *rule,
 				  uint8_t mt_idx,
-				  struct rte_flow_item items[],
+				  const struct rte_flow_item items[],
 				  struct mlx5dr_rule_attr *attr,
 				  struct mlx5dr_rule_action rule_actions[],
 				  uint8_t num_actions)
@@ -172,7 +172,7 @@ static int mlx5dr_rule_destroy_hws(struct mlx5dr_rule *rule,
 
 static int mlx5dr_rule_create_root(struct mlx5dr_rule *rule,
 				   struct mlx5dr_rule_attr *rule_attr,
-				   struct rte_flow_item items[],
+				   const struct rte_flow_item items[],
 				   struct mlx5dr_rule_action rule_actions[],
 				   uint8_t num_actions)
 {
@@ -251,7 +251,7 @@ static int mlx5dr_rule_destroy_root(struct mlx5dr_rule *rule,
 
 int mlx5dr_rule_create(struct mlx5dr_matcher *matcher,
 		       uint8_t mt_idx,
-		       struct rte_flow_item items[],
+		       const struct rte_flow_item items[],
 		       struct mlx5dr_rule_action rule_actions[],
 		       uint8_t num_of_actions,
 		       struct mlx5dr_rule_attr *attr,

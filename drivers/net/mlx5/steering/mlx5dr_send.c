@@ -617,8 +617,10 @@ static int mlx5dr_send_queue_open(struct mlx5dr_context *ctx,
 	int err;
 
 	uar = mlx5_glue->devx_alloc_uar(ctx->ibv_ctx, MLX5_IB_UAPI_UAR_ALLOC_TYPE_NC);
-	if (!uar)
-		return errno;
+	if (!uar) {
+		rte_errno = errno;
+		return rte_errno;
+	}
 
 	queue->uar = uar;
 
@@ -647,8 +649,7 @@ free_completed_entries:
 	simple_free(queue->completed.entries);
 free_uar:
 	mlx5_glue->devx_free_uar(uar);
-
-	return err;
+	return rte_errno;
 }
 
 static void __mlx5dr_send_queues_close(struct mlx5dr_context *ctx, uint16_t queues)
@@ -673,7 +674,7 @@ int mlx5dr_send_queues_open(struct mlx5dr_context *ctx,
 			    uint16_t queue_size)
 {
 	uint32_t i;
-	int err;
+	int err = 0;
 
 	/* TODO: For now there is a 1:1 queue:ring mapping
 	 * add middle logic layer if it ever changes.

@@ -673,7 +673,7 @@ int mlx5dr_matcher_destroy(struct mlx5dr_matcher *matcher)
 }
 
 struct mlx5dr_match_template *
-mlx5dr_match_template_create(struct rte_flow_item items[],
+mlx5dr_match_template_create(const struct rte_flow_item items[],
 			     enum mlx5dr_match_template_flags flags)
 {
 	struct mlx5dr_match_template *mt;
