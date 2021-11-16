@@ -195,8 +195,6 @@ struct port_indirect_action {
 	enum rte_flow_action_type type; /**< Action type. */
 	struct rte_flow_action_handle *handle;	/**< Indirect action handle. */
 	enum age_action_context_type age_type; /**< Age action context type. */
-	/** If true, the action applies to "transfer" flows, and vice versa */
-	bool transfer;
 };
 
 struct port_flow_tunnel {
