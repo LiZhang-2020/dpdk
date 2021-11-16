@@ -17,7 +17,7 @@ from pyverbs.mr import MR
 
 from pydiru.providers.mlx5.steering.mlx5dr_matcher import Mlx5drMacherTemplate, Mlx5drMatcherAttr, Mlx5drMatcher
 from pydiru.providers.mlx5.steering.mlx5dr_action import Mlx5drRuleAction, \
-    Mlx5drActionDestTable, Mlx5drActionDestTir, Mlx5drActionTag
+    Mlx5drActionDestTable, Mlx5drActionDestTir, Mlx5drActionTag, Mlx5drActionDefaultMiss
 from pydiru.providers.mlx5.steering.mlx5dr_context import Mlx5drContextAttr, Mlx5drContext
 from pydiru.providers.mlx5.steering.mlx5dr_table import Mlx5drTableAttr, Mlx5drTable
 from pydiru.providers.mlx5.steering.mlx5dr_rule import Mlx5drRuleAttr, Mlx5drRule
@@ -205,6 +205,8 @@ class BaseDrResources(object):
                                          flags)
         elif action_str == 'tag':
             action = Mlx5drActionTag(self.dr_ctx, flags)
+        elif action_str == 'def_miss':
+            action = Mlx5drActionDefaultMiss(self.dr_ctx, flags)
         else:
             raise unittest.SkipTest(f'Unsupported action {action_str}')
         return action, Mlx5drRuleAction(action)

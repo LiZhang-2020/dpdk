@@ -3,13 +3,16 @@
 
 from pydiru.providers.mlx5.steering.mlx5dr_action import Mlx5drRuleAction, Mlx5drActionModify
 from pydiru.providers.mlx5.steering.mlx5dr_rule import Mlx5drRuleAttr, Mlx5drRule
+from pydiru.providers.mlx5.steering.mlx5dr_matcher import Mlx5drMacherTemplate
 import pydiru.providers.mlx5.steering.mlx5dr_enums as me
 
-from .utils import raw_traffic, gen_packet, PacketConsts, create_sipv4_rte_items
+from .utils import raw_traffic, gen_packet, PacketConsts, create_sipv4_rte_items, \
+    create_dipv4_rte_items
 from .base import BaseDrResources, PydiruTrafficTestCase
 
 from .prm_structs import SetActionIn
 import struct
+import socket
 
 
 OUT_SMAC_47_16_FIELD_ID = 0x1
@@ -85,3 +88,54 @@ class Mlx5drTrafficTest(PydiruTrafficTestCase):
         exp_packet = gen_packet(self.server.msg_size, src_mac=exp_src_mac)
         packet = gen_packet(self.server.msg_size)
         raw_traffic(self.client, self.server, self.server.num_msgs, [packet], exp_packet)
+
+    @staticmethod
+    def create_miss_rule(agr_obj, rte_items, rule_actions):
+        return Mlx5drRule(matcher=agr_obj.matcher, mt_idx=0, rte_items=rte_items,
+                          rule_actions=rule_actions, num_of_actions=len(rule_actions),
+                          rule_attr=Mlx5drRuleAttr(user_data=bytes(8)), dr_ctx=agr_obj.dr_ctx)
+
+    def test_mlx5dr_default_miss(self):
+        """
+        Create default miss action on RX and on TX, recv and verify packets using TIR action.
+        Create 3 rules:
+        priority - 1 with miss action. (match sip - SRC_IP) on TX.
+        priority - 1 with miss action. (match sip - SRC_IP + 1) on RX.
+        priority - 9 with TIR action. (match dip) on RX.
+        Root matcher on RX matches on dip and forwards packets to SW steering table.
+        Send two packets (SRC_IP, SRC_IP+1).
+        Expected only the first + validate data of SRC_IP.
+        """
+        # TODO: Add counter to verify default miss action on TX actually works
+        sip_int = struct.unpack("!I", socket.inet_aton(PacketConsts.SRC_IP))[0]
+        sip_miss = socket.inet_ntoa(struct.pack("!I", sip_int + 1))
+        sip_miss_rte = create_sipv4_rte_items(sip_miss)
+        dip_rte = create_dipv4_rte_items()
+        sip_rte = create_sipv4_rte_items()
+        # TX
+        self.client.init_steering_resources(rte_items=sip_rte,
+                                            table_type=me.MLX5DR_TABLE_TYPE_NIC_TX)
+        _, miss_tx_ra = self.client.create_rule_action('def_miss',
+                                                       flags=me.MLX5DR_ACTION_FLAG_HWS_TX)
+        self.miss_tx_rule = self.create_miss_rule(self.client, rte_items=sip_rte,
+                                                  rule_actions=[miss_tx_ra])
+        # RX
+        self.server.init_steering_resources(rte_items=sip_rte, root_rte_items=dip_rte)
+        _, miss_rx_ra = self.server.create_rule_action('def_miss')
+        self.miss_rx_rule = self.create_miss_rule(self.server, rte_items=sip_miss_rte,
+                                                  rule_actions=[miss_rx_ra])
+        # Second RX matcher
+        mt_2 = Mlx5drMacherTemplate(dip_rte)
+        self.server.dip_matcher = self.server.create_matcher(self.server.table, [mt_2],
+                                                             mode=me.MLX5DR_MATCHER_RESOURCE_MODE_RULE,
+                                                             prio=9, row=2)
+        _, tir_ra = self.server.create_rule_action('tir')
+        self.tir_rule = Mlx5drRule(matcher=self.server.dip_matcher, mt_idx=0,
+                                   rte_items=dip_rte, rule_actions=[tir_ra],
+                                   num_of_actions=1, rule_attr=Mlx5drRuleAttr(user_data=bytes(8)),
+                                   dr_ctx=self.server.dr_ctx)
+        # Traffic
+        packet1 = gen_packet(self.server.msg_size)
+        packet2 = gen_packet(self.server.msg_size, src_ip=sip_miss)
+        raw_traffic(self.client, self.server, self.server.num_msgs, [packet1, packet2],
+                    expected_packet=packet1)

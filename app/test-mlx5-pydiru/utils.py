@@ -309,3 +309,9 @@ def create_sipv4_rte_items(sip_val=PacketConsts.SRC_IP):
     mask = RteFlowItemIpv4(src_addr=bytes(4 * [0xff]))
     val = RteFlowItemIpv4(src_addr=sip_val)
     return [RteFlowItem(p.RTE_FLOW_ITEM_TYPE_IPV4, val, mask), RteFlowItemEnd()]
+
+
+def create_dipv4_rte_items(dip_val=PacketConsts.DST_IP):
+    mask = RteFlowItemIpv4(dst_addr=bytes(4 * [0xff]))
+    val = RteFlowItemIpv4(dst_addr=dip_val)
+    return [RteFlowItem(p.RTE_FLOW_ITEM_TYPE_IPV4, val, mask), RteFlowItemEnd()]
