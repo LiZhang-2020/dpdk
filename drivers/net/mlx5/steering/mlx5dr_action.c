@@ -1026,10 +1026,12 @@ free_action:
 static void mlx5dr_action_destroy_hws(struct mlx5dr_action *action)
 {
 	switch (action->type) {
+	case MLX5DR_ACTION_TYP_TIR:
 	case MLX5DR_ACTION_TYP_MISS:
 	case MLX5DR_ACTION_TYP_TAG:
 	case MLX5DR_ACTION_TYP_DROP:
-	case MLX5DR_ACTION_TYP_QP:
+	case MLX5DR_ACTION_TYP_CTR:
+	case MLX5DR_ACTION_TYP_FT:
 	case MLX5DR_ACTION_TYP_TNL_L2_TO_L2:
 		mlx5dr_action_destroy_stcs(action);
 		break;
