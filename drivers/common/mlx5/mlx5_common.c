@@ -318,9 +318,9 @@ mlx5_dev_to_pci_str(const struct rte_device *dev, char *addr, size_t size)
  */
 static int
 mlx5_dev_mempool_register(struct mlx5_common_device *cdev,
-			  struct rte_mempool *mp)
+			  struct rte_mempool *mp, bool is_extmem)
 {
-	return mlx5_mr_mempool_register(cdev, mp);
+	return mlx5_mr_mempool_register(cdev, mp, is_extmem);
 }
 
 /**
@@ -354,7 +354,7 @@ mlx5_dev_mempool_register_cb(struct rte_mempool *mp, void *arg)
 	struct mlx5_common_device *cdev = arg;
 	int ret;
 
-	ret = mlx5_dev_mempool_register(cdev, mp);
+	ret = mlx5_dev_mempool_register(cdev, mp, false);
 	if (ret < 0 && rte_errno != EEXIST)
 		DRV_LOG(ERR,
 			"Failed to register existing mempool %s for PD %p: %s",
@@ -394,7 +394,7 @@ mlx5_dev_mempool_event_cb(enum rte_mempool_event event, struct rte_mempool *mp,
 
 	switch (event) {
 	case RTE_MEMPOOL_EVENT_READY:
-		if (mlx5_dev_mempool_register(cdev, mp) < 0)
+		if (mlx5_dev_mempool_register(cdev, mp, false) < 0)
 			DRV_LOG(ERR,
 				"Failed to register new mempool %s for PD %p: %s",
 				mp->name, cdev->pd, rte_strerror(rte_errno));
