@@ -75,9 +75,9 @@ static int mlx5dr_one_size_db_init(struct mlx5dr_pool *pool, uint32_t log_range)
 		goto err_mem_alloc;
 	}
 
-	pool->p_db_uninit = mlx5dr_one_size_db_uninit;
-	pool->p_get_chunk = mlx5dr_onesize_db_get_chunk;
-	pool->p_put_chunk = mlx5dr_onesize_db_put_chunk;
+	pool->p_db_uninit = &mlx5dr_one_size_db_uninit;
+	pool->p_get_chunk = &mlx5dr_onesize_db_get_chunk;
+	pool->p_put_chunk = &mlx5dr_onesize_db_put_chunk;
 
 	return 0;
 
@@ -217,9 +217,9 @@ static int mlx5dr_buddy_db_init(struct mlx5dr_pool *pool, uint32_t log_range)
 		return rte_errno;
 	}
 
-	pool->p_db_uninit = mlx5dr_buddy_db_uninit;
-	pool->p_get_chunk = mlx5dr_buddy_db_get_chunk;
-	pool->p_put_chunk = mlx5dr_buddy_db_put_chunk;
+	pool->p_db_uninit = &mlx5dr_buddy_db_uninit;
+	pool->p_get_chunk = &mlx5dr_buddy_db_get_chunk;
+	pool->p_put_chunk = &mlx5dr_buddy_db_put_chunk;
 
 	return 0;
 }
