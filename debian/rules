@@ -82,8 +82,8 @@ ifneq (,$(filter dpdk_config_options=%,$(DEB_BUILD_OPTIONS)))
     DPDK_CONFIG_OPTIONS ?= $(subst $(comma),$(space),$(patsubst dpdk_config_options=%,%,$(filter dpdk_config_options=%,$(DEB_BUILD_OPTIONS))))
 endif
 
-# Change default max ethports to 256
-DPDK_CONFIG_OPTIONS += -Dmax_ethports=256
+# Change default max ethports to 1024
+DPDK_CONFIG_OPTIONS += -Dmax_ethports=1024
 
 DPDK_CONFIG_OPTIONS += -Ddisable_drivers=regex/octeontx2,common/octeontx2,common/octeontx,compress/octeontx,crypto/octeontx,crypto/octeontx2,event/octeontx,event/octeontx2,mempool/octeontx,mempool/octeontx2,net/octeontx,net/octeontx2,raw/octeontx2_dma,raw/octeontx2_ep
 
