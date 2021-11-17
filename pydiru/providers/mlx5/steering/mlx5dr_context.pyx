@@ -3,6 +3,7 @@
 
 from pydiru.providers.mlx5.steering.libmlx5dr cimport mlx5dr_context_close
 from pydiru.providers.mlx5.steering.mlx5dr_table cimport Mlx5drTable
+from pydiru.providers.mlx5.steering.mlx5dr_action cimport Mlx5drAction
 from pydiru.pydiru_error import PydiruError
 from pydiru.rte_flow cimport RteFlowResult
 from pydiru.base cimport close_weakrefs
@@ -52,11 +53,14 @@ cdef class Mlx5drContext(PydiruCM):
         if self.context == NULL:
             raise PydiruErrno('Failed creating Mlx5drContext')
         self.mlx5dr_tables = weakref.WeakSet()
+        self.mlx5dr_actions = weakref.WeakSet()
         self.ibv_context = context
 
     cdef add_ref(self, obj):
         if isinstance(obj, Mlx5drTable):
             self.mlx5dr_tables.add(obj)
+        elif isinstance(obj, Mlx5drAction):
+            self.mlx5dr_actions.add(obj)
         else:
             raise PydiruError('Unrecognized object type')
 
@@ -122,7 +126,7 @@ cdef class Mlx5drContext(PydiruCM):
     cpdef close(self):
         if self.context != NULL:
             self.logger.debug('Closing Mlx5drContext.')
-            close_weakrefs([self.mlx5dr_tables])
+            close_weakrefs([self.mlx5dr_actions, self.mlx5dr_tables])
             rc = mlx5dr_context_close(<dr.mlx5dr_context *>(self.context))
             if rc:
                 raise PydiruError('Failed to destroy Mlx5drContext.', rc)

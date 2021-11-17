@@ -11,5 +11,6 @@ cdef class Mlx5drContextAttr(PydiruObject):
 cdef class Mlx5drContext(PydiruCM):
     cdef dr.mlx5dr_context *context
     cdef object mlx5dr_tables
+    cdef object mlx5dr_actions
     cdef object ibv_context
     cdef add_ref(self, obj)

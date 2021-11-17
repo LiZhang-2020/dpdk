@@ -12,9 +12,11 @@ import weakref
 
 
 cdef class Mlx5drAction(PydiruCM):
-    def __init__(self):
+    def __init__(self, Mlx5drContext ctx):
         super().__init__()
         self.mlx5dr_rules = weakref.WeakSet()
+        ctx.add_ref(self)
+        self.mlx5dr_context = ctx
 
     cdef add_ref(self, obj):
         if isinstance(obj, Mlx5drRule):
@@ -33,6 +35,7 @@ cdef class Mlx5drAction(PydiruCM):
             if rc:
                 raise PydiruError('Failed to destroy Mlx5drAction.', rc)
             self.action = NULL
+            self.mlx5dr_context = None
 
 
 cdef class Mlx5drActionDrop(Mlx5drAction):
@@ -42,7 +45,7 @@ cdef class Mlx5drActionDrop(Mlx5drAction):
         :param ctx: Mlx5drContext context
         :param flags: Action flags
         """
-        super().__init__()
+        super().__init__(ctx)
         self.action = dr.mlx5dr_action_create_dest_drop(ctx.context, flags)
         if self.action == NULL:
             raise PydiruErrno('Mlx5drActionDrop creation failed.')
@@ -55,7 +58,7 @@ cdef class Mlx5drActionTag(Mlx5drAction):
         :param ctx: Mlx5drContext context
         :param flags: Action flags
         """
-        super().__init__()
+        super().__init__(ctx)
         self.action = dr.mlx5dr_action_create_tag(ctx.context, flags)
         if self.action == NULL:
             raise PydiruErrno('Mlx5drActionTag creation failed.')
@@ -69,7 +72,7 @@ cdef class Mlx5drActionDestTable(Mlx5drAction):
         :param table: Destination table
         :param flags: Action flags
         """
-        super().__init__()
+        super().__init__(ctx)
         self.action = dr.mlx5dr_action_create_dest_table(ctx.context, table.table, flags)
         if self.action == NULL:
             raise PydiruErrno('Mlx5drActionDestTable creation failed.')
@@ -83,7 +86,7 @@ cdef class Mlx5drActionDestTir(Mlx5drAction):
         :param tir: Destination TIR
         :param flags: Action flags
         """
-        super().__init__()
+        super().__init__(ctx)
         self.action = dr.mlx5dr_action_create_dest_tir(ctx.context, &tir.dr_devx_obj, flags)
         if self.action == NULL:
             raise PydiruErrno('Mlx5drActionDestTir creation failed.')
@@ -102,7 +105,7 @@ cdef class Mlx5drActionReformat(Mlx5drAction):
         :param bulk_size: Bulk size
         :param flags: Action flags
         """
-        super().__init__()
+        super().__init__(ctx)
         cdef char* c_data = NULL
         if data:
             arr = bytearray(data)
