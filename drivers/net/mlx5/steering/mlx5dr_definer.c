@@ -236,6 +236,9 @@ mlx5dr_definer_conv_item_eth(struct mlx5dr_definer_conv_data *cd,
 	struct mlx5dr_definer_fc *fc;
 	bool inner = cd->tunnel;
 
+	if (!m)
+		return 0;
+
 	if (m->has_vlan || m->reserved) {
 		rte_errno = ENOTSUP;
 		return rte_errno;
@@ -292,12 +295,6 @@ mlx5dr_definer_conv_item_ipv4(struct mlx5dr_definer_conv_data *cd,
 	struct mlx5dr_definer_fc *fc;
 	bool inner = cd->tunnel;
 
-	if (m->type_of_service || m->total_length || m->packet_id ||
-	    m->fragment_offset || m->hdr_checksum) {
-		rte_errno = ENOTSUP;
-		return rte_errno;
-	}
-
 	if (!cd->relaxed) {
 		fc = &cd->fc[DR_CALC_FNAME(IPV4_VERSION, inner)];
 		fc->item_idx = item_idx;
@@ -307,6 +304,15 @@ mlx5dr_definer_conv_item_ipv4(struct mlx5dr_definer_conv_data *cd,
 
 		/* Overwrite - Unset ethertype if present */
 		memset(&cd->fc[DR_CALC_FNAME(ETH_TYPE, inner)], 0, sizeof(*fc));
+	}
+
+	if (!m)
+		return 0;
+
+	if (m->type_of_service || m->total_length || m->packet_id ||
+	    m->fragment_offset || m->hdr_checksum) {
+		rte_errno = ENOTSUP;
+		return rte_errno;
 	}
 
 	if (m->next_proto_id) {
@@ -356,11 +362,6 @@ mlx5dr_definer_conv_item_udp(struct mlx5dr_definer_conv_data *cd,
 	struct mlx5dr_definer_fc *fc;
 	bool inner = cd->tunnel;
 
-	if (m->hdr.dgram_cksum || m->hdr.dgram_len) {
-		rte_errno = ENOTSUP;
-		return rte_errno;
-	}
-
 	/* Set match on L4 type UDP */
 	if (!cd->relaxed) {
 		fc = &cd->fc[DR_CALC_FNAME(IP_PROTOCOL, inner)];
@@ -368,6 +369,14 @@ mlx5dr_definer_conv_item_udp(struct mlx5dr_definer_conv_data *cd,
 		fc->tag_set = &mlx5dr_definer_udp_protocol_set;
 		fc->tag_mask_set = &mlx5dr_definer_ones_set;
 		DR_CALC_SET(fc, eth_l2, l4_type_bwc, inner);
+	}
+
+	if (!m)
+		return 0;
+
+	if (m->hdr.dgram_cksum || m->hdr.dgram_len) {
+		rte_errno = ENOTSUP;
+		return rte_errno;
 	}
 
 	if (m->hdr.src_port) {
@@ -396,13 +405,6 @@ mlx5dr_definer_conv_item_tcp(struct mlx5dr_definer_conv_data *cd,
 	struct mlx5dr_definer_fc *fc;
 	bool inner = cd->tunnel;
 
-	if (m->hdr.ack || m->hdr.fin || m->hdr.syn || m->hdr.rst ||
-	    m->hdr.psh || m->hdr.ack || m->hdr.urg || m->hdr.ecne ||
-	    m->hdr.cwr) {
-		rte_errno = ENOTSUP;
-		return rte_errno;
-	}
-
 	/* Overwrite match on L4 type TCP */
 	if (!cd->relaxed) {
 		fc = &cd->fc[DR_CALC_FNAME(IP_PROTOCOL, inner)];
@@ -410,6 +412,16 @@ mlx5dr_definer_conv_item_tcp(struct mlx5dr_definer_conv_data *cd,
 		fc->tag_set = &mlx5dr_definer_tcp_protocol_set;
 		fc->tag_mask_set = &mlx5dr_definer_ones_set;
 		DR_CALC_SET(fc, eth_l2, l4_type_bwc, inner);
+	}
+
+	if (!m)
+		return 0;
+
+	if (m->hdr.ack || m->hdr.fin || m->hdr.syn || m->hdr.rst ||
+	    m->hdr.psh || m->hdr.ack || m->hdr.urg || m->hdr.ecne ||
+	    m->hdr.cwr) {
+		rte_errno = ENOTSUP;
+		return rte_errno;
 	}
 
 	if (m->hdr.src_port) {
@@ -438,11 +450,6 @@ mlx5dr_definer_conv_item_gtp(struct mlx5dr_definer_conv_data *cd,
 	struct mlx5dr_definer_fc *fc;
 	uint8_t flex_idx;
 
-	if (m->msg_len || m->v_pt_rsv_flags & ~MLX5DR_DEFINER_GTP_EXT_HDR_BIT) {
-		rte_errno = ENOTSUP;
-		return rte_errno;
-	}
-
 	/* Overwrite GTPU dest port if not present */
 	fc = &cd->fc[DR_CALC_FNAME(L4_DPORT, false)];
 	if (!fc->tag_set && !cd->relaxed) {
@@ -450,6 +457,14 @@ mlx5dr_definer_conv_item_gtp(struct mlx5dr_definer_conv_data *cd,
 		fc->tag_set = &mlx5dr_definer_gtp_udp_port_set;
 		fc->tag_mask_set = &mlx5dr_definer_ones_set;
 		DR_CALC_SET(fc, eth_l4, destination_port, false);
+	}
+
+	if (!m)
+		return 0;
+
+	if (m->msg_len || m->v_pt_rsv_flags & ~MLX5DR_DEFINER_GTP_EXT_HDR_BIT) {
+		rte_errno = ENOTSUP;
+		return rte_errno;
 	}
 
 	if (m->teid) {
@@ -535,6 +550,9 @@ mlx5dr_definer_conv_item_gtp_psc(struct mlx5dr_definer_conv_data *cd,
 		fc->bit_off = __mlx5_dw_bit_off(header_opt_gtp, next_ext_hdr_type);
 		fc->byte_off = mlx5dr_definer_get_flex_parser_off(flex_idx);
 	}
+
+	if (!m)
+		return 0;
 
 	if (m->pdu_type) {
 		if (!(cd->caps->flex_protocols & MLX5_HCA_FLEX_GTPU_FIRST_EXT_DW_0_ENABLED)) {
