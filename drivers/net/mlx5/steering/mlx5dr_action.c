@@ -648,7 +648,7 @@ static int mlx5dr_action_get_shared_stc_nic(struct mlx5dr_context *ctx,
 
 	stc_attr.action_type = MLX5_IFC_STC_ACTION_TYPE_HEADER_REMOVE;
 	stc_attr.action_offset = MLX5DR_ACTION_OFFSET_DW5;
-	stc_attr.remove_header.decap = 1;
+	stc_attr.remove_header.decap = 0;
 	stc_attr.remove_header.start_anchor = MLX5_HEADER_ANCHOR_MAC_START;
 	stc_attr.remove_header.end_anchor = MLX5_HEADER_ANCHOR_IPV6_IPV4;
 
@@ -659,10 +659,10 @@ static int mlx5dr_action_get_shared_stc_nic(struct mlx5dr_context *ctx,
 		goto free_shared_stc;
 	}
 
+	ctx->common_res[tbl_type].shared_stc = shared_stc;
+
 	rte_atomic32_init(&ctx->common_res[tbl_type].shared_stc->refcount);
 	rte_atomic32_set(&ctx->common_res[tbl_type].shared_stc->refcount, 1);
-
-	ctx->common_res[tbl_type].shared_stc = shared_stc;
 
 	pthread_spin_unlock(&ctx->ctrl_lock);
 
