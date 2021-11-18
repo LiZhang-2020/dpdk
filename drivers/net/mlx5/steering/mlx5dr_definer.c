@@ -789,6 +789,35 @@ mlx5dr_definer_find_best_hl_fit(struct mlx5dr_match_template *mt,
 	if (!fail)
 		return 0;
 
+	fail = false;
+	*format_id = 25;
+	definer->dw_selector[5] = 66; // SRC IP INNER
+	definer->dw_selector[4] = 67; // DST IP INNER
+	definer->dw_selector[3] = 26; // SRC and DST PORT INNER
+	definer->dw_selector[2] = 97; // TNL_HDR 0
+	definer->dw_selector[1] = 98; // TNL_HDR 1
+	definer->dw_selector[0] = 84; // Reserved
+	definer->byte_selector[7] = 25;  // L3 & L4 type INNER
+	definer->byte_selector[6] = 9;   // L3 & L4 type OUTER
+	definer->byte_selector[5] = 98;  // DST_PORT HIGH OUT
+	definer->byte_selector[4] = 99;  // DST PORT LOW OUT
+	definer->byte_selector[3] = 136; // Reserved
+	definer->byte_selector[2] = 136; // Reserved
+	definer->byte_selector[1] = 136; // Reserved
+	definer->byte_selector[0] = 136; // Reserved
+
+	/* Check if all fields are supported by definer 25 */
+	for (i = 0; i < mt->fc_sz; i++) {
+		ret = mlx5dr_definer_find_byte_in_tag(definer, mt->fc[i].byte_off, &tag_offset);
+		if (ret) {
+			fail = true;
+			break;
+		}
+	}
+
+	if (!fail)
+		return 0;
+
 	DR_LOG(ERR, "Unable to find supporting match definer");
 	rte_errno = ENOTSUP;
 	return rte_errno;
