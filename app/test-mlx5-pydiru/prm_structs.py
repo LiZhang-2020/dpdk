@@ -151,3 +151,15 @@ class QueryTirOut(Packet):
         StrFixedLenField('reserved2', None, length=24),
         PacketField('tir_context', Tirc(), Tirc),
     ]
+
+
+class SetActionIn(Packet):
+    fields_desc = [
+        BitField('action_type', 0, 4),
+        BitField('field', 0, 12),
+        BitField('reserved1', 0, 3),
+        BitField('offset', 0, 5),
+        BitField('reserved2', 0, 3),
+        BitField('length', 0, 5),
+        IntField('data', 0),
+    ]

@@ -1,11 +1,22 @@
 # SPDX-License-Identifier: BSD-3-Clause
 # Copyright (c) 2021, Nvidia Inc. All rights reserved.
 
-
+from pydiru.providers.mlx5.steering.mlx5dr_action import Mlx5drRuleAction, Mlx5drActionModify
 from pydiru.providers.mlx5.steering.mlx5dr_rule import Mlx5drRuleAttr, Mlx5drRule
+import pydiru.providers.mlx5.steering.mlx5dr_enums as me
 
 from .utils import raw_traffic, gen_packet, PacketConsts, create_sipv4_rte_items
 from .base import BaseDrResources, PydiruTrafficTestCase
+
+from .prm_structs import SetActionIn
+import struct
+
+
+OUT_SMAC_47_16_FIELD_ID = 0x1
+OUT_SMAC_47_16_FIELD_LENGTH = 32
+OUT_SMAC_15_0_FIELD_ID = 0x2
+OUT_SMAC_15_0_FIELD_LENGTH = 16
+SET_ACTION = 0x1
 
 
 class Mlx5drTrafficTest(PydiruTrafficTestCase):
@@ -43,3 +54,34 @@ class Mlx5drTrafficTest(PydiruTrafficTestCase):
         packet = gen_packet(self.server.msg_size)
         raw_traffic(self.client, self.server, self.server.num_msgs, [packet],
                     tag_value=0x1234)
+
+    def test_mlx5dr_modify(self):
+        """
+        Create modify action on RX with two set actions to change the src mac, send
+        packet and verify using TIR action.
+        """
+        rte_items = create_sipv4_rte_items(PacketConsts.SRC_IP)
+        self.server.init_steering_resources(rte_items=rte_items)
+        smac_47_16 = 0x88888888
+        smac_15_0 = 0x8888
+        str_smac = "88:88:88:88:88:88"
+        self.action1 = SetActionIn(action_type=SET_ACTION, field=OUT_SMAC_47_16_FIELD_ID,
+                                   length=OUT_SMAC_47_16_FIELD_LENGTH, data=smac_47_16)
+        self.action2 = SetActionIn(action_type=SET_ACTION, field=OUT_SMAC_15_0_FIELD_ID,
+                                   length=OUT_SMAC_15_0_FIELD_LENGTH, data=smac_15_0)
+        self.modify_action = Mlx5drActionModify(self.server.dr_ctx, pattern_sz=2 * 8,
+                                                actions=[self.action1, self.action2],
+                                                log_bulk_size=12,
+                                                flags=me.MLX5DR_ACTION_FLAG_HWS_RX)
+        self.modify_ra = Mlx5drRuleAction(self.modify_action)
+        self.modify_ra.modify_data =  [self.action1, self.action2]
+        self.modify_ra.modify_offset = 0
+        _, tir_ra = self.server.create_rule_action('tir')
+        self.modify_rule = Mlx5drRule(matcher=self.server.matcher, mt_idx=0, rte_items=rte_items,
+                                      rule_actions=[self.modify_ra, tir_ra], num_of_actions=2,
+                                      rule_attr=Mlx5drRuleAttr(user_data=bytes(8)),
+                                      dr_ctx=self.server.dr_ctx)
+        exp_src_mac = struct.pack('!6s', bytes.fromhex(str_smac.replace(':', '')))
+        exp_packet = gen_packet(self.server.msg_size, src_mac=exp_src_mac)
+        packet = gen_packet(self.server.msg_size)
+        raw_traffic(self.client, self.server, self.server.num_msgs, [packet], exp_packet)
