@@ -701,7 +701,7 @@ mlx5dr_definer_find_byte_in_tag(struct mlx5dr_definer *definer,
 	}
 
 	/* The hl byte offset must be part of the definer */
-	DR_LOG(ERR, "Failed to map to definer - Field not supported");
+	DR_LOG(INFO, "Failed to map to definer, HL byte [%d] not found", byte_offset);
 	rte_errno = EINVAL;
 	return rte_errno;
 }
@@ -743,29 +743,30 @@ mlx5dr_definer_find_best_hl_fit(struct mlx5dr_match_template *mt,
 	bool fail;
 	int ret;
 
-	/* Temporary support for two fixed definers, until dynamic definer */
+	/* Temporary support for fixed definers, until dynamic definer */
 
 	fail = false;
-	*format_id = 22;
-	definer->dw_selector[5] = 64;
-	definer->dw_selector[4] = 65;
-	definer->dw_selector[3] = 24;
-	definer->dw_selector[2] = 2;
-	definer->dw_selector[1] = 138;
-	definer->dw_selector[0] = 0;
-	definer->byte_selector[7] = 32;
-	definer->byte_selector[6] = 33;
-	definer->byte_selector[5] = 34;
-	definer->byte_selector[4] = 35;
-	definer->byte_selector[3] = 36;
-	definer->byte_selector[2] = 37;
-	definer->byte_selector[1] = 4;
-	definer->byte_selector[0] = 5;
+	*format_id = 33;
+	definer->dw_selector[5] = 64; // SRC IP OUT
+	definer->dw_selector[4] = 65; // DST IP OUT
+	definer->dw_selector[3] = 24; // SRC & DST PORT OUT
+	definer->dw_selector[2] = 2;  // L3 & L4 & VLAN OUT (Port_eth_l2)
+	definer->dw_selector[1] = 84; // Reserved
+	definer->dw_selector[0] = 84; // Reserved
+	definer->byte_selector[7] = 136; // Reserved
+	definer->byte_selector[6] = 136; // Reserved
+	definer->byte_selector[5] = 136; // Reserved
+	definer->byte_selector[4] = 136; // Reserved
+	definer->byte_selector[3] = 136; // Don't Care
+	definer->byte_selector[2] = 136; // Don't Care
+	definer->byte_selector[1] = 58;  // TTL OUT
+	definer->byte_selector[0] = 59;  // Protocol OUT
 
-	/* Check if all fields are supported by definer 22 */
+	/* Check if all fields are supported by definer 33 */
 	for (i = 0; i < mt->fc_sz; i++) {
 		ret = mlx5dr_definer_find_byte_in_tag(definer, mt->fc[i].byte_off, &tag_offset);
 		if (ret) {
+			DR_LOG(INFO, "Cannot use definer %d", (*format_id));
 			fail = true;
 			break;
 		}
@@ -792,13 +793,14 @@ mlx5dr_definer_find_best_hl_fit(struct mlx5dr_match_template *mt,
 	definer->byte_selector[4] = 136; // Reserved
 	definer->byte_selector[3] = 136; // Reserved
 	definer->byte_selector[2] = 136; // Reserved
-	definer->byte_selector[1] = 25;  // L3 & L4 type INNER
-	definer->byte_selector[0] = 9;   // L3 & L4 type OUT
+	definer->byte_selector[1] = 25;  // L3 & L4 type INNER (Port_eth_l2)
+	definer->byte_selector[0] = 9;   // L3 & L4 type OUT   (Port_eth_l2)
 
 	/* Check if all fields are supported by definer 34 */
 	for (i = 0; i < mt->fc_sz; i++) {
 		ret = mlx5dr_definer_find_byte_in_tag(definer, mt->fc[i].byte_off, &tag_offset);
 		if (ret) {
+			DR_LOG(INFO, "Cannot use definer %d", (*format_id));
 			fail = true;
 			break;
 		}
@@ -815,8 +817,8 @@ mlx5dr_definer_find_best_hl_fit(struct mlx5dr_match_template *mt,
 	definer->dw_selector[2] = 97; // TNL_HDR 0
 	definer->dw_selector[1] = 98; // TNL_HDR 1
 	definer->dw_selector[0] = 84; // Reserved
-	definer->byte_selector[7] = 25;  // L3 & L4 type INNER
-	definer->byte_selector[6] = 9;   // L3 & L4 type OUTER
+	definer->byte_selector[7] = 25;  // L3 & L4 type INNER (Port_eth_l2)
+	definer->byte_selector[6] = 9;   // L3 & L4 type OUTER (Port_eth_l2)
 	definer->byte_selector[5] = 98;  // DST_PORT HIGH OUT
 	definer->byte_selector[4] = 99;  // DST PORT LOW OUT
 	definer->byte_selector[3] = 136; // Reserved
@@ -828,6 +830,7 @@ mlx5dr_definer_find_best_hl_fit(struct mlx5dr_match_template *mt,
 	for (i = 0; i < mt->fc_sz; i++) {
 		ret = mlx5dr_definer_find_byte_in_tag(definer, mt->fc[i].byte_off, &tag_offset);
 		if (ret) {
+			DR_LOG(INFO, "Cannot use definer %d", (*format_id));
 			fail = true;
 			break;
 		}
