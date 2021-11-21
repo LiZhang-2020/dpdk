@@ -697,8 +697,12 @@ mlx5dr_match_template_create(const struct rte_flow_item items[],
 
 	/* Duplicate the user given items */
 	ret = rte_flow_conv(RTE_FLOW_CONV_OP_PATTERN, NULL, 0, items, &error);
-	if (ret <= 0)
+	if (ret <= 0) {
+		DR_LOG(ERR, "Unable to process items (%s): %s",
+		      error.message ? error.message : "unspecified",
+		      strerror(rte_errno));
 		goto free_template;
+	}
 
 	len = RTE_ALIGN(ret, 16);
 	mt->items = simple_calloc(1, len);
