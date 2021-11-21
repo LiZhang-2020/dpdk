@@ -28,7 +28,7 @@ int mlx5dr_action_root_build_attr(struct mlx5dr_rule_action rule_actions[],
 			attr[i].type = MLX5DV_FLOW_ACTION_TAG;
 			attr[i].tag_value = rule_actions[i].tag.value;
 			break;
-#ifndef HAVE_MLX5_DR_CREATE_ACTION_DEFAULT_MISS
+#ifdef HAVE_MLX5_DR_CREATE_ACTION_DEFAULT_MISS
 		case MLX5DR_ACTION_TYP_MISS:
 			attr[i].type = MLX5DV_FLOW_ACTION_DEFAULT_MISS;
 			break;
