@@ -216,7 +216,10 @@ static int mlx5dr_rule_create_root(struct mlx5dr_rule *rule,
 
 	/* Create verb flow */
 	value->match_sz = MLX5_ST_SZ_BYTES(fte_match_param);
-	rule->flow = mlx5dv_create_flow(dv_matcher, value, num_actions, attr);
+	rule->flow = mlx5_glue->dv_create_flow_root(dv_matcher,
+						    value,
+						    num_actions,
+						    attr);
 
 	mlx5dr_rule_gen_comp(&ctx->send_queue[rule_attr->queue_id], rule, !rule->flow,
 			     rule_attr->user_data, MLX5DR_RULE_STATUS_CREATED);

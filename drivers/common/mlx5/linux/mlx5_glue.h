@@ -264,9 +264,14 @@ struct mlx5_glue {
 		(struct ibv_context *context,
 		 struct mlx5dv_flow_matcher_attr *matcher_attr,
 		 void *tbl);
+	void *(*dv_create_flow_matcher_root)
+		(struct ibv_context *context,
+		 struct mlx5dv_flow_matcher_attr *matcher_attr);
 	int (*dv_set_matcher_size)(void *matcher, uint32_t hint);
 	void *(*dv_create_flow)(void *matcher, void *match_value,
 			  size_t num_actions, void *actions[]);
+	void *(*dv_create_flow_root)(void *matcher, void *match_value,
+				     size_t num_actions, void *actions);
 	void *(*dv_create_flow_action_counter)(void *obj, uint32_t  offset);
 	void *(*dv_create_flow_action_dest_ibv_qp)(void *qp);
 	void *(*dv_create_flow_action_dest_devx_tir)(void *tir);
@@ -274,12 +279,20 @@ struct mlx5_glue {
 		(struct ibv_context *ctx, enum mlx5dv_flow_table_type ft_type,
 		 void *domain, uint64_t flags, size_t actions_sz,
 		 uint64_t actions[]);
+	void *(*dv_create_flow_action_modify_header_root)
+		(struct ibv_context *ctx, size_t actions_sz, uint64_t actions[],
+		 enum mlx5dv_flow_table_type ft_type);
 	void *(*dv_create_flow_action_packet_reformat)
 		(struct ibv_context *ctx,
 		 enum mlx5dv_flow_action_packet_reformat_type reformat_type,
 		 enum mlx5dv_flow_table_type ft_type,
 		 struct mlx5dv_dr_domain *domain,
 		 uint32_t flags, size_t data_sz, void *data);
+	void *(*dv_create_flow_action_packet_reformat_root)
+		(struct ibv_context *ctx,
+		 size_t data_sz, void *data,
+		 enum mlx5dv_flow_action_packet_reformat_type reformat_type,
+		 enum mlx5dv_flow_table_type ft_type);
 	void *(*dv_create_flow_action_tag)(uint32_t tag);
 	void *(*dv_create_flow_action_meter)
 		(struct mlx5dv_dr_flow_meter_attr *attr);
@@ -288,6 +301,7 @@ struct mlx5_glue {
 	void *(*dr_create_flow_action_default_miss)(void);
 	int (*dv_destroy_flow)(void *flow);
 	int (*dv_destroy_flow_matcher)(void *matcher);
+	int (*dv_destroy_flow_matcher_root)(void *matcher);
 	struct ibv_context *(*dv_open_device)(struct ibv_device *device);
 	struct mlx5dv_var *(*dv_alloc_var)(struct ibv_context *context,
 					   uint32_t flags);

@@ -559,7 +559,8 @@ static int mlx5dr_matcher_init_root(struct mlx5dr_matcher *matcher)
 	attr.priority = matcher->attr.priority;
 	attr.comp_mask = MLX5DV_FLOW_MATCHER_MASK_FT_TYPE;
 
-	matcher->dv_matcher = mlx5dv_create_flow_matcher(ctx->ibv_ctx, &attr);
+	matcher->dv_matcher =
+		mlx5_glue->dv_create_flow_matcher_root(ctx->ibv_ctx, &attr);
 	if (!matcher->dv_matcher) {
 		DR_LOG(ERR, "Failed to create DV flow matcher");
 		rte_errno = errno;
@@ -588,7 +589,7 @@ static int mlx5dr_matcher_uninit_root(struct mlx5dr_matcher *matcher)
 	LIST_REMOVE(matcher, next);
 	pthread_spin_unlock(&ctx->ctrl_lock);
 
-	ret = mlx5dv_destroy_flow_matcher(matcher->dv_matcher);
+	ret = mlx5_glue->dv_destroy_flow_matcher_root(matcher->dv_matcher);
 	if (ret) {
 		DR_LOG(ERR, "Failed to Destroy DV flow matcher");
 		rte_errno = errno;

@@ -526,10 +526,11 @@ mlx5dr_action_create_reformat_root(struct mlx5dr_action *action,
 
 	/* Create the reformat type for root table */
 	action->flow_action =
-		mlx5dv_create_flow_action_packet_reformat(action->ctx->ibv_ctx,
-							  data_sz, data,
-							  verb_reformat_type,
-							  ft_type);
+		mlx5_glue->dv_create_flow_action_packet_reformat_root(action->ctx->ibv_ctx,
+								      data_sz,
+								      data,
+								      verb_reformat_type,
+								      ft_type);
 	if (!action->flow_action) {
 		rte_errno = errno;
 		return rte_errno;
@@ -956,10 +957,10 @@ mlx5dr_action_create_modify_header_root(struct mlx5dr_action *action,
 	mlx5dr_action_conv_flags_to_ft_type(action->flags, &ft_type);
 
 	action->flow_action =
-		mlx5dv_create_flow_action_modify_header(action->ctx->ibv_ctx,
-							actions_sz,
-							(uint64_t *)actions,
-							ft_type);
+		mlx5_glue->dv_create_flow_action_modify_header_root(action->ctx->ibv_ctx,
+								    actions_sz,
+								    (uint64_t *)actions,
+								    ft_type);
 	if (!action->flow_action) {
 		rte_errno = errno;
 		return rte_errno;
