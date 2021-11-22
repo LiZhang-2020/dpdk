@@ -241,6 +241,7 @@ struct rte_port {
 	struct rte_eth_txconf   tx_conf[RTE_MAX_QUEUES_PER_PORT+1]; /**< per queue tx configuration */
 	struct rte_ether_addr   *mc_addr_pool; /**< pool of multicast addrs */
 	uint32_t                mc_addr_nb; /**< nb. of addr. in mc_addr_pool */
+	queueid_t               queue_nb; /**< nb. of queues for flow rules */
 	uint8_t                 slave_flag; /**< bonding slave port */
 	struct port_template    *item_templ_list; /**< Item templates. */
 	struct port_template    *action_templ_list; /**< Action templates. */

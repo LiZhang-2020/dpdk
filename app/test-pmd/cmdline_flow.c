@@ -2214,6 +2214,8 @@ static int comp_action_template_id(struct context *, const struct token *,
 				   unsigned int, char *, unsigned int);
 static int comp_table_id(struct context *, const struct token *,
 			 unsigned int, char *, unsigned int);
+static int comp_queue_id(struct context *, const struct token *,
+			 unsigned int, char *, unsigned int);
 
 /** Token definitions. */
 static const struct token token_list[] = {
@@ -2390,7 +2392,7 @@ static const struct token token_list[] = {
 		.type = "QUEUE_ID",
 		.help = "queue id",
 		.call = parse_int,
-		.comp = comp_none,
+		.comp = comp_queue_id,
 	},
 	/* Top-level command. */
 	[FLOW] = {
@@ -9194,6 +9196,28 @@ comp_table_id(struct context *ctx, const struct token *token,
 		if (buf && i == ent)
 			return snprintf(buf, size, "%u", pt->id);
 		++i;
+	}
+	if (buf)
+		return -1;
+	return i;
+}
+
+/** Complete available queue IDs. */
+static int
+comp_queue_id(struct context *ctx, const struct token *token,
+	      unsigned int ent, char *buf, unsigned int size)
+{
+	unsigned int i = 0;
+	struct rte_port *port;
+
+	(void)token;
+	if (port_id_is_invalid(ctx->port, DISABLED_WARN) ||
+	    ctx->port == (portid_t)RTE_PORT_ALL)
+		return -1;
+	port = &ports[ctx->port];
+	for (i = 0; i < port->queue_nb; i++) {
+		if (buf && i == ent)
+			return snprintf(buf, size, "%u", i);
 	}
 	if (buf)
 		return -1;

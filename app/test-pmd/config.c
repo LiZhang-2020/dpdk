@@ -1875,10 +1875,16 @@ port_flow_configure(portid_t port_id,
 	const struct rte_flow_port_attr *port_attr,
 	const struct rte_flow_queue_attr *queue_attr)
 {
+	struct rte_port *port;
 	struct rte_flow_error error;
 	const struct rte_flow_queue_attr *attr_list[port_attr->nb_queues];
 	int std_queue;
 
+	if (port_id_is_invalid(port_id, ENABLED_WARN) ||
+	    port_id == (portid_t)RTE_PORT_ALL)
+		return -EINVAL;
+	port = &ports[port_id];
+	port->queue_nb = port_attr->nb_queues;
 	for (std_queue = 0; std_queue < port_attr->nb_queues; std_queue++)
 		attr_list[std_queue] = queue_attr;
 	/* Poisoning to make sure PMDs update it in case of error. */
@@ -2603,6 +2609,11 @@ port_queue_flow_create(portid_t port_id,
 		id = port->flow_list->id + 1;
 	}
 
+	if (queue_id >= port->queue_nb) {
+		printf("Queue #%u is invalid\n", queue_id);
+		return -EINVAL;
+	}
+
 	found = false;
 	pt = port->table_list;
 	while (pt) {
@@ -2667,6 +2678,12 @@ port_queue_flow_destroy(portid_t port_id, queueid_t queue_id,
 	    port_id == (portid_t)RTE_PORT_ALL)
 		return -EINVAL;
 	port = &ports[port_id];
+
+	if (queue_id >= port->queue_nb) {
+		printf("Queue #%u is invalid\n", queue_id);
+		return -EINVAL;
+	}
+
 	tmp = &port->flow_list;
 	while (*tmp) {
 		uint32_t i;
@@ -2718,8 +2735,19 @@ port_queue_flow_destroy(portid_t port_id, queueid_t queue_id,
 int
 port_queue_flow_drain(portid_t port_id, queueid_t queue_id)
 {
+	struct rte_port *port;
 	struct rte_flow_error error;
 	int ret = 0;
+
+	if (port_id_is_invalid(port_id, ENABLED_WARN) ||
+	    port_id == (portid_t)RTE_PORT_ALL)
+		return -EINVAL;
+	port = &ports[port_id];
+
+	if (queue_id >= port->queue_nb) {
+		printf("Queue #%u is invalid\n", queue_id);
+		return -EINVAL;
+	}
 
 	memset(&error, 0x55, sizeof(error));
 	ret = rte_flow_q_drain(port_id, queue_id, &error);
