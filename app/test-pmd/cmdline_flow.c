@@ -123,7 +123,9 @@ enum index {
 	QUEUE_CREATE,
 	QUEUE_DESTROY,
 	QUEUE_CREATE_ID,
+	QUEUE_CREATE_DRAIN,
 	QUEUE_DESTROY_ID,
+	QUEUE_DESTROY_DRAIN,
 	QUEUE_TABLE,
 	QUEUE_ITEM_TEMPLATE,
 	QUEUE_ACTION_TEMPLATE,
@@ -900,6 +902,7 @@ struct buffer {
 	enum index command; /**< Flow command. */
 	portid_t port; /**< Affected port ID. */
 	queueid_t queue; /** Async queue ID. */
+	bool drain; /** Drain the queue on async oparation */
 	union {
 		struct {
 			struct rte_flow_port_attr port_attr;
@@ -2708,7 +2711,7 @@ static const struct token token_list[] = {
 	[QUEUE_DESTROY] = {
 		.name = "destroy",
 		.help = "destroy a flow rule",
-		.next = NEXT(NEXT_ENTRY(QUEUE_DESTROY_ID),
+		.next = NEXT(NEXT_ENTRY(QUEUE_DESTROY_DRAIN),
 			     NEXT_ENTRY(QUEUE_ID)),
 		.args = ARGS(ARGS_ENTRY(struct buffer, queue)),
 		.call = parse_qo_destroy,
@@ -2735,11 +2738,27 @@ static const struct token token_list[] = {
 	[QUEUE_ACTION_TEMPLATE] = {
 		.name = "action_template",
 		.help = "specify action template id",
-		.next = NEXT(NEXT_ENTRY(PATTERN),
+		.next = NEXT(NEXT_ENTRY(QUEUE_CREATE_DRAIN),
 			     NEXT_ENTRY(ACTION_TEMPLATE_ID)),
 		.args = ARGS(ARGS_ENTRY(struct buffer,
 					args.vc.at_id)),
 		.call = parse_qo,
+	},
+	[QUEUE_CREATE_DRAIN] = {
+		.name = "drain",
+		.help = "drain queue immediately",
+		.next = NEXT(NEXT_ENTRY(PATTERN),
+			     NEXT_ENTRY(BOOLEAN)),
+		.args = ARGS(ARGS_ENTRY(struct buffer, drain)),
+		.call = parse_qo,
+	},
+	[QUEUE_DESTROY_DRAIN] = {
+		.name = "drain",
+		.help = "drain queue immediately",
+		.next = NEXT(NEXT_ENTRY(QUEUE_DESTROY_ID),
+			     NEXT_ENTRY(BOOLEAN)),
+		.args = ARGS(ARGS_ENTRY(struct buffer, drain)),
+		.call = parse_qo_destroy,
 	},
 	[QUEUE_DESTROY_ID] = {
 		.name = "rule",
@@ -8095,6 +8114,7 @@ parse_qo(struct context *ctx, const struct token *token,
 	case QUEUE_TABLE:
 	case QUEUE_ITEM_TEMPLATE:
 	case QUEUE_ACTION_TEMPLATE:
+	case QUEUE_CREATE_DRAIN:
 		return len;
 	case PATTERN:
 		out->args.vc.pattern =
@@ -8155,6 +8175,8 @@ parse_qo_destroy(struct context *ctx, const struct token *token,
 		ctx->objdata = 0;
 		ctx->object = flow_id;
 		ctx->objmask = NULL;
+		return len;
+	case QUEUE_DESTROY_DRAIN:
 		return len;
 	default:
 		return -1;
@@ -9568,13 +9590,13 @@ cmd_flow_parsed(const struct buffer *in)
 					in->args.table_destroy.table_id);
 		break;
 	case QUEUE_CREATE:
-		port_queue_flow_create(in->port,
-				in->queue,	in->args.vc.table_id,
+		port_queue_flow_create(in->port, in->queue,
+				in->drain, in->args.vc.table_id,
 				in->args.vc.it_id, in->args.vc.at_id,
 				in->args.vc.pattern, in->args.vc.actions);
 		break;
 	case QUEUE_DESTROY:
-		port_queue_flow_destroy(in->port, in->queue,
+		port_queue_flow_destroy(in->port, in->queue, in->drain,
 					in->args.destroy.rule_n,
 					in->args.destroy.rule);
 		break;

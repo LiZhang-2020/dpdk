@@ -3347,7 +3347,7 @@ following sections.
 
 - Enqueue creation of a flow rule::
 
-   flow queue {port_id} create {queue_id}
+   flow queue {port_id} create {queue_id} [drain {boolean}]
        table {table_id} item_template {item_template_id}
        action_template {action_template_id}
        pattern {item} [/ {item} [...]] / end
@@ -3355,7 +3355,8 @@ following sections.
 
 - Enqueue destruction of specific flow rules::
 
-   flow queue {port_id} destroy {queue_id} rule {rule_id} [...]
+   flow queue {port_id} destroy {queue_id}
+       [drain {boolean}] rule {rule_id} [...]
 
 - Drain a queue::
 
@@ -3703,7 +3704,7 @@ Enqueueing creation of flow rules
 ``flow queue create`` adds creation operation of a flow rule to a queue.
 It is bound to ``rte_flow_q_flow_create()``::
 
-   flow queue {port_id} create {queue_id}
+   flow queue {port_id} create {queue_id} [drain {boolean}]
        table {table_id} item_template {item_template_id}
        action_template {action_template_id}
        pattern {item} [/ {item} [...]] / end
@@ -4402,7 +4403,8 @@ Enqueueing destruction of flow rules
 from their rule ID (as returned by ``flow queue create``) to a queue,
 this command calls ``rte_flow_q_flow_destroy()`` as many times as necessary::
 
-   flow queue {port_id} destroy {queue_id} rule {rule_id} [...]
+   flow queue {port_id} destroy {queue_id}
+        [drain {boolean}] rule {rule_id} [...]
 
 If successful, it will show::
 

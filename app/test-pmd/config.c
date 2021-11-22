@@ -2582,8 +2582,8 @@ port_flow_table_destroy(portid_t port_id,
 
 /** Enqueue create flow rule operation. */
 int
-port_queue_flow_create(portid_t port_id,
-		       queueid_t queue_id, uint32_t table_id,
+port_queue_flow_create(portid_t port_id, queueid_t queue_id,
+		       bool drain, uint32_t table_id,
 		       uint32_t item_id, uint32_t action_id,
 		       const struct rte_flow_item *pattern,
 		       const struct rte_flow_action *actions)
@@ -2654,7 +2654,7 @@ port_queue_flow_create(portid_t port_id,
 /** Enqueue number of destroy flow rules operations. */
 int
 port_queue_flow_destroy(portid_t port_id, queueid_t queue_id,
-			uint32_t n, const uint32_t *rule)
+			bool drain, uint32_t n, const uint32_t *rule)
 {
 	struct rte_flow_q_ops_attr op_attr = { .drain = drain };
 	struct rte_port *port;
