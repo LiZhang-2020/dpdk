@@ -2588,15 +2588,13 @@ port_queue_flow_create(portid_t port_id,
 		       const struct rte_flow_item *pattern,
 		       const struct rte_flow_action *actions)
 {
-	struct rte_flow_q_ops_attr ops_attr = { .drain = 1 };
-	struct rte_flow_q_op_res comp = { 0 };
+	struct rte_flow_q_ops_attr ops_attr = { .drain = drain };
 	struct rte_flow *flow;
 	struct rte_port *port;
 	struct port_flow *pf;
 	struct port_table *pt;
 	uint32_t id = 0;
 	bool found;
-	int ret = 0;
 	struct rte_flow_error error;
 	struct rte_flow_action_age *age = age_action_get(actions);
 
@@ -2645,16 +2643,6 @@ port_queue_flow_create(portid_t port_id,
 		return port_flow_complain(&error);
 	}
 
-	while (ret == 0) {
-		/* Poisoning to make sure PMDs update it in case of error. */
-		memset(&error, 0x22, sizeof(error));
-		ret = rte_flow_q_dequeue(port_id, queue_id, &comp, 1, &error);
-		if (ret < 0) {
-			printf("Failed to poll queue\n");
-			return -EINVAL;
-		}
-	}
-
 	pf->next = port->flow_list;
 	pf->id = id;
 	pf->flow = flow;
@@ -2668,8 +2656,7 @@ int
 port_queue_flow_destroy(portid_t port_id, queueid_t queue_id,
 			uint32_t n, const uint32_t *rule)
 {
-	struct rte_flow_q_ops_attr op_attr = { .drain = 1 };
-	struct rte_flow_q_op_res comp = { 0 };
+	struct rte_flow_q_ops_attr op_attr = { .drain = drain };
 	struct rte_port *port;
 	struct port_flow **tmp;
 	uint32_t c = 0;
@@ -2705,21 +2692,6 @@ port_queue_flow_destroy(portid_t port_id, queueid_t queue_id,
 				ret = port_flow_complain(&error);
 				continue;
 			}
-
-			while (ret == 0) {
-				/*
-				 * Poisoning to make sure PMD
-				 * update it in case of error.
-				 */
-				memset(&error, 0x44, sizeof(error));
-				ret = rte_flow_q_dequeue(port_id, queue_id,
-							 &comp, 1, &error);
-				if (ret < 0) {
-					printf("Failed to poll queue\n");
-					return -EINVAL;
-				}
-			}
-
 			printf("Flow rule #%u destruction enqueued\n", pf->id);
 			*tmp = pf->next;
 			free(pf);

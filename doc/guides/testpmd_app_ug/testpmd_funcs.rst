@@ -3720,6 +3720,8 @@ Otherwise it will show an error message of the form::
 This command uses the same pattern items and actions as ``flow create``,
 their format is described in `Creating flow rules`_.
 
+``flow queue dequeue`` must be called to retrieve the operation status.
+
 Attributes
 ^^^^^^^^^^
 
@@ -4410,6 +4412,8 @@ It does not report anything for rule IDs that do not exist. The usual error
 message is shown when a rule cannot be destroyed::
 
    Caught error type [...] ([...]): [...]
+
+``flow queue dequeue`` must be called to retrieve the operation status.
 
 Querying flow rules
 ~~~~~~~~~~~~~~~~~~~
