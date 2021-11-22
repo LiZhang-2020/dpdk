@@ -1885,6 +1885,7 @@ port_flow_configure(portid_t port_id,
 		return -EINVAL;
 	port = &ports[port_id];
 	port->queue_nb = port_attr->nb_queues;
+	port->queue_sz = queue_attr->size;
 	for (std_queue = 0; std_queue < port_attr->nb_queues; std_queue++)
 		attr_list[std_queue] = queue_attr;
 	/* Poisoning to make sure PMDs update it in case of error. */
@@ -2756,6 +2757,39 @@ port_queue_flow_drain(portid_t port_id, queueid_t queue_id)
 		return -EINVAL;
 	}
 	printf("Queue #%u drained\n", queue_id);
+	return ret;
+}
+
+/** Dequeue a queue operation from the queue. */
+int
+port_queue_flow_dequeue(portid_t port_id, queueid_t queue_id)
+{
+	struct rte_port *port;
+	struct rte_flow_q_op_res *res;
+	struct rte_flow_error error;
+	int ret = 0;
+
+	if (port_id_is_invalid(port_id, ENABLED_WARN) ||
+	    port_id == (portid_t)RTE_PORT_ALL)
+		return -EINVAL;
+	port = &ports[port_id];
+
+	if (queue_id >= port->queue_nb) {
+		printf("Queue #%u is invalid\n", queue_id);
+		return -EINVAL;
+	}
+
+	res = malloc(sizeof(struct rte_flow_q_op_res) * port->queue_sz);
+	memset(&error, 0x66, sizeof(error));
+	ret = rte_flow_q_dequeue(port_id, queue_id, res,
+				 port->queue_sz, &error);
+	if (ret < 0) {
+		printf("Failed to dequeue a queue\n");
+		free(res);
+		return -EINVAL;
+	}
+	printf("Queue #%u dequeued %u operations\n", queue_id, ret);
+	free(res);
 	return ret;
 }
 

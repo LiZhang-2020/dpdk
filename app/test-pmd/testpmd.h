@@ -242,6 +242,7 @@ struct rte_port {
 	struct rte_ether_addr   *mc_addr_pool; /**< pool of multicast addrs */
 	uint32_t                mc_addr_nb; /**< nb. of addr. in mc_addr_pool */
 	queueid_t               queue_nb; /**< nb. of queues for flow rules */
+	uint32_t                queue_sz; /**< size of a queue for flow rules */
 	uint8_t                 slave_flag; /**< bonding slave port */
 	struct port_template    *item_templ_list; /**< Item templates. */
 	struct port_template    *action_templ_list; /**< Action templates. */
@@ -887,6 +888,7 @@ int port_queue_flow_create(portid_t port_id,
 int port_queue_flow_destroy(portid_t port_id, queueid_t queue_id,
 			    uint32_t n, const uint32_t *rule);
 int port_queue_flow_drain(portid_t port_id, queueid_t queue_id);
+int port_queue_flow_dequeue(portid_t port_id, queueid_t queue_id);
 int port_flow_validate(portid_t port_id,
 		       const struct rte_flow_attr *attr,
 		       const struct rte_flow_item *pattern,

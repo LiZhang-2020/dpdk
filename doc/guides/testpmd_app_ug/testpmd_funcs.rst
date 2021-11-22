@@ -3361,6 +3361,10 @@ following sections.
 
    flow drain {port_id} queue {queue_id}
 
+- Dequeue all operations from a queue::
+
+   flow dequeue {port_id} queue {queue_id}
+
 - Create a flow rule::
 
    flow create {port_id}
@@ -3592,6 +3596,23 @@ It is bound to ``rte_flow_q_drain()``::
 If successful, it will show::
 
    Queue #[...] drained
+
+The usual error message is shown when a queue cannot be drained::
+
+   Caught error type [...] ([...]): [...]
+
+Dequeueing flow operations
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+``flow dequeue`` asks the underlying device about flow queue operations
+results and return all the processed (successfuly or not) operations.
+It is bound to ``rte_flow_q_dequeue()``::
+
+   flow dequeue {port_id} queue {queue_id}
+
+If successful, it will show::
+
+   Queue #[...] dequeued #[...] operations
 
 The usual error message is shown when a queue cannot be drained::
 

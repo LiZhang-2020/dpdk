@@ -95,6 +95,7 @@ enum index {
 	TUNNEL,
 	FLEX,
 	QUEUE,
+	DEQUEUE,
 	DRAIN,
 
 	/* Flex arguments */
@@ -127,6 +128,9 @@ enum index {
 	QUEUE_ITEM_TEMPLATE,
 	QUEUE_ACTION_TEMPLATE,
 	QUEUE_SPEC,
+
+	/* Dequeue arguments. */
+	DEQUEUE_QUEUE,
 
 	/* Drain arguments. */
 	DRAIN_QUEUE,
@@ -2136,6 +2140,9 @@ static int parse_qo_destroy(struct context *ctx,
 			    const struct token *token,
 			    const char *str, unsigned int len,
 			    void *buf, unsigned int size);
+static int parse_dequeue(struct context *, const struct token *,
+			 const char *, unsigned int,
+			 void *, unsigned int);
 static int parse_drain(struct context *, const struct token *,
 		       const char *, unsigned int,
 		       void *, unsigned int);
@@ -2417,6 +2424,7 @@ static const struct token token_list[] = {
 			      TUNNEL,
 			      FLEX,
 			      QUEUE,
+			      DEQUEUE,
 			      DRAIN)),
 		.call = parse_init,
 	},
@@ -2741,6 +2749,21 @@ static const struct token token_list[] = {
 		.args = ARGS(ARGS_ENTRY_PTR(struct buffer,
 					    args.destroy.rule)),
 		.call = parse_qo_destroy,
+	},
+	/* Top-level command. */
+	[DEQUEUE] = {
+		.name = "dequeue",
+		.help = "dequeue flow operations",
+		.next = NEXT(NEXT_ENTRY(DEQUEUE_QUEUE), NEXT_ENTRY(PORT_ID)),
+		.args = ARGS(ARGS_ENTRY(struct buffer, port)),
+		.call = parse_dequeue,
+	},
+	/* Sub-level commands. */
+	[DEQUEUE_QUEUE] = {
+		.name = "queue",
+		.help = "specify queue id",
+		.next = NEXT(NEXT_ENTRY(END), NEXT_ENTRY(QUEUE_ID)),
+		.args = ARGS(ARGS_ENTRY(struct buffer, queue)),
 	},
 	/* Top-level command. */
 	[DRAIN] = {
@@ -8138,6 +8161,34 @@ parse_qo_destroy(struct context *ctx, const struct token *token,
 	}
 }
 
+/** Parse tokens for dequeue command. */
+static int
+parse_dequeue(struct context *ctx, const struct token *token,
+	      const char *str, unsigned int len,
+	      void *buf, unsigned int size)
+{
+	struct buffer *out = buf;
+
+	/* Token name must match. */
+	if (parse_default(ctx, token, str, len, NULL, 0) < 0)
+		return -1;
+	/* Nothing else to do if there is no buffer. */
+	if (!out)
+		return len;
+	if (!out->command) {
+		if (ctx->curr != DEQUEUE)
+			return -1;
+		if (sizeof(*out) > size)
+			return -1;
+		out->command = ctx->curr;
+		ctx->objdata = 0;
+		ctx->object = out;
+		ctx->objmask = NULL;
+		out->args.vc.data = (uint8_t *)out + size;
+	}
+	return len;
+}
+
 /** Parse tokens for drain queue command. */
 static int
 parse_drain(struct context *ctx, const struct token *token,
@@ -9526,6 +9577,9 @@ cmd_flow_parsed(const struct buffer *in)
 		port_queue_flow_destroy(in->port, in->queue,
 					in->args.destroy.rule_n,
 					in->args.destroy.rule);
+		break;
+	case DEQUEUE:
+		port_queue_flow_dequeue(in->port, in->queue);
 		break;
 	case DRAIN:
 		port_queue_flow_drain(in->port, in->queue);
