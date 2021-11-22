@@ -711,7 +711,7 @@ mlx5dr_definer_fc_bind(struct mlx5dr_definer *definer,
 		       struct mlx5dr_definer_fc *fc,
 		       uint32_t fc_sz)
 {
-	uint32_t tag_offset;
+	uint32_t tag_offset = 0;
 	int ret, byte_diff;
 	uint32_t i;
 
