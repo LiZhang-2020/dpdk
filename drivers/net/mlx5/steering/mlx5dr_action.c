@@ -1096,7 +1096,7 @@ int mlx5dr_action_get_default_stc(struct mlx5dr_context *ctx,
 	if (!default_stc) {
 		DR_LOG(ERR, "Failed to allocate memory for default STCs");
 		rte_errno = ENOMEM;
-		return rte_errno;
+		goto unlock_err;
 	}
 
 	stc_attr.action_type = MLX5_IFC_STC_ACTION_TYPE_NOP;
@@ -1158,6 +1158,7 @@ free_nop_ctr:
 	mlx5dr_action_free_single_stc(ctx, tbl_type, &default_stc->nop_ctr);
 free_default_stc:
 	simple_free(default_stc);
+unlock_err:
 	pthread_spin_unlock(&ctx->ctrl_lock);
 	return rte_errno;
 }

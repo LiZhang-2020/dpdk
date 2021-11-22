@@ -613,19 +613,22 @@ static int mlx5dr_send_queue_open(struct mlx5dr_context *ctx,
 				  struct mlx5dr_send_engine *queue,
 				  uint16_t queue_size)
 {
-	struct mlx5dv_devx_uar *uar = NULL;
+	struct mlx5dv_devx_uar *uar;
 	int err;
 
 #ifdef MLX5DV_UAR_ALLOC_TYPE_NC
 	uar = mlx5_glue->devx_alloc_uar(ctx->ibv_ctx, MLX5_IB_UAPI_UAR_ALLOC_TYPE_NC);
-#endif
 	if (!uar) {
 		rte_errno = errno;
 		return rte_errno;
 	}
+#else
+	uar = NULL;
+	rte_errno = ENOTSUP;
+	return rte_errno;
+#endif
 
 	queue->uar = uar;
-
 	queue->rings = MLX5DR_NUM_SEND_RINGS;
 	queue->num_entries = roundup_pow_of_two(queue_size); /* TODO */
 	queue->used_entries = 0;
