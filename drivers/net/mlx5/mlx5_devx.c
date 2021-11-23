@@ -322,11 +322,11 @@ mlx5_devx_wq_attr_fill(struct mlx5_priv *priv, struct mlx5_rxq_ctrl *rxq_ctrl,
 		 * 512*2^single_wqe_log_num_of_strides.
 		 */
 		wq_attr->single_wqe_log_num_of_strides =
-				rxq_data->strd_num_n -
+				rxq_data->log_strd_num -
 				MLX5_MIN_SINGLE_WQE_LOG_NUM_STRIDES;
 		/* Stride size = (2^single_stride_log_num_of_bytes)*64B. */
 		wq_attr->single_stride_log_num_of_bytes =
-				rxq_data->strd_sz_n -
+				rxq_data->log_strd_sz -
 				MLX5_MIN_SINGLE_STRIDE_LOG_NUM_BYTES;
 		wqe_size = sizeof(struct mlx5_wqe_mprq);
 	} else {
