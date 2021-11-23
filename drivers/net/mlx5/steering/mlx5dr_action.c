@@ -797,7 +797,6 @@ static void mlx5dr_action_prepare_decap_l3_actions(size_t data_sz,
 	for (i = 0; i < data_sz / MLX5DR_ACTION_INLINE_DATA_SIZE + 1; i++) {
 		MLX5_SET(stc_ste_param_insert, mh_data, action_type,
 			 MLX5_MODIFICATION_TYPE_INSERT);
-		MLX5_SET(stc_ste_param_insert, mh_data, encap, 0x1);
 		MLX5_SET(stc_ste_param_insert, mh_data, inline_data, 0x1);
 		MLX5_SET(stc_ste_param_insert, mh_data, insert_anchor,
 			 MLX5_HEADER_ANCHOR_MAC_START);
