@@ -570,8 +570,6 @@ cuda_mem_alloc(struct rte_gpu *dev, size_t size, void **ptr)
 
 	if (dev == NULL)
 		return -ENODEV;
-	if (size == 0)
-		return -EINVAL;
 
 	/* Store current ctx */
 	res = pfn_cuCtxGetCurrent(&current_ctx);
@@ -652,9 +650,6 @@ cuda_mem_register(struct rte_gpu *dev, size_t size, void *ptr)
 
 	if (dev == NULL)
 		return -ENODEV;
-
-	if (size == 0 || ptr == NULL)
-		return -EINVAL;
 
 	/* Store current ctx */
 	res = pfn_cuCtxGetCurrent(&current_ctx);
@@ -765,9 +760,6 @@ cuda_mem_free(struct rte_gpu *dev, void *ptr)
 	if (dev == NULL)
 		return -ENODEV;
 
-	if (ptr == NULL)
-		return -EINVAL;
-
 	hk = get_hash_from_ptr((void *)ptr);
 
 	mem_item = mem_list_find_item(hk);
@@ -803,9 +795,6 @@ cuda_mem_unregister(struct rte_gpu *dev, void *ptr)
 
 	if (dev == NULL)
 		return -ENODEV;
-
-	if (ptr == NULL)
-		return -EINVAL;
 
 	hk = get_hash_from_ptr((void *)ptr);
 

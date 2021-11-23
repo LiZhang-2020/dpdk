@@ -581,6 +581,10 @@ rte_gpu_mem_free(int16_t dev_id, void *ptr)
 		rte_errno = ENOTSUP;
 		return -rte_errno;
 	}
+
+	if (ptr == NULL) /* dry-run */
+		return 0;
+
 	return GPU_DRV_RET(dev->ops.mem_free(dev, ptr));
 }
 
@@ -602,8 +606,8 @@ rte_gpu_mem_register(int16_t dev_id, size_t size, void *ptr)
 		return -rte_errno;
 	}
 
-	if (size == 0 || ptr == NULL) /* dry-run */
-		return -EINVAL;
+	if (ptr == NULL || size == 0) /* dry-run  */
+		return 0;
 
 	return GPU_DRV_RET(dev->ops.mem_register(dev, size, ptr));
 }
@@ -624,6 +628,10 @@ rte_gpu_mem_unregister(int16_t dev_id, void *ptr)
 		rte_errno = ENOTSUP;
 		return -rte_errno;
 	}
+
+	if (ptr == NULL) /* dry-run */
+		return 0;
+
 	return GPU_DRV_RET(dev->ops.mem_unregister(dev, ptr));
 }
 
