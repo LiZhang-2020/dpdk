@@ -9383,7 +9383,6 @@ flow_dv_translate_item_vxlan_gpe(void *key, const struct rte_flow_item *item,
 	m_protocol = vxlan_m->protocol;
 	v_protocol = vxlan_v->protocol;
 	if (!m_protocol) {
-		m_protocol = 0xff;
 		/* Force next protocol to ensure next headers parsing. */
 		if (pattern_flags & MLX5_FLOW_LAYER_INNER_L2)
 			v_protocol = RTE_VXLAN_GPE_TYPE_ETH;
@@ -9391,6 +9390,8 @@ flow_dv_translate_item_vxlan_gpe(void *key, const struct rte_flow_item *item,
 			v_protocol = RTE_VXLAN_GPE_TYPE_IPV4;
 		else if (pattern_flags & MLX5_FLOW_LAYER_INNER_L3_IPV6)
 			v_protocol = RTE_VXLAN_GPE_TYPE_IPV6;
+		if (v_protocol)
+			m_protocol = 0xFF;
 		/* Restore the value to mask in mask case. */
 		if (key_type & MLX5_SET_MATCHER_M)
 			v_protocol = m_protocol;
@@ -9462,8 +9463,9 @@ flow_dv_translate_item_geneve(void *key, const struct rte_flow_item *item,
 	protocol_v = rte_be_to_cpu_16(geneve_v->protocol);
 	if (!protocol_m) {
 		/* Force next protocol to prevent matchers duplication */
-		protocol_m = 0xFFFF;
 		protocol_v = mlx5_translate_tunnel_etypes(pattern_flags);
+		if (protocol_v)
+			protocol_m = 0xFFFF;
 		/* Restore the value to mask in mask case. */
 		if (key_type & MLX5_SET_MATCHER_M)
 			protocol_v = protocol_m;
