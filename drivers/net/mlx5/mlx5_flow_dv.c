@@ -9165,8 +9165,9 @@ flow_dv_translate_item_gre(void *key, const struct rte_flow_item *item,
 	protocol_v = rte_be_to_cpu_16(gre_v->protocol);
 	if (!protocol_m) {
 		/* Force next protocol to prevent matchers duplication */
-		protocol_m = 0xFFFF;
 		protocol_v = mlx5_translate_tunnel_etypes(pattern_flags);
+		if (protocol_v)
+			protocol_m = 0xFFFF;
 		/* Restore the value to mask in mask case. */
 		if (key_type & MLX5_SET_MATCHER_M)
 			protocol_v = protocol_m;
