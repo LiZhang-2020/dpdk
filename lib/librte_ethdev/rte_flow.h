@@ -39,39 +39,6 @@ extern "C" {
 #endif
 
 /**
- * Result status enum.
- */
-enum rte_flow_q_op_res_status {
-	/**
-	 * The operation was completed successfully.
-	 */
-	RTE_FLOW_Q_OP_RES_SUCCESS,
-	/**
-	 * The operation was not completed successfully.
-	 */
-	RTE_FLOW_Q_OP_RES_ERROR,
-};
-
-/**
- * Op enqueue structure.
- */
-struct rte_flow_q_op_res {
-	/**
-         * Returns the status of the job that this completion signals.
-         */
-	enum rte_flow_q_op_res_status status;
-	/**
-         * The pointer supplied during op submission.
-         * This pointer will hold the result of the operation.
-         */
-	void *data_out;
-	/**
-         * User data that was supplied during op submission.
-         */
-	void *user_data;
-};
-
-/**
  * Flow rule attributes.
  *
  * Priorities are set on a per rule based within groups.
@@ -4656,6 +4623,44 @@ int
 rte_flow_flex_item_release(uint16_t port_id,
 			   const struct rte_flow_item_flex_handle *handle,
 			   struct rte_flow_error *error);
+
+/**
+ * @warning
+ * @b EXPERIMENTAL: this API may change without prior notice.
+ *
+ * Dequeue operation status.
+ */
+enum rte_flow_q_op_status {
+	/**
+	 * The operation was completed successfully.
+	 */
+	RTE_FLOW_Q_OP_SUCCESS,
+	/**
+	 * The operation was not completed successfully.
+	 */
+	RTE_FLOW_Q_OP_ERROR,
+};
+
+/**
+ * @warning
+ * @b EXPERIMENTAL: this API may change without prior notice.
+ *
+ * Dequeue operation result.
+ */
+struct rte_flow_q_op_res {
+	/**
+	 * Version of the struct layout, should be 0.
+	 */
+	uint32_t version;
+	/**
+	 * Returns the status of the operation that this completion signals.
+	 */
+	enum rte_flow_q_op_status status;
+	/**
+	 * User data that was supplied during operation submission.
+	 */
+	void *user_data;
+};
 
 #ifdef __cplusplus
 }

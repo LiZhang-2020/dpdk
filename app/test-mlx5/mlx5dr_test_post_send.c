@@ -45,7 +45,7 @@ static int __mlx5dr_run_test_post(struct mlx5dr_context *ctx)
 	}
 
 	for (i = 0; i < NUM_POSTS && res[i].user_data; i++) {
-		if (res[i].status != RTE_FLOW_Q_OP_RES_SUCCESS)
+		if (res[i].status != RTE_FLOW_Q_OP_SUCCESS)
 			return -1;
 	}
 	if (i != POLL_ONCE) {
@@ -57,7 +57,7 @@ static int __mlx5dr_run_test_post(struct mlx5dr_context *ctx)
 	if (ret <= 0)
 		return -1;
 	for (i = 0; i < NUM_POSTS && res[i].user_data; i++) {
-		if (res[i].status != RTE_FLOW_Q_OP_RES_SUCCESS)
+		if (res[i].status != RTE_FLOW_Q_OP_SUCCESS)
 			return -1;
 	}
 	if (i != NUM_POSTS - POLL_ONCE)

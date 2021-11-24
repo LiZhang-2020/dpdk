@@ -65,7 +65,7 @@ static int poll_for_comp(struct mlx5dr_context *ctx,
 		if (ret) {
 			(*pending_rules) -= ret;
 			for (j = 0; j < ret; j++) {
-				if (comp[j].status == RTE_FLOW_Q_OP_RES_ERROR)
+				if (comp[j].status == RTE_FLOW_Q_OP_ERROR)
 					(*miss_count)++;
 			}
 

@@ -208,20 +208,20 @@ static void mlx5dr_send_engine_update_rule(struct mlx5dr_send_engine *queue,
 					   uint16_t wqe_cnt)
 {
 
-	enum rte_flow_q_op_res_status status;
+	enum rte_flow_q_op_status status;
 
 	if (!cqe || (likely(rte_be_to_cpu_32(cqe->byte_cnt) >> 31 == 0) &&
 	    likely(mlx5dv_get_cqe_opcode(cqe) == MLX5_CQE_REQ))) {
-		status = RTE_FLOW_Q_OP_RES_SUCCESS;
+		status = RTE_FLOW_Q_OP_SUCCESS;
 	} else {
-		status = RTE_FLOW_Q_OP_RES_ERROR;
+		status = RTE_FLOW_Q_OP_ERROR;
 	}
 
 	if (priv->user_data) {
 		/* Increase the status, this only works on good flow as the enum
 		 * is arrange it away creating -> created -> deleting -> deleted
 		 */
-		if (status == RTE_FLOW_Q_OP_RES_SUCCESS) {
+		if (status == RTE_FLOW_Q_OP_SUCCESS) {
 			priv->rule->status++;
 		} else {
 			if (priv->backup_id) {
@@ -229,7 +229,7 @@ static void mlx5dr_send_engine_update_rule(struct mlx5dr_send_engine *queue,
 				return;
                         }
                         priv->rule->status = MLX5DR_RULE_STATUS_FAILED;
-			status = RTE_FLOW_Q_OP_RES_ERROR;
+			status = RTE_FLOW_Q_OP_ERROR;
 		}
 
 		if (*i < res_nb) {
