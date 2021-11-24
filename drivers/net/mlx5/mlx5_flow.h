@@ -1123,6 +1123,11 @@ struct rte_flow {
 struct rte_flow_hw {
 	LIST_ENTRY(rte_flow_hw) next;
 	uint32_t idx;
+	uint32_t fate_type;
+	union {
+		uint32_t rix_hrxq;
+		struct mlx5_hw_jump_action *jump;
+	};
 	struct rte_flow_table *table;
 	struct mlx5dr_rule rule;
 } __rte_packed;
@@ -1195,7 +1200,8 @@ struct mlx5_hw_actions {
 	struct mlx5_hw_encap_decap_action *encap_decap;
 	uint16_t hdr_modify_pos; /* Modify header action position. */
 	uint16_t encap_decap_pos; /* Encap/Decap action position. */
-	uint32_t acts_num; /* Total action number. */
+	uint32_t acts_num:4; /* Total action number. */
+	uint32_t mark:1; /* Indicate the mark action. */
 	/* Rule DR action array. */
 	struct mlx5dr_rule_action rule_acts[MLX5_HW_MAX_ACTS];
 };

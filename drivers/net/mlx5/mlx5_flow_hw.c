@@ -34,6 +34,17 @@ static uint32_t mlx5_hw_dr_ft_flag[2][MLX5DR_TABLE_TYPE_MAX] = {
 	},
 };
 
+static void
+flow_hw_release_jump(struct rte_eth_dev *dev, struct mlx5_hw_jump_action *jump)
+{
+	struct mlx5_priv *priv = dev->data->dev_private;
+	struct mlx5_flow_group *grp;
+
+	grp = container_of
+		(jump, struct mlx5_flow_group, jump);
+	mlx5_hlist_unregister(priv->sh->flow_tbls, &grp->entry);
+}
+
 static struct mlx5_hw_jump_action *
 flow_hw_register_jump_action(struct rte_eth_dev *dev,
 			     const struct rte_flow_attr *attr,
@@ -76,13 +87,14 @@ flow_hw_rxq_flag_set(struct rte_eth_dev *dev,
 
 static inline struct mlx5_hrxq*
 flow_hw_register_tir_action(struct rte_eth_dev *dev,
-			    uint32_t hws_flags,
-			    struct rte_flow_action *action)
+			    uint32_t hws_flags, bool mark,
+			    const struct rte_flow_action *action)
 {
 	struct mlx5_priv *priv = dev->data->dev_private;
 	struct mlx5_flow_rss_desc rss_desc = {
 		.hws_flags = hws_flags,
 	};
+	struct mlx5_hrxq *hrxq;
 	uint32_t idx;
 
 	if (action->type == RTE_FLOW_ACTION_TYPE_QUEUE) {
@@ -106,7 +118,10 @@ flow_hw_register_tir_action(struct rte_eth_dev *dev,
 		}
 	}
 	idx = mlx5_hrxq_get(dev, &rss_desc);
-	return mlx5_ipool_get(priv->sh->ipool[MLX5_IPOOL_HRXQ], idx);
+	hrxq = mlx5_ipool_get(priv->sh->ipool[MLX5_IPOOL_HRXQ], idx);
+	if (mark)
+		flow_hw_rxq_flag_set(dev, hrxq);
+	return hrxq;
 }
 
 static void
@@ -122,11 +137,7 @@ __flow_hw_action_template_destroy(struct rte_eth_dev *dev,
 		mlx5_ipool_free(priv->acts_ipool, data->idx);
 	}
 	if (acts->jump) {
-		struct mlx5_flow_group *grp;
-
-		grp = container_of
-			(acts->jump, struct mlx5_flow_group, jump);
-		mlx5_hlist_unregister(priv->sh->flow_tbls, &grp->entry);
+		flow_hw_release_jump(dev, acts->jump);
 		acts->jump = NULL;
 	}
 	if (acts->tir) {
@@ -214,6 +225,21 @@ __flow_hw_append_act_data_hdr_modify(struct mlx5_priv *priv,
 }
 
 static __rte_always_inline int
+__flow_hw_append_act_data_general(struct mlx5_priv *priv,
+				  struct mlx5_hw_actions *acts,
+				  enum rte_flow_action_type type,
+				  uint16_t action_src,
+				  uint16_t action_dst)
+{	struct mlx5_action_construct_data *act_data;
+
+	act_data = __flow_hw_alloc_act_data(priv, type, action_src, action_dst);
+	if (!act_data)
+		return -1;
+	LIST_INSERT_HEAD(&acts->act_list, act_data, next);
+	return 0;
+}
+
+static __rte_always_inline int
 flow_hw_construct_encap_item(struct rte_eth_dev *dev,
 			     struct mlx5_hw_actions *acts,
 			     enum rte_flow_action_type type,
@@ -279,6 +305,8 @@ flow_hw_actions_translate(struct rte_eth_dev *dev,
 	memset(&mhdr_dummy, 0, sizeof(mhdr_dummy));
 	for (i = 0; !actions_end; actions++, masks++) {
 		uint32_t jump_group;
+		const struct rte_flow_action_jump *jump_m;
+		const struct rte_flow_action_queue *qm;
 
 		switch (actions->type) {
 		case RTE_FLOW_ACTION_TYPE_INDIRECT:
@@ -287,6 +315,7 @@ flow_hw_actions_translate(struct rte_eth_dev *dev,
 			break;
 		case RTE_FLOW_ACTION_TYPE_MARK:
 			mark = true;
+			acts->mark = true;
 			if (__flow_hw_append_act_data_tag(priv, acts,
 				actions->type, actions - action_start, i))
 				goto err;
@@ -300,25 +329,58 @@ flow_hw_actions_translate(struct rte_eth_dev *dev,
 		case RTE_FLOW_ACTION_TYPE_JUMP:
 			jump_group = ((const struct rte_flow_action_jump *)
 						actions->conf)->group;
-			acts->jump = flow_hw_register_jump_action
+			jump_m = masks->conf;
+			if (jump_m) {
+				acts->jump = flow_hw_register_jump_action
 						(dev, attr, jump_group, error);
-			if (!acts->jump)
-				goto err;
-			acts->rule_acts[i++].action = (!!attr->group) ?
+				if (!acts->jump)
+					goto err;
+				acts->rule_acts[i].action = (!!attr->group) ?
 						acts->jump->hws_action :
 						acts->jump->root_action;
+			} else if (__flow_hw_append_act_data_general
+					(priv, acts, actions->type,
+					 actions - action_start, i)){
+				goto err;
+			}
+			i++;
 			break;
 		case RTE_FLOW_ACTION_TYPE_QUEUE:
-		case RTE_FLOW_ACTION_TYPE_RSS:
-			acts->tir = flow_hw_register_tir_action
+			qm = masks->conf;
+			if (qm) {
+				acts->tir = flow_hw_register_tir_action
 				(dev,
 				 mlx5_hw_dr_ft_flag[!!attr->group][type],
+				 mark,
 				 actions);
-			if (!acts->tir)
+				if (!acts->tir)
+					goto err;
+				acts->rule_acts[i].action =
+					acts->tir->action;
+			} else if (__flow_hw_append_act_data_general
+					(priv, acts, actions->type,
+					 actions - action_start, i)) {
 				goto err;
-			if (mark)
-				flow_hw_rxq_flag_set(dev, acts->tir);
-			acts->rule_acts[i++].action = acts->tir->action;
+			}
+			i++;
+			break;
+		case RTE_FLOW_ACTION_TYPE_RSS:
+			if (actions->conf && masks->conf) {
+				acts->tir = flow_hw_register_tir_action
+				(dev,
+				 mlx5_hw_dr_ft_flag[!!attr->group][type],
+				 mark,
+				 actions);
+				if (!acts->tir)
+					goto err;
+				acts->rule_acts[i].action =
+					acts->tir->action;
+			} else if (__flow_hw_append_act_data_general
+					(priv, acts, actions->type,
+					 actions - action_start, i)) {
+				goto err;
+			}
+			i++;
 			break;
 		case RTE_FLOW_ACTION_TYPE_VXLAN_ENCAP:
 			MLX5_ASSERT(reformat_pos == MLX5_HW_MAX_ACTS);
@@ -645,7 +707,7 @@ err:
 				  "fail to create rte table");
 }
 
-static __rte_always_inline void
+static __rte_always_inline int
 flow_hw_actions_construct(struct rte_eth_dev *dev,
 			  struct mlx5_hw_q_job *job,
 			  struct mlx5_hw_actions *hw_acts,
@@ -661,6 +723,7 @@ flow_hw_actions_construct(struct rte_eth_dev *dev,
 	struct rte_flow_attr attr = {
 		.ingress = 1,
 	};
+	uint32_t ft_flag;
 	union {
 		struct mlx5_flow_dv_modify_hdr_resource act;
 		uint8_t len[sizeof(struct mlx5_flow_dv_modify_hdr_resource) +
@@ -671,6 +734,8 @@ flow_hw_actions_construct(struct rte_eth_dev *dev,
 						&mhdr_dummy.act;
 	struct mlx5_action_construct_data *act_data;
 
+	ft_flag = mlx5_hw_dr_ft_flag[!!table->grp->group_id][table->type];
+	attr.group = table->grp->group_id;
 	if (table->type == MLX5DR_TABLE_TYPE_FDB) {
 		attr.transfer = 1;
 		attr.ingress = 1;
@@ -690,6 +755,9 @@ flow_hw_actions_construct(struct rte_eth_dev *dev,
 		       hw_acts->encap_decap->data_size);
 	LIST_FOREACH(act_data, &hw_acts->act_list, next) {
 		uint32_t tag;
+		uint32_t jump_group;
+		struct mlx5_hrxq *hrxq;
+		struct mlx5_hw_jump_action *jump;
 
 		action = &actions[act_data->action_src];
 		MLX5_ASSERT(action->type == act_data->type);
@@ -699,6 +767,30 @@ flow_hw_actions_construct(struct rte_eth_dev *dev,
 			      (((const struct rte_flow_action_mark *)
 			      (action->conf))->id);
 			rule_acts[act_data->action_dst].tag.value = tag;
+			break;
+		case RTE_FLOW_ACTION_TYPE_JUMP:
+			jump_group = ((const struct rte_flow_action_jump *)
+						action->conf)->group;
+			jump = flow_hw_register_jump_action
+				(dev, &attr, jump_group, NULL);
+			if (!jump)
+				return -1;
+			rule_acts[act_data->action_dst].action =
+			(!!attr.group) ? jump->hws_action : jump->root_action;
+			job->flow->jump = jump;
+			job->flow->fate_type = MLX5_FLOW_FATE_JUMP;
+			break;
+		case RTE_FLOW_ACTION_TYPE_RSS:
+		case RTE_FLOW_ACTION_TYPE_QUEUE:
+			hrxq = flow_hw_register_tir_action(dev,
+					ft_flag,
+					hw_acts->mark,
+					action);
+			if (!hrxq)
+				return -1;
+			rule_acts[act_data->action_dst].action = hrxq->action;
+			job->flow->rix_hrxq = hrxq->idx;
+			job->flow->fate_type = MLX5_FLOW_FATE_QUEUE;
 			break;
 		case RTE_FLOW_ACTION_TYPE_VXLAN_ENCAP:
 			enc_item = ((const struct rte_flow_action_vxlan_encap *)
@@ -818,6 +910,7 @@ flow_hw_actions_construct(struct rte_eth_dev *dev,
 				job->flow->idx - 1;
 		rule_acts[hw_acts->encap_decap_pos].reformat.data = buf;
 	}
+	return 0;
 }
 
 static struct rte_flow *
@@ -859,8 +952,11 @@ flow_hw_q_flow_create(struct rte_eth_dev *dev,
 	job->user_data = attr->user_data;
 	hw_acts = &table->ats[action_template_index].acts;
 	/* Construct the flow actions based on the input actions.*/
-	flow_hw_actions_construct
-		(dev, job, hw_acts, actions, rule_acts, &acts_num);
+	if (flow_hw_actions_construct
+		(dev, job, hw_acts, actions, rule_acts, &acts_num)) {
+		rte_errno = EINVAL;
+		goto free;
+	}
 	rule_attr.user_data = job;
 	ret = mlx5dr_rule_create(table->matcher,
 				 item_template_index, items,
@@ -868,6 +964,7 @@ flow_hw_q_flow_create(struct rte_eth_dev *dev,
 				 &rule_attr, &flow->rule);
 	if (likely(!ret))
 		return (struct rte_flow *)flow;
+free:
 	/* Flow created fail, return the descriptor and flow memory. */
 	mlx5_ipool_free(table->flow, flow_idx);
 	priv->hw_q[queue].job[priv->hw_q[queue].job_idx++] = job;
@@ -936,6 +1033,10 @@ flow_hw_q_dequeue(struct rte_eth_dev *dev,
 		res[i].user_data = job->user_data;
 		if (job->type == MLX5_HW_Q_JOB_TYPE_DESTROY) {
 			LIST_REMOVE(job->flow, next);
+			if (job->flow->fate_type == MLX5_FLOW_FATE_QUEUE)
+				mlx5_hrxq_release(dev, job->flow->rix_hrxq);
+			else if (job->flow->fate_type == MLX5_FLOW_FATE_JUMP)
+				flow_hw_release_jump(dev, job->flow->jump);
 			mlx5_ipool_free(job->flow->table->flow, job->flow->idx);
 		} else {
 			LIST_INSERT_HEAD(&priv->hw_q[queue].flow_list,
