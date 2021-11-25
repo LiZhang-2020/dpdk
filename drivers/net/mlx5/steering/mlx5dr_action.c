@@ -166,7 +166,7 @@ static void mlx5dr_action_fill_stc_attr(struct mlx5dr_action *action,
 		attr->action_type = MLX5_IFC_STC_ACTION_TYPE_HEADER_INSERT;
 		attr->action_offset = MLX5DR_ACTION_OFFSET_DW6;
 		attr->reformat.encap = 1;
-		attr->reformat.insert_anchor = MLX5_HEADER_ANCHOR_MAC_START;
+		attr->reformat.insert_anchor = MLX5_HEADER_ANCHOR_PACKET_START;
 		attr->reformat.arg_id = action->reformat.arg_obj->id;
 		attr->reformat.header_size = action->reformat.header_size;
 		break;
@@ -650,7 +650,7 @@ static int mlx5dr_action_get_shared_stc_nic(struct mlx5dr_context *ctx,
 	stc_attr.action_type = MLX5_IFC_STC_ACTION_TYPE_HEADER_REMOVE;
 	stc_attr.action_offset = MLX5DR_ACTION_OFFSET_DW5;
 	stc_attr.remove_header.decap = 0;
-	stc_attr.remove_header.start_anchor = MLX5_HEADER_ANCHOR_MAC_START;
+	stc_attr.remove_header.start_anchor = MLX5_HEADER_ANCHOR_PACKET_START;
 	stc_attr.remove_header.end_anchor = MLX5_HEADER_ANCHOR_IPV6_IPV4;
 
 	ret = mlx5dr_action_alloc_single_stc(ctx, &stc_attr, tbl_type,
@@ -783,7 +783,7 @@ static void mlx5dr_action_prepare_decap_l3_actions(size_t data_sz,
 		 MLX5_MODIFICATION_TYPE_REMOVE);
 	MLX5_SET(stc_ste_param_remove, mh_data, decap, 0x1);
 	MLX5_SET(stc_ste_param_remove, mh_data, remove_start_anchor,
-		 MLX5_HEADER_ANCHOR_MAC_START);
+		 MLX5_HEADER_ANCHOR_PACKET_START);
 	MLX5_SET(stc_ste_param_remove, mh_data, remove_end_anchor,
 		 MLX5_HEADER_ANCHOR_INNER_IPV6_IPV4);
 	mh_data += MLX5DR_ACTION_DOUBLE_SIZE; /* assume every action is 2 dw */
@@ -799,7 +799,7 @@ static void mlx5dr_action_prepare_decap_l3_actions(size_t data_sz,
 			 MLX5_MODIFICATION_TYPE_INSERT);
 		MLX5_SET(stc_ste_param_insert, mh_data, inline_data, 0x1);
 		MLX5_SET(stc_ste_param_insert, mh_data, insert_anchor,
-			 MLX5_HEADER_ANCHOR_MAC_START);
+			 MLX5_HEADER_ANCHOR_PACKET_START);
 		MLX5_SET(stc_ste_param_insert, mh_data, insert_size, 2);
 		mh_data += MLX5DR_ACTION_DOUBLE_SIZE;
 		actions++;
@@ -809,7 +809,7 @@ static void mlx5dr_action_prepare_decap_l3_actions(size_t data_sz,
 	MLX5_SET(stc_ste_param_remove_words, mh_data, action_type,
 		 MLX5_MODIFICATION_TYPE_REMOVE_WORDS);
 	MLX5_SET(stc_ste_param_remove_words, mh_data, remove_start_anchor,
-		 MLX5_HEADER_ANCHOR_MAC_START);
+		 MLX5_HEADER_ANCHOR_PACKET_START);
 	/* The hardware expects here size in words (2 bytes) */
 	MLX5_SET(stc_ste_param_remove_words, mh_data, remove_size, 1);
 	actions++;
