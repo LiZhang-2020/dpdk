@@ -8782,7 +8782,9 @@ flow_dv_translate_item_vlan(void *key, const struct rte_flow_item *item,
 		switch (inner_type) {
 		case RTE_BE16(RTE_ETHER_TYPE_VLAN):
 			MLX5_SET(fte_match_set_lyr_2_4, hdrs_v, svlan_tag, 1);
-			MLX5_SET(fte_match_set_lyr_2_4, hdrs_v, cvlan_tag, 0);
+			if (key_type & MLX5_SET_MATCHER_V)
+				MLX5_SET(fte_match_set_lyr_2_4, hdrs_v,
+					 cvlan_tag, 0);
 			return;
 		case RTE_BE16(RTE_ETHER_TYPE_IPV4):
 			flow_dv_set_match_ip_version
@@ -8799,7 +8801,8 @@ flow_dv_translate_item_vlan(void *key, const struct rte_flow_item *item,
 	if (vlan_m->has_more_vlan && vlan_v->has_more_vlan) {
 		MLX5_SET(fte_match_set_lyr_2_4, hdrs_v, svlan_tag, 1);
 		/* Only one vlan_tag bit can be set. */
-		MLX5_SET(fte_match_set_lyr_2_4, hdrs_v, cvlan_tag, 0);
+		if (key_type & MLX5_SET_MATCHER_V)
+			MLX5_SET(fte_match_set_lyr_2_4, hdrs_v, cvlan_tag, 0);
 		return;
 	}
 	MLX5_SET(fte_match_set_lyr_2_4, hdrs_v, ethertype,
@@ -13935,6 +13938,7 @@ flow_dv_translate_items_sws(struct rte_eth_dev *dev,
 			MLX5_ASSERT(false);
 		}
 	}
+	dev_flow->handle->vf_vlan.tag = wks.vlan_tag;
 	matcher->priority = wks.priority;
 #ifdef RTE_LIBRTE_MLX5_DEBUG
 	MLX5_ASSERT(!flow_dv_check_valid_spec(match_mask, match_value));
