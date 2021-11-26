@@ -205,6 +205,17 @@ mlx5dr_matcher_create(struct mlx5dr_table *table,
  */
 int mlx5dr_matcher_destroy(struct mlx5dr_matcher *matcher);
 
+/* Get rule matcher template item flags.
+ *
+ * @param[in] matcher
+ *	Matcher to get.
+ * @param[in] mt_idx
+ *	Template index.
+ * @return template item flags.
+ */
+uint64_t mlx5dr_matcher_get_template_item_flags(struct mlx5dr_matcher *matcher,
+						uint8_t mt_idx);
+
 /* Get the size of the rule handle (mlx5dr_rule) to be used on rule creation.
  *
  * @return size in bytes of rule handle struct.

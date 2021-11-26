@@ -2135,7 +2135,7 @@ void flow_dv_action_rss_l34_hash_adjust(uint64_t rss_types,
 
 int flow_dv_translate_items_hws(const struct rte_flow_item *items,
 				struct mlx5_flow_attr *attr, void *key,
-				uint32_t key_type, uint32_t *item_flags,
+				uint32_t key_type, uint64_t *item_flags,
 				uint8_t *match_criteria,
 				struct rte_flow_error *error);
 
