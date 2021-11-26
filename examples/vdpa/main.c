@@ -232,14 +232,24 @@ vdpa_sample_quit(void)
 	}
 }
 
+static int quit;
+
 static void
 signal_handler(int signum)
 {
-	if (signum == SIGINT || signum == SIGTERM) {
-		printf("\nSignal %d received, preparing to exit...\n", signum);
-		vdpa_sample_quit();
-		exit(0);
-	}
+	int expect = 0;
+
+	if (signum != SIGINT && signum != SIGTERM)
+		return;
+
+	if (!__atomic_compare_exchange_n(&quit, &expect, 1, 0,
+					__ATOMIC_ACQUIRE, __ATOMIC_RELAXED))
+		/* Duplicated signal running on all threads causes deadlock. */
+		return;
+
+	printf("\nSignal %d received, preparing to exit...\n", signum);
+	vdpa_sample_quit();
+	exit(0);
 }
 
 /* interactive cmds */
