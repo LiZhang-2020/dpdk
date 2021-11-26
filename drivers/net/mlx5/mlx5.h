@@ -1505,6 +1505,7 @@ struct mlx5_priv {
 	LIST_HEAD(txqobj, mlx5_txq_obj) txqsobj; /* Verbs/DevX Tx queues. */
 	/* Indirection tables. */
 	LIST_HEAD(ind_tables, mlx5_ind_table_obj) ind_tbls;
+	LIST_HEAD(stdl_ind_tables, mlx5_ind_table_obj) standalone_ind_tbls;
 	/* Pointer to next element. */
 	rte_rwlock_t ind_tbls_lock;
 	uint32_t refcnt; /**< Reference counter. */

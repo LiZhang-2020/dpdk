@@ -1301,6 +1301,8 @@ mlx5_devx_drop_action_create(struct rte_eth_dev *dev)
 		DRV_LOG(ERR, "Cannot create drop RX queue");
 		return ret;
 	}
+	if (priv->config.dv_flow_en == 2)
+		return 0;
 	/* hrxq->ind_table queues are NULL, drop RX queue ID will be used */
 	ret = mlx5_devx_ind_table_new(dev, 0, hrxq->ind_table);
 	if (ret != 0) {

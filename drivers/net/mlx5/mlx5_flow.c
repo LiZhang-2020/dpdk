@@ -865,6 +865,26 @@ mlx5_flow_q_drain(struct rte_eth_dev *dev,
 		  uint32_t queue,
 		  struct rte_flow_error *error);
 
+static struct rte_flow_action_handle *
+mlx5_flow_q_action_handle_create(struct rte_eth_dev *dev, uint32_t queue,
+				 const struct rte_flow_q_ops_attr *attr,
+				 const struct rte_flow_indir_action_conf *conf,
+				 const struct rte_flow_action *action,
+				 struct rte_flow_error *error);
+
+static int
+mlx5_flow_q_action_handle_update(struct rte_eth_dev *dev, uint32_t queue,
+				 const struct rte_flow_q_ops_attr *attr,
+				 struct rte_flow_action_handle *handle,
+				 const void *update,
+				 struct rte_flow_error *error);
+
+static int
+mlx5_flow_q_action_handle_destroy(struct rte_eth_dev *dev, uint32_t queue,
+				  const struct rte_flow_q_ops_attr *attr,
+				  struct rte_flow_action_handle *handle,
+				  struct rte_flow_error *error);
+
 static const struct rte_flow_ops mlx5_flow_ops = {
 	.validate = mlx5_flow_validate,
 	.create = mlx5_flow_create,
@@ -896,6 +916,9 @@ static const struct rte_flow_ops mlx5_flow_ops = {
 	.q_flow_destroy = mlx5_flow_q_flow_destroy,
 	.q_dequeue = mlx5_flow_q_dequeue,
 	.q_drain = mlx5_flow_q_drain,
+	.q_action_handle_create = mlx5_flow_q_action_handle_create,
+	.q_action_handle_update = mlx5_flow_q_action_handle_update,
+	.q_action_handle_destroy = mlx5_flow_q_action_handle_destroy,
 };
 
 /* Tunnel information. */
@@ -8338,6 +8361,44 @@ mlx5_flow_q_drain(struct rte_eth_dev *dev,
 	return fops->q_drain(dev, queue, error);
 }
 
+static struct rte_flow_action_handle *
+mlx5_flow_q_action_handle_create(struct rte_eth_dev *dev, uint32_t queue,
+				 const struct rte_flow_q_ops_attr *attr,
+				 const struct rte_flow_indir_action_conf *conf,
+				 const struct rte_flow_action *action,
+				 struct rte_flow_error *error)
+{
+	const struct mlx5_flow_driver_ops *fops =
+			flow_get_drv_ops(MLX5_FLOW_TYPE_HW);
+
+	return fops->q_action_create(dev, queue, attr, conf, action, error);
+}
+
+static int
+mlx5_flow_q_action_handle_update(struct rte_eth_dev *dev, uint32_t queue,
+				 const struct rte_flow_q_ops_attr *attr,
+				 struct rte_flow_action_handle *handle,
+				 const void *update,
+				 struct rte_flow_error *error)
+{
+	const struct mlx5_flow_driver_ops *fops =
+			flow_get_drv_ops(MLX5_FLOW_TYPE_HW);
+
+	return fops->q_action_update(dev, queue, attr, handle, update, error);
+}
+
+static int
+mlx5_flow_q_action_handle_destroy(struct rte_eth_dev *dev, uint32_t queue,
+				  const struct rte_flow_q_ops_attr *attr,
+				  struct rte_flow_action_handle *handle,
+				  struct rte_flow_error *error)
+{
+	const struct mlx5_flow_driver_ops *fops =
+			flow_get_drv_ops(MLX5_FLOW_TYPE_HW);
+
+	return fops->q_action_destroy(dev, queue, attr, handle, error);
+}
+
 /**
  * Allocate a new memory for the counter values wrapped by all the needed
  * management.
@@ -9421,14 +9482,10 @@ int
 mlx5_action_handle_attach(struct rte_eth_dev *dev)
 {
 	struct mlx5_priv *priv = dev->data->dev_private;
-	struct mlx5_indexed_pool *ipool =
-			priv->sh->ipool[MLX5_IPOOL_RSS_SHARED_ACTIONS];
-	struct mlx5_shared_action_rss *shared_rss, *shared_rss_last;
 	int ret = 0;
-	uint32_t idx;
+	struct mlx5_ind_table_obj *ind_tbl, *ind_tbl_last;
 
-	ILIST_FOREACH(ipool, priv->rss_shared_actions, idx, shared_rss, next) {
-		struct mlx5_ind_table_obj *ind_tbl = shared_rss->ind_tbl;
+	LIST_FOREACH(ind_tbl, &priv->standalone_ind_tbls, next) {
 		const char *message;
 		uint32_t queue_idx;
 
@@ -9444,9 +9501,7 @@ mlx5_action_handle_attach(struct rte_eth_dev *dev)
 	}
 	if (ret != 0)
 		return ret;
-	ILIST_FOREACH(ipool, priv->rss_shared_actions, idx, shared_rss, next) {
-		struct mlx5_ind_table_obj *ind_tbl = shared_rss->ind_tbl;
-
+	LIST_FOREACH(ind_tbl, &priv->standalone_ind_tbls, next) {
 		ret = mlx5_ind_table_obj_attach(dev, ind_tbl);
 		if (ret != 0) {
 			DRV_LOG(ERR, "Port %u could not attach "
@@ -9455,13 +9510,12 @@ mlx5_action_handle_attach(struct rte_eth_dev *dev)
 			goto error;
 		}
 	}
+
 	return 0;
 error:
-	shared_rss_last = shared_rss;
-	ILIST_FOREACH(ipool, priv->rss_shared_actions, idx, shared_rss, next) {
-		struct mlx5_ind_table_obj *ind_tbl = shared_rss->ind_tbl;
-
-		if (shared_rss == shared_rss_last)
+	ind_tbl_last = ind_tbl;
+	LIST_FOREACH(ind_tbl, &priv->standalone_ind_tbls, next) {
+		if (ind_tbl == ind_tbl_last)
 			break;
 		if (mlx5_ind_table_obj_detach(dev, ind_tbl) != 0)
 			DRV_LOG(CRIT, "Port %u could not detach "
@@ -9484,15 +9538,10 @@ int
 mlx5_action_handle_detach(struct rte_eth_dev *dev)
 {
 	struct mlx5_priv *priv = dev->data->dev_private;
-	struct mlx5_indexed_pool *ipool =
-			priv->sh->ipool[MLX5_IPOOL_RSS_SHARED_ACTIONS];
-	struct mlx5_shared_action_rss *shared_rss, *shared_rss_last;
 	int ret = 0;
-	uint32_t idx;
+	struct mlx5_ind_table_obj *ind_tbl, *ind_tbl_last;
 
-	ILIST_FOREACH(ipool, priv->rss_shared_actions, idx, shared_rss, next) {
-		struct mlx5_ind_table_obj *ind_tbl = shared_rss->ind_tbl;
-
+	LIST_FOREACH(ind_tbl, &priv->standalone_ind_tbls, next) {
 		ret = mlx5_ind_table_obj_detach(dev, ind_tbl);
 		if (ret != 0) {
 			DRV_LOG(ERR, "Port %u could not detach "
@@ -9503,11 +9552,9 @@ mlx5_action_handle_detach(struct rte_eth_dev *dev)
 	}
 	return 0;
 error:
-	shared_rss_last = shared_rss;
-	ILIST_FOREACH(ipool, priv->rss_shared_actions, idx, shared_rss, next) {
-		struct mlx5_ind_table_obj *ind_tbl = shared_rss->ind_tbl;
-
-		if (shared_rss == shared_rss_last)
+	ind_tbl_last = ind_tbl;
+	LIST_FOREACH(ind_tbl, &priv->standalone_ind_tbls, next) {
+		if (ind_tbl == ind_tbl_last)
 			break;
 		if (mlx5_ind_table_obj_attach(dev, ind_tbl) != 0)
 			DRV_LOG(CRIT, "Port %u could not attach "

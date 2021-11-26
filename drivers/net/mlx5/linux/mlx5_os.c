@@ -1766,11 +1766,12 @@ err_secondary:
 	if (!priv->hrxqs)
 		goto error;
 	rte_rwlock_init(&priv->ind_tbls_lock);
-	if (priv->config.dv_flow_en > 1)
-		return eth_dev;
+	rte_spinlock_init(&priv->shared_act_sl);
 	priv->drop_queue.hrxq = mlx5_drop_action_create(eth_dev);
 	if (!priv->drop_queue.hrxq)
 		goto error;
+	if (priv->config.dv_flow_en == 2)
+		return eth_dev;
 	/* Port representor shares the same max prioirity with master. */
 	if (!priv->sh->flow_priority_check_flag) {
 		err = mlx5_flow_discover_priorities(eth_dev);
@@ -1835,7 +1836,6 @@ err_secondary:
 			goto error;
 		}
 	}
-	rte_spinlock_init(&priv->shared_act_sl);
 	mlx5_flow_counter_mode_config(eth_dev);
 	mlx5_flow_drop_action_config(eth_dev);
 	if (priv->config.dv_flow_en)

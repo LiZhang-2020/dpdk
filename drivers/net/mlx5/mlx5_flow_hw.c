@@ -119,7 +119,7 @@ flow_hw_register_tir_action(struct rte_eth_dev *dev,
 	}
 	idx = mlx5_hrxq_get(dev, &rss_desc);
 	hrxq = mlx5_ipool_get(priv->sh->ipool[MLX5_IPOOL_HRXQ], idx);
-	if (mark)
+	if (hrxq && mark)
 		flow_hw_rxq_flag_set(dev, hrxq);
 	return hrxq;
 }
@@ -240,6 +240,27 @@ __flow_hw_append_act_data_general(struct mlx5_priv *priv,
 }
 
 static __rte_always_inline int
+__flow_hw_append_act_data_shared_rss(struct mlx5_priv *priv,
+				     struct mlx5_hw_actions *acts,
+				     enum rte_flow_action_type type,
+				     uint16_t action_src,
+				     uint16_t action_dst,
+				     uint32_t idx,
+				     struct mlx5_shared_action_rss *rss)
+{	struct mlx5_action_construct_data *act_data;
+
+	act_data = __flow_hw_alloc_act_data(priv, type, action_src, action_dst);
+	if (!act_data)
+		return -1;
+	act_data->shared_rss.level = rss->origin.level;
+	act_data->shared_rss.types = !rss->origin.types ? ETH_RSS_IP :
+				     rss->origin.types;
+	act_data->shared_rss.idx = idx;
+	LIST_INSERT_HEAD(&acts->act_list, act_data, next);
+	return 0;
+}
+
+static __rte_always_inline int
 flow_hw_construct_encap_item(struct rte_eth_dev *dev,
 			     struct mlx5_hw_actions *acts,
 			     enum rte_flow_action_type type,
@@ -261,6 +282,37 @@ flow_hw_construct_encap_item(struct rte_eth_dev *dev,
 						    total_len, len))
 			return -1;
 		total_len += len;
+	}
+	return 0;
+}
+
+static __rte_always_inline int
+flow_hw_shared_action_translate(struct rte_eth_dev *dev,
+				const struct rte_flow_action *action,
+				struct mlx5_hw_actions *acts,
+				uint16_t action_src,
+				uint16_t action_dst)
+{
+	struct mlx5_priv *priv = dev->data->dev_private;
+	struct mlx5_shared_action_rss *shared_rss;
+	uint32_t act_idx = (uint32_t)(uintptr_t)action->conf;
+	uint32_t type = act_idx >> MLX5_INDIRECT_ACTION_TYPE_OFFSET;
+	uint32_t idx = act_idx &
+		       ((1u << MLX5_INDIRECT_ACTION_TYPE_OFFSET) - 1);
+
+	switch (type) {
+	case MLX5_INDIRECT_ACTION_TYPE_RSS:
+		shared_rss = mlx5_ipool_get
+		  (priv->sh->ipool[MLX5_IPOOL_RSS_SHARED_ACTIONS], idx);
+		if (!shared_rss || __flow_hw_append_act_data_shared_rss
+		    (priv, acts,
+		    (enum rte_flow_action_type)MLX5_RTE_FLOW_ACTION_TYPE_RSS,
+		    action_src, action_dst, idx, shared_rss))
+			return -1;
+		break;
+	default:
+		DRV_LOG(WARNING, "Unsupported shared action type:%d", type);
+		break;
 	}
 	return 0;
 }
@@ -310,6 +362,20 @@ flow_hw_actions_translate(struct rte_eth_dev *dev,
 
 		switch (actions->type) {
 		case RTE_FLOW_ACTION_TYPE_INDIRECT:
+			if (!attr->group) {
+				DRV_LOG(ERR, "Indirect action is not supported in root table.");
+				goto err;
+			}
+			if (actions->conf && masks->conf) {
+				if (flow_hw_shared_action_translate
+				(dev, actions, acts, actions - action_start, i))
+					goto err;
+			} else if (__flow_hw_append_act_data_general
+					(priv, acts, actions->type,
+					 actions - action_start, i)){
+				goto err;
+			}
+			i++;
 			break;
 		case RTE_FLOW_ACTION_TYPE_VOID:
 			break;
@@ -708,9 +774,92 @@ err:
 }
 
 static __rte_always_inline int
+flow_hw_shared_action_get(struct rte_eth_dev *dev,
+			  const struct mlx5_hw_actions *hw_acts,
+			  struct mlx5_action_construct_data *act_data,
+			  const uint64_t item_flags,
+			  struct mlx5dr_rule_action *rule_act)
+{
+	struct mlx5_priv *priv = dev->data->dev_private;
+	struct mlx5_flow_rss_desc rss_desc = { 0 };
+	uint64_t hash_fields = 0;
+	uint32_t hrxq_idx = 0;
+	struct mlx5_hrxq *hrxq = NULL;
+	int act_type = act_data->type;
+
+	switch (act_type) {
+	case MLX5_RTE_FLOW_ACTION_TYPE_RSS:
+		rss_desc.level = act_data->shared_rss.level;
+		rss_desc.types = act_data->shared_rss.types;
+		flow_dv_hashfields_set(item_flags, &rss_desc, &hash_fields);
+		hrxq_idx = flow_dv_action_rss_hrxq_lookup
+			(dev, act_data->shared_rss.idx, hash_fields);
+		if (hrxq_idx)
+			hrxq = mlx5_ipool_get(priv->sh->ipool[MLX5_IPOOL_HRXQ],
+					      hrxq_idx);
+		if (hrxq) {
+			if (hw_acts->mark)
+				flow_hw_rxq_flag_set(dev, hrxq);
+			rule_act->action = hrxq->action;
+			return 0;
+		}
+		break;
+	default:
+		DRV_LOG(WARNING, "Unsupported shared action type:%d",
+			act_data->type);
+		break;
+	}
+	return -1;
+}
+
+static __rte_always_inline int
+flow_hw_shared_action_construct(struct rte_eth_dev *dev,
+				const struct rte_flow_action *action,
+				const struct mlx5_hw_actions *acts,
+				struct rte_flow_table *table,
+				const uint8_t it_idx,
+				struct mlx5dr_rule_action *rule_act)
+{
+	struct mlx5_priv *priv = dev->data->dev_private;
+	struct mlx5_action_construct_data act_data;
+	struct mlx5_shared_action_rss *shared_rss;
+	uint32_t act_idx = (uint32_t)(uintptr_t)action->conf;
+	uint32_t type = act_idx >> MLX5_INDIRECT_ACTION_TYPE_OFFSET;
+	uint32_t idx = act_idx &
+		       ((1u << MLX5_INDIRECT_ACTION_TYPE_OFFSET) - 1);
+	uint64_t item_flags;
+
+	memset(&act_data, 0, sizeof(act_data));
+	switch (type) {
+	case MLX5_INDIRECT_ACTION_TYPE_RSS:
+		act_data.type = MLX5_RTE_FLOW_ACTION_TYPE_RSS;
+		shared_rss = mlx5_ipool_get
+			(priv->sh->ipool[MLX5_IPOOL_RSS_SHARED_ACTIONS], idx);
+		if (!shared_rss)
+			return -1;
+		act_data.shared_rss.idx = idx;
+		act_data.shared_rss.level = shared_rss->origin.level;
+		act_data.shared_rss.types = !shared_rss->origin.types ?
+					    ETH_RSS_IP :
+					    shared_rss->origin.types;
+		item_flags = mlx5dr_matcher_get_template_item_flags
+			     (table->matcher, it_idx);
+		if (flow_hw_shared_action_get
+				(dev, acts, &act_data, item_flags, rule_act))
+			return -1;
+		break;
+	default:
+		DRV_LOG(WARNING, "Unsupported shared action type:%d", type);
+		break;
+	}
+	return 0;
+}
+
+static __rte_always_inline int
 flow_hw_actions_construct(struct rte_eth_dev *dev,
 			  struct mlx5_hw_q_job *job,
-			  struct mlx5_hw_actions *hw_acts,
+			  const struct mlx5_hw_actions *hw_acts,
+			  const uint8_t it_idx,
 			  const struct rte_flow_action actions[],
 			  struct mlx5dr_rule_action *rule_acts,
 			  uint32_t *acts_num)
@@ -756,12 +905,20 @@ flow_hw_actions_construct(struct rte_eth_dev *dev,
 	LIST_FOREACH(act_data, &hw_acts->act_list, next) {
 		uint32_t tag;
 		uint32_t jump_group;
+		uint64_t item_flags;
 		struct mlx5_hrxq *hrxq;
 		struct mlx5_hw_jump_action *jump;
 
 		action = &actions[act_data->action_src];
-		MLX5_ASSERT(action->type == act_data->type);
-		switch (action->type) {
+		MLX5_ASSERT(action->type == RTE_FLOW_ACTION_TYPE_INDIRECT ||
+			    (int)action->type == act_data->type);
+		switch (act_data->type) {
+		case RTE_FLOW_ACTION_TYPE_INDIRECT:
+			if (flow_hw_shared_action_construct
+					(dev, action, hw_acts, table, it_idx,
+					 &rule_acts[act_data->action_dst]))
+				return -1;
+			break;
 		case RTE_FLOW_ACTION_TYPE_MARK:
 			tag = mlx5_flow_mark_set
 			      (((const struct rte_flow_action_mark *)
@@ -791,6 +948,14 @@ flow_hw_actions_construct(struct rte_eth_dev *dev,
 			rule_acts[act_data->action_dst].action = hrxq->action;
 			job->flow->rix_hrxq = hrxq->idx;
 			job->flow->fate_type = MLX5_FLOW_FATE_QUEUE;
+			break;
+		case MLX5_RTE_FLOW_ACTION_TYPE_RSS:
+			item_flags = mlx5dr_matcher_get_template_item_flags
+				     (table->matcher, it_idx);
+			if (flow_hw_shared_action_get
+				(dev, hw_acts, act_data, item_flags,
+				 &rule_acts[act_data->action_dst]))
+				return -1;
 			break;
 		case RTE_FLOW_ACTION_TYPE_VXLAN_ENCAP:
 			enc_item = ((const struct rte_flow_action_vxlan_encap *)
@@ -952,8 +1117,8 @@ flow_hw_q_flow_create(struct rte_eth_dev *dev,
 	job->user_data = attr->user_data;
 	hw_acts = &table->ats[action_template_index].acts;
 	/* Construct the flow actions based on the input actions.*/
-	if (flow_hw_actions_construct
-		(dev, job, hw_acts, actions, rule_acts, &acts_num)) {
+	if (flow_hw_actions_construct(dev, job, hw_acts, item_template_index,
+				  actions, rule_acts, &acts_num)) {
 		rte_errno = EINVAL;
 		goto free;
 	}
@@ -1224,7 +1389,8 @@ it_error:
 	while (i--)
 		__atomic_sub_fetch(&item_templates[i]->refcnt,
 				   1, __ATOMIC_RELAXED);
-	mlx5dr_matcher_destroy(tbl->matcher);
+	if (tbl->matcher)
+		mlx5dr_matcher_destroy(tbl->matcher);
 error:
 	err = rte_errno;
 	if (tbl) {
@@ -1651,6 +1817,42 @@ flow_hw_resource_release(struct rte_eth_dev *dev)
 	claim_zero(mlx5dr_context_close(priv->dr_ctx));
 }
 
+static struct rte_flow_action_handle *
+flow_hw_action_handle_create(struct rte_eth_dev *dev, uint32_t queue,
+			     const struct rte_flow_q_ops_attr *attr,
+			     const struct rte_flow_indir_action_conf *conf,
+			     const struct rte_flow_action *action,
+			     struct rte_flow_error *error)
+{
+	RTE_SET_USED(queue);
+	RTE_SET_USED(attr);
+	return flow_dv_action_create(dev, conf, action, error);
+}
+
+static int
+flow_hw_action_handle_update(struct rte_eth_dev *dev, uint32_t queue,
+			     const struct rte_flow_q_ops_attr *attr,
+			     struct rte_flow_action_handle *handle,
+			     const void *update,
+			     struct rte_flow_error *error)
+{
+	RTE_SET_USED(queue);
+	RTE_SET_USED(attr);
+	return flow_dv_action_update(dev, handle, update, error);
+}
+
+static int
+flow_hw_action_handle_destroy(struct rte_eth_dev *dev, uint32_t queue,
+			      const struct rte_flow_q_ops_attr *attr,
+			      struct rte_flow_action_handle *handle,
+			      struct rte_flow_error *error)
+{
+	RTE_SET_USED(queue);
+	RTE_SET_USED(attr);
+	return flow_dv_action_destroy(dev, handle, error);
+}
+
+
 const struct mlx5_flow_driver_ops mlx5_flow_hw_drv_ops = {
 	.configure = flow_hw_configure,
 	.item_template_create = flow_hw_item_template_create,
@@ -1663,4 +1865,12 @@ const struct mlx5_flow_driver_ops mlx5_flow_hw_drv_ops = {
 	.q_flow_destroy = flow_hw_q_flow_destroy,
 	.q_dequeue = flow_hw_q_dequeue,
 	.q_drain = flow_hw_q_drain,
+	.q_action_create = flow_hw_action_handle_create,
+	.q_action_destroy = flow_hw_action_handle_destroy,
+	.q_action_update = flow_hw_action_handle_update,
+	.action_validate = flow_dv_action_validate,
+	.action_create = flow_dv_action_create,
+	.action_destroy = flow_dv_action_destroy,
+	.action_update = flow_dv_action_update,
+	.action_query = flow_dv_action_query,
 };

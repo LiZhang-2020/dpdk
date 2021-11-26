@@ -2183,7 +2183,6 @@ mlx5_ind_table_obj_get(struct rte_eth_dev *dev, const uint16_t *queues,
 int
 mlx5_ind_table_obj_release(struct rte_eth_dev *dev,
 			   struct mlx5_ind_table_obj *ind_tbl,
-			   bool standalone,
 			   bool deref_rxqs)
 {
 	struct mlx5_priv *priv = dev->data->dev_private;
@@ -2191,7 +2190,7 @@ mlx5_ind_table_obj_release(struct rte_eth_dev *dev,
 
 	rte_rwlock_write_lock(&priv->ind_tbls_lock);
 	ret = __atomic_sub_fetch(&ind_tbl->refcnt, 1, __ATOMIC_RELAXED);
-	if (!ret && !standalone)
+	if (!ret)
 		LIST_REMOVE(ind_tbl, next);
 	rte_rwlock_write_unlock(&priv->ind_tbls_lock);
 	if (ret)
@@ -2299,7 +2298,7 @@ error:
  * @return
  *   The Verbs/DevX object initialized, NULL otherwise and rte_errno is set.
  */
-static struct mlx5_ind_table_obj *
+struct mlx5_ind_table_obj *
 mlx5_ind_table_obj_new(struct rte_eth_dev *dev, const uint16_t *queues,
 		       uint32_t queues_n, bool standalone, bool ref_qs)
 {
@@ -2321,11 +2320,12 @@ mlx5_ind_table_obj_new(struct rte_eth_dev *dev, const uint16_t *queues,
 		mlx5_free(ind_tbl);
 		return NULL;
 	}
-	if (!standalone) {
-		rte_rwlock_write_lock(&priv->ind_tbls_lock);
+	rte_rwlock_write_lock(&priv->ind_tbls_lock);
+	if (!standalone)
 		LIST_INSERT_HEAD(&priv->ind_tbls, ind_tbl, next);
-		rte_rwlock_write_unlock(&priv->ind_tbls_lock);
-	}
+	else
+		LIST_INSERT_HEAD(&priv->standalone_ind_tbls, ind_tbl, next);
+	rte_rwlock_write_unlock(&priv->ind_tbls_lock);
 	return ind_tbl;
 }
 
@@ -2574,8 +2574,7 @@ mlx5_hrxq_modify(struct rte_eth_dev *dev, uint32_t hrxq_idx,
 	}
 	if (ind_tbl != hrxq->ind_table) {
 		MLX5_ASSERT(!hrxq->standalone);
-		mlx5_ind_table_obj_release(dev, hrxq->ind_table,
-					   hrxq->standalone, true);
+		mlx5_ind_table_obj_release(dev, hrxq->ind_table, true);
 		hrxq->ind_table = ind_tbl;
 	}
 	hrxq->hash_fields = hash_fields;
@@ -2585,8 +2584,7 @@ error:
 	err = rte_errno;
 	if (ind_tbl != hrxq->ind_table) {
 		MLX5_ASSERT(!hrxq->standalone);
-		mlx5_ind_table_obj_release(dev, ind_tbl, hrxq->standalone,
-					   true);
+		mlx5_ind_table_obj_release(dev, ind_tbl, true);
 	}
 	rte_errno = err;
 	return -rte_errno;
@@ -2606,7 +2604,6 @@ __mlx5_hrxq_remove(struct rte_eth_dev *dev, struct mlx5_hrxq *hrxq)
 	priv->obj_ops.hrxq_destroy(hrxq);
 	if (!hrxq->standalone) {
 		mlx5_ind_table_obj_release(dev, hrxq->ind_table,
-					   hrxq->standalone || hrxq->hws_flags,
 					   hrxq->hws_flags ?
 					   (!!dev->data->dev_started) : true);
 	}
@@ -2677,7 +2674,7 @@ __mlx5_hrxq_create(struct rte_eth_dev *dev,
 	return hrxq;
 error:
 	if (!rss_desc->ind_tbl)
-		mlx5_ind_table_obj_release(dev, ind_tbl, standalone, true);
+		mlx5_ind_table_obj_release(dev, ind_tbl, true);
 	if (hrxq)
 		mlx5_ipool_free(priv->sh->ipool[MLX5_IPOOL_HRXQ], hrxq_idx);
 	return NULL;
