@@ -3357,6 +3357,10 @@ following sections.
 
    flow queue {port_id} destroy {queue_id} rule {rule_id} [...]
 
+- Drain a queue::
+
+   flow drain {port_id} queue {queue_id}
+
 - Create a flow rule::
 
    flow create {port_id}
@@ -3573,6 +3577,23 @@ If successful, it will show::
 
 It does not report anything for table IDs that do not exist.
 The usual error message is shown when a table cannot be destroyed::
+
+   Caught error type [...] ([...]): [...]
+
+Draining a flow queue
+~~~~~~~~~~~~~~~~~~~~~
+
+``flow drain`` drains the specific queue to push all the
+outstanding queued operations to the underlying device immediately.
+It is bound to ``rte_flow_q_drain()``::
+
+   flow drain {port_id} queue {queue_id}
+
+If successful, it will show::
+
+   Queue #[...] drained
+
+The usual error message is shown when a queue cannot be drained::
 
    Caught error type [...] ([...]): [...]
 

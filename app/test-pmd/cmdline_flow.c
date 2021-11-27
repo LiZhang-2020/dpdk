@@ -95,6 +95,7 @@ enum index {
 	TUNNEL,
 	FLEX,
 	QUEUE,
+	DRAIN,
 
 	/* Flex arguments */
 	FLEX_ITEM_INIT,
@@ -126,6 +127,9 @@ enum index {
 	QUEUE_ITEM_TEMPLATE,
 	QUEUE_ACTION_TEMPLATE,
 	QUEUE_SPEC,
+
+	/* Drain arguments. */
+	DRAIN_QUEUE,
 
 	/* Table arguments. */
 	TABLE_CREATE,
@@ -2132,6 +2136,9 @@ static int parse_qo_destroy(struct context *ctx,
 			    const struct token *token,
 			    const char *str, unsigned int len,
 			    void *buf, unsigned int size);
+static int parse_drain(struct context *, const struct token *,
+		       const char *, unsigned int,
+		       void *, unsigned int);
 static int parse_tunnel(struct context *, const struct token *,
 			const char *, unsigned int,
 			void *, unsigned int);
@@ -2407,7 +2414,8 @@ static const struct token token_list[] = {
 			      ISOLATE,
 			      TUNNEL,
 			      FLEX,
-			      QUEUE)),
+			      QUEUE,
+			      DRAIN)),
 		.call = parse_init,
 	},
 	/* Top-level command. */
@@ -2731,6 +2739,21 @@ static const struct token token_list[] = {
 		.args = ARGS(ARGS_ENTRY_PTR(struct buffer,
 					    args.destroy.rule)),
 		.call = parse_qo_destroy,
+	},
+	/* Top-level command. */
+	[DRAIN] = {
+		.name = "drain",
+		.help = "drain a flow queue",
+		.next = NEXT(NEXT_ENTRY(DRAIN_QUEUE), NEXT_ENTRY(PORT_ID)),
+		.args = ARGS(ARGS_ENTRY(struct buffer, port)),
+		.call = parse_drain,
+	},
+	/* Sub-level commands. */
+	[DRAIN_QUEUE] = {
+		.name = "queue",
+		.help = "specify queue id",
+		.next = NEXT(NEXT_ENTRY(END), NEXT_ENTRY(QUEUE_ID)),
+		.args = ARGS(ARGS_ENTRY(struct buffer, queue)),
 	},
 	/* Top-level command. */
 	[INDIRECT_ACTION] = {
@@ -8113,6 +8136,34 @@ parse_qo_destroy(struct context *ctx, const struct token *token,
 	}
 }
 
+/** Parse tokens for drain queue command. */
+static int
+parse_drain(struct context *ctx, const struct token *token,
+	    const char *str, unsigned int len,
+	    void *buf, unsigned int size)
+{
+	struct buffer *out = buf;
+
+	/* Token name must match. */
+	if (parse_default(ctx, token, str, len, NULL, 0) < 0)
+		return -1;
+	/* Nothing else to do if there is no buffer. */
+	if (!out)
+		return len;
+	if (!out->command) {
+		if (ctx->curr != DRAIN)
+			return -1;
+		if (sizeof(*out) > size)
+			return -1;
+		out->command = ctx->curr;
+		ctx->objdata = 0;
+		ctx->object = out;
+		ctx->objmask = NULL;
+		out->args.vc.data = (uint8_t *)out + size;
+	}
+	return len;
+}
+
 static int
 parse_flex(struct context *ctx, const struct token *token,
 	     const char *str, unsigned int len,
@@ -9451,6 +9502,9 @@ cmd_flow_parsed(const struct buffer *in)
 		port_queue_flow_destroy(in->port, in->queue,
 					in->args.destroy.rule_n,
 					in->args.destroy.rule);
+		break;
+	case DRAIN:
+		port_queue_flow_drain(in->port, in->queue);
 		break;
 	case INDIRECT_ACTION_CREATE:
 		port_action_handle_create(

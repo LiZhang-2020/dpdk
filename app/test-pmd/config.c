@@ -2714,6 +2714,23 @@ port_queue_flow_destroy(portid_t port_id, queueid_t queue_id,
 	return ret;
 }
 
+/** Drain all the queue operations down the queue. */
+int
+port_queue_flow_drain(portid_t port_id, queueid_t queue_id)
+{
+	struct rte_flow_error error;
+	int ret = 0;
+
+	memset(&error, 0x55, sizeof(error));
+	ret = rte_flow_q_drain(port_id, queue_id, &error);
+	if (ret < 0) {
+		printf("Failed to drain queue\n");
+		return -EINVAL;
+	}
+	printf("Queue #%u drained\n", queue_id);
+	return ret;
+}
+
 /** Create flow rule. */
 int
 port_flow_create(portid_t port_id,
