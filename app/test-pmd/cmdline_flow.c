@@ -122,14 +122,40 @@ enum index {
 	/* Queue arguments. */
 	QUEUE_CREATE,
 	QUEUE_DESTROY,
+	QUEUE_INDIRECT_ACTION,
+
+
+	/* Queue create arguments. */
 	QUEUE_CREATE_ID,
 	QUEUE_CREATE_DRAIN,
-	QUEUE_DESTROY_ID,
-	QUEUE_DESTROY_DRAIN,
 	QUEUE_TABLE,
 	QUEUE_ITEM_TEMPLATE,
 	QUEUE_ACTION_TEMPLATE,
 	QUEUE_SPEC,
+
+	/* Queue destroy arguments. */
+	QUEUE_DESTROY_ID,
+	QUEUE_DESTROY_DRAIN,
+
+	/* Queue indirect action arguments */
+	QUEUE_INDIRECT_ACTION_CREATE,
+	QUEUE_INDIRECT_ACTION_UPDATE,
+	QUEUE_INDIRECT_ACTION_DESTROY,
+
+	/* Queue indirect action create arguments */
+	QUEUE_INDIRECT_ACTION_CREATE_ID,
+	QUEUE_INDIRECT_ACTION_INGRESS,
+	QUEUE_INDIRECT_ACTION_EGRESS,
+	QUEUE_INDIRECT_ACTION_TRANSFER,
+	QUEUE_INDIRECT_ACTION_CREATE_DRAIN,
+	QUEUE_INDIRECT_ACTION_SPEC,
+
+	/* Queue indirect action update arguments */
+	QUEUE_INDIRECT_ACTION_UPDATE_DRAIN,
+
+	/* Queue indirect action destroy arguments */
+	QUEUE_INDIRECT_ACTION_DESTROY_ID,
+	QUEUE_INDIRECT_ACTION_DESTROY_DRAIN,
 
 	/* Dequeue arguments. */
 	DEQUEUE_QUEUE,
@@ -1086,11 +1112,42 @@ static const enum index next_table_destroy_attr[] = {
 static const enum index next_queue_subcmd[] = {
 	QUEUE_CREATE,
 	QUEUE_DESTROY,
+	QUEUE_INDIRECT_ACTION,
 	ZERO,
 };
 
 static const enum index next_queue_destroy_attr[] = {
 	QUEUE_DESTROY_ID,
+	END,
+	ZERO,
+};
+
+static const enum index next_qia_subcmd[] = {
+	QUEUE_INDIRECT_ACTION_CREATE,
+	QUEUE_INDIRECT_ACTION_UPDATE,
+	QUEUE_INDIRECT_ACTION_DESTROY,
+	ZERO,
+};
+
+static const enum index next_qia_create_attr[] = {
+	QUEUE_INDIRECT_ACTION_CREATE_ID,
+	QUEUE_INDIRECT_ACTION_INGRESS,
+	QUEUE_INDIRECT_ACTION_EGRESS,
+	QUEUE_INDIRECT_ACTION_TRANSFER,
+	QUEUE_INDIRECT_ACTION_CREATE_DRAIN,
+	QUEUE_INDIRECT_ACTION_SPEC,
+	ZERO,
+};
+
+static const enum index next_qia_update_attr[] = {
+	QUEUE_INDIRECT_ACTION_UPDATE_DRAIN,
+	QUEUE_INDIRECT_ACTION_SPEC,
+	ZERO,
+};
+
+static const enum index next_qia_destroy_attr[] = {
+	QUEUE_INDIRECT_ACTION_DESTROY_DRAIN,
+	QUEUE_INDIRECT_ACTION_DESTROY_ID,
 	END,
 	ZERO,
 };
@@ -2143,6 +2200,12 @@ static int parse_qo_destroy(struct context *ctx,
 			    const struct token *token,
 			    const char *str, unsigned int len,
 			    void *buf, unsigned int size);
+static int parse_qia(struct context *, const struct token *,
+		     const char *, unsigned int,
+		     void *, unsigned int);
+static int parse_qia_destroy(struct context *ctx, const struct token *token,
+			     const char *str, unsigned int len,
+			     void *buf, unsigned int size);
 static int parse_dequeue(struct context *, const struct token *,
 			 const char *, unsigned int,
 			 void *, unsigned int);
@@ -2716,6 +2779,13 @@ static const struct token token_list[] = {
 		.args = ARGS(ARGS_ENTRY(struct buffer, queue)),
 		.call = parse_qo_destroy,
 	},
+	[QUEUE_INDIRECT_ACTION] = {
+		.name = "indirect_action",
+		.help = "queue indirect actions",
+		.next = NEXT(next_qia_subcmd, NEXT_ENTRY(QUEUE_ID)),
+		.args = ARGS(ARGS_ENTRY(struct buffer, queue)),
+		.call = parse_qia,
+	},
 	/* Queue  arguments. */
 	[QUEUE_TABLE] = {
 		.name = "table",
@@ -2768,6 +2838,90 @@ static const struct token token_list[] = {
 		.args = ARGS(ARGS_ENTRY_PTR(struct buffer,
 					    args.destroy.rule)),
 		.call = parse_qo_destroy,
+	},
+	/* Queue indirect action arguments */
+	[QUEUE_INDIRECT_ACTION_CREATE] = {
+		.name = "create",
+		.help = "create indirect action",
+		.next = NEXT(next_qia_create_attr),
+		.call = parse_qia,
+	},
+	[QUEUE_INDIRECT_ACTION_UPDATE] = {
+		.name = "update",
+		.help = "update indirect action",
+		.next = NEXT(next_qia_update_attr,
+			     NEXT_ENTRY(INDIRECT_ACTION_ID)),
+		.args = ARGS(ARGS_ENTRY(struct buffer, args.vc.attr.group)),
+		.call = parse_qia,
+	},
+	[QUEUE_INDIRECT_ACTION_DESTROY] = {
+		.name = "destroy",
+		.help = "destroy indirect action",
+		.next = NEXT(next_qia_destroy_attr),
+		.call = parse_qia_destroy,
+	},
+	/* Indirect action destroy arguments. */
+	[QUEUE_INDIRECT_ACTION_DESTROY_DRAIN] = {
+		.name = "drain",
+		.help = "drain operation immediately",
+		.next = NEXT(next_qia_destroy_attr,
+			     NEXT_ENTRY(BOOLEAN)),
+		.args = ARGS(ARGS_ENTRY(struct buffer, drain)),
+	},
+	[QUEUE_INDIRECT_ACTION_DESTROY_ID] = {
+		.name = "action_id",
+		.help = "specify a indirect action id to destroy",
+		.next = NEXT(next_qia_destroy_attr,
+			     NEXT_ENTRY(INDIRECT_ACTION_ID)),
+		.args = ARGS(ARGS_ENTRY_PTR(struct buffer,
+					    args.ia_destroy.action_id)),
+		.call = parse_qia_destroy,
+	},
+	/* Indirect action update arguments. */
+	[QUEUE_INDIRECT_ACTION_UPDATE_DRAIN] = {
+		.name = "drain",
+		.help = "drain operation immediately",
+		.next = NEXT(next_qia_update_attr,
+			     NEXT_ENTRY(BOOLEAN)),
+		.args = ARGS(ARGS_ENTRY(struct buffer, drain)),
+	},
+	/* Indirect action create arguments. */
+	[QUEUE_INDIRECT_ACTION_CREATE_ID] = {
+		.name = "action_id",
+		.help = "specify a indirect action id to create",
+		.next = NEXT(next_qia_create_attr,
+			     NEXT_ENTRY(INDIRECT_ACTION_ID)),
+		.args = ARGS(ARGS_ENTRY(struct buffer, args.vc.attr.group)),
+	},
+	[QUEUE_INDIRECT_ACTION_INGRESS] = {
+		.name = "ingress",
+		.help = "affect rule to ingress",
+		.next = NEXT(next_qia_create_attr),
+		.call = parse_qia,
+	},
+	[QUEUE_INDIRECT_ACTION_EGRESS] = {
+		.name = "egress",
+		.help = "affect rule to egress",
+		.next = NEXT(next_qia_create_attr),
+		.call = parse_qia,
+	},
+	[QUEUE_INDIRECT_ACTION_TRANSFER] = {
+		.name = "transfer",
+		.help = "affect rule to transfer",
+		.next = NEXT(next_qia_create_attr),
+		.call = parse_qia,
+	},
+	[QUEUE_INDIRECT_ACTION_CREATE_DRAIN] = {
+		.name = "drain",
+		.help = "drain operation immediately",
+		.next = NEXT(next_qia_create_attr,
+			     NEXT_ENTRY(BOOLEAN)),
+		.args = ARGS(ARGS_ENTRY(struct buffer, drain)),
+	},
+	[QUEUE_INDIRECT_ACTION_SPEC] = {
+		.name = "action",
+		.help = "specify action to create indirect handle",
+		.next = NEXT(next_action),
 	},
 	/* Top-level command. */
 	[DEQUEUE] = {
@@ -6012,6 +6166,110 @@ parse_ia_destroy(struct context *ctx, const struct token *token,
 	ctx->object = action_id;
 	ctx->objmask = NULL;
 	return len;
+}
+
+/** Parse tokens for indirect action commands. */
+static int
+parse_qia(struct context *ctx, const struct token *token,
+	 const char *str, unsigned int len,
+	 void *buf, unsigned int size)
+{
+	struct buffer *out = buf;
+
+	/* Token name must match. */
+	if (parse_default(ctx, token, str, len, NULL, 0) < 0)
+		return -1;
+	/* Nothing else to do if there is no buffer. */
+	if (!out)
+		return len;
+	if (!out->command) {
+		if (ctx->curr != QUEUE)
+			return -1;
+		if (sizeof(*out) > size)
+			return -1;
+		out->args.vc.data = (uint8_t *)out + size;
+		return len;
+	}
+	switch (ctx->curr) {
+	case QUEUE_INDIRECT_ACTION:
+		return len;
+	case QUEUE_INDIRECT_ACTION_CREATE:
+	case QUEUE_INDIRECT_ACTION_UPDATE:
+		out->args.vc.actions =
+			(void *)RTE_ALIGN_CEIL((uintptr_t)(out + 1),
+					       sizeof(double));
+		out->args.vc.attr.group = UINT32_MAX;
+		out->command = ctx->curr;
+		ctx->objdata = 0;
+		ctx->object = out;
+		ctx->objmask = NULL;
+		return len;
+	case QUEUE_INDIRECT_ACTION_EGRESS:
+		out->args.vc.attr.egress = 1;
+		return len;
+	case QUEUE_INDIRECT_ACTION_INGRESS:
+		out->args.vc.attr.ingress = 1;
+		return len;
+	case QUEUE_INDIRECT_ACTION_TRANSFER:
+		out->args.vc.attr.transfer = 1;
+		return len;
+	case QUEUE_INDIRECT_ACTION_CREATE_DRAIN:
+		return len;
+	default:
+		return -1;
+	}
+}
+
+/** Parse tokens for indirect action destroy command. */
+static int
+parse_qia_destroy(struct context *ctx, const struct token *token,
+		 const char *str, unsigned int len,
+		 void *buf, unsigned int size)
+{
+	struct buffer *out = buf;
+	uint32_t *action_id;
+
+	/* Token name must match. */
+	if (parse_default(ctx, token, str, len, NULL, 0) < 0)
+		return -1;
+	/* Nothing else to do if there is no buffer. */
+	if (!out)
+		return len;
+	if (!out->command || out->command == QUEUE) {
+		if (ctx->curr != QUEUE_INDIRECT_ACTION_DESTROY)
+			return -1;
+		if (sizeof(*out) > size)
+			return -1;
+		out->command = ctx->curr;
+		ctx->objdata = 0;
+		ctx->object = out;
+		ctx->objmask = NULL;
+		out->args.ia_destroy.action_id =
+			(void *)RTE_ALIGN_CEIL((uintptr_t)(out + 1),
+					       sizeof(double));
+		return len;
+	}
+	switch (ctx->curr) {
+	case QUEUE_INDIRECT_ACTION:
+		out->command = ctx->curr;
+		ctx->objdata = 0;
+		ctx->object = out;
+		ctx->objmask = NULL;
+		return len;
+	case QUEUE_INDIRECT_ACTION_DESTROY_ID:
+		action_id = out->args.ia_destroy.action_id
+				+ out->args.ia_destroy.action_id_n++;
+		if ((uint8_t *)action_id > (uint8_t *)out + size)
+			return -1;
+		ctx->objdata = 0;
+		ctx->object = action_id;
+		ctx->objmask = NULL;
+		return len;
+	case QUEUE_INDIRECT_ACTION_DESTROY_DRAIN:
+		return len;
+	default:
+		return -1;
+	}
 }
 
 /** Parse tokens for meter policy action commands. */
@@ -9605,6 +9863,29 @@ cmd_flow_parsed(const struct buffer *in)
 		break;
 	case DRAIN:
 		port_queue_flow_drain(in->port, in->queue);
+		break;
+	case QUEUE_INDIRECT_ACTION_CREATE:
+		port_queue_action_handle_create(
+				in->port, in->queue, in->drain,
+				in->args.vc.attr.group,
+				&((const struct rte_flow_indir_action_conf) {
+					.ingress = in->args.vc.attr.ingress,
+					.egress = in->args.vc.attr.egress,
+					.transfer = in->args.vc.attr.transfer,
+				}),
+				in->args.vc.actions);
+		break;
+	case QUEUE_INDIRECT_ACTION_DESTROY:
+		port_queue_action_handle_destroy(in->port,
+					   in->queue, in->drain,
+					   in->args.ia_destroy.action_id_n,
+					   in->args.ia_destroy.action_id);
+		break;
+	case QUEUE_INDIRECT_ACTION_UPDATE:
+		port_queue_action_handle_update(in->port,
+					  in->queue, in->drain,
+					  in->args.vc.attr.group,
+					  in->args.vc.actions);
 		break;
 	case INDIRECT_ACTION_CREATE:
 		port_action_handle_create(
