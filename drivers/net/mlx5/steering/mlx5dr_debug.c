@@ -176,6 +176,25 @@ static int mlx5dr_debug_dump_matcher(FILE *f, struct mlx5dr_matcher *matcher)
 	return 0;
 }
 
+static int mlx5dr_debug_dump_table_nic(FILE *f,
+				       enum mlx5dr_debug_res_type type,
+				       struct mlx5dr_table *tbl)
+{
+	int ret;
+
+	ret = fprintf(f, "%d,0x%" PRIx64 ",0x%" PRIx64 ",%d\n",
+		      type,
+		      (uint64_t)(uintptr_t)tbl,
+		      (uint64_t)(uintptr_t)tbl,
+		      tbl->level == MLX5DR_ROOT_LEVEL ? 0 : tbl->ft->id);
+	if (ret < 0) {
+		rte_errno = EINVAL;
+		return rte_errno;
+	}
+
+	return 0;
+}
+
 static int mlx5dr_debug_dump_table(FILE *f, struct mlx5dr_table *tbl)
 {
 	bool is_root = tbl->level == MLX5DR_ROOT_LEVEL;
@@ -193,6 +212,22 @@ static int mlx5dr_debug_dump_table(FILE *f, struct mlx5dr_table *tbl)
 	if (ret < 0) {
 		rte_errno = EINVAL;
 		return rte_errno;
+	}
+
+	if (tbl->type == MLX5DR_TABLE_TYPE_NIC_RX ||
+			tbl->type == MLX5DR_TABLE_TYPE_FDB) {
+		ret = mlx5dr_debug_dump_table_nic(f, MLX5DR_DEBUG_RES_TYPE_TABLE_NIC_RX,
+						  tbl);
+		if (ret)
+			return ret;
+	}
+
+	if (tbl->type == MLX5DR_TABLE_TYPE_NIC_TX ||
+			tbl->type == MLX5DR_TABLE_TYPE_FDB) {
+		ret = mlx5dr_debug_dump_table_nic(f, MLX5DR_DEBUG_RES_TYPE_TABLE_NIC_TX,
+						  tbl);
+		if (ret)
+			return ret;
 	}
 
 	LIST_FOREACH(matcher, &tbl->head, next) {
