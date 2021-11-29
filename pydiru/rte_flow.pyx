@@ -68,6 +68,35 @@ cdef class RteFlowItemUdp(PydiruCM):
         self.item.hdr.dgram_cksum = cksum
 
 
+cdef class RteFlowItemGtp(PydiruCM):
+    def __init__(self, flags=0, msg_type=0, msg_len=0, teid=0):
+        """
+        Initializes a RteFlowItemGtp object representing rte_flow_item_gtp C struct.
+        :param flags: Version (3b), protocol type (1b), reserved (1b),
+                      Extension header flag (1b),
+                      Sequence number flag (1b),
+                      N-PDU number flag (1b).
+        :param msg_type: Message type
+        :param msg_len: Message length
+        :param teid: Tunnel endpoint identifier
+        """
+        self.item.v_pt_rsv_flags = flags
+        self.item.msg_type = msg_type
+        self.item.msg_len = msg_len
+        self.item.teid = socket.htonl(teid)
+
+
+cdef class RteFlowItemGtpPsc(PydiruCM):
+    def __init__(self, pdu_type=0, qfi=0):
+        """
+        Initializes a RteFlowItemGtpPsc object representing rte_flow_item_gtp_psc C struct.
+        :param pdu_type: PDU type
+        :param qfi: QoS flow identifier
+        """
+        self.item.pdu_type = pdu_type
+        self.item.qfi = qfi
+
+
 cdef class RteFlowItem(PydiruCM):
     def __init__(self, flow_item_type, spec=None, mask=None, last=None):
         self.item.type = flow_item_type
@@ -81,6 +110,12 @@ cdef class RteFlowItem(PydiruCM):
             size = sizeof(pdr.rte_flow_item_tcp)
         if flow_item_type == e.RTE_FLOW_ITEM_TYPE_UDP:
             size = sizeof(pdr.rte_flow_item_udp)
+        if flow_item_type in [e.RTE_FLOW_ITEM_TYPE_GTP,
+                              e.RTE_FLOW_ITEM_TYPE_GTPC,
+                              e.RTE_FLOW_ITEM_TYPE_GTPU]:
+            size = sizeof(pdr.rte_flow_item_gtp)
+        if flow_item_type == e.RTE_FLOW_ITEM_TYPE_GTP_PSC:
+            size = sizeof(pdr.rte_flow_item_gtp_psc)
         if spec:
             self.item.spec = calloc(1, size)
             memcpy(self.item.spec, <void *>&((<RteFlowItemEth>spec).item), size)

@@ -88,3 +88,13 @@ cdef extern  from '../../../../lib/librte_ethdev/rte_flow.h':
         uint32_t version
         e.rte_flow_q_op_status status
         void *user_data
+
+    cdef struct rte_flow_item_gtp:
+        uint8_t v_pt_rsv_flags
+        uint8_t msg_type
+        uint16_t msg_len
+        uint32_t teid
+
+    cdef struct rte_flow_item_gtp_psc:
+        uint8_t pdu_type
+        uint8_t qfi
