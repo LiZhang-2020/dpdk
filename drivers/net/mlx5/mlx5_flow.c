@@ -11990,7 +11990,7 @@ flow_convert_action_modify_field(struct rte_eth_dev *dev,
 	struct field_modify_info dcopy[MLX5_ACT_MAX_MOD_FIELDS] = {
 								{0, 0, 0} };
 	uint32_t mask[MLX5_ACT_MAX_MOD_FIELDS] = {0, 0, 0, 0, 0};
-	uint32_t type;
+	uint32_t type, meta = 0;
 	uint32_t shift = 0;
 
 	if (conf->src.field == RTE_FLOW_FIELD_POINTER ||
@@ -12003,6 +12003,11 @@ flow_convert_action_modify_field(struct rte_eth_dev *dev,
 		item.spec = conf->src.field == RTE_FLOW_FIELD_POINTER ?
 					(void *)(uintptr_t)conf->src.pvalue :
 					(void *)(uintptr_t)&conf->src.value;
+		if (conf->dst.field == RTE_FLOW_FIELD_META) {
+			meta = *(const unaligned_uint32_t *)item.spec;
+			meta = rte_cpu_to_be_32(meta);
+			item.spec = &meta;
+		}
 	} else {
 		type = MLX5_MODIFICATION_TYPE_COPY;
 		/** For COPY fill the destination field (dcopy) without mask. */
