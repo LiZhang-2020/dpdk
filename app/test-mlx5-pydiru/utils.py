@@ -2,18 +2,19 @@
 # SPDX-License-Identifier: BSD-3-Clause
 # Copyright (c) 2021, Nvidia Inc. All rights reserved.
 
-import unittest
 import socket
 import struct
 import time
 
-
+from pydiru.rte_flow import RteFlowItem, RteFlowItemIpv4, RteFlowItemEnd
 from pyverbs.pyverbs_error import PyverbsError, PyverbsRDMAError
 from pyverbs.wr import SGE, SendWR, RecvWR
+import pydiru.pydiru_enums as p
 from pyverbs import enums as v
-from pyverbs.cq import WC
 
-from args_parser import parser
+
+class TunnelType:
+    GTP_U = 'GPT-U'
 
 
 class PacketConsts:
@@ -57,10 +58,83 @@ class PacketConsts:
     VLAN_PRIO = 5
     VLAN_CFI = 1
     VLAN_ID = 0xc0c
+    # GTPU consts
+    GTP_U_PORT = 2152
+    GTPU_VERSION = 1
+    PROTO_TYPE = 1
+    GTP_EX = 1
+    GTPU_MSG_TYPE = 0xff
+    GTP_SEQUENCE_NUMBER = 0
+    GTP_NPDU_NUMBER = 0xda
+    GTPU_MSG_LEN = 50
+    GTPU_TEID = 0xdeadbeef
+    GTPU_HEADER_SIZE = 8
+    # GTP PSC consts
+    GTP_PSC_TYPE = 0x85
+    GTP_PSC_PDU_TYPE = 1
+    GTP_PSC_QFI = 3
+
+
+def gen_outer_headers(msg_size, tunnel=TunnelType.GTP_U, **kwargs):
+    """
+    Generates outer headers for encapsulation with tunnel: Ethernet, IPv4, UDP
+    and the desired tunneling using the relevant values from the PacketConst class.
+    :param msg_size: The size of the inner message (payload size)
+    :param tunnel: The type of tunneling
+    :param kwargs: Arguments:
+            * *gtp_psc_qfi*
+                QFI (QoS flow identifier) field to use in the GTP PSC header.
+    :return: Outer headers
+    """
+
+    # Ethernet Header
+    outer = struct.pack('!6s6s',
+                        bytes.fromhex(PacketConsts.DST_MAC.replace(':', '')),
+                        bytes.fromhex(PacketConsts.SRC_MAC.replace(':', '')))
+    outer += PacketConsts.ETHER_TYPE_IPV4.to_bytes(2, 'big')
+
+    if tunnel == TunnelType.GTP_U:
+        tunnel_header_size = PacketConsts.GTPU_HEADER_SIZE
+        dst_port = PacketConsts.GTP_U_PORT
+
+    # IPv4 Header
+    ip_total_len = msg_size + PacketConsts.UDP_HEADER_SIZE + \
+                   PacketConsts.IPV4_HEADER_SIZE + \
+                   tunnel_header_size
+    outer += struct.pack('!2B3H2BH4s4s', (PacketConsts.IP_V4 << 4) +
+                         PacketConsts.IHL, 0, ip_total_len, 0,
+                         PacketConsts.IP_V4_FLAGS << 13,
+                         PacketConsts.TTL_HOP_LIMIT, socket.IPPROTO_UDP, 0,
+                         socket.inet_aton(PacketConsts.SRC_IP),
+                         socket.inet_aton(PacketConsts.DST_IP))
+    # UDP Header
+    outer += struct.pack('!4H', PacketConsts.SRC_PORT, dst_port,
+                         msg_size + PacketConsts.UDP_HEADER_SIZE + tunnel_header_size, 0)
+
+    # GTP-U Header
+    if tunnel == TunnelType.GTP_U:
+        gtp_psc_qfi = kwargs.get('gtp_psc_qfi')
+        gtp_psc_ex = 0 if gtp_psc_qfi is None else 1
+        gtp_msg_len = PacketConsts.GTPU_MSG_LEN + 8 if gtp_psc_qfi else PacketConsts.GTPU_MSG_LEN
+        gtpu_teid = kwargs.get('gtpu_teid', PacketConsts.GTPU_TEID)
+        outer += struct.pack('!BBH', (PacketConsts.GTPU_VERSION << 5) +
+                             (PacketConsts.PROTO_TYPE << 4) + (gtp_psc_ex << 2) + (gtp_psc_ex << 1),
+                             PacketConsts.GTPU_MSG_TYPE, gtp_msg_len)
+        outer += struct.pack('!I', gtpu_teid)
+
+        if gtp_psc_qfi:
+            extention_header_len = 1
+            next_extention_type = 0
+            outer += struct.pack('!HBB', PacketConsts.GTP_SEQUENCE_NUMBER,
+                                 PacketConsts.GTP_NPDU_NUMBER, PacketConsts.GTP_PSC_TYPE)
+            outer += struct.pack('!BBBB', extention_header_len, (PacketConsts.GTP_PSC_PDU_TYPE << 4),
+                                  gtp_psc_qfi, next_extention_type)
+
+    return outer
 
 
 def gen_packet(msg_size, l3=PacketConsts.IP_V4, l4=PacketConsts.UDP_PROTO,
-               with_vlan=False, **kwargs):
+               with_vlan=False, tunnel=None, **kwargs):
     """
     Generates a Eth | IPv4 or IPv6 | UDP or TCP packet with hardcoded values in
     the headers and randomized payload.
@@ -68,6 +142,7 @@ def gen_packet(msg_size, l3=PacketConsts.IP_V4, l4=PacketConsts.UDP_PROTO,
     :param l3: Packet layer 3 type: 4 for IPv4 or 6 for IPv6
     :param l4: Packet layer 4 type: 'tcp' or 'udp'
     :param with_vlan: if True add VLAN header to the packet
+    :param tunnel: If set, the type of tunneling to use.
     :param kwargs: Arguments:
             * *src_mac*
                 Source MAC address to use in the packet.
@@ -75,8 +150,20 @@ def gen_packet(msg_size, l3=PacketConsts.IP_V4, l4=PacketConsts.UDP_PROTO,
                 Source IPv4 address to use in the packet.
             * *src_port*
                 Source L4 port to use in the packet.
+            * *gtp_psc_qfi*
+                QFI (QoS flow identifier) field to use in the GTP PSC header.
     :return: Bytes of the generated packet
     """
+    if tunnel == TunnelType.GTP_U:
+        tunnel_header_size = PacketConsts.GTPU_HEADER_SIZE
+        outer_size = PacketConsts.ETHER_HEADER_SIZE + PacketConsts.IPV4_HEADER_SIZE + \
+                     PacketConsts.UDP_HEADER_SIZE + tunnel_header_size
+        if kwargs.get('gtp_psc_qfi'):
+            outer_size += 8
+
+        return gen_outer_headers(outer_size, tunnel, **kwargs) + \
+            gen_packet(msg_size - outer_size, l3, l4, with_vlan, **kwargs)
+
     l3_header_size = getattr(PacketConsts, f'IPV{str(l3)}_HEADER_SIZE')
     l4_header_size = getattr(PacketConsts, f'{l4.upper()}_HEADER_SIZE')
     payload_size = max(0, msg_size - l3_header_size - l4_header_size -
@@ -180,15 +267,16 @@ def send_packets(qp, mr, packets):
         qp.post_send(send_wr)
 
 
-def validate_raw(msg_received, msg_expected, skip_idxs = []):
+def validate_raw(msg_received, msg_expected, skip_idxs=None):
     size = len(msg_expected)
+    skip_idxs  = [] if skip_idxs is None else skip_idxs
     for i in range(size):
         if (msg_received[i] != msg_expected[i]) and i not in skip_idxs:
             err_msg = f'Data validation failure:\nexpected {msg_expected}\n\nreceived {msg_received}'
             raise PyverbsError(err_msg)
 
 
-def raw_traffic(client, server, num_msgs, packets, expected_packet=None):
+def raw_traffic(client, server, num_msgs, packets, expected_packet=None, skip_idxs=None):
     """
     Runs raw ethernet traffic between two sides
     :param client: client side, clients base class is BaseDrResources
@@ -196,8 +284,11 @@ def raw_traffic(client, server, num_msgs, packets, expected_packet=None):
     :param num_msgs: number of msgs to send
     :param packets: packets to send.
     :param expected_packet: expected packet to receive.
-    :return:
+    :param skip_idxs: List of indexes of the packets that should be skipped when
+                      verifying the packet.
+    :return: None
     """
+    skip_idxs  = [] if skip_idxs is None else skip_idxs
     expected_packet = packets[0] if expected_packet is None else expected_packet
     for _ in range(num_msgs):
         post_recv(server.wq, server.mr, server.msg_size)
@@ -205,4 +296,9 @@ def raw_traffic(client, server, num_msgs, packets, expected_packet=None):
         poll_cq(client.cq, len(packets))
         poll_cq(server.cq)
         msg_received = server.mr.read(server.msg_size, 0)
-        validate_raw(msg_received, expected_packet)
+        validate_raw(msg_received, expected_packet, skip_idxs)
+
+def create_sipv4_rte_items(sip_val=PacketConsts.SRC_IP):
+    mask = RteFlowItemIpv4(src_addr=bytes(4 * [0xff]))
+    val = RteFlowItemIpv4(src_addr=sip_val)
+    return [RteFlowItem(p.RTE_FLOW_ITEM_TYPE_IPV4, val, mask), RteFlowItemEnd()]
