@@ -110,10 +110,10 @@ cdef class Mlx5drActionReformat(Mlx5drAction):
         :param flags: Action flags
         """
         super().__init__(ctx)
-        cdef char* c_data = NULL
+        cdef unsigned char* c_data = NULL
         if data:
             arr = bytearray(data)
-            c_data = <char *>calloc(1, data_sz)
+            c_data = <unsigned char *>calloc(1, data_sz)
             if c_data == NULL:
                 raise MemoryError('Memory allocation failed.')
             for i in range(data_sz):
@@ -182,14 +182,19 @@ cdef class Mlx5drRuleAction(PydiruCM):
         super().__init__()
         self.rule_action.action = action.action
         self.action = action
-        data = kwargs.get('data', None)
+        self.data_buf = NULL
+        data = kwargs.get('data')
+        offset = kwargs.get('offset', 0)
         if isinstance(self.action, Mlx5drActionTag):
             self.tag_value = kwargs.get('value', 0)
         elif isinstance(self.action, Mlx5drActionModify):
             if data:
                 self.modify_data = data
-            self.modify_offset = kwargs.get('offset', 0)
-        self.data_buf = NULL
+            self.modify_offset = offset
+        elif isinstance(self.action, Mlx5drActionReformat):
+            if data:
+                self.reformat_data = data
+            self.reformat_offset = offset
 
     @property
     def tag_value(self):
@@ -229,6 +234,28 @@ cdef class Mlx5drRuleAction(PydiruCM):
     @modify_offset.setter
     def modify_offset(self, offset):
         self.rule_action.modify_header.offset = offset
+
+    @property
+    def reformat_data(self):
+        return <object>self.rule_action.reformat.data
+
+    @reformat_data.setter
+    def reformat_data(self, data):
+        arr = bytearray(data)
+        self.data_buf = <uint8_t *> calloc(1, len(arr))
+        if self.data_buf == NULL:
+           raise MemoryError('Failed to allocate memory')
+        for i in range(len(arr)):
+            (<uint8_t *>self.data_buf)[i] = arr[i]
+        self.rule_action.reformat.data = <uint8_t *>self.data_buf
+
+    @property
+    def reformat_offset(self):
+        return self.rule_action.reformat.offset
+
+    @reformat_offset.setter
+    def reformat_offset(self, offset):
+        self.rule_action.reformat.offset = offset
 
     def __dealloc__(self):
         self.close()

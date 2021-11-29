@@ -53,10 +53,15 @@ cdef extern  from '../../../../drivers/net/mlx5/steering/mlx5dr.h':
         uint32_t offset
         uint8_t *data
 
+    cdef struct reformat_:
+        uint32_t offset
+        uint8_t *data
+
     cdef struct mlx5dr_rule_action:
         mlx5dr_action *action
         tag_ tag
         modify_header_ modify_header
+        reformat_ reformat
         uint32_t vlan_hdr
 
     cdef struct mlx5dr_rule:
