@@ -524,6 +524,7 @@ int mlx5dr_cmd_query_caps(struct ibv_context *ctx,
 {
 	uint32_t out[DEVX_ST_SZ_DW(query_hca_cap_out)] = {0};
 	uint32_t in[DEVX_ST_SZ_DW(query_hca_cap_in)] = {0};
+	struct ibv_device_attr_ex attr_ex;
 	int ret;
 
 	MLX5_SET(query_hca_cap_in, in, opcode, MLX5_CMD_OP_QUERY_HCA_CAP);
@@ -650,6 +651,15 @@ int mlx5dr_cmd_query_caps(struct ibv_context *ctx,
 
 	// TODO Current FW don't set this bit (yet)
 	caps->nic_ft.reparse = 1;
+
+	ret = mlx5_glue->query_device_ex(ctx, NULL, &attr_ex);
+	if (ret) {
+		DR_LOG(ERR, "Failed to query device attributes");
+		rte_errno = ret;
+		return rte_errno;
+	}
+
+	strlcpy(caps->fw_ver, attr_ex.orig_attr.fw_ver, sizeof(caps->fw_ver));
 
 	return ret;
 }
