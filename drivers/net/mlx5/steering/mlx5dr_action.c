@@ -1037,17 +1037,17 @@ static void mlx5dr_action_destroy_hws(struct mlx5dr_action *action)
 		break;
 	case MLX5DR_ACTION_TYP_TNL_L3_TO_L2:
 	case MLX5DR_ACTION_TYP_MODIFY_HDR:
-		mlx5dr_pat_arg_destroy_modify_header(action->ctx, action);
 		mlx5dr_action_destroy_stcs(action);
+		mlx5dr_pat_arg_destroy_modify_header(action->ctx, action);
 		break;
 	case MLX5DR_ACTION_TYP_L2_TO_TNL_L3:
+		mlx5dr_action_destroy_stcs(action);
 		mlx5dr_action_put_shared_stc(action);
 		mlx5dr_cmd_destroy_obj(action->reformat.arg_obj);
-		mlx5dr_action_destroy_stcs(action);
 		break;
 	case MLX5DR_ACTION_TYP_L2_TO_TNL_L2:
-		mlx5dr_cmd_destroy_obj(action->reformat.arg_obj);
 		mlx5dr_action_destroy_stcs(action);
+		mlx5dr_cmd_destroy_obj(action->reformat.arg_obj);
 		break;
 	}
 }
