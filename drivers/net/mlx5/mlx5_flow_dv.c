@@ -9804,7 +9804,7 @@ flow_dv_match_meta_reg_all(void *matcher, void *key, enum modify_reg reg_type,
 			   uint32_t data, uint32_t mask)
 {
 	flow_dv_match_meta_reg(key, reg_type, data, mask);
-	flow_dv_match_meta_reg(matcher, reg_type, mask, 0);
+	flow_dv_match_meta_reg(matcher, reg_type, mask, mask);
 }
 
 /**
