@@ -110,6 +110,7 @@ struct mlx5_dv_matcher_workspace {
 	uint8_t next_protocol;
 	uint32_t geneve_tlv_option;
 	uint32_t group;
+	uint16_t udp_dport;
 	const struct rte_flow_attr *attr;
 	struct mlx5_flow_rss_desc *rss_desc;
 	const struct rte_flow_item *tunnel_item;

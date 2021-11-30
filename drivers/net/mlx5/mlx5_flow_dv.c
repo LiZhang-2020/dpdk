@@ -9041,7 +9041,8 @@ flow_dv_translate_item_tcp(void *key, const struct rte_flow_item *item,
  */
 static void
 flow_dv_translate_item_udp(void *key, const struct rte_flow_item *item,
-			   int inner, uint32_t key_type)
+			   int inner, struct mlx5_dv_matcher_workspace *wks,
+			   uint32_t key_type)
 {
 	const struct rte_flow_item_udp *udp_m;
 	const struct rte_flow_item_udp *udp_v;
@@ -9063,6 +9064,12 @@ flow_dv_translate_item_udp(void *key, const struct rte_flow_item *item,
 		 rte_be_to_cpu_16(udp_v->hdr.src_port & udp_m->hdr.src_port));
 	MLX5_SET(fte_match_set_lyr_2_4, headers_v, udp_dport,
 		 rte_be_to_cpu_16(udp_v->hdr.dst_port & udp_m->hdr.dst_port));
+	/* Force get UDP dport in case to be used in VXLAN translate. */
+	if (key_type & MLX5_SET_MATCHER_SW) {
+		udp_v = item->spec;
+		wks->udp_dport = rte_be_to_cpu_16(udp_v->hdr.dst_port &
+						  udp_m->hdr.dst_port);
+	}
 }
 
 /**
@@ -9249,7 +9256,8 @@ static void
 flow_dv_translate_item_vxlan(struct rte_eth_dev *dev,
 			     const struct rte_flow_attr *attr,
 			     void *key, const struct rte_flow_item *item,
-			     int inner, uint32_t key_type)
+			     int inner, struct mlx5_dv_matcher_workspace *wks,
+			     uint32_t key_type)
 {
 	const struct rte_flow_item_vxlan *vxlan_m;
 	const struct rte_flow_item_vxlan *vxlan_v;
@@ -9282,7 +9290,12 @@ flow_dv_translate_item_vxlan(struct rte_eth_dev *dev,
 			MLX5_SET(fte_match_set_lyr_2_4, headers_v,
 				 udp_dport, dport);
 	}
-	dport = MLX5_GET16(fte_match_set_lyr_2_4, headers_v, udp_dport);
+	/*
+	 * Read the UDP dport to check if the value satisfies the VXLAN
+	 * mathing with MISC5 for CX5.
+	 */
+	if (wks->udp_dport)
+		dport = wks->udp_dport;
 	if (MLX5_ITEM_VALID(item, key_type))
 		return;
 	MLX5_ITEM_UPDATE(item, key_type, vxlan_v, vxlan_m, &nic_mask);
@@ -13589,7 +13602,7 @@ flow_dv_translate_items(struct rte_eth_dev *dev,
 				     MLX5_FLOW_LAYER_OUTER_L4_TCP;
 		break;
 	case RTE_FLOW_ITEM_TYPE_UDP:
-		flow_dv_translate_item_udp(key, items, tunnel, key_type);
+		flow_dv_translate_item_udp(key, items, tunnel, wks, key_type);
 		wks->priority = MLX5_PRIORITY_MAP_L4;
 		last_item = tunnel ? MLX5_FLOW_LAYER_INNER_L4_UDP :
 				     MLX5_FLOW_LAYER_OUTER_L4_UDP;
@@ -13610,7 +13623,7 @@ flow_dv_translate_items(struct rte_eth_dev *dev,
 		break;
 	case RTE_FLOW_ITEM_TYPE_VXLAN:
 		flow_dv_translate_item_vxlan(dev, wks->attr, key,
-					     items, tunnel, key_type);
+					     items, tunnel, wks, key_type);
 		wks->priority = MLX5_TUNNEL_PRIO_GET(rss_desc);
 		last_item = MLX5_FLOW_LAYER_VXLAN;
 		break;
