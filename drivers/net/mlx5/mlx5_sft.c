@@ -1185,7 +1185,7 @@ mlx5_sft_deactivate(struct rte_eth_dev *dev)
 {
 	struct mlx5_priv *priv = dev->data->dev_private;
 
-	if (priv->config.sft_en) {
+	if (priv->sft_en) {
 		struct rte_sft_error err;
 		mlx5_sft_stop(dev, &err);
 	}
