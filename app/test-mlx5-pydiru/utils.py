@@ -236,12 +236,16 @@ def wc_status_to_str(status):
         return 'Unknown WC status ({s})'.format(s=status)
 
 
-def poll_cq(cq, count=1):
+def poll_cq(cq, count=1, tag_value=None):
     polling_timeout = 5
     start_poll_t = time.perf_counter()
     while count > 0 and (time.perf_counter() - start_poll_t) < polling_timeout:
         nc, tmp_wcs = cq.poll(count)
         for wc in tmp_wcs:
+            if tag_value:
+                # In RAW traffic, qp_num field in WC stores the flow tag.
+                if wc.qp_num != tag_value:
+                    raise PyverbsError(f'Got flow tag {wc.qp_num} instead of expected {tag_value}.')
             if wc.status != v.IBV_WC_SUCCESS:
                 raise PyverbsRDMAError('Completion status is {s}'.
                                        format(s=wc_status_to_str(wc.status)),
@@ -259,12 +263,13 @@ def post_recv(qp, mr, msg_size, n=1):
         qp.post_recv(recv_wr)
 
 
-def send_packets(qp, mr, packets):
+def send_packets(agr_obj, packets, tag_value=None):
     for packet in packets:
-        send_sg = SGE(mr.buf, len(packet), mr.lkey)
-        mr.write(packet, len(packet))
+        send_sg = SGE(agr_obj.mr.buf, len(packet), agr_obj.mr.lkey)
+        agr_obj.mr.write(packet, len(packet))
         send_wr = SendWR(num_sge=1, sg=[send_sg])
-        qp.post_send(send_wr)
+        agr_obj.qp.post_send(send_wr)
+        poll_cq(agr_obj.cq, tag_value=tag_value)
 
 
 def validate_raw(msg_received, msg_expected, skip_idxs=None):
@@ -276,7 +281,8 @@ def validate_raw(msg_received, msg_expected, skip_idxs=None):
             raise PyverbsError(err_msg)
 
 
-def raw_traffic(client, server, num_msgs, packets, expected_packet=None, skip_idxs=None):
+def raw_traffic(client, server, num_msgs, packets, expected_packet=None, tag_value=None,
+                skip_idxs=None):
     """
     Runs raw ethernet traffic between two sides
     :param client: client side, clients base class is BaseDrResources
@@ -284,6 +290,7 @@ def raw_traffic(client, server, num_msgs, packets, expected_packet=None, skip_id
     :param num_msgs: number of msgs to send
     :param packets: packets to send.
     :param expected_packet: expected packet to receive.
+    :param tag_value: Expected flow tag.
     :param skip_idxs: List of indexes of the packets that should be skipped when
                       verifying the packet.
     :return: None
@@ -292,11 +299,11 @@ def raw_traffic(client, server, num_msgs, packets, expected_packet=None, skip_id
     expected_packet = packets[0] if expected_packet is None else expected_packet
     for _ in range(num_msgs):
         post_recv(server.wq, server.mr, server.msg_size)
-        send_packets(client.qp, client.mr, packets)
-        poll_cq(client.cq, len(packets))
-        poll_cq(server.cq)
+        send_packets(client, packets)
+        poll_cq(server.cq, tag_value=tag_value)
         msg_received = server.mr.read(server.msg_size, 0)
         validate_raw(msg_received, expected_packet, skip_idxs)
+
 
 def create_sipv4_rte_items(sip_val=PacketConsts.SRC_IP):
     mask = RteFlowItemIpv4(src_addr=bytes(4 * [0xff]))

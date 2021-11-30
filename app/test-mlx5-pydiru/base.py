@@ -17,7 +17,7 @@ from pyverbs.mr import MR
 
 from pydiru.providers.mlx5.steering.mlx5dr_matcher import Mlx5drMacherTemplate, Mlx5drMatcherAttr, Mlx5drMatcher
 from pydiru.providers.mlx5.steering.mlx5dr_action import Mlx5drRuleAction, \
-    Mlx5drActionDestTable, Mlx5drActionDestTir
+    Mlx5drActionDestTable, Mlx5drActionDestTir, Mlx5drActionTag
 from pydiru.providers.mlx5.steering.mlx5dr_context import Mlx5drContextAttr, Mlx5drContext
 from pydiru.providers.mlx5.steering.mlx5dr_table import Mlx5drTableAttr, Mlx5drTable
 from pydiru.providers.mlx5.steering.mlx5dr_rule import Mlx5drRuleAttr, Mlx5drRule
@@ -173,11 +173,13 @@ class BaseDrResources(object):
                                 root_rte_items=None):
         """
         Init the basic steering resources.
-        :param rte_items: The rte_items to use in the matchers.
+        :param rte_items: The rte_items to use in the matchers. If not set, use sipv4 rte item.
         :param table_type: The tables type.
         :param root_rte_items: rte_items to use in the root matcher. If not set,
                                use rte_items for both root and non-root matchers
         """
+        if rte_items is None:
+            rte_items = self.create_sipv4_rte_item()
         self.root_table = self.create_table(0, table_type=table_type)
         self.table = self.create_table(table_type=table_type)
         root_rte_items = root_rte_items if root_rte_items is not None else rte_items
@@ -201,6 +203,8 @@ class BaseDrResources(object):
         if action_str == 'tir':
             action = Mlx5drActionDestTir(self.dr_ctx, self.tir_dr_devx_obj,
                                          flags)
+        elif action_str == 'tag':
+            action = Mlx5drActionTag(self.dr_ctx, flags)
         else:
             raise unittest.SkipTest(f'Unsupported action {action_str}')
         return action, Mlx5drRuleAction(action)

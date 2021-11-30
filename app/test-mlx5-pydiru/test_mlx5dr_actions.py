@@ -26,3 +26,20 @@ class Mlx5drTrafficTest(PydiruTrafficTestCase):
                               Mlx5drRuleAttr(user_data=bytes(8)), self.server.dr_ctx)
         packet = gen_packet(self.server.msg_size)
         raw_traffic(self.client, self.server, self.server.num_msgs, [packet])
+
+    def test_mlx5dr_tag(self):
+        """
+        Use Tag action on the recv packets and verify that the packets is tagged.
+        """
+        rte_items = create_sipv4_rte_items(PacketConsts.SRC_IP)
+        self.server.init_steering_resources(rte_items)
+        _, tag_ra = self.server.create_rule_action('tag')
+        tag_ra.value = 0x1234
+        _, tir_ra = self.server.create_rule_action('tir')
+        self.tir_rule = Mlx5drRule(self.server.matcher, mt_idx=0, rte_items=rte_items,
+                                   rule_actions=[tag_ra, tir_ra], num_of_actions=2,
+                                   rule_attr=Mlx5drRuleAttr(user_data=bytes(8)),
+                                   dr_ctx=self.server.dr_ctx)
+        packet = gen_packet(self.server.msg_size)
+        raw_traffic(self.client, self.server, self.server.num_msgs, [packet],
+                    tag_value=0x1234)
