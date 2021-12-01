@@ -118,10 +118,10 @@ cdef class RteFlowItem(PydiruCM):
             size = sizeof(pdr.rte_flow_item_gtp_psc)
         if spec:
             self.item.spec = calloc(1, size)
-            memcpy(self.item.spec, <void *>&((<RteFlowItemEth>spec).item), size)
+            memcpy(self.item.spec, <void *>&((<RteFlowItem>spec).item), size)
         if mask:
             self.item.mask = calloc(1, size)
-            memcpy(self.item.mask, <void *>&((<RteFlowItemEth>mask).item), size)
+            memcpy(self.item.mask, <void *>&((<RteFlowItem>mask).item), size)
         self.item.last = NULL
 
     def __dealloc__(self):
