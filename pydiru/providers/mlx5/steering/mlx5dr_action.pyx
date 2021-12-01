@@ -143,3 +143,12 @@ cdef class Mlx5drRuleAction(PydiruObject):
     @value.setter
     def value(self, value):
         self.rule_action.tag.value = value
+
+    @property
+    def action(self):
+        return self.action
+
+    @action.setter
+    def action(self, Mlx5drAction value):
+        self.rule_action.action = value.action
+        self.action = value

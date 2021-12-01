@@ -7,8 +7,6 @@ from pydiru.base cimport PydiruCM, PydiruObject
 
 cdef class Mlx5drMacherTemplate(PydiruCM):
     cdef dr.mlx5dr_match_template *matcher_template
-    cdef object mlx5dr_matchers
-    cdef add_ref(self, obj)
 
 cdef class Mlx5drMatcherAttr(PydiruObject):
     cdef dr.mlx5dr_matcher_attr attr

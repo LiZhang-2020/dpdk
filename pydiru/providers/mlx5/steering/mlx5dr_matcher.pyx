@@ -35,13 +35,6 @@ cdef class Mlx5drMacherTemplate(PydiruCM):
         free(item_ptr)
         if self.matcher_template == NULL:
             raise PydiruErrno('Failed to create Mlx5drMacherTemplate')
-        self.mlx5dr_matchers = weakref.WeakSet()
-
-    cdef add_ref(self, obj):
-        if isinstance(obj, Mlx5drMatcher):
-            self.mlx5dr_matchers.add(obj)
-        else:
-            raise PydiruError('Unrecognized object type')
 
     def __dealloc__(self):
         self.close()
@@ -49,7 +42,6 @@ cdef class Mlx5drMacherTemplate(PydiruCM):
     cpdef close(self):
         if self.matcher_template != NULL:
             self.logger.debug('Closing Mlx5drMacherTemplate.')
-            close_weakrefs([self.mlx5dr_matchers])
             rc = dr.mlx5dr_match_template_destroy(self.matcher_template)
             if rc:
                 raise PydiruError('Failed to destroy Mlx5drMacherTemplate.', rc)
@@ -103,8 +95,6 @@ cdef class Mlx5drMatcher(PydiruCM):
         if self.matcher == NULL:
             raise PydiruErrno('Failed creating Mlx5drMatcher.')
         self.matcher_templates = matcher_templates[:]
-        for m in matcher_templates:
-            (<Mlx5drMacherTemplate>m).add_ref(self)
         table.add_ref(self)
         self.mlx5dr_table = table
         self.mlx5dr_rules = weakref.WeakSet()

@@ -67,7 +67,10 @@ cdef class Mlx5drRule(PydiruCM):
         if rc:
             free(rule)
             raise PydiruErrno('Failed to create Mlx5drRule.')
-        self.actions = rule_actions
+        self.actions = []
+        for ra in rule_actions:
+            self.actions.append((<Mlx5drRuleAction>ra).action)
+            (<Mlx5drRuleAction>ra).action.add_ref(self)
         self.rule = rule
         self.rule_attr = rule_attr
         self.mlx5dr_matcher = matcher
@@ -75,7 +78,7 @@ cdef class Mlx5drRule(PydiruCM):
         if dr_ctx:
             res = []
             while not res:
-                 res = dr_ctx.poll_send_queue(rule_attr.attr.queue_id, 1)
+                res = dr_ctx.poll_send_queue(rule_attr.attr.queue_id, 1)
             if <RteFlowResult>(res[0]).status != e.RTE_FLOW_Q_OP_SUCCESS:
                 raise PydiruError(f'ERROR completion returned from queue ID: {rule_attr.attr.queue_id} '
                                   f'with status: {res[0]).status}.')
