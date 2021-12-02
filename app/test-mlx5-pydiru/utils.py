@@ -15,6 +15,7 @@ from pyverbs import enums as v
 
 class TunnelType:
     GTP_U = 'GPT-U'
+    VXLAN = 'VXLAN'
 
 
 class PacketConsts:
@@ -96,6 +97,9 @@ def gen_outer_headers(msg_size, tunnel=TunnelType.GTP_U, **kwargs):
     if tunnel == TunnelType.GTP_U:
         tunnel_header_size = PacketConsts.GTPU_HEADER_SIZE
         dst_port = PacketConsts.GTP_U_PORT
+    elif tunnel == TunnelType.VXLAN:
+        tunnel_header_size = PacketConsts.VXLAN_HEADER_SIZE
+        dst_port = PacketConsts.VXLAN_PORT
 
     # IPv4 Header
     ip_total_len = msg_size + PacketConsts.UDP_HEADER_SIZE + \
@@ -129,16 +133,42 @@ def gen_outer_headers(msg_size, tunnel=TunnelType.GTP_U, **kwargs):
                                  PacketConsts.GTP_NPDU_NUMBER, PacketConsts.GTP_PSC_TYPE)
             outer += struct.pack('!BBBB', extention_header_len, (PacketConsts.GTP_PSC_PDU_TYPE << 4),
                                   gtp_psc_qfi, next_extention_type)
+    if tunnel == TunnelType.VXLAN:
+        vxlan_flags = kwargs.get('vxlan_flags', PacketConsts.VXLAN_FLAGS)
+        vxlan_vni = kwargs.get('vxlan_vni', PacketConsts.VXLAN_VNI)
+        outer += struct.pack('!II', vxlan_flags << 24, vxlan_vni << 8)
 
     return outer
 
 
-def gen_packet(msg_size, l3=PacketConsts.IP_V4, l4=PacketConsts.UDP_PROTO,
+def get_l2_header(src_mac=None, with_vlan=False, l3=PacketConsts.IP_V4):
+    """
+    Build l2 header.
+    :param src_mac: Source MAC address to use in the packet.
+    :param with_vlan: Tf True, add VLAN header to the packet
+    :param l3: Packet layer 3 type: 4 for IPv4 or 6 for IPv6
+    :return: l2 header
+    """
+    src_mac = src_mac if src_mac else bytes.fromhex(PacketConsts.SRC_MAC.replace(':', ''))
+    packet = struct.pack('!6s6s',
+                         bytes.fromhex(PacketConsts.DST_MAC.replace(':', '')), src_mac)
+    if with_vlan:
+        packet += struct.pack('!HH', PacketConsts.VLAN_TPID, (PacketConsts.VLAN_PRIO << 13) +
+                              (PacketConsts.VLAN_CFI << 12) + PacketConsts.VLAN_ID)
+    if l3 == PacketConsts.IP_V4:
+        packet += PacketConsts.ETHER_TYPE_IPV4.to_bytes(2, 'big')
+    else:
+        packet += PacketConsts.ETHER_TYPE_IPV6.to_bytes(2, 'big')
+    return packet
+
+
+def gen_packet(msg_size, l2=True, l3=PacketConsts.IP_V4, l4=PacketConsts.UDP_PROTO,
                with_vlan=False, tunnel=None, **kwargs):
     """
     Generates a Eth | IPv4 or IPv6 | UDP or TCP packet with hardcoded values in
     the headers and randomized payload.
     :param msg_size: total packet size
+    :param l2: If True, Build packet with l2 Ethernet header
     :param l3: Packet layer 3 type: 4 for IPv4 or 6 for IPv6
     :param l4: Packet layer 4 type: 'tcp' or 'udp'
     :param with_vlan: if True add VLAN header to the packet
@@ -160,31 +190,30 @@ def gen_packet(msg_size, l3=PacketConsts.IP_V4, l4=PacketConsts.UDP_PROTO,
                      PacketConsts.UDP_HEADER_SIZE + tunnel_header_size
         if kwargs.get('gtp_psc_qfi'):
             outer_size += 8
+    elif tunnel == TunnelType.VXLAN:
+        outer_size = PacketConsts.ETHER_HEADER_SIZE + PacketConsts.IPV4_HEADER_SIZE + \
+                     PacketConsts.UDP_HEADER_SIZE + PacketConsts.VXLAN_HEADER_SIZE
 
         return gen_outer_headers(outer_size, tunnel, **kwargs) + \
             gen_packet(msg_size - outer_size, l3, l4, with_vlan, **kwargs)
 
+    l2_header_size = PacketConsts.ETHER_HEADER_SIZE if l2 else 0
     l3_header_size = getattr(PacketConsts, f'IPV{str(l3)}_HEADER_SIZE')
     l4_header_size = getattr(PacketConsts, f'{l4.upper()}_HEADER_SIZE')
     payload_size = max(0, msg_size - l3_header_size - l4_header_size -
-                       PacketConsts.ETHER_HEADER_SIZE)
+                       l2_header_size)
     next_hdr = getattr(socket, f'IPPROTO_{l4.upper()}')
-    ip_total_len = msg_size - PacketConsts.ETHER_HEADER_SIZE
+    ip_total_len = msg_size - l2_header_size
 
     # Ethernet header
-    src_mac = kwargs.get('src_mac', bytes.fromhex(PacketConsts.SRC_MAC.replace(':', '')))
-    packet = struct.pack('!6s6s',
-                         bytes.fromhex(PacketConsts.DST_MAC.replace(':', '')), src_mac)
-    if with_vlan:
-        packet += struct.pack('!HH', PacketConsts.VLAN_TPID, (PacketConsts.VLAN_PRIO << 13) +
-                              (PacketConsts.VLAN_CFI << 12) + PacketConsts.VLAN_ID)
-        payload_size -= PacketConsts.VLAN_HEADER_SIZE
-        ip_total_len -= PacketConsts.VLAN_HEADER_SIZE
-
-    if l3 == PacketConsts.IP_V4:
-        packet += PacketConsts.ETHER_TYPE_IPV4.to_bytes(2, 'big')
+    if l2:
+        src_mac = kwargs.get('src_mac', bytes.fromhex(PacketConsts.SRC_MAC.replace(':', '')))
+        packet = get_l2_header(src_mac, with_vlan, l3)
+        if with_vlan:
+            payload_size -= PacketConsts.VLAN_HEADER_SIZE
+            ip_total_len -= PacketConsts.VLAN_HEADER_SIZE
     else:
-        packet += PacketConsts.ETHER_TYPE_IPV6.to_bytes(2, 'big')
+        packet = b''
 
     if l3 == PacketConsts.IP_V4:
         # IPv4 header
@@ -203,18 +232,18 @@ def gen_packet(msg_size, l3=PacketConsts.IP_V4, l4=PacketConsts.UDP_PROTO,
                        socket.inet_pton(socket.AF_INET6, PacketConsts.DST_IP6))
 
     src_port = kwargs.get('src_port', PacketConsts.SRC_PORT)
+    dst_port = kwargs.get('dst_port', PacketConsts.DST_PORT)
     if l4 == PacketConsts.UDP_PROTO:
         # UDP header
-        packet += struct.pack('!4H', src_port, PacketConsts.DST_PORT,
+        packet += struct.pack('!4H', src_port, dst_port,
                               payload_size + PacketConsts.UDP_HEADER_SIZE, 0)
     else:
         # TCP header
-        packet += struct.pack('!2H2I4H', src_port, PacketConsts.DST_PORT, 0, 0,
+        packet += struct.pack('!2H2I4H', src_port, dst_port, 0, 0,
                               PacketConsts.TCP_HEADER_SIZE_WORDS << 12,
                               PacketConsts.WINDOW_SIZE, 0, 0)
     # Payload
-    packet += str.encode('a' * payload_size)
-    return packet
+    return packet + str.encode('a' * payload_size)
 
 
 def wc_status_to_str(status):
@@ -277,7 +306,9 @@ def validate_raw(msg_received, msg_expected, skip_idxs=None):
     skip_idxs  = [] if skip_idxs is None else skip_idxs
     for i in range(size):
         if (msg_received[i] != msg_expected[i]) and i not in skip_idxs:
-            err_msg = f'Data validation failure:\nexpected {msg_expected}\n\nreceived {msg_received}'
+            exp = ''.join('{:02x} '.format(x) for x in msg_expected)
+            recv = ''.join('{:02x} '.format(x) for x in msg_received)
+            err_msg = f'Data validation failure:\nexpected {exp}\n\nreceived {recv}'
             raise PyverbsError(err_msg)
 
 

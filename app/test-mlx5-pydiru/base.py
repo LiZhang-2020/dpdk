@@ -17,7 +17,8 @@ from pyverbs.mr import MR
 
 from pydiru.providers.mlx5.steering.mlx5dr_matcher import Mlx5drMacherTemplate, Mlx5drMatcherAttr, Mlx5drMatcher
 from pydiru.providers.mlx5.steering.mlx5dr_action import Mlx5drRuleAction, \
-    Mlx5drActionDestTable, Mlx5drActionDestTir, Mlx5drActionTag, Mlx5drActionDefaultMiss
+    Mlx5drActionDestTable, Mlx5drActionDestTir, Mlx5drActionTag, Mlx5drActionDefaultMiss, \
+    Mlx5drActionReformat
 from pydiru.providers.mlx5.steering.mlx5dr_context import Mlx5drContextAttr, Mlx5drContext
 from pydiru.providers.mlx5.steering.mlx5dr_table import Mlx5drTableAttr, Mlx5drTable
 from pydiru.providers.mlx5.steering.mlx5dr_rule import Mlx5drRuleAttr, Mlx5drRule
@@ -198,8 +199,7 @@ class BaseDrResources(object):
         self.matcher = self.create_matcher(self.table, self.matcher_templates, row=MATCHER_ROW,
                                            mode=me.MLX5DR_MATCHER_RESOURCE_MODE_HTABLE)
 
-    def create_rule_action(self, action_str,
-                           flags=me.MLX5DR_ACTION_FLAG_HWS_RX):
+    def create_rule_action(self, action_str, flags=me.MLX5DR_ACTION_FLAG_HWS_RX, **kwargs):
         if action_str == 'tir':
             action = Mlx5drActionDestTir(self.dr_ctx, self.tir_dr_devx_obj,
                                          flags)
@@ -207,6 +207,13 @@ class BaseDrResources(object):
             action = Mlx5drActionTag(self.dr_ctx, flags)
         elif action_str == 'def_miss':
             action = Mlx5drActionDefaultMiss(self.dr_ctx, flags)
+        elif action_str == 'reformat':
+            ref_type = kwargs.get('ref_type', me.MLX5DR_ACTION_REFORMAT_TYPE_TNL_L2_TO_L2)
+            data = kwargs.get('data')
+            data_sz = kwargs.get('data_sz', 0)
+            log_bulk_size = kwargs.get('log_bulk_size', 0)
+            action = Mlx5drActionReformat(self.dr_ctx, ref_type, data_sz, data, log_bulk_size, flags)
+            return action, Mlx5drRuleAction(action, data=data)
         else:
             raise unittest.SkipTest(f'Unsupported action {action_str}')
         return action, Mlx5drRuleAction(action)
