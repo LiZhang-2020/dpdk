@@ -6,8 +6,8 @@ from pydiru.providers.mlx5.steering.mlx5dr_rule import Mlx5drRuleAttr, Mlx5drRul
 from pydiru.providers.mlx5.steering.mlx5dr_matcher import Mlx5drMacherTemplate
 import pydiru.providers.mlx5.steering.mlx5dr_enums as me
 
-from .utils import raw_traffic, gen_packet, PacketConsts, create_sipv4_rte_items, \
-    create_dipv4_rte_items, TunnelType, gen_outer_headers, get_l2_header
+from .utils import raw_traffic, gen_packet, PacketConsts, create_sipv4_rte_items, TunnelType, gen_outer_headers, \
+                    get_l2_header, create_dipv4_rte_items
 from .base import BaseDrResources, PydiruTrafficTestCase
 
 from .prm_structs import SetActionIn
@@ -206,3 +206,42 @@ class Mlx5drTrafficTest(PydiruTrafficTestCase):
 
     def test_mlx5dr_decap_l2(self):
         self.decap_rule_traffic()
+
+    def test_mlx5dr_drop(self):
+        """
+        Create Drop actions on RX and TX and TIR action, recv packets using TIR WQ.
+        Create 3 rules:
+        With drop action. (match ip - 2.2.2.2) on TX.
+        With drop action. (match ip - 3.3.3.3) on RX.
+        With TIR action. (match ip - 1.1.1.1) on RX.
+        Send three packets (1.1.1.1, 2.2.2.2, 3.3.3.3).
+        Expected only the third + validate data of 1.1.1.1.
+        """
+        sip_rte_items = create_sipv4_rte_items(PacketConsts.SRC_IP)
+        tx_items = create_sipv4_rte_items('2.2.2.2')
+        rx_items = create_sipv4_rte_items('3.3.3.3')
+
+        dip_rte_items = create_dipv4_rte_items(PacketConsts.DST_IP)
+        self.server.init_steering_resources(rte_items=sip_rte_items, root_rte_items=dip_rte_items)
+        self.client.init_steering_resources(rte_items=sip_rte_items, root_rte_items=dip_rte_items,
+                                            table_type=me.MLX5DR_TABLE_TYPE_NIC_TX)
+        _, rx_ra = self.server.create_rule_action('drop')
+        _, tx_ra = self.client.create_rule_action('drop', me.MLX5DR_ACTION_FLAG_HWS_TX)
+        _, tir_ra = self.server.create_rule_action('tir')
+
+        template_relaxed_match = me.MLX5DR_MATCH_TEMPLATE_FLAG_RELAXED_MATCH
+        matcher_templates = [Mlx5drMacherTemplate(dip_rte_items, flags=template_relaxed_match)]
+        tir_matcher = self.server.create_matcher(self.server.table, matcher_templates,
+                                                 mode=me.MLX5DR_MATCHER_RESOURCE_MODE_HTABLE,
+                                                 prio=2)
+        self.tir_rule = Mlx5drRule(tir_matcher, 0, dip_rte_items, [tir_ra], 1,
+                                   Mlx5drRuleAttr(user_data=bytes(8)), self.server.dr_ctx)
+        self.rx_rule = Mlx5drRule(self.server.matcher, 0, rx_items, [rx_ra], 1,
+                                  Mlx5drRuleAttr(user_data=bytes(8)), self.server.dr_ctx)
+        self.tx_rule = Mlx5drRule(self.client.matcher, 0, tx_items, [tx_ra], 1,
+                                  Mlx5drRuleAttr(user_data=bytes(8)), self.client.dr_ctx)
+        packets = []
+        for i in [3, 2, 1]:
+            src_ip = '.'.join(str(i) * 4)
+            packets.append(gen_packet(self.server.msg_size, src_ip=src_ip))
+        raw_traffic(self.client, self.server, self.server.num_msgs, packets, packets[2])

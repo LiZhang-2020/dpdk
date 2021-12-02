@@ -15,6 +15,8 @@ from pyverbs.pd import PD
 from pyverbs.cq import CQ
 from pyverbs.mr import MR
 
+from pydiru.providers.mlx5.steering.mlx5dr_action import Mlx5drRuleAction, Mlx5drActionDestTable,\
+    Mlx5drActionDrop, Mlx5drActionDestTir
 from pydiru.providers.mlx5.steering.mlx5dr_matcher import Mlx5drMacherTemplate, Mlx5drMatcherAttr, Mlx5drMatcher
 from pydiru.providers.mlx5.steering.mlx5dr_action import Mlx5drRuleAction, \
     Mlx5drActionDestTable, Mlx5drActionDestTir, Mlx5drActionTag, Mlx5drActionDefaultMiss, \
@@ -199,6 +201,13 @@ class BaseDrResources(object):
         self.matcher = self.create_matcher(self.table, self.matcher_templates, row=MATCHER_ROW,
                                            mode=me.MLX5DR_MATCHER_RESOURCE_MODE_HTABLE)
 
+    def create_second_matcher(self, rte_items):
+        template_relaxed_match = me.MLX5DR_MATCH_TEMPLATE_FLAG_RELAXED_MATCH
+        self.second_matcher_templates = [Mlx5drMacherTemplate(rte_items, flags=template_relaxed_match)]
+        self.second_matcher = \
+            self.create_matcher(self.table, self.second_matcher_templates, row=MATCHER_ROW,
+                                mode=me.MLX5DR_MATCHER_RESOURCE_MODE_HTABLE, prio=1)
+
     def create_rule_action(self, action_str, flags=me.MLX5DR_ACTION_FLAG_HWS_RX, **kwargs):
         if action_str == 'tir':
             action = Mlx5drActionDestTir(self.dr_ctx, self.tir_dr_devx_obj,
@@ -207,6 +216,8 @@ class BaseDrResources(object):
             action = Mlx5drActionTag(self.dr_ctx, flags)
         elif action_str == 'def_miss':
             action = Mlx5drActionDefaultMiss(self.dr_ctx, flags)
+        elif action_str == 'drop':
+            action = Mlx5drActionDrop(self.dr_ctx, flags)
         elif action_str == 'reformat':
             ref_type = kwargs.get('ref_type', me.MLX5DR_ACTION_REFORMAT_TYPE_TNL_L2_TO_L2)
             data = kwargs.get('data')
