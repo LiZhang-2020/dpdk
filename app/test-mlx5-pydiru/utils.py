@@ -102,9 +102,8 @@ def gen_outer_headers(msg_size, tunnel=TunnelType.GTP_U, **kwargs):
         dst_port = PacketConsts.VXLAN_PORT
 
     # IPv4 Header
-    ip_total_len = msg_size + PacketConsts.UDP_HEADER_SIZE + \
-                   PacketConsts.IPV4_HEADER_SIZE + \
-                   tunnel_header_size
+    ip_total_len = msg_size - PacketConsts.ETHER_HEADER_SIZE
+    print(f"ip total len {ip_total_len}")
     outer += struct.pack('!2B3H2BH4s4s', (PacketConsts.IP_V4 << 4) +
                          PacketConsts.IHL, 0, ip_total_len, 0,
                          PacketConsts.IP_V4_FLAGS << 13,
@@ -112,8 +111,8 @@ def gen_outer_headers(msg_size, tunnel=TunnelType.GTP_U, **kwargs):
                          socket.inet_aton(PacketConsts.SRC_IP),
                          socket.inet_aton(PacketConsts.DST_IP))
     # UDP Header
-    outer += struct.pack('!4H', PacketConsts.SRC_PORT, dst_port,
-                         msg_size + PacketConsts.UDP_HEADER_SIZE + tunnel_header_size, 0)
+    udp_len = msg_size - PacketConsts.ETHER_HEADER_SIZE - PacketConsts.IPV4_HEADER_SIZE
+    outer += struct.pack('!4H', PacketConsts.SRC_PORT, dst_port, udp_len, 0)
 
     # GTP-U Header
     if tunnel == TunnelType.GTP_U:
@@ -184,18 +183,9 @@ def gen_packet(msg_size, l2=True, l3=PacketConsts.IP_V4, l4=PacketConsts.UDP_PRO
                 QFI (QoS flow identifier) field to use in the GTP PSC header.
     :return: Bytes of the generated packet
     """
-    if tunnel == TunnelType.GTP_U:
-        tunnel_header_size = PacketConsts.GTPU_HEADER_SIZE
-        outer_size = PacketConsts.ETHER_HEADER_SIZE + PacketConsts.IPV4_HEADER_SIZE + \
-                     PacketConsts.UDP_HEADER_SIZE + tunnel_header_size
-        if kwargs.get('gtp_psc_qfi'):
-            outer_size += 8
-    elif tunnel == TunnelType.VXLAN:
-        outer_size = PacketConsts.ETHER_HEADER_SIZE + PacketConsts.IPV4_HEADER_SIZE + \
-                     PacketConsts.UDP_HEADER_SIZE + PacketConsts.VXLAN_HEADER_SIZE
-
-        return gen_outer_headers(outer_size, tunnel, **kwargs) + \
-            gen_packet(msg_size - outer_size, l3, l4, with_vlan, **kwargs)
+    if tunnel:
+        outer = gen_outer_headers(msg_size, tunnel, **kwargs)
+        return outer + gen_packet(msg_size - len(outer), l2, l3, l4, with_vlan, **kwargs)
 
     l2_header_size = PacketConsts.ETHER_HEADER_SIZE if l2 else 0
     l3_header_size = getattr(PacketConsts, f'IPV{str(l3)}_HEADER_SIZE')

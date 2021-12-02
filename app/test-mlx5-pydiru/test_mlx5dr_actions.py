@@ -7,7 +7,7 @@ from pydiru.providers.mlx5.steering.mlx5dr_matcher import Mlx5drMacherTemplate
 import pydiru.providers.mlx5.steering.mlx5dr_enums as me
 
 from .utils import raw_traffic, gen_packet, PacketConsts, create_sipv4_rte_items, \
-    create_dipv4_rte_items, TunnelType, gen_outer_headers
+    create_dipv4_rte_items, TunnelType, gen_outer_headers, get_l2_header
 from .base import BaseDrResources, PydiruTrafficTestCase
 
 from .prm_structs import SetActionIn
@@ -140,6 +140,29 @@ class Mlx5drTrafficTest(PydiruTrafficTestCase):
         raw_traffic(self.client, self.server, self.server.num_msgs, [packet1, packet2],
                     expected_packet=packet1)
 
+    def decap_rule_traffic(self, decap_type=me.MLX5DR_ACTION_REFORMAT_TYPE_TNL_L2_TO_L2):
+        tir_rte_items = create_sipv4_rte_items(PacketConsts.SRC_IP)
+        self.server.init_steering_resources(rte_items=tir_rte_items)
+        _, tir_ra = self.server.create_rule_action('tir')
+        outer_size = PacketConsts.ETHER_HEADER_SIZE + PacketConsts.IPV4_HEADER_SIZE + \
+                     PacketConsts.UDP_HEADER_SIZE + PacketConsts.VXLAN_HEADER_SIZE
+        outer = gen_outer_headers(self.server.msg_size, tunnel=TunnelType.VXLAN)
+        if decap_type == me.MLX5DR_ACTION_REFORMAT_TYPE_TNL_L3_TO_L2:
+            l2_hdr = get_l2_header()
+            inner_len = self.server.msg_size - len(outer) - len(l2_hdr)
+            inner = gen_packet(inner_len, l2=False)
+            decap_a, decap_ra = self.server.create_rule_action('reformat', ref_type=decap_type,
+                                                               data=l2_hdr, data_sz=len(l2_hdr),
+                                                               bulk_size=12)
+        else:
+            inner_len = self.server.msg_size - len(outer)
+            inner = gen_packet(inner_len)
+            decap_a, decap_ra = self.server.create_rule_action('reformat')
+        packet = outer + inner
+        self.tir_rule = Mlx5drRule(self.server.matcher, 0, tir_rte_items, [decap_ra, tir_ra], 2,
+                                   Mlx5drRuleAttr(user_data=bytes(8)), self.server.dr_ctx)
+        raw_traffic(self.client, self.server, self.server.num_msgs, [packet], inner)
+
     def encap_rule_traffic(self, encap_type=me.MLX5DR_ACTION_REFORMAT_TYPE_L2_TO_TNL_L2):
         """
         Execute traffic with TX table rules and encap l2/l3 action
@@ -148,9 +171,7 @@ class Mlx5drTrafficTest(PydiruTrafficTestCase):
         self.server.init_steering_resources(rte_items=tir_rte_items)
         self.client.init_steering_resources(rte_items=tir_rte_items,
                                             table_type=me.MLX5DR_TABLE_TYPE_NIC_TX)
-        outer_size = PacketConsts.ETHER_HEADER_SIZE + PacketConsts.IPV4_HEADER_SIZE + \
-                     PacketConsts.UDP_HEADER_SIZE + PacketConsts.VXLAN_HEADER_SIZE
-        encap_data = gen_outer_headers(outer_size, tunnel=TunnelType.VXLAN)
+        encap_data = gen_outer_headers(self.server.msg_size, tunnel=TunnelType.VXLAN)
         _, tir_ra = self.server.create_rule_action('tir')
         _, encap_ra = self.client.create_rule_action('reformat', me.MLX5DR_ACTION_FLAG_HWS_TX,
                                                      ref_type=encap_type, data=encap_data,
@@ -182,3 +203,6 @@ class Mlx5drTrafficTest(PydiruTrafficTestCase):
         Execute traffic with TX table rules and encap l3 action
         """
         self.encap_rule_traffic(me.MLX5DR_ACTION_REFORMAT_TYPE_L2_TO_TNL_L3)
+
+    def test_mlx5dr_decap_l2(self):
+        self.decap_rule_traffic()
