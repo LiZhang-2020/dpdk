@@ -95,15 +95,12 @@ def gen_outer_headers(msg_size, tunnel=TunnelType.GTP_U, **kwargs):
     outer += PacketConsts.ETHER_TYPE_IPV4.to_bytes(2, 'big')
 
     if tunnel == TunnelType.GTP_U:
-        tunnel_header_size = PacketConsts.GTPU_HEADER_SIZE
         dst_port = PacketConsts.GTP_U_PORT
     elif tunnel == TunnelType.VXLAN:
-        tunnel_header_size = PacketConsts.VXLAN_HEADER_SIZE
         dst_port = PacketConsts.VXLAN_PORT
 
     # IPv4 Header
     ip_total_len = msg_size - PacketConsts.ETHER_HEADER_SIZE
-    print(f"ip total len {ip_total_len}")
     outer += struct.pack('!2B3H2BH4s4s', (PacketConsts.IP_V4 << 4) +
                          PacketConsts.IHL, 0, ip_total_len, 0,
                          PacketConsts.IP_V4_FLAGS << 13,
