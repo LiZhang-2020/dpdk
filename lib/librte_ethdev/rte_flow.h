@@ -33,6 +33,7 @@
 #include <rte_mbuf.h>
 #include <rte_mbuf_dyn.h>
 #include <rte_meter.h>
+#include <rte_gre.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -593,6 +594,13 @@ enum rte_flow_item_type {
 	 * @see struct rte_flow_item_flex.
 	 */
 	RTE_FLOW_ITEM_TYPE_FLEX,
+
+	/**
+	 * Matches GRE optional fields.
+	 *
+	 * See struct rte_flow_item_gre_opt.
+	 */
+	RTE_FLOW_ITEM_TYPE_GRE_OPTION,
 };
 
 /**
@@ -1085,6 +1093,17 @@ static const struct rte_flow_item_gre rte_flow_item_gre_mask = {
 	.protocol = RTE_BE16(0xffff),
 };
 #endif
+
+/**
+ * RTE_FLOW_ITEM_TYPE_GRE_OPTION.
+ *
+ * Matches GRE optional fields in header.
+ */
+struct rte_flow_item_gre_opt {
+	struct rte_gre_hdr_opt_checksum_rsvd checksum_rsvd;
+	struct rte_gre_hdr_opt_key key;
+	struct rte_gre_hdr_opt_sequence sequence;
+};
 
 /**
  * RTE_FLOW_ITEM_TYPE_FUZZY
