@@ -210,8 +210,12 @@ _mlx5_list_register(struct mlx5_list_inconst *l_inconst,
 	}
 	/* 3. Prepare new entry for global list and for cache. */
 	entry = l_const->cb_create(l_const->ctx, ctx);
-	if (unlikely(!entry))
-		return NULL;
+	if (unlikely(!entry)) {
+		if (l_const->lcores_share)
+			goto lookup_again;
+		else
+			return NULL;
+	}
 	entry->ref_cnt = 1u;
 	if (!l_const->lcores_share) {
 		entry->lcore_idx = (uint32_t)lcore_index;
@@ -231,6 +235,7 @@ _mlx5_list_register(struct mlx5_list_inconst *l_inconst,
 	local_entry->ref_cnt = 1u;
 	local_entry->gentry = entry;
 	local_entry->lcore_idx = (uint32_t)lcore_index;
+lookup_again:
 	rte_rwlock_write_lock(&l_inconst->lock);
 	/* 4. Make sure the same entry was not created before the write lock. */
 	if (unlikely(prev_gen_cnt != l_inconst->gen_cnt)) {
@@ -242,12 +247,22 @@ _mlx5_list_register(struct mlx5_list_inconst *l_inconst,
 		if (unlikely(oentry)) {
 			/* 4.5. Found real race!!, reuse the old entry. */
 			rte_rwlock_write_unlock(&l_inconst->lock);
-			l_const->cb_remove(l_const->ctx, entry);
-			l_const->cb_clone_free(l_const->ctx, local_entry);
+			if (entry)
+				l_const->cb_remove(l_const->ctx, entry);
+			if (local_entry)
+				l_const->cb_clone_free(l_const->ctx,
+						       local_entry);
 			return mlx5_list_cache_insert(l_inconst, l_const,
 						      lcore_index,
 						      oentry, ctx);
+		} else if (!entry) {
+			rte_rwlock_write_unlock(&l_inconst->lock);
+			return NULL;
 		}
+	}
+	if (unlikely(!entry)) {
+		rte_rwlock_write_unlock(&l_inconst->lock);
+		return NULL;
 	}
 	/* 5. Update lists. */
 	LIST_INSERT_HEAD(&l_inconst->cache[MLX5_LIST_GLOBAL]->h, entry, next);
