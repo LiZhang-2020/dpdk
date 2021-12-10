@@ -110,6 +110,9 @@ flow_hw_register_tir_action(struct rte_eth_dev *dev,
 		memcpy(rss_desc.key,
 		       !rss->key ? rss_hash_default_key : rss->key,
 		       MLX5_RSS_HASH_KEY_LEN);
+		rss_desc.key_len = MLX5_RSS_HASH_KEY_LEN;
+		rss_desc.types = !rss->types ? ETH_RSS_IP : rss->types;
+		flow_dv_hashfields_set(0, &rss_desc, &rss_desc.hash_fields);
 		flow_dv_action_rss_l34_hash_adjust(rss->types,
 						   &rss_desc.hash_fields);
 		if (rss->level > 1) {
