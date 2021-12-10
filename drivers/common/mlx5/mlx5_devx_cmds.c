@@ -1042,6 +1042,9 @@ mlx5_devx_cmd_query_hca_attr(void *ctx,
 	attr->flow.tunnel_header_0_1 = MLX5_GET
 		(flow_table_nic_cap, hcattr,
 		 ft_field_support_2_nic_receive.tunnel_header_0_1);
+	attr->flow.tunnel_header_2_3 = MLX5_GET
+		(flow_table_nic_cap, hcattr,
+		 ft_field_support_2_nic_receive.tunnel_header_2_3);
 	attr->pkt_integrity_match = mlx5_devx_query_pkt_integrity_match(hcattr);
 	/* Query HCA offloads for Ethernet protocol. */
 	hcattr = mlx5_devx_get_hca_cap(ctx, in, out, &rc,

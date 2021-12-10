@@ -479,6 +479,16 @@ Limitations
 
 - The NIC Egress flow on representor port is not supported.
 
+- Match on GRE header supports the following fields:
+
+  - c_rsvd0_v: C bit, K bit, S bit
+  - protocol type
+  - Checksum
+  - Key
+  - Sequence
+
+  Matching on checksum and sequence needs OFED 5.6+.
+
 Statistics
 ----------
 

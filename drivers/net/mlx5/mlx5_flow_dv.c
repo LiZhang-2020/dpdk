@@ -5965,6 +5965,13 @@ flow_dv_validate(struct rte_eth_dev *dev, const struct rte_flow_attr *attr,
 			gre_item = items;
 			last_item = MLX5_FLOW_LAYER_GRE;
 			break;
+		case RTE_FLOW_ITEM_TYPE_GRE_OPTION:
+			ret = mlx5_flow_validate_item_gre_option(dev, items, item_flags,
+							  attr, gre_item, error);
+			if (ret < 0)
+				return ret;
+			last_item = MLX5_FLOW_LAYER_GRE;
+			break;
 		case RTE_FLOW_ITEM_TYPE_NVGRE:
 			ret = mlx5_flow_validate_item_nvgre(items, item_flags,
 							    next_protocol,
@@ -7689,6 +7696,103 @@ flow_dv_translate_item_gre(void *key, const struct rte_flow_item *item,
 	}
 	MLX5_SET(fte_match_set_misc, misc_v, gre_protocol,
 		 protocol_m & protocol_v);
+}
+
+/**
+ * Add GRE optional items to value.
+ *
+ * @param[in, out] key
+ *   Flow matcher value.
+ * @param[in] item
+ *   Flow pattern to translate.
+ * @param[in] gre_item
+ *   Pointer to gre_item.
+ * @param[in] pattern_flags
+ *   Accumulated pattern flags.
+ *  @param[in] key_type
+ *   Set flow matcher mask or value.
+ */
+static void
+flow_dv_translate_item_gre_option(void *key, const struct rte_flow_item *item,
+				  const struct rte_flow_item *gre_item,
+				  uint64_t pattern_flags, uint32_t key_type)
+{
+	void *misc5_v = MLX5_ADDR_OF(fte_match_param, key, misc_parameters_5);
+	const struct rte_flow_item_gre_opt *option_m = item->mask;
+	const struct rte_flow_item_gre_opt *option_v = item->spec;
+	const struct rte_flow_item_gre *gre_m = gre_item->mask;
+	const struct rte_flow_item_gre *gre_v = gre_item->spec;
+	static const struct rte_flow_item_gre empty_gre = {0};
+	struct rte_flow_item gre_key_item;
+	uint16_t c_rsvd0_ver_m, c_rsvd0_ver_v;
+	uint16_t protocol_m, protocol_v;
+
+	/*
+	 * If only match key field, keep using misc for matching.
+	 * If need to match checksum or sequence, using misc5 and do
+	 * not need using misc.
+	 */
+	if (!(option_m->sequence.sequence ||
+	      option_m->checksum_rsvd.checksum)) {
+		flow_dv_translate_item_gre(key, gre_item, pattern_flags,
+					   key_type);
+		gre_key_item.spec = &option_v->key.key;
+		gre_key_item.mask = &option_m->key.key;
+		flow_dv_translate_item_gre_key(key, &gre_key_item, key_type);
+		return;
+	}
+	if (!gre_v) {
+		gre_v = &empty_gre;
+		gre_m = &empty_gre;
+	} else {
+		if (!gre_m)
+			gre_m = &rte_flow_item_gre_mask;
+	}
+	protocol_v = gre_v->protocol;
+	protocol_m = gre_m->protocol;
+	if (!protocol_m) {
+		/* Force next protocol to prevent matchers duplication */
+		uint16_t ether_type =
+			mlx5_translate_tunnel_etypes(pattern_flags);
+		if (ether_type) {
+			protocol_v = rte_be_to_cpu_16(ether_type);
+			protocol_m = UINT16_MAX;
+		}
+	}
+	c_rsvd0_ver_v = gre_v->c_rsvd0_ver;
+	c_rsvd0_ver_m = gre_m->c_rsvd0_ver;
+	if (option_m->sequence.sequence) {
+		c_rsvd0_ver_v |= RTE_BE16(0x1000);
+		c_rsvd0_ver_m |= RTE_BE16(0x1000);
+	}
+	if (option_m->key.key) {
+		c_rsvd0_ver_v |= RTE_BE16(0x2000);
+		c_rsvd0_ver_m |= RTE_BE16(0x2000);
+	}
+	if (option_m->checksum_rsvd.checksum) {
+		c_rsvd0_ver_v |= RTE_BE16(0x8000);
+		c_rsvd0_ver_m |= RTE_BE16(0x8000);
+	}
+	if (key_type & MLX5_SET_MATCHER_M) {
+		c_rsvd0_ver_v = c_rsvd0_ver_m;
+		protocol_v = protocol_m;
+		option_v = option_m;
+	}
+	/*
+	 * Hardware parses GRE optional field into the fixed location,
+	 * do not need to adjust the tunnel dword indices.
+	 */
+	MLX5_SET(fte_match_set_misc5, misc5_v, tunnel_header_0,
+		 rte_be_to_cpu_32((c_rsvd0_ver_v | protocol_v << 16) &
+				  (c_rsvd0_ver_m | protocol_m << 16)));
+	MLX5_SET(fte_match_set_misc5, misc5_v, tunnel_header_1,
+		 rte_be_to_cpu_32(option_v->checksum_rsvd.checksum &
+				  option_m->checksum_rsvd.checksum));
+	MLX5_SET(fte_match_set_misc5, misc5_v, tunnel_header_2,
+		 rte_be_to_cpu_32(option_v->key.key & option_m->key.key));
+	MLX5_SET(fte_match_set_misc5, misc5_v, tunnel_header_3,
+		 rte_be_to_cpu_32(option_v->sequence.sequence &
+				  option_m->sequence.sequence));
 }
 
 /**
@@ -12125,6 +12229,11 @@ flow_dv_translate_items(struct rte_eth_dev *dev,
 		flow_dv_translate_item_gre_key(key, items, key_type);
 		last_item = MLX5_FLOW_LAYER_GRE_KEY;
 		break;
+	case RTE_FLOW_ITEM_TYPE_GRE_OPTION:
+		wks->priority = MLX5_TUNNEL_PRIO_GET(rss_desc);
+		last_item = MLX5_FLOW_LAYER_GRE;
+		wks->tunnel_item = items;
+		break;
 	case RTE_FLOW_ITEM_TYPE_NVGRE:
 		wks->priority = MLX5_TUNNEL_PRIO_GET(rss_desc);
 		wks->tunnel_item = items;
@@ -12271,6 +12380,7 @@ flow_dv_translate_items_hws(const struct rte_flow_item *items,
 		.attr = &rattr,
 		.rss_desc = &rss_desc,
 	};
+	const struct rte_flow_item *gre_item = NULL;
 	int ret;
 
 	for (; items->type != RTE_FLOW_ITEM_TYPE_END; items++) {
@@ -12282,6 +12392,8 @@ flow_dv_translate_items_hws(const struct rte_flow_item *items,
 			items, &wks, key, key_type,  NULL);
 		if (ret)
 			return ret;
+		if (items->type == RTE_FLOW_ITEM_TYPE_GRE)
+			gre_item = items;
 	}
 	if (wks.item_flags & MLX5_FLOW_LAYER_VXLAN_GPE) {
 		flow_dv_translate_item_vxlan_gpe(key,
@@ -12299,6 +12411,12 @@ flow_dv_translate_items_hws(const struct rte_flow_item *items,
 						   wks.tunnel_item,
 						   wks.item_flags,
 						   key_type);
+		} else if (wks.tunnel_item->type == RTE_FLOW_ITEM_TYPE_GRE_OPTION) {
+			flow_dv_translate_item_gre_option(key,
+							  wks.tunnel_item,
+							  gre_item,
+							  wks.item_flags,
+							  key_type);
 		} else if (wks.tunnel_item->type == RTE_FLOW_ITEM_TYPE_NVGRE) {
 			flow_dv_translate_item_nvgre(key,
 						     wks.tunnel_item,
@@ -12358,6 +12476,7 @@ flow_dv_translate_items_sws(struct rte_eth_dev *dev,
 	};
 	struct mlx5_dv_matcher_workspace wks_m = wks;
 	const struct rte_flow_item *integrity_items[2] = {NULL, NULL};
+	const struct rte_flow_item *gre_item = NULL;
 	int tunnel;
 	int ret;
 
@@ -12401,6 +12520,8 @@ flow_dv_translate_items_sws(struct rte_eth_dev *dev,
 				match_value, MLX5_SET_MATCHER_SW_V, error);
 			if (ret)
 				return ret;
+			if (items->type == RTE_FLOW_ITEM_TYPE_GRE)
+				gre_item = items;
 			break;
 		}
 		wks.item_flags |= wks.last_item;
@@ -12451,6 +12572,17 @@ flow_dv_translate_items_sws(struct rte_eth_dev *dev,
 						   wks.tunnel_item,
 						   wks.item_flags,
 						   MLX5_SET_MATCHER_SW_V);
+		} else if (wks.tunnel_item->type == RTE_FLOW_ITEM_TYPE_GRE_OPTION) {
+			flow_dv_translate_item_gre_option(match_mask,
+							  wks.tunnel_item,
+							  gre_item,
+							  wks.item_flags,
+							  MLX5_SET_MATCHER_SW_M);
+			flow_dv_translate_item_gre_option(match_value,
+							  wks.tunnel_item,
+							  gre_item,
+							  wks.item_flags,
+							  MLX5_SET_MATCHER_SW_V);
 		} else if (wks.tunnel_item->type == RTE_FLOW_ITEM_TYPE_NVGRE) {
 			flow_dv_translate_item_nvgre(match_mask,
 						     wks.tunnel_item,

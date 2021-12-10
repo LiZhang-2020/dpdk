@@ -1408,6 +1408,8 @@ err_secondary:
 		}
 		if (config->hca_attr.flow.tunnel_header_0_1)
 			sh->tunnel_header_0_1 = 1;
+		if (config->hca_attr.flow.tunnel_header_2_3)
+			sh->tunnel_header_2_3 = 1;
 #endif
 #ifdef HAVE_MLX5_DR_CREATE_ACTION_ASO
 		if (config->hca_attr.flow_hit_aso &&
