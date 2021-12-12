@@ -1357,7 +1357,7 @@ mlx5_free_table_hash_list(struct mlx5_priv *priv)
 	struct mlx5_dev_ctx_shared *sh = priv->sh;
 	struct mlx5_hlist **tbls = (priv->config.dv_flow_en == 2) ?
 				   &sh->groups : &sh->flow_tbls;
-	if (*tbls)
+	if (*tbls == NULL)
 		return;
 	mlx5_hlist_destroy(*tbls);
 	*tbls = NULL;
