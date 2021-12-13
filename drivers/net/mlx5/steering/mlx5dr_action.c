@@ -151,14 +151,14 @@ static void mlx5dr_action_fill_stc_attr(struct mlx5dr_action *action,
 		attr->action_type = MLX5_IFC_STC_ACTION_TYPE_HEADER_REMOVE;
 		attr->action_offset = MLX5DR_ACTION_OFFSET_DW5;
 		attr->remove_header.decap = 1;
-		attr->remove_header.start_anchor = MLX5_HEADER_ANCHOR_MAC_START;
+		attr->remove_header.start_anchor = MLX5_HEADER_ANCHOR_PACKET_START;
 		attr->remove_header.end_anchor = MLX5_HEADER_ANCHOR_INNER_MAC;
 		break;
 	case MLX5DR_ACTION_TYP_L2_TO_TNL_L2:
 		attr->action_type = MLX5_IFC_STC_ACTION_TYPE_HEADER_INSERT;
 		attr->action_offset = MLX5DR_ACTION_OFFSET_DW6;
 		attr->reformat.encap = 1;
-		attr->reformat.insert_anchor = MLX5_HEADER_ANCHOR_MAC_START;
+		attr->reformat.insert_anchor = MLX5_HEADER_ANCHOR_PACKET_START;
 		attr->reformat.arg_id = action->reformat.arg_obj->id;
 		attr->reformat.header_size = action->reformat.header_size;
 		break;
