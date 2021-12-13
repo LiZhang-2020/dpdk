@@ -2632,7 +2632,8 @@ static const struct token token_list[] = {
 	[ACTION_TEMPLATE_CREATE_ID] = {
 		.name = "action_template_id",
 		.help = "specify a action template id to create",
-		.next = NEXT(next_at_attr,
+		.next = NEXT(NEXT_ENTRY(ACTION_TEMPLATE_MASK),
+			     NEXT_ENTRY(ACTION_TEMPLATE_SPEC),
 			     NEXT_ENTRY(ACTION_TEMPLATE_ID)),
 		.args = ARGS(ARGS_ENTRY(struct buffer, args.vc.at_id)),
 	},
@@ -4541,7 +4542,6 @@ static const struct token token_list[] = {
 		.name = "end",
 		.help = "end list of actions",
 		.priv = PRIV_ACTION(END, 0),
-		.next = NEXT(NEXT_ENTRY(ACTION_TEMPLATE_MASK, END)),
 		.call = parse_vc,
 	},
 	[ACTION_VOID] = {
