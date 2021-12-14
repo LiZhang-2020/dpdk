@@ -11,7 +11,7 @@
 
 /* We calculated that concatenating a collision table to the main table with
  * 3% of the main table rows will be enough resources for high insertion
- * success probabilty.
+ * success probability.
  *
  * The calculation: log2( 2^x * 3 / 100) = log(2^x) + log(3/100) = x - 5.05 ~ 5
  */
