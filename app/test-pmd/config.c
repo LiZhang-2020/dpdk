@@ -2871,6 +2871,8 @@ port_queue_flow_dequeue(portid_t port_id, queueid_t queue_id)
 	struct rte_flow_q_op_res *res;
 	struct rte_flow_error error;
 	int ret = 0;
+	int success = 0;
+	int i;
 
 	if (port_id_is_invalid(port_id, ENABLED_WARN) ||
 	    port_id == (portid_t)RTE_PORT_ALL)
@@ -2883,15 +2885,26 @@ port_queue_flow_dequeue(portid_t port_id, queueid_t queue_id)
 	}
 
 	res = malloc(sizeof(struct rte_flow_q_op_res) * port->queue_sz);
+	if (!res) {
+		printf("Failed to allocate memory for dequeue results\n");
+		return -ENOMEM;
+	}
+
 	memset(&error, 0x66, sizeof(error));
 	ret = rte_flow_q_dequeue(port_id, queue_id, res,
 				 port->queue_sz, &error);
 	if (ret < 0) {
-		printf("Failed to dequeue a queue\n");
+		printf("Failed to dequeue a queue: %s\n", strerror(-ret));
 		free(res);
-		return -EINVAL;
+		return ret;
 	}
-	printf("Queue #%u dequeued %u operations\n", queue_id, ret);
+
+	for (i = 0; i < ret; i++) {
+		if (res[i].status == RTE_FLOW_Q_OP_SUCCESS)
+			success++;
+	}
+	printf("Queue #%u dequeued %u operations (%u failed, %u succeeded)\n",
+		queue_id, ret, ret - success, success);
 	free(res);
 	return ret;
 }
