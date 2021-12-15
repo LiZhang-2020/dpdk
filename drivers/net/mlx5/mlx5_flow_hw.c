@@ -385,7 +385,12 @@ flow_hw_actions_translate(struct rte_eth_dev *dev,
 		case RTE_FLOW_ACTION_TYPE_MARK:
 			mark = true;
 			acts->mark = true;
-			if (__flow_hw_append_act_data_tag(priv, acts,
+			if (masks->conf)
+				acts->rule_acts[i].tag.value =
+					mlx5_flow_mark_set
+					(((const struct rte_flow_action_mark *)
+					(masks->conf))->id);
+			else if (__flow_hw_append_act_data_tag(priv, acts,
 				actions->type, actions - action_start, i))
 				goto err;
 			acts->rule_acts[i++].action =
