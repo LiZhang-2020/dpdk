@@ -34,6 +34,10 @@ static uint32_t mlx5_hw_dr_ft_flag[2][MLX5DR_TABLE_TYPE_MAX] = {
 	},
 };
 
+static int
+flow_hw_q_drain(struct rte_eth_dev *dev, uint32_t queue,
+		struct rte_flow_error *error);
+
 static void
 flow_hw_release_jump(struct rte_eth_dev *dev, struct mlx5_hw_jump_action *jump)
 {
@@ -1236,6 +1240,15 @@ flow_hw_q_flow_flush(struct rte_eth_dev *dev,
 	int ret, i = 0, j;
 	uint32_t pending_rules = 0, flush_thr;
 
+	/*
+	 * Ensure to drain and dequeue all the enqueued flows in case user
+	 * forgot to dequeue. Or the enqueued created flows will be leaked.
+	 * The forgot dequeue will also cause flow flush get extra CQEs as
+	 * expected and pending_rules be minus value.
+	 */
+	flow_hw_q_drain(dev, queue, error);
+	while (priv->hw_q[queue].size != priv->hw_q[queue].job_idx)
+		flow_hw_q_dequeue(dev, queue, comp, BURST_THR, error);
 	flush_thr = RTE_MIN(rte_align32prevpow2(hw_q->size), BURST_THR);
 	flow_next = LIST_FIRST(&hw_q->flow_list);
 	while (flow_next) {
@@ -1259,6 +1272,10 @@ flow_hw_q_flow_flush(struct rte_eth_dev *dev,
 			for (j = 0; j < ret; j++) {
 				if (comp[j].status == RTE_FLOW_Q_OP_ERROR)
 					return -1;
+			}
+			if ((uint32_t)ret > pending_rules) {
+				DRV_LOG(WARNING, "Flow flush get extra CQE.");
+				return -1;
 			}
 			pending_rules -= ret;
 		}
