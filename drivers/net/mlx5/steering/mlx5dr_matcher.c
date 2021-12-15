@@ -543,8 +543,7 @@ static int mlx5dr_matcher_init_root(struct mlx5dr_matcher *matcher)
 	/* On root table matcher, only a single match template is supported */
 	ret = flow_dv_translate_items_hws(matcher->mt[0]->items,
 					  &flow_attr, mask->match_buf,
-					  MLX5_SET_MATCHER_HS_M,
-					  &matcher->mt[0]->item_flags,
+					  MLX5_SET_MATCHER_HS_M, NULL,
 					  &match_criteria,
 					  &rte_error);
 	if (ret) {
@@ -615,12 +614,6 @@ mlx5dr_matcher_check_template(uint8_t num_of_mt, bool is_root)
 	}
 
 	return 0;
-}
-
-uint64_t mlx5dr_matcher_get_template_item_flags(struct mlx5dr_matcher *matcher,
-						uint8_t mt_idx)
-{
-	return matcher->mt[mt_idx]->item_flags;
 }
 
 struct mlx5dr_matcher *

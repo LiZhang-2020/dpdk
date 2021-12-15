@@ -12251,7 +12251,7 @@ flow_dv_translate_items(struct rte_eth_dev *dev,
 int
 flow_dv_translate_items_hws(const struct rte_flow_item *items,
 			    struct mlx5_flow_attr *attr, void *key,
-			    uint32_t key_type, uint64_t *item_flags,
+			    uint32_t key_type, uint32_t *item_flags,
 			    uint8_t *match_criteria,
 			    struct rte_flow_error *error)
 {

@@ -670,7 +670,6 @@ mlx5dr_definer_conv_items_to_hl(struct mlx5dr_context *ctx,
 			j++;
 		}
 	}
-	mt->item_flags = item_flags;
 
 	return 0;
 }
