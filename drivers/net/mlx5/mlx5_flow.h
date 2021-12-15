@@ -1166,6 +1166,7 @@ struct rte_flow_item_template {
 	/* Template attributes. */
 	struct rte_flow_item_template_attr attr;
 	struct mlx5dr_match_template *mt; /* mlx5 match template. */
+	uint64_t item_flags; /* Item layer flags. */
 	uint32_t refcnt;  /* Reference counter. */
 };
 

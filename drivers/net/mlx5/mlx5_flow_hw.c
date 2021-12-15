@@ -38,6 +38,72 @@ static int
 flow_hw_q_drain(struct rte_eth_dev *dev, uint32_t queue,
 		struct rte_flow_error *error);
 
+/**
+ * Generate the pattern item flags.
+ * Will be used for shared RSS action.
+ *
+ * @param[in] items
+ *   Pointer to the list of items.
+ *
+ * @return
+ *   Item flags.
+ */
+static uint64_t
+flow_hw_rss_item_flags_get(const struct rte_flow_item items[])
+{
+	uint64_t item_flags = 0;
+	uint64_t last_item = 0;
+
+	for (; items->type != RTE_FLOW_ITEM_TYPE_END; items++) {
+		int tunnel = !!(item_flags & MLX5_FLOW_LAYER_TUNNEL);
+		int item_type = items->type;
+
+		switch (item_type) {
+		case RTE_FLOW_ITEM_TYPE_IPV4:
+			last_item = tunnel ? MLX5_FLOW_LAYER_INNER_L3_IPV4 :
+					     MLX5_FLOW_LAYER_OUTER_L3_IPV4;
+			break;
+		case RTE_FLOW_ITEM_TYPE_IPV6:
+			last_item = tunnel ? MLX5_FLOW_LAYER_INNER_L3_IPV6 :
+					     MLX5_FLOW_LAYER_OUTER_L3_IPV6;
+			break;
+		case RTE_FLOW_ITEM_TYPE_TCP:
+			last_item = tunnel ? MLX5_FLOW_LAYER_INNER_L4_TCP :
+					     MLX5_FLOW_LAYER_OUTER_L4_TCP;
+			break;
+		case RTE_FLOW_ITEM_TYPE_UDP:
+			last_item = tunnel ? MLX5_FLOW_LAYER_INNER_L4_UDP :
+					     MLX5_FLOW_LAYER_OUTER_L4_UDP;
+			break;
+		case RTE_FLOW_ITEM_TYPE_GRE:
+			last_item = MLX5_FLOW_LAYER_GRE;
+			break;
+		case RTE_FLOW_ITEM_TYPE_NVGRE:
+			last_item = MLX5_FLOW_LAYER_GRE;
+			break;
+		case RTE_FLOW_ITEM_TYPE_VXLAN:
+			last_item = MLX5_FLOW_LAYER_VXLAN;
+			break;
+		case RTE_FLOW_ITEM_TYPE_VXLAN_GPE:
+			last_item = MLX5_FLOW_LAYER_VXLAN_GPE;
+			break;
+		case RTE_FLOW_ITEM_TYPE_GENEVE:
+			last_item = MLX5_FLOW_LAYER_GENEVE;
+			break;
+		case RTE_FLOW_ITEM_TYPE_MPLS:
+			last_item = MLX5_FLOW_LAYER_MPLS;
+			break;
+		case RTE_FLOW_ITEM_TYPE_GTP:
+			last_item = MLX5_FLOW_LAYER_GTP;
+			break;
+		default:
+			break;
+		}
+		item_flags |= last_item;
+	}
+	return item_flags;
+}
+
 static void
 flow_hw_release_jump(struct rte_eth_dev *dev, struct mlx5_hw_jump_action *jump)
 {
@@ -854,8 +920,7 @@ flow_hw_shared_action_construct(struct rte_eth_dev *dev,
 		act_data.shared_rss.types = !shared_rss->origin.types ?
 					    ETH_RSS_IP :
 					    shared_rss->origin.types;
-		item_flags = mlx5dr_matcher_get_template_item_flags
-			     (table->matcher, it_idx);
+		item_flags = table->its[it_idx]->item_flags;
 		if (flow_hw_shared_action_get
 				(dev, acts, &act_data, item_flags, rule_act))
 			return -1;
@@ -962,8 +1027,7 @@ flow_hw_actions_construct(struct rte_eth_dev *dev,
 			job->flow->fate_type = MLX5_FLOW_FATE_QUEUE;
 			break;
 		case MLX5_RTE_FLOW_ACTION_TYPE_RSS:
-			item_flags = mlx5dr_matcher_get_template_item_flags
-				     (table->matcher, it_idx);
+			item_flags = table->its[it_idx]->item_flags;
 			if (flow_hw_shared_action_get
 				(dev, hw_acts, act_data, item_flags,
 				 &rule_acts[act_data->action_dst]))
@@ -1549,6 +1613,7 @@ flow_hw_item_template_create(struct rte_eth_dev *dev,
 		mlx5_free(it);
 		return NULL;
 	}
+	it->item_flags = flow_hw_rss_item_flags_get(items);
 	__atomic_fetch_add(&it->refcnt, 1, __ATOMIC_RELAXED);
 	LIST_INSERT_HEAD(&priv->flow_hw_itt, it, next);
 	return it;
