@@ -172,6 +172,8 @@ struct port_table {
 	struct port_table *next; /**< Next table in list. */
 	struct port_table *tmp; /**< Temporary linking. */
 	uint32_t id; /**< Table ID. */
+	uint32_t nb_item_templates; /**< Number of item templates. */
+	uint32_t nb_action_templates; /**< Number of action templates. */
 	struct rte_flow_table *table; /**< PMD opaque template object */
 };
 

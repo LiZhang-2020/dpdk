@@ -124,7 +124,6 @@ enum index {
 	QUEUE_DESTROY,
 	QUEUE_INDIRECT_ACTION,
 
-
 	/* Queue create arguments. */
 	QUEUE_CREATE_ID,
 	QUEUE_CREATE_DRAIN,
@@ -2799,18 +2798,18 @@ static const struct token token_list[] = {
 	},
 	[QUEUE_ITEM_TEMPLATE] = {
 		.name = "item_template",
-		.help = "specify item template id",
+		.help = "specify item template index",
 		.next = NEXT(NEXT_ENTRY(QUEUE_ACTION_TEMPLATE),
-			     NEXT_ENTRY(ITEM_TEMPLATE_ID)),
+			     NEXT_ENTRY(UNSIGNED)),
 		.args = ARGS(ARGS_ENTRY(struct buffer,
 					args.vc.it_id)),
 		.call = parse_qo,
 	},
 	[QUEUE_ACTION_TEMPLATE] = {
 		.name = "action_template",
-		.help = "specify action template id",
+		.help = "specify action template index",
 		.next = NEXT(NEXT_ENTRY(QUEUE_CREATE_DRAIN),
-			     NEXT_ENTRY(ACTION_TEMPLATE_ID)),
+			     NEXT_ENTRY(UNSIGNED)),
 		.args = ARGS(ARGS_ENTRY(struct buffer,
 					args.vc.at_id)),
 		.call = parse_qo,

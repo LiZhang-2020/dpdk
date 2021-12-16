@@ -2521,12 +2521,13 @@ port_flow_table_create(portid_t port_id, uint32_t id,
 		      flow_item_templates, nb_item_templates,
 		      flow_action_templates, nb_action_templates,
 		      &error);
-
 	if (!pt->table) {
 		uint32_t destroy_id = pt->id;
 		port_flow_table_destroy(port_id, 1, &destroy_id);
 		return port_flow_complain(&error);
 	}
+	pt->nb_item_templates = nb_item_templates;
+	pt->nb_action_templates = nb_action_templates;
 	printf("Table #%u created\n", pt->id);
 	return 0;
 }
@@ -2624,6 +2625,19 @@ port_queue_flow_create(portid_t port_id, queueid_t queue_id,
 	}
 	if (!found) {
 		printf("Table #%u is invalid\n", table_id);
+		return -EINVAL;
+	}
+
+	if (item_id >= pt->nb_item_templates) {
+		printf("Item template index #%u is invalid,"
+		       " %u templates present in the table\n",
+		       item_id, pt->nb_item_templates);
+		return -EINVAL;
+	}
+	if (action_id >= pt->nb_action_templates) {
+		printf("Action template index #%u is invalid,"
+		       " %u templates present in the table\n",
+		       action_id, pt->nb_action_templates);
 		return -EINVAL;
 	}
 
