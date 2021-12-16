@@ -2856,8 +2856,8 @@ port_queue_flow_drain(portid_t port_id, queueid_t queue_id)
 	memset(&error, 0x55, sizeof(error));
 	ret = rte_flow_q_drain(port_id, queue_id, &error);
 	if (ret < 0) {
-		printf("Failed to drain queue\n");
-		return -EINVAL;
+		printf("Failed to drain queue: %s\n", strerror(-ret));
+		return ret;
 	}
 	printf("Queue #%u drained\n", queue_id);
 	return ret;
