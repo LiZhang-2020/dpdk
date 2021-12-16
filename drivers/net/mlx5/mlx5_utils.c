@@ -203,6 +203,14 @@ mlx5_ipool_update_global_cache(struct mlx5_indexed_pool *pool, int cidx)
 	struct mlx5_indexed_cache *gc, *lc, *olc = NULL;
 
 	lc = pool->cache[cidx]->lc;
+	/*
+	 * For ipool has user defined maximum index, the global trunk
+	 * array has already been allocated with the final size. No need to
+	 * check it again.
+	 */
+	if (pool->cfg.max_idx !=
+	    mlx5_trunk_idx_offset_get(pool, TRUNK_MAX_IDX + 1) && lc)
+		return lc;
 	gc = __atomic_load_n(&pool->gc, __ATOMIC_RELAXED);
 	if (gc && lc != gc) {
 		mlx5_ipool_lock(pool);
@@ -276,8 +284,15 @@ check_again:
 		return 0;
 	/* No enough space in trunk array, resize the trunks array. */
 	if (trunk_idx == trunk_n) {
-		n_grow = trunk_idx ? trunk_idx :
-			     RTE_CACHE_LINE_SIZE / sizeof(void *);
+		/* Limited index, allocate the final size at once. */
+		if (pool->cfg.max_idx !=
+		    mlx5_trunk_idx_offset_get(pool, TRUNK_MAX_IDX + 1))
+			n_grow =
+				mlx5_trunk_idx_get(pool, pool->cfg.max_idx) + 1;
+		else
+			n_grow =
+				trunk_idx ? trunk_idx :
+				RTE_CACHE_LINE_SIZE / sizeof(void *);
 		cur_max_idx = mlx5_trunk_idx_offset_get(pool, trunk_n + n_grow);
 		/* Resize the trunk array. */
 		p = pool->cfg.malloc(0, ((trunk_idx + n_grow) *
