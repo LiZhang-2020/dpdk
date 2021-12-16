@@ -8,9 +8,16 @@ import time
 
 from pydiru.rte_flow import RteFlowItem, RteFlowItemIpv4, RteFlowItemEnd
 from pyverbs.pyverbs_error import PyverbsError, PyverbsRDMAError
+from pyverbs.providers.mlx5.mlx5dv import Mlx5DevxObj
 from pyverbs.wr import SGE, SendWR, RecvWR
 import pydiru.pydiru_enums as p
 from pyverbs import enums as v
+
+from .prm_structs import AllocFlowCounterIn, AllocFlowCounterOut, QueryFlowCounterIn, \
+    QueryFlowCounterOut, TrafficCounter
+
+BULK_COUNTER_SIZE = 512
+BULK_512 = 0b100
 
 
 class TunnelType:
@@ -333,3 +340,24 @@ def create_dipv4_rte_items(dip_val=PacketConsts.DST_IP):
     mask = RteFlowItemIpv4(dst_addr=bytes(4 * [0xff]))
     val = RteFlowItemIpv4(dst_addr=dip_val)
     return [RteFlowItem(p.RTE_FLOW_ITEM_TYPE_IPV4, val, mask), RteFlowItemEnd()]
+
+
+def create_devx_counter(dv_ctx, bulk=0):
+    devx_counter = Mlx5DevxObj(dv_ctx, AllocFlowCounterIn(flow_counter_bulk=bulk),
+                               len(AllocFlowCounterOut()))
+    counter_id = AllocFlowCounterOut(devx_counter.out_view).flow_counter_id
+    return devx_counter, counter_id
+
+
+def query_counter(devx_counter, flow_counter_id, counter_offset=0):
+    num_counters = BULK_COUNTER_SIZE if counter_offset != 0 else 0
+    query_in = QueryFlowCounterIn(num_of_counters=num_counters,
+                                  flow_counter_id=flow_counter_id)
+    tc_len = len(TrafficCounter())
+    outlen = len(QueryFlowCounterOut()) + ((num_counters - 1) * tc_len \
+        if num_counters > 1 else 0)
+    counter_out = QueryFlowCounterOut(devx_counter.query(query_in, outlen))
+    # Get the start index of the needed TC in the output mailbox
+    start_idx = len(QueryFlowCounterOut()) + tc_len * (counter_offset - 1)
+    stats = TrafficCounter(bytes(counter_out)[start_idx:start_idx + tc_len])
+    return stats.packets, stats.octets

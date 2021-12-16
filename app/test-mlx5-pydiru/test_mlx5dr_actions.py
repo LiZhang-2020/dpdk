@@ -4,10 +4,11 @@
 from pydiru.providers.mlx5.steering.mlx5dr_action import Mlx5drRuleAction, Mlx5drActionModify
 from pydiru.providers.mlx5.steering.mlx5dr_rule import Mlx5drRuleAttr, Mlx5drRule
 from pydiru.providers.mlx5.steering.mlx5dr_matcher import Mlx5drMacherTemplate
+from pydiru.providers.mlx5.steering.mlx5dr_devx_objects import Mlx5drDevxObj
 import pydiru.providers.mlx5.steering.mlx5dr_enums as me
 
 from .utils import raw_traffic, gen_packet, PacketConsts, create_sipv4_rte_items, TunnelType, gen_outer_headers, \
-                    get_l2_header, create_dipv4_rte_items
+                    get_l2_header, create_dipv4_rte_items, create_devx_counter, query_counter
 from .base import BaseDrResources, PydiruTrafficTestCase
 
 from .prm_structs import SetActionIn
@@ -97,18 +98,34 @@ class Mlx5drTrafficTest(PydiruTrafficTestCase):
                           rule_actions=rule_actions, num_of_actions=len(rule_actions),
                           rule_attr_create=Mlx5drRuleAttr(user_data=bytes(8)), dr_ctx=agr_obj.dr_ctx)
 
+    def create_counter_action(self, agr_obj, flags=me.MLX5DR_ACTION_FLAG_HWS_RX,
+                              bulk=0, offset=0):
+        devx_counter, counter_id = create_devx_counter(agr_obj.dv_ctx, bulk=bulk)
+        self.devx_objects.append(devx_counter)
+        dr_counter = Mlx5drDevxObj(devx_counter, counter_id)
+        _, counter_ra = agr_obj.create_rule_action('counter', flags=flags,
+                                                   dr_counter=dr_counter)
+        counter_ra.counter_offset = offset
+        return devx_counter, counter_id, counter_ra
+
+    def verify_counter(self, agr_obj, devx_counter, counter_id, offset=0):
+        packets, octets = query_counter(devx_counter, counter_id, offset)
+        self.assertEqual(packets, agr_obj.num_msgs, 'Counter packets number is wrong.')
+        self.assertEqual(octets, agr_obj.num_msgs * agr_obj.msg_size,
+                         'Counter octets number is wrong.')
+
     def test_mlx5dr_default_miss(self):
         """
         Create default miss action on RX and on TX, recv and verify packets using TIR action.
         Create 3 rules:
-        priority - 1 with miss action. (match sip - SRC_IP) on TX.
+        priority - 1 with counter and miss action. (match sip - SRC_IP) on TX.
         priority - 1 with miss action. (match sip - SRC_IP + 1) on RX.
         priority - 9 with TIR action. (match dip) on RX.
         Root matcher on RX matches on dip and forwards packets to SW steering table.
         Send two packets (SRC_IP, SRC_IP+1).
         Expected only the first + validate data of SRC_IP.
+        Validate counter.
         """
-        # TODO: Add counter to verify default miss action on TX actually works
         sip_int = struct.unpack("!I", socket.inet_aton(PacketConsts.SRC_IP))[0]
         sip_miss = socket.inet_ntoa(struct.pack("!I", sip_int + 1))
         sip_miss_rte = create_sipv4_rte_items(sip_miss)
@@ -119,8 +136,10 @@ class Mlx5drTrafficTest(PydiruTrafficTestCase):
                                             table_type=me.MLX5DR_TABLE_TYPE_NIC_TX)
         _, miss_tx_ra = self.client.create_rule_action('def_miss',
                                                        flags=me.MLX5DR_ACTION_FLAG_HWS_TX)
+        devx_counter, counter_id, counter_tx_ra = \
+            self.create_counter_action(self.client, flags=me.MLX5DR_ACTION_FLAG_HWS_TX)
         self.miss_tx_rule = self.create_miss_rule(self.client, rte_items=sip_rte,
-                                                  rule_actions=[miss_tx_ra])
+                                                  rule_actions=[counter_tx_ra, miss_tx_ra])
         # RX
         self.server.init_steering_resources(rte_items=sip_rte, root_rte_items=dip_rte)
         _, miss_rx_ra = self.server.create_rule_action('def_miss')
@@ -141,6 +160,8 @@ class Mlx5drTrafficTest(PydiruTrafficTestCase):
         packet2 = gen_packet(self.server.msg_size, src_ip=sip_miss)
         raw_traffic(self.client, self.server, self.server.num_msgs, [packet1, packet2],
                     expected_packet=packet1)
+        # Verify counter
+        self.verify_counter(self.client, devx_counter, counter_id)
 
     def decap_rule_traffic(self, decap_type=me.MLX5DR_ACTION_REFORMAT_TYPE_TNL_L2_TO_L2):
         """

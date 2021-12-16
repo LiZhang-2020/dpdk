@@ -21,7 +21,7 @@ from pydiru.providers.mlx5.steering.mlx5dr_action import Mlx5drRuleAction, Mlx5d
 from pydiru.providers.mlx5.steering.mlx5dr_matcher import Mlx5drMacherTemplate, Mlx5drMatcherAttr, Mlx5drMatcher
 from pydiru.providers.mlx5.steering.mlx5dr_action import Mlx5drRuleAction, \
     Mlx5drActionDestTable, Mlx5drActionDestTir, Mlx5drActionTag, Mlx5drActionDefaultMiss, \
-    Mlx5drActionReformat
+    Mlx5drActionReformat, Mlx5drActionCounter
 from pydiru.providers.mlx5.steering.mlx5dr_context import Mlx5drContextAttr, Mlx5drContext
 from pydiru.providers.mlx5.steering.mlx5dr_table import Mlx5drTableAttr, Mlx5drTable
 from pydiru.providers.mlx5.steering.mlx5dr_rule import Mlx5drRuleAttr, Mlx5drRule
@@ -82,6 +82,9 @@ class PydiruTrafficTestCase(unittest.TestCase):
         self.attr_ex = None
         self.server = None
         self.client = None
+        # DevX objects should be stored in-order here, to be freed after closing
+        # DR context, and before closing the verbs context
+        self.devx_objects = []
 
     def setUp(self):
         self.ib_port = self.config['port']
@@ -102,6 +105,8 @@ class PydiruTrafficTestCase(unittest.TestCase):
             self.server.dr_ctx.close()
         if self.client:
             self.client.dr_ctx.close()
+        for obj in self.devx_objects:
+            obj.close()
         self.ctx.close()
 
 
@@ -244,6 +249,9 @@ class BaseDrResources(object):
             log_bulk_size = kwargs.get('log_bulk_size', 0)
             action = Mlx5drActionReformat(self.dr_ctx, ref_type, data_sz, data, log_bulk_size, flags)
             return action, Mlx5drRuleAction(action, data=data)
+        elif action_str == 'counter':
+            mlx5_dr_counter = kwargs.get('dr_counter')
+            action = Mlx5drActionCounter(self.dr_ctx, mlx5_dr_counter, flags)
         else:
             raise unittest.SkipTest(f'Unsupported action {action_str}')
         return action, Mlx5drRuleAction(action)

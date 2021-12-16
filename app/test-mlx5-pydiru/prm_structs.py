@@ -9,10 +9,12 @@ from scapy.packet import Packet
 
 
 class DevxOps:
-	MLX5_CMD_OP_CREATE_TIR                    = 0x900
-	MLX5_CMD_OP_MODIFY_TIR                    = 0x901
-	MLX5_CMD_OP_DESTROY_TIR                   = 0x902
-	MLX5_CMD_OP_QUERY_TIR                     = 0x903
+    MLX5_CMD_OP_CREATE_TIR                    = 0x900
+    MLX5_CMD_OP_MODIFY_TIR                    = 0x901
+    MLX5_CMD_OP_DESTROY_TIR                   = 0x902
+    MLX5_CMD_OP_QUERY_TIR                     = 0x903
+    MLX5_CMD_OP_ALLOC_FLOW_COUNTER            = 0x939
+    MLX5_CMD_OP_QUERY_FLOW_COUNTER            = 0x93b
 
 
 de = DevxOps()
@@ -162,4 +164,59 @@ class SetActionIn(Packet):
         BitField('reserved2', 0, 3),
         BitField('length', 0, 5),
         IntField('data', 0),
+    ]
+
+
+class AllocFlowCounterIn(Packet):
+    fields_desc = [
+        ShortField('opcode', de.MLX5_CMD_OP_ALLOC_FLOW_COUNTER),
+        ShortField('uid', 0),
+        ShortField('reserved1', 0),
+        ShortField('op_mod', 0),
+        IntField('flow_counter_id', 0),
+        BitField('reserved2', 0, 24),
+        ByteField('flow_counter_bulk', 0),
+    ]
+
+
+class AllocFlowCounterOut(Packet):
+    fields_desc = [
+        ByteField('status', 0),
+        BitField('reserved1', 0, 24),
+        IntField('syndrome', 0),
+        IntField('flow_counter_id', 0),
+        StrFixedLenField('reserved2', None, length=4),
+    ]
+
+
+class QueryFlowCounterIn(Packet):
+    fields_desc = [
+        ShortField('opcode', de.MLX5_CMD_OP_QUERY_FLOW_COUNTER),
+        ShortField('uid', 0),
+        ShortField('reserved1', 0),
+        ShortField('op_mod', 0),
+        StrFixedLenField('reserved2', None, length=4),
+        IntField('mkey', 0),
+        LongField('address', 0),
+        BitField('clear', 0, 1),
+        BitField('dump_to_memory', 0, 1),
+        BitField('num_of_counters', 0, 30),
+        IntField('flow_counter_id', 0),
+    ]
+
+
+class TrafficCounter(Packet):
+    fields_desc = [
+        LongField('packets', 0),
+        LongField('octets', 0),
+    ]
+
+
+class QueryFlowCounterOut(Packet):
+    fields_desc = [
+        ByteField('status', 0),
+        BitField('reserved1', 0, 24),
+        IntField('syndrome', 0),
+        StrFixedLenField('reserved2', None, length=8),
+        PacketField('flow_statistics', TrafficCounter(), TrafficCounter),
     ]
