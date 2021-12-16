@@ -195,6 +195,9 @@ mlx5dr_action_create_stcs(struct mlx5dr_action *action,
 
 	mlx5dr_action_fill_stc_attr(action, obj, &stc_attr);
 
+	/* Block unsupported parallel devx obj modify over the same base */
+	pthread_spin_lock(&ctx->ctrl_lock);
+
 	/* Allocate STC for RX */
 	if (action->flags & MLX5DR_ACTION_FLAG_HWS_RX) {
 		ret = mlx5dr_action_alloc_single_stc(ctx, &stc_attr,
@@ -215,12 +218,14 @@ mlx5dr_action_create_stcs(struct mlx5dr_action *action,
 
 	/* TODO FDB */
 
+	pthread_spin_unlock(&ctx->ctrl_lock);
 	return 0;
 
 free_stc_rx:
 	if (action->flags & MLX5DR_ACTION_FLAG_HWS_RX)
 		mlx5dr_action_free_single_stc(ctx, MLX5DR_TABLE_TYPE_NIC_RX, &action->stc_rx);
 out_err:
+	pthread_spin_unlock(&ctx->ctrl_lock);
 	return rte_errno;
 }
 
@@ -229,11 +234,16 @@ mlx5dr_action_destroy_stcs(struct mlx5dr_action *action)
 {
 	struct mlx5dr_context *ctx = action->ctx;
 
+	/* Block unsupported parallel devx obj modify over the same base */
+	pthread_spin_lock(&ctx->ctrl_lock);
+
 	if (action->flags & MLX5DR_ACTION_FLAG_HWS_TX)
 		mlx5dr_action_free_single_stc(ctx, MLX5DR_TABLE_TYPE_NIC_TX, &action->stc_tx);
 
 	if (action->flags & MLX5DR_ACTION_FLAG_HWS_RX)
 		mlx5dr_action_free_single_stc(ctx, MLX5DR_TABLE_TYPE_NIC_RX, &action->stc_rx);
+
+	pthread_spin_unlock(&ctx->ctrl_lock);
 }
 
 static bool
