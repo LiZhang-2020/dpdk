@@ -160,12 +160,10 @@ flow_hw_register_tir_action(struct rte_eth_dev *dev,
 			    uint32_t hws_flags, bool mark,
 			    const struct rte_flow_action *action)
 {
-	struct mlx5_priv *priv = dev->data->dev_private;
 	struct mlx5_flow_rss_desc rss_desc = {
 		.hws_flags = hws_flags,
 	};
 	struct mlx5_hrxq *hrxq;
-	uint32_t idx;
 
 	if (action->type == RTE_FLOW_ACTION_TYPE_QUEUE) {
 		const struct rte_flow_action_queue *queue = action->conf;
@@ -190,8 +188,7 @@ flow_hw_register_tir_action(struct rte_eth_dev *dev,
 			rss_desc.tunnel = 1;
 		}
 	}
-	idx = mlx5_hrxq_get(dev, &rss_desc);
-	hrxq = mlx5_ipool_get(priv->sh->ipool[MLX5_IPOOL_HRXQ], idx);
+	hrxq = mlx5_hrxq_get(dev, &rss_desc);
 	if (hrxq && mark)
 		flow_hw_rxq_flag_set(dev, hrxq);
 	return hrxq;

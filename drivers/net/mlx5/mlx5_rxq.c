@@ -2728,13 +2728,13 @@ mlx5_hrxq_clone_free_cb(void *tool_ctx, struct mlx5_list_entry *entry)
  *   RSS configuration for the Rx hash queue.
  *
  * @return
- *   An hash Rx queue index on success.
+ *   An hash Rx queue on success.
  */
-uint32_t mlx5_hrxq_get(struct rte_eth_dev *dev,
+struct mlx5_hrxq *mlx5_hrxq_get(struct rte_eth_dev *dev,
 		       struct mlx5_flow_rss_desc *rss_desc)
 {
 	struct mlx5_priv *priv = dev->data->dev_private;
-	struct mlx5_hrxq *hrxq;
+	struct mlx5_hrxq *hrxq = NULL;
 	struct mlx5_list_entry *entry;
 	struct mlx5_flow_cb_ctx ctx = {
 		.data = rss_desc,
@@ -2745,12 +2745,10 @@ uint32_t mlx5_hrxq_get(struct rte_eth_dev *dev,
 	} else {
 		entry = mlx5_list_register(priv->hrxqs, &ctx);
 		if (!entry)
-			return 0;
+			return NULL;
 		hrxq = container_of(entry, typeof(*hrxq), entry);
 	}
-	if (hrxq)
-		return hrxq->idx;
-	return 0;
+	return hrxq;
 }
 
 /**

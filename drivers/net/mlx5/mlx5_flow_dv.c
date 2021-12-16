@@ -10290,7 +10290,6 @@ flow_dv_hrxq_prepare(struct rte_eth_dev *dev,
 		     struct mlx5_flow_rss_desc *rss_desc,
 		     uint32_t *hrxq_idx)
 {
-	struct mlx5_priv *priv = dev->data->dev_private;
 	struct mlx5_flow_handle *dh = dev_flow->handle;
 	struct mlx5_hrxq *hrxq;
 
@@ -10301,11 +10300,8 @@ flow_dv_hrxq_prepare(struct rte_eth_dev *dev,
 	rss_desc->shared_rss = 0;
 	if (rss_desc->hash_fields == 0)
 		rss_desc->queue_num = 1;
-	*hrxq_idx = mlx5_hrxq_get(dev, rss_desc);
-	if (!*hrxq_idx)
-		return NULL;
-	hrxq = mlx5_ipool_get(priv->sh->ipool[MLX5_IPOOL_HRXQ],
-			      *hrxq_idx);
+	hrxq = mlx5_hrxq_get(dev, rss_desc);
+	*hrxq_idx = hrxq ? hrxq->idx : 0;
 	return hrxq;
 }
 
@@ -14330,7 +14326,7 @@ __flow_dv_action_rss_setup(struct rte_eth_dev *dev,
 	if (priv->config.dv_flow_en == 2)
 		rss_desc.hws_flags = MLX5DR_ACTION_FLAG_HWS_RX;
 	for (i = 0; i < MLX5_RSS_HASH_FIELDS_LEN; i++) {
-		uint32_t hrxq_idx;
+		struct mlx5_hrxq *hrxq;
 		uint64_t hash_fields = mlx5_rss_hash_fields[i];
 		int tunnel = 0;
 
@@ -14342,8 +14338,8 @@ __flow_dv_action_rss_setup(struct rte_eth_dev *dev,
 		}
 		rss_desc.tunnel = tunnel;
 		rss_desc.hash_fields = hash_fields;
-		hrxq_idx = mlx5_hrxq_get(dev, &rss_desc);
-		if (!hrxq_idx) {
+		hrxq = mlx5_hrxq_get(dev, &rss_desc);
+		if (!hrxq) {
 			rte_flow_error_set
 				(error, rte_errno,
 				 RTE_FLOW_ERROR_TYPE_UNSPECIFIED, NULL,
@@ -14351,7 +14347,7 @@ __flow_dv_action_rss_setup(struct rte_eth_dev *dev,
 			goto error_hrxq_new;
 		}
 		err = __flow_dv_action_rss_hrxq_set
-			(shared_rss, hash_fields, hrxq_idx);
+			(shared_rss, hash_fields, hrxq->idx);
 		MLX5_ASSERT(!err);
 	}
 	return 0;
@@ -16472,11 +16468,12 @@ __flow_dv_meter_get_rss_sub_policy(struct rte_eth_dev *dev,
 	for (i = 0; i < MLX5_MTR_RTE_COLORS; i++) {
 		if (!rss_desc[i])
 			continue;
-		hrxq_idx[i] = mlx5_hrxq_get(dev, rss_desc[i]);
-		if (!hrxq_idx[i]) {
+		hrxq = mlx5_hrxq_get(dev, rss_desc[i]);
+		if (!hrxq) {
 			rte_spinlock_unlock(&mtr_policy->sl);
 			return NULL;
 		}
+		hrxq_idx[i] = hrxq->idx;
 	}
 	sub_policy_num = (mtr_policy->sub_policy_num >>
 			  (MLX5_MTR_SUB_POLICY_NUM_SHIFT * domain)) &
