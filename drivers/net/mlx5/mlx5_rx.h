@@ -264,6 +264,7 @@ void mlx5_hrxq_clone_free_cb(void *tool_ctx __rte_unused,
 			     struct mlx5_list_entry *entry);
 struct mlx5_hrxq *mlx5_hrxq_get(struct rte_eth_dev *dev,
 		       struct mlx5_flow_rss_desc *rss_desc);
+int mlx5_hrxq_obj_release(struct rte_eth_dev *dev, struct mlx5_hrxq *hrxq);
 int mlx5_hrxq_release(struct rte_eth_dev *dev, uint32_t hxrq_idx);
 uint32_t mlx5_hrxq_verify(struct rte_eth_dev *dev);
 enum mlx5_rxq_type mlx5_rxq_get_type(struct rte_eth_dev *dev, uint16_t idx);

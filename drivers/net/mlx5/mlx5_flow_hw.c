@@ -1020,7 +1020,7 @@ flow_hw_actions_construct(struct rte_eth_dev *dev,
 			if (!hrxq)
 				return -1;
 			rule_acts[act_data->action_dst].action = hrxq->action;
-			job->flow->rix_hrxq = hrxq->idx;
+			job->flow->hrxq = hrxq;
 			job->flow->fate_type = MLX5_FLOW_FATE_QUEUE;
 			break;
 		case MLX5_RTE_FLOW_ACTION_TYPE_RSS:
@@ -1272,7 +1272,7 @@ flow_hw_q_dequeue(struct rte_eth_dev *dev,
 		if (job->type == MLX5_HW_Q_JOB_TYPE_DESTROY) {
 			LIST_REMOVE(job->flow, next);
 			if (job->flow->fate_type == MLX5_FLOW_FATE_QUEUE)
-				mlx5_hrxq_release(dev, job->flow->rix_hrxq);
+				mlx5_hrxq_obj_release(dev, job->flow->hrxq);
 			else if (job->flow->fate_type == MLX5_FLOW_FATE_JUMP)
 				flow_hw_release_jump(dev, job->flow->jump);
 			mlx5_ipool_free(job->flow->table->flow, job->flow->idx);

@@ -1126,7 +1126,7 @@ struct rte_flow_hw {
 	uint32_t idx;
 	uint32_t fate_type;
 	union {
-		uint32_t rix_hrxq;
+		struct mlx5_hrxq *hrxq;
 		struct mlx5_hw_jump_action *jump;
 	};
 	struct rte_flow_table *table;

@@ -2762,18 +2762,36 @@ struct mlx5_hrxq *mlx5_hrxq_get(struct rte_eth_dev *dev,
  * @return
  *   1 while a reference on it exists, 0 when freed.
  */
-int mlx5_hrxq_release(struct rte_eth_dev *dev, uint32_t hrxq_idx)
+int mlx5_hrxq_obj_release(struct rte_eth_dev *dev, struct mlx5_hrxq *hrxq)
 {
 	struct mlx5_priv *priv = dev->data->dev_private;
-	struct mlx5_hrxq *hrxq;
 
-	hrxq = mlx5_ipool_get(priv->sh->ipool[MLX5_IPOOL_HRXQ], hrxq_idx);
 	if (!hrxq)
 		return 0;
 	if (!hrxq->standalone)
 		return mlx5_list_unregister(priv->hrxqs, &hrxq->entry);
 	__mlx5_hrxq_remove(dev, hrxq);
 	return 0;
+}
+
+/**
+ * Release the hash Rx queue with index.
+ *
+ * @param dev
+ *   Pointer to Ethernet device.
+ * @param hrxq_idx
+ *   Index to Hash Rx queue to release.
+ *
+ * @return
+ *   1 while a reference on it exists, 0 when freed.
+ */
+int mlx5_hrxq_release(struct rte_eth_dev *dev, uint32_t hrxq_idx)
+{
+	struct mlx5_priv *priv = dev->data->dev_private;
+	struct mlx5_hrxq *hrxq;
+
+	hrxq = mlx5_ipool_get(priv->sh->ipool[MLX5_IPOOL_HRXQ], hrxq_idx);
+	return mlx5_hrxq_obj_release(dev, hrxq);
 }
 
 /**
