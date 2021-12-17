@@ -391,7 +391,9 @@ static void cmd_device_stats_parsed(void *parsed_result, struct cmdline *cl,
 	struct rte_vdpa_device *vdev = rte_vdpa_find_device_by_name(res->bdf);
 	struct vdpa_port *vport = NULL;
 	uint32_t first, last;
+	int vq_disabled = -1;
 	int i;
+	int ret;
 
 	if (!vdev) {
 		RTE_LOG(ERR, VDPA, "Invalid device: %s.\n",
@@ -449,8 +451,20 @@ static void cmd_device_stats_parsed(void *parsed_result, struct cmdline *cl,
 	cmdline_printf(cl, "\nDevice %s:\n", res->bdf);
 	for (; first <= last; first++) {
 		memset(vport->stats, 0, sizeof(*vport->stats) * vport->stats_n);
-		if (rte_vdpa_get_stats(vport->dev, (int)first, vport->stats,
-					vport->stats_n) <= 0) {
+		ret = rte_vdpa_get_stats(vport->dev, (int)first, vport->stats,
+						vport->stats_n);
+		if (ret == 0) {
+			/* VQ disabled. */
+			if (vq_disabled == -1)
+				vq_disabled = (int)first;
+			continue;
+		}
+		if (vq_disabled != -1) {
+			cmdline_printf(cl, "\tVirtq %d - %d disabled\n",
+				       vq_disabled, (int)first - 1);
+			vq_disabled = -1;
+		}
+		if (ret < 0) {
 			RTE_LOG(ERR, VDPA, "Failed to get vdpa queue statistics"
 				" for device %s qid %d.\n", res->bdf,
 				(int)first);
@@ -464,6 +478,9 @@ static void cmd_device_stats_parsed(void *parsed_result, struct cmdline *cl,
 				vport->stats[i].value);
 		}
 	}
+	if (vq_disabled != -1)
+		cmdline_printf(cl, "\tVirtq %d - %d disabled\n",
+			       vq_disabled, (int)first - 1);
 }
 
 cmdline_parse_token_string_t cmd_device_stats_ =
