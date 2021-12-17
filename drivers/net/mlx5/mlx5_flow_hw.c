@@ -1270,36 +1270,69 @@ flow_hw_q_dequeue(struct rte_eth_dev *dev,
 		/* Restore user data. */
 		res[i].user_data = job->user_data;
 		if (job->type == MLX5_HW_Q_JOB_TYPE_DESTROY) {
-			LIST_REMOVE(job->flow, next);
 			if (job->flow->fate_type == MLX5_FLOW_FATE_QUEUE)
 				mlx5_hrxq_obj_release(dev, job->flow->hrxq);
 			else if (job->flow->fate_type == MLX5_FLOW_FATE_JUMP)
 				flow_hw_release_jump(dev, job->flow->jump);
 			mlx5_ipool_free(job->flow->table->flow, job->flow->idx);
-		} else {
-			LIST_INSERT_HEAD(&priv->hw_q[queue].flow_list,
-					 job->flow, next);
 		}
 		priv->hw_q[queue].job[priv->hw_q[queue].job_idx++] = job;
 	}
 	return ret;
 }
 
-int
-flow_hw_q_flow_flush(struct rte_eth_dev *dev,
+static int
+__flow_hw_drain_comp(struct rte_eth_dev *dev,
 		     uint32_t queue,
+		     uint32_t pending_rules,
 		     struct rte_flow_error *error)
 {
 #define BURST_THR 32u
-	struct mlx5_priv *priv = dev->data->dev_private;
-	struct mlx5_hw_q *hw_q = &priv->hw_q[queue];
-	struct rte_flow_hw *flow, *flow_next;
-	struct rte_flow_q_ops_attr attr = {
-		.drain = 0,
-	};
 	struct rte_flow_q_op_res comp[BURST_THR];
-	int ret, i = 0, j;
-	uint32_t pending_rules = 0, flush_thr;
+	int ret, i, empty_loop = 0;
+
+	flow_hw_q_drain(dev, queue, error);
+	while (pending_rules) {
+		ret = flow_hw_q_dequeue(dev, 0, comp, BURST_THR, error);
+		if (ret < 0)
+			return -1;
+		if (!ret) {
+			usleep(200);
+			if (++empty_loop > 5) {
+				DRV_LOG(WARNING, "No available dequeue, quit.");
+				break;
+			}
+			continue;
+		}
+		for (i = 0; i < ret; i++) {
+			if (comp[i].status == RTE_FLOW_Q_OP_ERROR)
+				DRV_LOG(WARNING, "Flow flush get error CQE.");
+		}
+		if ((uint32_t)ret > pending_rules) {
+			DRV_LOG(WARNING, "Flow flush get extra CQE.");
+			return -1;
+		}
+		pending_rules -= ret;
+		empty_loop = 0;
+	}
+	return 0;
+}
+
+int
+flow_hw_q_flow_flush(struct rte_eth_dev *dev,
+		     struct rte_flow_error *error)
+{
+#define DEFAULT_QUEUE 0
+	struct mlx5_priv *priv = dev->data->dev_private;
+	struct mlx5_hw_q *hw_q;
+	struct rte_flow_table *tbl;
+	struct rte_flow_hw *flow;
+	struct rte_flow_q_ops_attr attr = {
+		.drain = 1,
+	};
+	uint32_t pending_rules = 0;
+	uint32_t queue;
+	uint32_t fidx;
 
 	/*
 	 * Ensure to drain and dequeue all the enqueued flows in case user
@@ -1307,41 +1340,35 @@ flow_hw_q_flow_flush(struct rte_eth_dev *dev,
 	 * The forgot dequeue will also cause flow flush get extra CQEs as
 	 * expected and pending_rules be minus value.
 	 */
-	flow_hw_q_drain(dev, queue, error);
-	while (priv->hw_q[queue].size != priv->hw_q[queue].job_idx)
-		flow_hw_q_dequeue(dev, queue, comp, BURST_THR, error);
-	flush_thr = RTE_MIN(rte_align32prevpow2(hw_q->size), BURST_THR);
-	flow_next = LIST_FIRST(&hw_q->flow_list);
-	while (flow_next) {
-		flow = flow_next;
-		flow_next = LIST_NEXT(flow, next);
-		attr.drain = (((++i) % flush_thr == 0) ||
-			     (flow_next && (flow_next->table != flow->table)) ||
-			     !flow_next);
-		ret = flow_hw_q_flow_destroy(dev, queue, &attr,
-					     (struct rte_flow *)flow, error);
-		if (unlikely(ret))
+	for (queue = 0; queue < priv->nb_queues; queue++) {
+		hw_q = &priv->hw_q[queue];
+		if (__flow_hw_drain_comp(dev, queue, hw_q->size - hw_q->job_idx,
+					 error))
 			return -1;
-		pending_rules++;
-		while (pending_rules >= flush_thr ||
-		       pending_rules >= hw_q->size ||
-		       (pending_rules && !flow_next)) {
-			ret = flow_hw_q_dequeue(dev, queue, comp,
-						flush_thr, error);
-			if (ret < 0)
+	}
+	/* Flush flow per-table from DEFAULT_QUEUE. */
+	hw_q = &priv->hw_q[DEFAULT_QUEUE];
+	LIST_FOREACH(tbl, &priv->flow_hw_tbl, next) {
+		MLX5_IPOOL_FOREACH(tbl->flow, fidx, flow) {
+			if (flow_hw_q_flow_destroy(dev, DEFAULT_QUEUE, &attr,
+						   (struct rte_flow *)flow,
+						   error))
 				return -1;
-			for (j = 0; j < ret; j++) {
-				if (comp[j].status == RTE_FLOW_Q_OP_ERROR)
+			pending_rules++;
+			/* Drain completion with queue size. */
+			if (pending_rules >= hw_q->size) {
+				if (__flow_hw_drain_comp(dev, DEFAULT_QUEUE,
+							 pending_rules, error))
 					return -1;
+				pending_rules = 0;
 			}
-			if ((uint32_t)ret > pending_rules) {
-				DRV_LOG(WARNING, "Flow flush get extra CQE.");
-				return -1;
-			}
-			pending_rules -= ret;
 		}
 	}
-	MLX5_ASSERT(!pending_rules && LIST_EMPTY(&hw_q->flow_list));
+	/* Drain left completion. */
+	if (pending_rules &&
+	    __flow_hw_drain_comp(dev, DEFAULT_QUEUE, pending_rules,
+				 error))
+		return -1;
 	return 0;
 }
 
