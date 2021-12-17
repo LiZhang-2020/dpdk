@@ -571,6 +571,8 @@ mlx5_vdpa_virtq_stats_get(struct mlx5_vdpa_priv *priv, int qid,
 	struct mlx5_devx_virtio_q_couners_attr attr = {0};
 	int ret;
 
+	if (!virtq->enable)
+		return 0;
 	if (!virtq->counters) {
 		DRV_LOG(ERR, "Failed to read virtq %d statistics - virtq "
 			"is invalid.", qid);
