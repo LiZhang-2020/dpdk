@@ -104,6 +104,15 @@ mlx5dr_action_free_single_stc(struct mlx5dr_context *ctx,
 			       struct mlx5dr_pool_chunk *stc)
 {
 	struct mlx5dr_pool *stc_pool = ctx->stc_pool[table_type];
+	struct mlx5dr_cmd_stc_modify_attr stc_attr = {0};
+	struct mlx5dr_devx_obj *devx_obj;
+
+	/* Modify the STC not to point to an object */
+	stc_attr.action_type = MLX5_IFC_STC_ACTION_TYPE_DROP;
+	stc_attr.action_offset = MLX5DR_ACTION_OFFSET_HIT;
+	stc_attr.stc_offset = stc->offset;
+	devx_obj = mlx5dr_pool_chunk_get_base_devx_obj(stc_pool, stc);
+	mlx5dr_cmd_stc_modify(devx_obj, &stc_attr);
 
 	mlx5dr_pool_chunk_free(stc_pool, stc);
 }
