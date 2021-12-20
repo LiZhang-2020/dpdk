@@ -151,6 +151,7 @@ sft_process_ipfrag(uint16_t queue, struct sft_mbuf *smb,
 	struct ipfrag_ctx *ctx = &sft_priv->ipfrag[queue];
 	struct ip_frag_pkt *fp;
 	bool dr_full;
+	uint32_t pkt_len = smb->m_in->pkt_len;
 
 	RTE_SET_USED(error);
 retry:
@@ -167,6 +168,9 @@ retry:
 				   rte_rdtsc(), (struct rte_ipv6_hdr *)mif->ip6,
 				   (struct rte_ipv6_fragment_ext *)
 					   mif->ip6_frag);
+	if (pkt_len > smb->m_in->pkt_len)
+		rte_pktmbuf_append((struct rte_mbuf *)smb->m_in,
+				   pkt_len - smb->m_in->pkt_len);
 #pragma GCC diagnostic pop
 	dr_full = rte_ip_frag_dr_full(&ctx->dr);
 	if (ctx->dr.cnt)
