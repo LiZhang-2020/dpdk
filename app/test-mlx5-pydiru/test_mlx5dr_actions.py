@@ -8,7 +8,7 @@ from pydiru.providers.mlx5.steering.mlx5dr_devx_objects import Mlx5drDevxObj
 import pydiru.providers.mlx5.steering.mlx5dr_enums as me
 
 from .utils import raw_traffic, gen_packet, PacketConsts, create_sipv4_rte_items, TunnelType, gen_outer_headers, \
-                    get_l2_header, create_dipv4_rte_items, create_devx_counter, query_counter
+                    get_l2_header, create_dipv4_rte_items, create_devx_counter, query_counter, BULK_512
 from .base import BaseDrResources, PydiruTrafficTestCase
 
 from .prm_structs import SetActionIn
@@ -286,3 +286,39 @@ class Mlx5drTrafficTest(PydiruTrafficTestCase):
             src_ip = '.'.join(str(i) * 4)
             packets.append(gen_packet(self.server.msg_size, src_ip=src_ip))
         raw_traffic(self.client, self.server, self.server.num_msgs, packets, packets[2])
+
+    def test_mlx5dr_counter(self):
+        """
+        Create counter action on TX and counter + TIR actions on RX, recv packets
+        and verify counters.
+        """
+        rte_items = create_sipv4_rte_items(PacketConsts.SRC_IP)
+        self.server.init_steering_resources(rte_items=rte_items)
+        self.client.init_steering_resources(rte_items=rte_items,
+                                            table_type=me.MLX5DR_TABLE_TYPE_NIC_TX)
+        _, tir_ra = self.server.create_rule_action('tir')
+        # Set const values for counters' offsets for easier debug
+        tx_offset = 0x123
+        rx_offset = 0x111
+        tx_devx_counter, tx_counter_id, counter_tx_ra = \
+            self.create_counter_action(self.client, flags=me.MLX5DR_ACTION_FLAG_HWS_TX,
+                                       bulk=BULK_512, offset=tx_offset)
+        rx_devx_counter, rx_counter_id, counter_rx_ra = \
+            self.create_counter_action(self.server, flags=me.MLX5DR_ACTION_FLAG_HWS_RX,
+                                       bulk=BULK_512, offset=rx_offset)
+        self.rx_rule = Mlx5drRule(self.server.matcher, 0, rte_items,
+                                  [counter_rx_ra, tir_ra], 2,
+                                  Mlx5drRuleAttr(user_data=bytes(8)),
+                                  self.server.dr_ctx)
+        self.tx_rule = Mlx5drRule(self.client.matcher, 0, rte_items,
+                                  [counter_tx_ra], 1,
+                                  Mlx5drRuleAttr(user_data=bytes(8)),
+                                  self.client.dr_ctx)
+        packet = gen_packet(self.server.msg_size)
+        raw_traffic(self.client, self.server, self.server.num_msgs, [packet])
+        # Verify counters
+        self.verify_counter(self.client, tx_devx_counter, tx_counter_id, tx_offset)
+        # RX steering counters include FCS\VCRC in the byte count on cx6dx.
+        # Add extra 4 bytes to each packet.
+        self.server.msg_size += 4
+        self.verify_counter(self.server, rx_devx_counter, rx_counter_id, rx_offset)
