@@ -22,6 +22,8 @@ class Mlx5drMatcherTest(PydiruTrafficTestCase):
         super().setUp()
         self.server = BaseDrResources(self.dev_name, self.ib_port)
         self.client = BaseDrResources(self.dev_name, self.ib_port)
+        self.devx_objects.append(self.server.tir_obj)
+        self.devx_objects.append(self.client.tir_obj)
         self.traffic_args = {'client': self.client, 'server': self.server,
                              'num_msgs': self.server.num_msgs}
 

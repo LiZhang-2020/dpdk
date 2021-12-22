@@ -3,6 +3,7 @@
 # Copyright (c) 2021, Nvidia Inc. All rights reserved.
 
 import unittest
+import logging
 
 from pyverbs.providers.mlx5.mlx5dv import Mlx5Context, Mlx5DVContextAttr
 from pyverbs.providers.mlx5.mlx5dv import Mlx5DevxObj
@@ -43,12 +44,30 @@ class PydiruAPITestCase(unittest.TestCase):
         self.config = parser.get_config()
         self.dev_name = None
         self.ctx = None
+        # DevX objects should be stored in-order here, to be freed after closing
+        # DR context, and before closing the verbs context
+        self.devx_objects = []
 
     def setUp(self):
-        pass
+        self.logger = logging.getLogger(self.__class__.__name__)
+        self.logger.setLevel(logging.INFO)
+        self.ib_port = self.config['port']
+        self.dev_name = self.config['dev']
+        if not self.dev_name:
+            dev_list = d.get_device_list()
+            if not dev_list:
+                raise unittest.SkipTest('No IB devices found')
+            self.dev_name = dev_list[0].name.decode()
+
+        Mlx5drContext.rte_init(self.config)
+        self.ctx = d.Context(name=self.dev_name)
 
     def tearDown(self):
-        pass
+        if self.resources:
+            self.resources.dr_ctx.close()
+        for obj in self.devx_objects:
+            obj.close()
+        self.ctx.close()
 
 
 class PydiruTrafficTestCase(unittest.TestCase):
@@ -168,8 +187,8 @@ class BaseDrResources(object):
 
     def create_matcher(self, table, matcher_templates,
                        mode=me.MLX5DR_MATCHER_RESOURCE_MODE_RULE,
-                       prio=1, row=0, col=0):
-        attr = Mlx5drMatcherAttr(prio, mode, row, col)
+                       prio=1, log_row=0, log_col=2, log_rules=0):
+        attr = Mlx5drMatcherAttr(prio, mode, log_row, log_col, log_rules)
         return Mlx5drMatcher(table, matcher_templates, len(matcher_templates), attr)
 
     def init_steering_resources(self, rte_items=None, table_type=me.MLX5DR_TABLE_TYPE_NIC_RX,
@@ -198,14 +217,14 @@ class BaseDrResources(object):
         template_relaxed_match = me.MLX5DR_MATCH_TEMPLATE_FLAG_RELAXED_MATCH
         # Create table 1 matcher.
         self.matcher_templates = [Mlx5drMacherTemplate(rte_items, flags=template_relaxed_match)]
-        self.matcher = self.create_matcher(self.table, self.matcher_templates, row=MATCHER_ROW,
+        self.matcher = self.create_matcher(self.table, self.matcher_templates, log_row=MATCHER_ROW,
                                            mode=me.MLX5DR_MATCHER_RESOURCE_MODE_HTABLE)
 
     def create_second_matcher(self, rte_items):
         template_relaxed_match = me.MLX5DR_MATCH_TEMPLATE_FLAG_RELAXED_MATCH
         self.second_matcher_templates = [Mlx5drMacherTemplate(rte_items, flags=template_relaxed_match)]
         self.second_matcher = \
-            self.create_matcher(self.table, self.second_matcher_templates, row=MATCHER_ROW,
+            self.create_matcher(self.table, self.second_matcher_templates, log_row=MATCHER_ROW,
                                 mode=me.MLX5DR_MATCHER_RESOURCE_MODE_HTABLE, prio=1)
 
     def create_rule_action(self, action_str, flags=me.MLX5DR_ACTION_FLAG_HWS_RX, **kwargs):

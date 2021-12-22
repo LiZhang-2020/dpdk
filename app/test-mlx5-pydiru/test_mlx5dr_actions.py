@@ -28,6 +28,8 @@ class Mlx5drTrafficTest(PydiruTrafficTestCase):
         super().setUp()
         self.server = BaseDrResources(self.dev_name, self.ib_port)
         self.client = BaseDrResources(self.dev_name, self.ib_port)
+        self.devx_objects.append(self.server.tir_obj)
+        self.devx_objects.append(self.client.tir_obj)
 
     def test_mlx5dr_tir(self):
         """
@@ -128,7 +130,7 @@ class Mlx5drTrafficTest(PydiruTrafficTestCase):
         mt_2 = Mlx5drMacherTemplate(dip_rte)
         self.server.dip_matcher = self.server.create_matcher(self.server.table, [mt_2],
                                                              mode=me.MLX5DR_MATCHER_RESOURCE_MODE_RULE,
-                                                             prio=9, row=2)
+                                                             prio=9, log_row=2)
         _, tir_ra = self.server.create_rule_action('tir')
         self.tir_rule = Mlx5drRule(matcher=self.server.dip_matcher, mt_idx=0,
                                    rte_items=dip_rte, rule_actions=[tir_ra],
