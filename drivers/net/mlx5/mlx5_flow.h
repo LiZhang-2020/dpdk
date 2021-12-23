@@ -1882,6 +1882,20 @@ extern enum mlx5_modification_field reg_to_field[];
 
 int flow_hw_q_flow_flush(struct rte_eth_dev *dev,
 			 struct rte_flow_error *error);
+static inline uint16_t
+mlx5_translate_tunnel_etypes(uint64_t pattern_flags)
+{
+	if (pattern_flags & MLX5_FLOW_LAYER_INNER_L2)
+		return RTE_ETHER_TYPE_TEB;
+	else if (pattern_flags & MLX5_FLOW_LAYER_INNER_L3_IPV4)
+		return RTE_ETHER_TYPE_IPV4;
+	else if (pattern_flags & MLX5_FLOW_LAYER_INNER_L3_IPV6)
+		return RTE_ETHER_TYPE_IPV6;
+	else if (pattern_flags & MLX5_FLOW_LAYER_MPLS)
+		return RTE_ETHER_TYPE_MPLS;
+	return 0;
+}
+
 int mlx5_flow_group_to_table(struct rte_eth_dev *dev,
 			     const struct mlx5_flow_tunnel *tunnel,
 			     uint32_t group, uint32_t *table,

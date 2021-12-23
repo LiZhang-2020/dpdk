@@ -128,20 +128,6 @@ __flow_dv_action_ct_update(struct rte_eth_dev *dev, uint32_t idx,
 			   const struct rte_flow_modify_conntrack *action_conf,
 			   struct rte_flow_error *error);
 
-static inline uint16_t
-mlx5_translate_tunnel_etypes(uint64_t pattern_flags)
-{
-	if (pattern_flags & MLX5_FLOW_LAYER_INNER_L2)
-		return RTE_ETHER_TYPE_TEB;
-	else if (pattern_flags & MLX5_FLOW_LAYER_INNER_L3_IPV4)
-		return RTE_ETHER_TYPE_IPV4;
-	else if (pattern_flags & MLX5_FLOW_LAYER_INNER_L3_IPV6)
-		return RTE_ETHER_TYPE_IPV6;
-	else if (pattern_flags & MLX5_FLOW_LAYER_MPLS)
-		return RTE_ETHER_TYPE_MPLS;
-	return 0;
-}
-
 static int16_t
 flow_dv_get_esw_manager_vport_id(struct rte_eth_dev *dev)
 {
