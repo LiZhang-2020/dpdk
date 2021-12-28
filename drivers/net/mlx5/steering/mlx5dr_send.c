@@ -15,7 +15,7 @@ mlx5dr_send_add_new_dep_wqe(struct mlx5dr_send_engine *queue)
 	return &send_sq->dep_wqe[idx];
 }
 
-int mlx5dr_send_all_dep_wqe(struct mlx5dr_send_engine *queue)
+void mlx5dr_send_all_dep_wqe(struct mlx5dr_send_engine *queue)
 {
 	struct mlx5dr_send_ring_sq *send_sq = &queue->send_ring->send_sq;
 	struct mlx5dr_send_engine_post_attr send_attr = {0};
@@ -55,8 +55,6 @@ int mlx5dr_send_all_dep_wqe(struct mlx5dr_send_engine *queue)
 		/* Fencing is done only on the first WQE */
 		send_attr.fence = 0;
 	}
-
-	return 0;
 }
 
 struct mlx5dr_send_engine_post_ctrl
@@ -708,3 +706,27 @@ close_send_queues:
 	return err;
 }
 
+int mlx5dr_send_queue_action(struct mlx5dr_context *ctx,
+			     uint16_t queue_id,
+			     uint32_t actions)
+{
+	struct mlx5dr_send_ring_sq *send_sq;
+	struct mlx5dr_send_engine *queue;
+
+	queue = &ctx->send_queue[queue_id];
+	send_sq = &queue->send_ring->send_sq;
+
+	if (actions == MLX5DR_SEND_QUEUE_ACTION_DRAIN) {
+		if (send_sq->head_dep_idx != send_sq->tail_dep_idx)
+			/* Send dependent WQEs to drain the queue */
+			mlx5dr_send_all_dep_wqe(queue);
+		else
+			/* Signal on the last posted WQE */
+			mlx5dr_send_engine_flush_queue(queue);
+	} else {
+		rte_errno = -EINVAL;
+		return rte_errno;
+	}
+
+	return 0;
+}

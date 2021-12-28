@@ -48,6 +48,11 @@ enum mlx5dr_match_template_flags {
 	MLX5DR_MATCH_TEMPLATE_FLAG_RELAXED_MATCH = 1 << 0,
 };
 
+enum mlx5dr_send_queue_actions {
+	/* Start executing all pending queued rules and write to HW */
+	MLX5DR_SEND_QUEUE_ACTION_DRAIN = 1 << 0,
+};
+
 struct mlx5dr_context_attr {
 	uint16_t queues;
 	uint16_t queue_size;
@@ -399,5 +404,19 @@ int mlx5dr_send_queue_poll(struct mlx5dr_context *ctx,
 			   uint16_t queue_id,
 			   struct rte_flow_q_op_res res[],
 			   uint32_t res_nb);
+
+/* Perform an action on the queue
+ *
+ * @param[in] ctx
+ * 	The context to which the queue belong to.
+ * @param[in] queue_id
+ * 	The id of the queue to perform the action on.
+ * @param[in] actions
+ * 	Actions to perform on the queue. (enum mlx5dr_send_queue_actions)
+ * @return zero on success non zero otherwise.
+ */
+int mlx5dr_send_queue_action(struct mlx5dr_context *ctx,
+			     uint16_t queue_id,
+			     uint32_t actions);
 
 #endif
