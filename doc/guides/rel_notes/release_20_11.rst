@@ -471,6 +471,13 @@ New Features
   * Added support for asymmetric crypto throughput performance measurement.
     Only modex is supported for now.
 
+* **Added ability to reuse hugepages in Linux.**
+
+  It is possible to reuse files in hugetlbfs to speed up hugepage mapping,
+  which may be useful for fast restart and large allocations.
+  The new mode is activated with ``--huge-unlink=never``
+  and has security implications, refer to the user and programmer guides.
+
 Removed Items
 -------------
 
