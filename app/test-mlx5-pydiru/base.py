@@ -192,7 +192,7 @@ class BaseDrResources(object):
 
     def create_matcher(self, table, matcher_templates,
                        mode=me.MLX5DR_MATCHER_RESOURCE_MODE_RULE,
-                       prio=1, log_row=0, log_col=2, log_rules=0):
+                       prio=1, log_row=0, log_col=0, log_rules=2):
         attr = Mlx5drMatcherAttr(prio, mode, log_row, log_col, log_rules)
         return Mlx5drMatcher(table, matcher_templates, len(matcher_templates), attr)
 
