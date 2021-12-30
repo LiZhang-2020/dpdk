@@ -180,7 +180,7 @@ static int run_loop(__rte_unused void *nothing)
 	struct mlx5dr_rule_attr rule_attr = {0};
 	struct mlx5dr_matcher *hws_matcher;
 	struct thread_info *my_th_info;
-	int lcore_id = rte_lcore_id();
+	int lcore_id = rte_lcore_index(rte_lcore_id());
 	struct mlx5dr_rule *hws_rule;
 	struct mlx5dr_action *drop;
 	struct mlx5dr_context *ctx;
@@ -189,6 +189,9 @@ static int run_loop(__rte_unused void *nothing)
 	uint64_t start, end;
 	int j, i, ret;
 	int core_id;
+
+	if (lcore_id >= NUM_CORES)
+		return 0;
 
 	printf("Starting lcore_id %d\n", lcore_id);
 
@@ -372,6 +375,11 @@ int run_test_rule_insert_mult(struct ibv_context *ibv_ctx)
 	struct rte_ipv4_hdr ipv_value;
 	struct mlx5dr_match_template *mt;
 	struct mlx5dr_action *drop;
+
+	if (rte_lcore_count() < NUM_CORES) {
+		printf("The app requires at least %d cores.\n", NUM_CORES);
+		return -1;
+	}
 
 	dr_ctx_attr.initial_log_ste_memory = 0;
 	dr_ctx_attr.pd = NULL;
