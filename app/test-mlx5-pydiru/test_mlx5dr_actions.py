@@ -1,14 +1,16 @@
 # SPDX-License-Identifier: BSD-3-Clause
 # Copyright (c) 2021, Nvidia Inc. All rights reserved.
 
-from pydiru.providers.mlx5.steering.mlx5dr_action import Mlx5drRuleAction, Mlx5drActionModify
+from pydiru.providers.mlx5.steering.mlx5dr_action import Mlx5drRuleAction, Mlx5drActionModify, \
+    Mlx5drActionDestTable
 from pydiru.providers.mlx5.steering.mlx5dr_rule import Mlx5drRuleAttr, Mlx5drRule
 from pydiru.providers.mlx5.steering.mlx5dr_matcher import Mlx5drMacherTemplate
 from pydiru.providers.mlx5.steering.mlx5dr_devx_objects import Mlx5drDevxObj
 import pydiru.providers.mlx5.steering.mlx5dr_enums as me
 
 from .utils import raw_traffic, gen_packet, PacketConsts, create_sipv4_rte_items, TunnelType, gen_outer_headers, \
-                    get_l2_header, create_dipv4_rte_items, create_devx_counter, query_counter, BULK_512
+    get_l2_header, create_dipv4_rte_items, create_devx_counter, query_counter, BULK_512, \
+    create_eth_ipv4_l4_rte_items,  create_eth_ipv4_rte_items
 from .base import BaseDrResources, PydiruTrafficTestCase
 
 from .prm_structs import SetActionIn
@@ -21,6 +23,8 @@ OUT_SMAC_47_16_FIELD_LENGTH = 32
 OUT_SMAC_15_0_FIELD_ID = 0x2
 OUT_SMAC_15_0_FIELD_LENGTH = 16
 SET_ACTION = 0x1
+TAG_VALUE_1 = 0x1234
+TAG_VALUE_2 = 0x5678
 
 
 class Mlx5drTrafficTest(PydiruTrafficTestCase):
@@ -322,3 +326,79 @@ class Mlx5drTrafficTest(PydiruTrafficTestCase):
         # Add extra 4 bytes to each packet.
         self.server.msg_size += 4
         self.verify_counter(self.server, rx_devx_counter, rx_counter_id, rx_offset)
+
+    @staticmethod
+    def root_ttl_drops(agr_obj):
+        """
+        Creates two rules on root table to drop packets with TTL 1 or 0.
+        """
+        eth_ipv4_ttl0 = create_eth_ipv4_rte_items(ttl=0)
+        eth_ipv4_ttl1 = create_eth_ipv4_rte_items(ttl=1)
+        agr_obj.root_matcher_template_0 = [Mlx5drMacherTemplate(eth_ipv4_ttl0)]
+        agr_obj.root_matcher_0 = agr_obj.create_matcher(agr_obj.root_table,
+                                                        agr_obj.root_matcher_template_0,
+                                                        prio=0)
+        _, drop_ra = agr_obj.create_rule_action('drop', flags=me.MLX5DR_ACTION_FLAG_ROOT_RX)
+        agr_obj.drop0 = Mlx5drRule(agr_obj.root_matcher_0, 0, eth_ipv4_ttl0, [drop_ra], 1,
+                                   Mlx5drRuleAttr(user_data=bytes(8)), agr_obj.dr_ctx)
+        agr_obj.drop1 = Mlx5drRule(agr_obj.root_matcher_0, 0, eth_ipv4_ttl1, [drop_ra], 1,
+                                   Mlx5drRuleAttr(user_data=bytes(8)), agr_obj.dr_ctx)
+
+    @staticmethod
+    def create_templates_and_matcher(agr_obj, rte_items, flags=0, table=None):
+        """
+        Creates matcher templates for each rte_item and a matcher from those templates.
+        """
+        matcher_templates = []
+        for items in rte_items:
+            matcher_templates.append(Mlx5drMacherTemplate(items, flags))
+        return agr_obj.create_matcher(table if table else agr_obj.table, matcher_templates,
+                                      prio=0)
+
+    @staticmethod
+    def create_rules(agr_obj, matcher, rte_items, actions):
+        """
+        Creates rules on a provided matcher iterating on the templates index, rte_items and actions.
+        """
+        assert(len(rte_items) == len(actions))
+        rules = []
+        for i in range(0, len(actions)):
+            rules.append(Mlx5drRule(matcher, i, rte_items[i], actions[i], len(actions[i]),
+                         Mlx5drRuleAttr(user_data=bytes(8)), agr_obj.dr_ctx))
+        return rules
+
+    def test_mlx5dr_action_def33_tag_tir(self):
+        """
+        Create root RX matcher(p0) eth/ipv4 ttl = 0 or 1 with action drop.
+        Create root RX matcher(p1) dmac/ipv4 with action goto non root table.
+        Create non root RX matchers matching on {eth / IPv4 src dst / UDP src dst}
+        or {eth / IPv4 src dst / TCP src dst} (definer 33) with actions TAG + TIR.
+        Send and verify TCP and UDP packets.
+        Packets with TTL 0 and 1 should be dropped.
+        """
+        udp_rte_items = create_eth_ipv4_l4_rte_items(next_proto=socket.IPPROTO_UDP)
+        tcp_rte_items = create_eth_ipv4_l4_rte_items(next_proto=socket.IPPROTO_TCP)
+        dmac = bytes([int(i, 16) for i in PacketConsts.DST_MAC.split(':')])
+        dmac_ipv4_rte_items = create_eth_ipv4_rte_items(dmac=dmac)
+
+        # Root
+        self.server.init_steering_resources(rte_items=dmac_ipv4_rte_items)
+        self.root_ttl_drops(self.server)
+        # Non root
+        matcher = self.create_templates_and_matcher(self.server, [udp_rte_items, tcp_rte_items])
+        _, tag_ra1 = self.server.create_rule_action('tag')
+        tag_ra1.tag_value = TAG_VALUE_1
+        _, tir_ra = self.server.create_rule_action('tir')
+        _, tag_ra2 = self.server.create_rule_action('tag')
+        tag_ra2.tag_value = TAG_VALUE_2
+        self.rules = self.create_rules(self.server, matcher, [udp_rte_items, tcp_rte_items],
+                                       [[tag_ra1, tir_ra], [tag_ra2, tir_ra]])
+        # Traffic
+        packet_udp = gen_packet(self.server.msg_size)
+        packet_tcp = gen_packet(self.server.msg_size, l4=PacketConsts.TCP_PROTO)
+        packet_ttl_0 = gen_packet(self.server.msg_size, ttl=0)
+        packet_ttl_1 = gen_packet(self.server.msg_size, l4=PacketConsts.TCP_PROTO, ttl=1)
+        raw_traffic(self.client, self.server, self.server.num_msgs, [packet_udp, packet_ttl_0],
+                    tag_value=TAG_VALUE_1)
+        raw_traffic(self.client, self.server, self.server.num_msgs, [packet_tcp, packet_ttl_1],
+                    tag_value=TAG_VALUE_2)

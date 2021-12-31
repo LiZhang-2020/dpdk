@@ -6,7 +6,8 @@ import socket
 import struct
 import time
 
-from pydiru.rte_flow import RteFlowItem, RteFlowItemIpv4, RteFlowItemEnd
+from pydiru.rte_flow import RteFlowItem, RteFlowItemEth, RteFlowItemIpv4, \
+    RteFlowItemUdp, RteFlowItemTcp, RteFlowItemEnd
 from pyverbs.pyverbs_error import PyverbsError, PyverbsRDMAError
 from pyverbs.providers.mlx5.mlx5dv import Mlx5DevxObj
 from pyverbs.wr import SGE, SendWR, RecvWR
@@ -182,6 +183,8 @@ def gen_packet(msg_size, l2=True, l3=PacketConsts.IP_V4, l4=PacketConsts.UDP_PRO
                 Source MAC address to use in the packet.
             * *src_ip*
                 Source IPv4 address to use in the packet.
+            * *ttl*
+                Time to live value to use in the packet.
             * *src_port*
                 Source L4 port to use in the packet.
             * *gtp_psc_qfi*
@@ -210,19 +213,20 @@ def gen_packet(msg_size, l2=True, l3=PacketConsts.IP_V4, l4=PacketConsts.UDP_PRO
     else:
         packet = b''
 
+    ttl = kwargs.get('ttl', PacketConsts.TTL_HOP_LIMIT)
     if l3 == PacketConsts.IP_V4:
         # IPv4 header
         src_ip = kwargs.get('src_ip', PacketConsts.SRC_IP)
         packet += struct.pack('!2B3H2BH4s4s', (PacketConsts.IP_V4 << 4) +
                               PacketConsts.IHL, 0, ip_total_len, 0,
                               PacketConsts.IP_V4_FLAGS << 13,
-                              PacketConsts.TTL_HOP_LIMIT, next_hdr, 0,
+                              ttl, next_hdr, 0,
                               socket.inet_aton(src_ip),
                               socket.inet_aton(PacketConsts.DST_IP))
     else:
         # IPv6 header
         packet += struct.pack('!IH2B16s16s', (PacketConsts.IP_V6 << 28),
-                       ip_total_len, next_hdr, PacketConsts.TTL_HOP_LIMIT,
+                       ip_total_len, next_hdr, ttl,
                        socket.inet_pton(socket.AF_INET6, PacketConsts.SRC_IP6),
                        socket.inet_pton(socket.AF_INET6, PacketConsts.DST_IP6))
 
@@ -363,3 +367,44 @@ def query_counter(devx_counter, flow_counter_id, counter_offset=0):
     start_idx = len(QueryFlowCounterOut()) + tc_len * (counter_offset - 1)
     stats = TrafficCounter(bytes(counter_out)[start_idx:start_idx + tc_len])
     return stats.packets, stats.octets
+
+
+def create_eth_ipv4_l4_rte_items(next_proto=socket.IPPROTO_UDP):
+    rte_flow_items = []
+    # Eth
+    mask = RteFlowItemEth(eth_type=0xffff)
+    val = RteFlowItemEth(eth_type=PacketConsts.ETHER_TYPE_IPV4)
+    rte_flow_items.append(RteFlowItem(p.RTE_FLOW_ITEM_TYPE_ETH, val, mask))
+    # IPs
+    mask = RteFlowItemIpv4(src_addr=bytes(4 * [0xff]), dst_addr=bytes(4 * [0xff]),
+                           next_proto=0xff)
+    val = RteFlowItemIpv4(src_addr=PacketConsts.SRC_IP, dst_addr=PacketConsts.DST_IP,
+                          next_proto=next_proto)
+    rte_flow_items.append(RteFlowItem(p.RTE_FLOW_ITEM_TYPE_IPV4, val, mask))
+    # UDP/TCP
+    if next_proto == socket.IPPROTO_UDP:
+        mask = RteFlowItemUdp(src_port=0xffff, dst_port=0xffff)
+        val = RteFlowItemUdp(src_port=PacketConsts.SRC_PORT, dst_port=PacketConsts.DST_PORT)
+        rte_flow_items.append(RteFlowItem(p.RTE_FLOW_ITEM_TYPE_UDP, val, mask))
+    else:
+        mask = RteFlowItemTcp(src_port=0xffff, dst_port=0xffff)
+        val = RteFlowItemTcp(src_port=PacketConsts.SRC_PORT, dst_port=PacketConsts.DST_PORT)
+        rte_flow_items.append(RteFlowItem(p.RTE_FLOW_ITEM_TYPE_TCP, val, mask))
+    rte_flow_items.append(RteFlowItemEnd())
+    return rte_flow_items
+
+
+def create_eth_ipv4_rte_items(dmac=None, ttl=None):
+    rte_flow_items = []
+    # Eth
+    mask = RteFlowItemEth(eth_type=0xffff, dst=bytes(6 * [0xff]) if dmac is not None
+                          else bytes())
+    val = RteFlowItemEth(eth_type=PacketConsts.ETHER_TYPE_IPV4,
+                         dst=dmac if dmac is not None else bytes())
+    rte_flow_items.append(RteFlowItem(p.RTE_FLOW_ITEM_TYPE_ETH, val, mask))
+    # IPs
+    mask = RteFlowItemIpv4(ttl=0xff if ttl is not None else 0)
+    val = RteFlowItemIpv4(ttl=ttl if ttl is not None else 0)
+    rte_flow_items.append(RteFlowItem(p.RTE_FLOW_ITEM_TYPE_IPV4, val, mask))
+    rte_flow_items.append(RteFlowItemEnd())
+    return rte_flow_items
