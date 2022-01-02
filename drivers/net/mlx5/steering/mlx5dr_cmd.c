@@ -411,7 +411,7 @@ mlx5dr_cmd_definer_create(struct ibv_context *ctx,
 
 	devx_obj = simple_malloc(sizeof(*devx_obj));
 	if (!devx_obj) {
-		DR_LOG(ERR, "Failed to allocate memory for STE object");
+		DR_LOG(ERR, "Failed to allocate memory for definer object");
 		rte_errno = ENOMEM;
 		return NULL;
 	}
@@ -422,7 +422,23 @@ mlx5dr_cmd_definer_create(struct ibv_context *ctx,
 		 in, obj_type, MLX5_GENERAL_OBJ_TYPE_DEFINER);
 
 	ptr = MLX5_ADDR_OF(create_definer_in, in, definer);
-	MLX5_SET(definer, ptr, format_id, def_attr->format_id);
+	MLX5_SET(definer, ptr, format_id, MLX5_IFC_DEFINER_FORMAT_ID_SELECT);
+
+	MLX5_SET(definer, ptr, format_select_dw0, def_attr->dw_selector[0]);
+	MLX5_SET(definer, ptr, format_select_dw1, def_attr->dw_selector[1]);
+	MLX5_SET(definer, ptr, format_select_dw2, def_attr->dw_selector[2]);
+	MLX5_SET(definer, ptr, format_select_dw3, def_attr->dw_selector[3]);
+	MLX5_SET(definer, ptr, format_select_dw4, def_attr->dw_selector[4]);
+	MLX5_SET(definer, ptr, format_select_dw5, def_attr->dw_selector[5]);
+
+	MLX5_SET(definer, ptr, format_select_byte0, def_attr->byte_selector[0]);
+	MLX5_SET(definer, ptr, format_select_byte1, def_attr->byte_selector[1]);
+	MLX5_SET(definer, ptr, format_select_byte2, def_attr->byte_selector[2]);
+	MLX5_SET(definer, ptr, format_select_byte3, def_attr->byte_selector[3]);
+	MLX5_SET(definer, ptr, format_select_byte4, def_attr->byte_selector[4]);
+	MLX5_SET(definer, ptr, format_select_byte5, def_attr->byte_selector[5]);
+	MLX5_SET(definer, ptr, format_select_byte6, def_attr->byte_selector[6]);
+	MLX5_SET(definer, ptr, format_select_byte7, def_attr->byte_selector[7]);
 
 	/* Current support match and not jumbo */
 	ptr = MLX5_ADDR_OF(definer, ptr, match_mask_dw_7_0);

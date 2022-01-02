@@ -71,7 +71,8 @@ struct mlx5dr_cmd_ste_create_attr {
 };
 
 struct mlx5dr_cmd_definer_create_attr {
-	uint16_t format_id;
+	uint8_t *dw_selector;
+	uint8_t *byte_selector;
 	uint8_t *match_mask;
 };
 

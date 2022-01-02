@@ -3059,11 +3059,35 @@ struct mlx5_ifc_ste_bits {
 	u8 reserved_at_90[0x370];
 };
 
+enum {
+	MLX5_IFC_DEFINER_FORMAT_ID_SELECT = 61,
+};
+
 struct mlx5_ifc_definer_bits {
 	u8 modify_field_select[0x40];
 	u8 reserved_at_40[0x50];
 	u8 format_id[0x10];
-	u8 reserved_at_60[0x160];
+	u8 reserved_at_60[0x60];
+	u8 format_select_dw3[0x8];
+	u8 format_select_dw2[0x8];
+	u8 format_select_dw1[0x8];
+	u8 format_select_dw0[0x8];
+	u8 format_select_dw7[0x8];
+	u8 format_select_dw6[0x8];
+	u8 format_select_dw5[0x8];
+	u8 format_select_dw4[0x8];
+	u8 reserved_at_100[0x18];
+	u8 format_select_dw8[0x8];
+	u8 reserved_at_120[0x20];
+	u8 format_select_byte3[0x8];
+	u8 format_select_byte2[0x8];
+	u8 format_select_byte1[0x8];
+	u8 format_select_byte0[0x8];
+	u8 format_select_byte7[0x8];
+	u8 format_select_byte6[0x8];
+	u8 format_select_byte5[0x8];
+	u8 format_select_byte4[0x8];
+	u8 reserved_at_180[0x40];
 	u8 ctrl[0xa0];
 	u8 match_mask_dw_11_8[0x60];
 	u8 match_mask_dw_7_0[0x100];
