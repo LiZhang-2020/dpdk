@@ -39,6 +39,7 @@
 #include "mlx5dr_pat_arg.h"
 
 #define DW_SIZE		4
+
 #define IS_BIT_SET(_value, _bit) (_value & (1ULL << (_bit)))
 
 #ifdef RTE_LIBRTE_MLX5_DEBUG
@@ -47,7 +48,7 @@
 #else
 /* Print function name as part of the log */
 #define DR_LOG(level, ...) \
-	DRV_LOG(level, RTE_FMT("[%s]: " RTE_FMT_HEAD(__VA_ARGS__,) "\n", __func__, RTE_FMT_TAIL(__VA_ARGS__,)))
+	DRV_LOG(level, RTE_FMT("[%s]: " RTE_FMT_HEAD(__VA_ARGS__,), __func__, RTE_FMT_TAIL(__VA_ARGS__,)))
 #endif
 
 static inline void *simple_malloc(size_t size)
