@@ -110,6 +110,7 @@ struct mlx5dr_cmd_query_caps {
 	struct mlx5dr_cmd_query_ft_caps fdb_ft;
 	uint8_t log_header_modify_argument_granularity;
 	uint8_t log_header_modify_argument_max_alloc;
+	uint64_t definer_format_sup;
 };
 
 int mlx5dr_cmd_destroy_obj(struct mlx5dr_devx_obj *devx_obj);

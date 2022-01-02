@@ -1706,7 +1706,8 @@ struct mlx5_ifc_cmd_hca_cap_bits {
 	u8 reserved_at_770[0x3];
 	u8 log_header_modify_argument_max_alloc[0x5];
 	u8 reserved_at_778[0x8];
-	u8 reserved_at_780[0x80];
+	u8 reserved_at_780[0x40];
+	u8 match_definer_format_supported[0x40];
 };
 
 struct mlx5_ifc_qos_cap_bits {

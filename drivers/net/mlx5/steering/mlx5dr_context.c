@@ -151,6 +151,12 @@ static void mlx5dr_context_check_hws_supp(struct mlx5dr_context *ctx)
 		return;
 	}
 
+	/* All rules are add by hash */
+	if (!IS_BIT_SET(caps->definer_format_sup, MLX5_IFC_DEFINER_FORMAT_ID_SELECT)) {
+		DR_LOG(INFO, "Required HWS Dynamic definer not supported");
+		return;
+	}
+
 	ctx->flags |= MLX5DR_CONTEXT_FLAG_HWS_SUPPORT;
 }
 

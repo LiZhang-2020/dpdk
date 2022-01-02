@@ -573,10 +573,16 @@ int mlx5dr_cmd_query_caps(struct ibv_context *ctx,
 		MLX5_GET(query_hca_cap_out,
 			 out,
 			 capability.cmd_hca_cap.log_header_modify_argument_granularity);
+
 	caps->log_header_modify_argument_max_alloc =
 		MLX5_GET(query_hca_cap_out,
 			 out,
 			 capability.cmd_hca_cap.log_header_modify_argument_max_alloc);
+
+	caps->definer_format_sup =
+		MLX5_GET64(query_hca_cap_out,
+			   out,
+			   capability.cmd_hca_cap.match_definer_format_supported);
 
 	MLX5_SET(query_hca_cap_in, in, op_mod,
 		 MLX5_GET_HCA_CAP_OP_MOD_NIC_FLOW_TABLE |
