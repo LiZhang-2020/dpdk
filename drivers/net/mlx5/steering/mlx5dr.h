@@ -45,7 +45,7 @@ enum mlx5dr_action_reformat_type {
 
 enum mlx5dr_match_template_flags {
 	/* Allow relaxed matching by skipping derived dependent match fields. */
-	MLX5DR_MATCH_TEMPLATE_FLAG_RELAXED_MATCH = 1 << 0,
+	MLX5DR_MATCH_TEMPLATE_FLAG_RELAXED_MATCH = 1,
 };
 
 enum mlx5dr_send_queue_actions {
@@ -258,12 +258,12 @@ int mlx5dr_rule_destroy(struct mlx5dr_rule *rule,
  * @param[in] ctx
  * 	The context in which the new action will be created.
  * @param[in] flags
- * 	Action creation flags.
+ * 	Action creation flags. (enum mlx5dr_action_flags)
  * @return pointer to mlx5dr_action on success NULL otherwise.
  */
 struct mlx5dr_action *
 mlx5dr_action_create_dest_drop(struct mlx5dr_context *ctx,
-			       enum mlx5dr_action_flags flags);
+			       uint32_t flags);
 
 /* Create direct rule default miss action.
  * Defaults are RX: Drop TX: Wire.
@@ -271,12 +271,12 @@ mlx5dr_action_create_dest_drop(struct mlx5dr_context *ctx,
  * @param[in] ctx
  * 	The context in which the new action will be created.
  * @param[in] flags
- * 	Action creation flags.
+ * 	Action creation flags. (enum mlx5dr_action_flags)
  * @return pointer to mlx5dr_action on success NULL otherwise.
  */
 struct mlx5dr_action *
 mlx5dr_action_create_default_miss(struct mlx5dr_context *ctx,
-				  enum mlx5dr_action_flags flags);
+				  uint32_t flags);
 
 /* Create direct rule goto table action.
  *
@@ -285,13 +285,13 @@ mlx5dr_action_create_default_miss(struct mlx5dr_context *ctx,
  * @param[in] tbl
  * 	Destination table.
  * @param[in] flags
- * 	Action creation flags.
+ * 	Action creation flags. (enum mlx5dr_action_flags)
  * @return pointer to mlx5dr_action on success NULL otherwise.
  */
 struct mlx5dr_action *
 mlx5dr_action_create_dest_table(struct mlx5dr_context *ctx,
 				struct mlx5dr_table *tbl,
-				enum mlx5dr_action_flags flags);
+				uint32_t flags);
 
 /*  Create direct rule goto TIR action.
  *
@@ -300,25 +300,25 @@ mlx5dr_action_create_dest_table(struct mlx5dr_context *ctx,
  * @param[in] obj
  * 	Direct rule TIR devx object.
  * @param[in] flags
- * 	Action creation flags.
+ * 	Action creation flags. (enum mlx5dr_action_flags)
  * @return pointer to mlx5dr_action on success NULL otherwise.
  */
 struct mlx5dr_action *
 mlx5dr_action_create_dest_tir(struct mlx5dr_context *ctx,
 			      struct mlx5dr_devx_obj *obj,
-			      enum mlx5dr_action_flags flags);
+			      uint32_t flags);
 
 /* Create direct rule TAG action.
  *
  * @param[in] ctx
  * 	The context in which the new action will be created.
  * @param[in] flags
- * 	Action creation flags.
+ * 	Action creation flags. (enum mlx5dr_action_flags)
  * @return pointer to mlx5dr_action on success NULL otherwise.
  */
 struct mlx5dr_action *
 mlx5dr_action_create_tag(struct mlx5dr_context *ctx,
-			 enum mlx5dr_action_flags flags);
+			 uint32_t flags);
 
 /* Create direct rule counter action.
  *
@@ -327,13 +327,13 @@ mlx5dr_action_create_tag(struct mlx5dr_context *ctx,
  * @param[in] obj
  * 	Direct rule counter devx object.
  * @param[in] flags
- * 	Action creation flags.
+ * 	Action creation flags. (enum mlx5dr_action_flags)
  * @return pointer to mlx5dr_action on success NULL otherwise.
  */
 struct mlx5dr_action *
 mlx5dr_action_create_counter(struct mlx5dr_context *ctx,
 			     struct mlx5dr_devx_obj *obj,
-			     enum mlx5dr_action_flags flags);
+			     uint32_t flags);
 
 /* Create direct rule reformat action.
  *
@@ -348,7 +348,7 @@ mlx5dr_action_create_counter(struct mlx5dr_context *ctx,
  * @param[in] log_bulk_size
  * 	Number of unique values used with this pattern.
  * @param[in] flags
- * 	Action creation flags.
+ * 	Action creation flags. (enum mlx5dr_action_flags)
  * @return pointer to mlx5dr_action on success NULL otherwise.
  */
 struct mlx5dr_action *
@@ -357,7 +357,7 @@ mlx5dr_action_create_reformat(struct mlx5dr_context *ctx,
 			      size_t data_sz,
 			      void *inline_data,
 			      uint32_t log_bulk_size,
-			      enum mlx5dr_action_flags flags);
+			      uint32_t flags);
 
 /* Create direct rule modify header action.
  *
@@ -370,7 +370,7 @@ mlx5dr_action_create_reformat(struct mlx5dr_context *ctx,
  * @param[in] log_bulk_size
  * 	Number of unique values used with this pattern.
  * @param[in] flags
- * 	Action creation flags.
+ * 	Action creation flags. (enum mlx5dr_action_flags)
  * @return pointer to mlx5dr_action on success NULL otherwise.
  */
 struct mlx5dr_action *
@@ -378,7 +378,7 @@ mlx5dr_action_create_modify_header(struct mlx5dr_context *ctx,
 				   size_t pattern_sz,
 				   __be64 pattern[],
 				   uint32_t log_bulk_size,
-				   enum mlx5dr_action_flags flags);
+				   uint32_t flags);
 
 /* Destroy direct rule action.
  *

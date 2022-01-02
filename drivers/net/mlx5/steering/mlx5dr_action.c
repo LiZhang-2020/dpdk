@@ -264,7 +264,7 @@ mlx5dr_action_is_hws_flags(uint32_t flags)
 
 static struct mlx5dr_action *
 mlx5dr_action_create_generic(struct mlx5dr_context *ctx,
-			     enum mlx5dr_action_flags flags,
+			     uint32_t flags,
 			     enum mlx5dr_action_type action_type)
 {
 	struct mlx5dr_action *action;
@@ -293,7 +293,7 @@ mlx5dr_action_create_generic(struct mlx5dr_context *ctx,
 struct mlx5dr_action *
 mlx5dr_action_create_dest_table(struct mlx5dr_context *ctx,
 				struct mlx5dr_table *tbl,
-				enum mlx5dr_action_flags flags)
+				uint32_t flags)
 {
 	struct mlx5dr_action *action;
 	int ret;
@@ -333,7 +333,7 @@ free_action:
 struct mlx5dr_action *
 mlx5dr_action_create_dest_tir(struct mlx5dr_context *ctx,
 			      struct mlx5dr_devx_obj *obj,
-			      enum mlx5dr_action_flags flags)
+			      uint32_t flags)
 {
 	struct mlx5dr_action *action;
 	int ret;
@@ -366,7 +366,7 @@ free_action:
 
 struct mlx5dr_action *
 mlx5dr_action_create_dest_drop(struct mlx5dr_context *ctx,
-			       enum mlx5dr_action_flags flags)
+			       uint32_t flags)
 {
 	struct mlx5dr_action *action;
 	int ret;
@@ -390,7 +390,7 @@ free_action:
 
 struct mlx5dr_action *
 mlx5dr_action_create_default_miss(struct mlx5dr_context *ctx,
-				  enum mlx5dr_action_flags flags)
+				  uint32_t flags)
 {
 	struct mlx5dr_action *action;
 	int ret;
@@ -414,7 +414,7 @@ free_action:
 
 struct mlx5dr_action *
 mlx5dr_action_create_tag(struct mlx5dr_context *ctx,
-			 enum mlx5dr_action_flags flags)
+			 uint32_t flags)
 {
 	struct mlx5dr_action *action;
 	int ret;
@@ -439,7 +439,7 @@ free_action:
 struct mlx5dr_action *
 mlx5dr_action_create_counter(struct mlx5dr_context *ctx,
 			     struct mlx5dr_devx_obj *obj,
-			     enum mlx5dr_action_flags flags)
+			     uint32_t flags)
 {
 	struct mlx5dr_action *action;
 	int ret;
@@ -914,7 +914,7 @@ mlx5dr_action_create_reformat(struct mlx5dr_context *ctx,
 			      size_t data_sz,
 			      void *inline_data,
 			      uint32_t log_bulk_size,
-			      enum mlx5dr_action_flags flags)
+			      uint32_t flags)
 {
 	struct mlx5dr_action *action;
 	uint32_t action_type;
@@ -992,7 +992,7 @@ mlx5dr_action_create_modify_header(struct mlx5dr_context *ctx,
 				   size_t pattern_sz,
 				   __be64 pattern[],
 				   uint32_t log_bulk_size,
-				   enum mlx5dr_action_flags flags)
+				   uint32_t flags)
 {
 	struct mlx5dr_action *action;
 	int ret;
