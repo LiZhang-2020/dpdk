@@ -109,6 +109,14 @@ struct mlx5dr_definer {
 	struct mlx5dr_devx_obj *obj;
 };
 
+struct mlx5dr_definer_sel_ctrl {
+	uint8_t allowed_dw;
+	uint8_t allowed_bytes;
+	uint8_t used_dw;
+	uint8_t used_bytes;
+	struct mlx5dr_definer *definer;
+};
+
 struct mlx5dr_definer_fc {
 	uint8_t item_idx;
 	uint32_t byte_off;
@@ -733,115 +741,101 @@ mlx5dr_definer_fc_bind(struct mlx5dr_definer *definer,
 	return 0;
 }
 
+static bool
+mlx5dr_definer_best_hl_fit_recu(struct mlx5dr_definer_sel_ctrl *ctrl,
+				uint32_t cur_dw,
+				uint32_t *data)
+{
+	uint8_t bytes_set;
+	int byte_idx;
+	bool ret;
+	int i;
+
+	/* Reached end, nothing left to do */
+	if (cur_dw == MLX5_ST_SZ_DW(definer_hl))
+		return true;
+
+	/* No data set, can skip to next DW */
+	while (!*data) {
+		cur_dw++;
+		data++;
+
+		/* Reached end, nothing left to do */
+		if (cur_dw == MLX5_ST_SZ_DW(definer_hl))
+			return true;
+	}
+
+	/* Used all DW selectors and Byte selectors, no possible solution */
+	if (ctrl->allowed_dw == ctrl->used_dw &&
+	    ctrl->allowed_bytes == ctrl->used_bytes)
+		return false;
+
+	/* Try to use DW selectors first */
+	if (ctrl->allowed_dw > ctrl->used_dw) {
+		ctrl->definer->dw_selector[ctrl->used_dw++] = cur_dw;
+
+		ret = mlx5dr_definer_best_hl_fit_recu(ctrl, cur_dw + 1, data + 1);
+		if (ret)
+			return ret;
+
+		ctrl->definer->dw_selector[--ctrl->used_dw] = 0;
+	}
+
+	/* No byte selector for offset bigger than 255*/
+	if (cur_dw * DW_SIZE > 255)
+		return false;
+
+	bytes_set = !!(0x000000ff & *data) +
+		    !!(0x0000ff00 & *data) +
+		    !!(0x00ff0000 & *data) +
+		    !!(0xff000000 & *data);
+
+	/* Check if there are enough byte selectors left */
+	if (bytes_set + ctrl->used_bytes > ctrl->allowed_bytes)
+		return false;
+
+	/* Try to use Byte selectors */
+	for (i = 0; i < DW_SIZE; i++)
+		if ((0xff000000 >> (i * BITS_IN_BYTE)) & rte_be_to_cpu_32(*data)) {
+			/* Use byte selectors high to low */
+			byte_idx = ctrl->allowed_bytes - ctrl->used_bytes - 1;
+			ctrl->definer->byte_selector[byte_idx] = cur_dw * DW_SIZE + i;
+			ctrl->used_bytes++;
+		}
+
+	ret = mlx5dr_definer_best_hl_fit_recu(ctrl, cur_dw + 1, data + 1);
+	if (ret)
+		return ret;
+
+	for (i = 0; i < DW_SIZE; i++)
+		if ((0xff << (i * BITS_IN_BYTE)) & rte_be_to_cpu_32(*data)) {
+			ctrl->used_bytes--;
+			byte_idx = ctrl->allowed_bytes - ctrl->used_bytes - 1;
+			ctrl->definer->byte_selector[byte_idx] = 0;
+		}
+
+	return false;
+}
+
 static int
 mlx5dr_definer_find_best_hl_fit(struct mlx5dr_match_template *mt,
-				struct mlx5dr_cmd_query_caps *caps,
-				uint16_t *format_id)
+				uint8_t *hl)
 {
-	struct mlx5dr_definer *definer = mt->definer;
-	uint32_t tag_offset, i;
-	bool fail;
-	int ret;
+	struct mlx5dr_definer_sel_ctrl ctrl = {0};
+	bool found;
 
-	/* Temporary support for fixed definers, until dynamic definer */
+	ctrl.definer = mt->definer;
+	ctrl.allowed_dw = DW_SELECTORS;
+	ctrl.allowed_bytes = BYTE_SELECTORS;
 
-	fail = false;
-	*format_id = 33;
-	definer->dw_selector[5] = 64; // SRC IP OUT
-	definer->dw_selector[4] = 65; // DST IP OUT
-	definer->dw_selector[3] = 24; // SRC & DST PORT OUT
-	definer->dw_selector[2] = 2;  // L3 & L4 & VLAN OUT (Port_eth_l2)
-	definer->dw_selector[1] = 84; // Reserved
-	definer->dw_selector[0] = 84; // Reserved
-	definer->byte_selector[7] = 136; // Reserved
-	definer->byte_selector[6] = 136; // Reserved
-	definer->byte_selector[5] = 136; // Reserved
-	definer->byte_selector[4] = 136; // Reserved
-	definer->byte_selector[3] = 136; // Don't Care
-	definer->byte_selector[2] = 136; // Don't Care
-	definer->byte_selector[1] = 58;  // TTL OUT
-	definer->byte_selector[0] = 59;  // Protocol OUT
-
-	/* Check if all fields are supported by definer 33 */
-	for (i = 0; i < mt->fc_sz; i++) {
-		ret = mlx5dr_definer_find_byte_in_tag(definer, mt->fc[i].byte_off, &tag_offset);
-		if (ret) {
-			DR_LOG(INFO, "Cannot use definer %d", (*format_id));
-			fail = true;
-			break;
-		}
+	found = mlx5dr_definer_best_hl_fit_recu(&ctrl, 0, (uint32_t *)hl);
+	if (!found) {
+		DR_LOG(ERR, "Unable to find supporting match definer");
+		rte_errno = ENOTSUP;
+		return rte_errno;
 	}
 
-	if (!fail)
-		return 0;
-
-	fail = false;
-	*format_id = 34;
-	// GTPU TEID
-	definer->dw_selector[5] =
-		mlx5dr_definer_get_flex_parser_off(caps->flex_parser_id_gtpu_teid) / DW_SIZE;
-	// GTPU QFI
-	definer->dw_selector[4] =
-		mlx5dr_definer_get_flex_parser_off(caps->flex_parser_id_gtpu_first_ext_dw_0) / DW_SIZE;
-	definer->dw_selector[3] = 64; // SRC IP OUT
-	definer->dw_selector[2] = 66; // SRC IP INNER
-	definer->dw_selector[1] = 67; // DST IP INNER
-	definer->dw_selector[0] = 26; // SRC & DST PORT INNER
-	definer->byte_selector[7] = 136; // Reserved
-	definer->byte_selector[6] = 136; // Reserved
-	definer->byte_selector[5] = 136; // Reserved
-	definer->byte_selector[4] = 136; // Reserved
-	definer->byte_selector[3] = 136; // Reserved
-	definer->byte_selector[2] = 136; // Reserved
-	definer->byte_selector[1] = 25;  // L3 & L4 type INNER (Port_eth_l2)
-	definer->byte_selector[0] = 9;   // L3 & L4 type OUT   (Port_eth_l2)
-
-	/* Check if all fields are supported by definer 34 */
-	for (i = 0; i < mt->fc_sz; i++) {
-		ret = mlx5dr_definer_find_byte_in_tag(definer, mt->fc[i].byte_off, &tag_offset);
-		if (ret) {
-			DR_LOG(INFO, "Cannot use definer %d", (*format_id));
-			fail = true;
-			break;
-		}
-	}
-
-	if (!fail)
-		return 0;
-
-	fail = false;
-	*format_id = 25;
-	definer->dw_selector[5] = 66; // SRC IP INNER
-	definer->dw_selector[4] = 67; // DST IP INNER
-	definer->dw_selector[3] = 26; // SRC and DST PORT INNER
-	definer->dw_selector[2] = 97; // TNL_HDR 0
-	definer->dw_selector[1] = 98; // TNL_HDR 1
-	definer->dw_selector[0] = 84; // Reserved
-	definer->byte_selector[7] = 25;  // L3 & L4 type INNER (Port_eth_l2)
-	definer->byte_selector[6] = 9;   // L3 & L4 type OUTER (Port_eth_l2)
-	definer->byte_selector[5] = 98;  // DST_PORT HIGH OUT
-	definer->byte_selector[4] = 99;  // DST PORT LOW OUT
-	definer->byte_selector[3] = 136; // Reserved
-	definer->byte_selector[2] = 136; // Reserved
-	definer->byte_selector[1] = 136; // Reserved
-	definer->byte_selector[0] = 136; // Reserved
-
-	/* Check if all fields are supported by definer 25 */
-	for (i = 0; i < mt->fc_sz; i++) {
-		ret = mlx5dr_definer_find_byte_in_tag(definer, mt->fc[i].byte_off, &tag_offset);
-		if (ret) {
-			DR_LOG(INFO, "Cannot use definer %d", (*format_id));
-			fail = true;
-			break;
-		}
-	}
-
-	if (!fail)
-		return 0;
-
-	DR_LOG(ERR, "Unable to find supporting match definer");
-	rte_errno = ENOTSUP;
-	return rte_errno;
+	return 0;
 }
 
 static void
@@ -904,7 +898,6 @@ int mlx5dr_definer_get(struct mlx5dr_context *ctx,
 {
 	struct mlx5dr_cmd_definer_create_attr def_attr = {0};
 	struct ibv_context *ibv_ctx = ctx->ibv_ctx;
-	uint16_t format_id;
 	uint8_t *hl;
 	int ret;
 
@@ -934,7 +927,7 @@ int mlx5dr_definer_get(struct mlx5dr_context *ctx,
 	}
 
 	/* Find the definer for given header layout */
-	ret = mlx5dr_definer_find_best_hl_fit(mt, ctx->caps, &format_id);
+	ret = mlx5dr_definer_find_best_hl_fit(mt, hl);
 	if (ret) {
 		DR_LOG(ERR, "Failed to create definer from header layout");
 		goto free_field_copy;
@@ -957,7 +950,8 @@ int mlx5dr_definer_get(struct mlx5dr_context *ctx,
 
 	/* Create definer based on the bitmask tag */
 	def_attr.match_mask = mt->definer->mask_tag;
-	def_attr.format_id = format_id;
+	def_attr.dw_selector = mt->definer->dw_selector;
+	def_attr.byte_selector = mt->definer->byte_selector;
 	mt->definer->obj = mlx5dr_cmd_definer_create(ibv_ctx, &def_attr);
 	if (!mt->definer->obj)
 		goto free_field_copy;
