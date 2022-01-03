@@ -100,7 +100,6 @@ struct mlx5dr_cmd_query_caps {
 	uint8_t ste_alloc_log_gran;
 	uint8_t stc_alloc_log_max;
 	uint8_t stc_alloc_log_gran;
-	uint8_t fdb_ft_reparse;
 	uint8_t rtc_log_depth_max;
 	uint8_t flex_parser_id_gtpu_dw_0;
 	uint8_t flex_parser_id_gtpu_teid;
