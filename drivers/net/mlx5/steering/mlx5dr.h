@@ -123,9 +123,9 @@ struct mlx5dr_rule_action {
  * Each context can contain multiple tables of different types.
  *
  * @param[in] ibv_ctx
- * 	The ibv context to used for HWS.
+ *	The ibv context to used for HWS.
  * @param[in] attr
- * 	Attributes used for context open.
+ *	Attributes used for context open.
  * @return pointer to mlx5dr_context on success NULL otherwise.
  */
 struct mlx5dr_context *
@@ -135,7 +135,7 @@ mlx5dr_context_open(struct ibv_context *ibv_ctx,
 /* Close a context used for direct hardware steering.
  *
  * @param[in] ctx
- * 	mlx5dr context to close.
+ *	mlx5dr context to close.
  * @return zero on success non zero otherwise.
  */
 int mlx5dr_context_close(struct mlx5dr_context *ctx);
@@ -143,9 +143,9 @@ int mlx5dr_context_close(struct mlx5dr_context *ctx);
 /* Create a new direct rule table. Each table can contain multiple matchers.
  *
  * @param[in] ctx
- * 	The context in which the new table will be opened.
+ *	The context in which the new table will be opened.
  * @param[in] attr
- * 	Attributes used for table creation.
+ *	Attributes used for table creation.
  * @return pointer to mlx5dr_table on success NULL otherwise.
  */
 struct mlx5dr_table *
@@ -155,7 +155,7 @@ mlx5dr_table_create(struct mlx5dr_context *ctx,
 /* Destroy direct rule table.
  *
  * @param[in] tbl
- * 	mlx5dr table to destroy.
+ *	mlx5dr table to destroy.
  * @return zero on success non zero otherwise.
  */
 int mlx5dr_table_destroy(struct mlx5dr_table *tbl);
@@ -164,9 +164,9 @@ int mlx5dr_table_destroy(struct mlx5dr_table *tbl);
  * will be used for matcher creation.
  *
  * @param[in] items
- * 	Describe the mask for template creation
+ *	Describe the mask for template creation
  * @param[in] flags
- * 	Template creation flags
+ *	Template creation flags
  * @return pointer to mlx5dr_match_template on success NULL otherwise
  */
 struct mlx5dr_match_template *
@@ -176,7 +176,7 @@ mlx5dr_match_template_create(const struct rte_flow_item items[],
 /* Destroy match template.
  *
  * @param[in] mt
- * 	Match template to destroy.
+ *	Match template to destroy.
  * @return zero on success non zero otherwise.
  */
 int mlx5dr_match_template_destroy(struct mlx5dr_match_template *mt);
@@ -187,13 +187,13 @@ int mlx5dr_match_template_destroy(struct mlx5dr_match_template *mt);
  * templates can be used on the same matcher.
  *
  * @param[in] table
- * 	The table in which the new matcher will be opened.
+ *	The table in which the new matcher will be opened.
  * @param[in] mt
- * 	Array of match templates to be used on matcher.
+ *	Array of match templates to be used on matcher.
  * @param[in] num_of_mt
- * 	Number of match templates in mt arrray.
+ *	Number of match templates in mt array.
  * @param[in] attr
- * 	Attributes used for matcher creation.
+ *	Attributes used for matcher creation.
  * @return pointer to mlx5dr_matcher on success NULL otherwise.
  */
 struct mlx5dr_matcher *
@@ -205,7 +205,7 @@ mlx5dr_matcher_create(struct mlx5dr_table *table,
 /* Destroy direct rule matcher.
  *
  * @param[in] matcher
- * 	Matcher to destroy.
+ *	Matcher to destroy.
  * @return zero on success non zero otherwise.
  */
 int mlx5dr_matcher_destroy(struct mlx5dr_matcher *matcher);
@@ -219,19 +219,19 @@ size_t mlx5dr_rule_get_handle_size(void);
 /* Enqueue create rule operation.
  *
  * @param[in] matcher
- * 	The matcher in which the new rule will be created.
+ *	The matcher in which the new rule will be created.
  * @param[in] mt_idx
- * 	Match template index to create the rule with.
+ *	Match template index to create the rule with.
  * @param[in] items
- * 	The items used for the value matching.
+ *	The items used for the value matching.
  * @param[in] rule_actions
- * 	Rule action to be executed on match.
+ *	Rule action to be executed on match.
  * @param[in] num_of_actions
- * 	Number of rule actions.
+ *	Number of rule actions.
  * @param[in] attr
- * 	Rule creation attributes.
+ *	Rule creation attributes.
  * @param[in, out] rule_handle
- * 	A valid rule handle. The handle doesn't require any initilization.
+ *	A valid rule handle. The handle doesn't require any initialization.
  * @return zero on successful enqueue non zero otherwise.
  */
 int mlx5dr_rule_create(struct mlx5dr_matcher *matcher,
@@ -245,9 +245,9 @@ int mlx5dr_rule_create(struct mlx5dr_matcher *matcher,
 /* Enqueue destroy rule operation.
  *
  * @param[in] rule
- * 	The rule destruction to enqueue.
+ *	The rule destruction to enqueue.
  * @param[in] attr
- * 	Rule destruction attributes.
+ *	Rule destruction attributes.
  * @return zero on successful enqueue non zero otherwise.
  */
 int mlx5dr_rule_destroy(struct mlx5dr_rule *rule,
@@ -256,9 +256,9 @@ int mlx5dr_rule_destroy(struct mlx5dr_rule *rule,
 /* Create direct rule drop action.
  *
  * @param[in] ctx
- * 	The context in which the new action will be created.
+ *	The context in which the new action will be created.
  * @param[in] flags
- * 	Action creation flags. (enum mlx5dr_action_flags)
+ *	Action creation flags. (enum mlx5dr_action_flags)
  * @return pointer to mlx5dr_action on success NULL otherwise.
  */
 struct mlx5dr_action *
@@ -269,9 +269,9 @@ mlx5dr_action_create_dest_drop(struct mlx5dr_context *ctx,
  * Defaults are RX: Drop TX: Wire.
  *
  * @param[in] ctx
- * 	The context in which the new action will be created.
+ *	The context in which the new action will be created.
  * @param[in] flags
- * 	Action creation flags. (enum mlx5dr_action_flags)
+ *	Action creation flags. (enum mlx5dr_action_flags)
  * @return pointer to mlx5dr_action on success NULL otherwise.
  */
 struct mlx5dr_action *
@@ -281,11 +281,11 @@ mlx5dr_action_create_default_miss(struct mlx5dr_context *ctx,
 /* Create direct rule goto table action.
  *
  * @param[in] ctx
- * 	The context in which the new action will be created.
+ *	The context in which the new action will be created.
  * @param[in] tbl
- * 	Destination table.
+ *	Destination table.
  * @param[in] flags
- * 	Action creation flags. (enum mlx5dr_action_flags)
+ *	Action creation flags. (enum mlx5dr_action_flags)
  * @return pointer to mlx5dr_action on success NULL otherwise.
  */
 struct mlx5dr_action *
@@ -296,11 +296,11 @@ mlx5dr_action_create_dest_table(struct mlx5dr_context *ctx,
 /*  Create direct rule goto TIR action.
  *
  * @param[in] ctx
- * 	The context in which the new action will be created.
+ *	The context in which the new action will be created.
  * @param[in] obj
- * 	Direct rule TIR devx object.
+ *	Direct rule TIR devx object.
  * @param[in] flags
- * 	Action creation flags. (enum mlx5dr_action_flags)
+ *	Action creation flags. (enum mlx5dr_action_flags)
  * @return pointer to mlx5dr_action on success NULL otherwise.
  */
 struct mlx5dr_action *
@@ -311,9 +311,9 @@ mlx5dr_action_create_dest_tir(struct mlx5dr_context *ctx,
 /* Create direct rule TAG action.
  *
  * @param[in] ctx
- * 	The context in which the new action will be created.
+ *	The context in which the new action will be created.
  * @param[in] flags
- * 	Action creation flags. (enum mlx5dr_action_flags)
+ *	Action creation flags. (enum mlx5dr_action_flags)
  * @return pointer to mlx5dr_action on success NULL otherwise.
  */
 struct mlx5dr_action *
@@ -323,11 +323,11 @@ mlx5dr_action_create_tag(struct mlx5dr_context *ctx,
 /* Create direct rule counter action.
  *
  * @param[in] ctx
- * 	The context in which the new action will be created.
+ *	The context in which the new action will be created.
  * @param[in] obj
- * 	Direct rule counter devx object.
+ *	Direct rule counter devx object.
  * @param[in] flags
- * 	Action creation flags. (enum mlx5dr_action_flags)
+ *	Action creation flags. (enum mlx5dr_action_flags)
  * @return pointer to mlx5dr_action on success NULL otherwise.
  */
 struct mlx5dr_action *
@@ -338,17 +338,17 @@ mlx5dr_action_create_counter(struct mlx5dr_context *ctx,
 /* Create direct rule reformat action.
  *
  * @param[in] ctx
- * 	The context in which the new action will be created.
+ *	The context in which the new action will be created.
  * @param[in] reformat_type
- * 	Type of reformat.
+ *	Type of reformat.
  * @param[in] data_sz
- * 	Size in bytes of data.
+ *	Size in bytes of data.
  * @param[in] inline_data
- * 	Header data array in case of inline action.
+ *	Header data array in case of inline action.
  * @param[in] log_bulk_size
- * 	Number of unique values used with this pattern.
+ *	Number of unique values used with this pattern.
  * @param[in] flags
- * 	Action creation flags. (enum mlx5dr_action_flags)
+ *	Action creation flags. (enum mlx5dr_action_flags)
  * @return pointer to mlx5dr_action on success NULL otherwise.
  */
 struct mlx5dr_action *
@@ -362,15 +362,15 @@ mlx5dr_action_create_reformat(struct mlx5dr_context *ctx,
 /* Create direct rule modify header action.
  *
  * @param[in] ctx
- * 	The context in which the new action will be created.
+ *	The context in which the new action will be created.
  * @param[in] pattern_sz
- * 	Byte size of the pattern array.
+ *	Byte size of the pattern array.
  * @param[in] pattern
- * 	PRM format modify pattern action array.
+ *	PRM format modify pattern action array.
  * @param[in] log_bulk_size
- * 	Number of unique values used with this pattern.
+ *	Number of unique values used with this pattern.
  * @param[in] flags
- * 	Action creation flags. (enum mlx5dr_action_flags)
+ *	Action creation flags. (enum mlx5dr_action_flags)
  * @return pointer to mlx5dr_action on success NULL otherwise.
  */
 struct mlx5dr_action *
@@ -383,7 +383,7 @@ mlx5dr_action_create_modify_header(struct mlx5dr_context *ctx,
 /* Destroy direct rule action.
  *
  * @param[in] action
- * 	The action to destroy.
+ *	The action to destroy.
  * @return zero on success non zero otherwise.
  */
 int mlx5dr_action_destroy(struct mlx5dr_action *action);
@@ -391,13 +391,13 @@ int mlx5dr_action_destroy(struct mlx5dr_action *action);
 /* Poll queue for rule creation and deletions completions.
  *
  * @param[in] ctx
- * 	The context to which the queue belong to.
+ *	The context to which the queue belong to.
  * @param[in] queue_id
- * 	The id of the queue to poll.
+ *	The id of the queue to poll.
  * @param[in, out] res
- * 	Completion array.
+ *	Completion array.
  * @param[in] res_nb
- * 	Maximum number of results to return.
+ *	Maximum number of results to return.
  * @return negative number on failure, the number of completions otherwise.
  */
 int mlx5dr_send_queue_poll(struct mlx5dr_context *ctx,
