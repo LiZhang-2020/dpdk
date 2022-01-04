@@ -10,7 +10,8 @@ import pydiru.providers.mlx5.steering.mlx5dr_enums as me
 
 from .utils import raw_traffic, gen_packet, PacketConsts, create_sipv4_rte_items, TunnelType, gen_outer_headers, \
     get_l2_header, create_dipv4_rte_items, create_devx_counter, query_counter, BULK_512, \
-    create_eth_ipv4_l4_rte_items,  create_eth_ipv4_rte_items
+    create_eth_ipv4_l4_rte_items, create_tunneled_gtp_flags_rte_items, create_eth_ipv4_rte_items, \
+    create_tunneled_gtp_teid_rte_items
 from .base import BaseDrResources, PydiruTrafficTestCase
 
 from .prm_structs import SetActionIn
@@ -402,3 +403,97 @@ class Mlx5drTrafficTest(PydiruTrafficTestCase):
                     tag_value=TAG_VALUE_1)
         raw_traffic(self.client, self.server, self.server.num_msgs, [packet_tcp, packet_ttl_1],
                     tag_value=TAG_VALUE_2)
+
+    @staticmethod
+    def create_actions_decap_tag_tir(agr_obj, tag_value):
+        _, tag_ra = agr_obj.create_rule_action('tag')
+        tag_ra.tag_value = tag_value
+        _, tir_ra = agr_obj.create_rule_action('tir')
+        inner_l2 =get_l2_header()
+        _, decap_ra = agr_obj.create_rule_action('reformat',
+                                                 ref_type=me.MLX5DR_ACTION_REFORMAT_TYPE_TNL_L3_TO_L2,
+                                                 data=inner_l2, data_sz=len(inner_l2), log_bulk_size=12)
+        return [decap_ra, tag_ra, tir_ra]
+
+    def def_34_test_traffic(self, outer, un_exp_outer, tag_val):
+        l2_hdr = get_l2_header()
+        inner_len = self.server.msg_size - len(outer) - len(l2_hdr)
+        inner = gen_packet(inner_len, l2=False)
+        exp_packet = l2_hdr + inner
+        send_packet = outer + inner
+        un_exp_packet = un_exp_outer + inner
+        packets = [send_packet, un_exp_packet]
+        raw_traffic(self.client, self.server, self.server.num_msgs, packets=packets,
+                    expected_packet=exp_packet, tag_value=tag_val)
+
+    def test_mlx5dr_action_def34_decap_tag_tir(self):
+        """
+        Create root RX matcher(p0) eth/ipv4 ttl = 0 or 1 with action drop.
+        Create root RX matcher(p1) dmac/ipv4/UDP/GTP flags/GTP PSC pdu with action
+        goto non root table 1.
+        Create root RX matcher(p2) dmac/ipv4/UDP/GTP flags/ with action goto non
+        root table 2.
+        On non root table 1:
+        Create non root RX matcher(p0) matching on eth, IPv4 src, UDP, GTP teid,
+        GTP PSC qfi, inner IPv4 src and dest, TCP|UDP src and dst (definer 34)
+        with actions DECAP L3 + TAG + TIR.
+        On non root table 2:
+        Create non root RX matcher(p0) matching on eth, IPv4 src, UDP, GTP teid,
+        inner IPv4 src and dest, TCP|UDP src and dst (definer 34) with actions
+        DECAP L3 + TAG + TIR.
+        Send and verify packets.
+        """
+        # Root
+        root_gtp_psc_rte_items = create_tunneled_gtp_flags_rte_items(with_psc=True)
+        root_gtp_rte_items = create_tunneled_gtp_flags_rte_items(with_psc=False)
+        self.server.root_matcher_templates = []
+        self.server.tables = []
+        self.server.root_rules = []
+        self.server.root_table = self.server.create_table(0)
+        self.root_ttl_drops(self.server)
+        _, table, rule = self.server.create_root_fwd_rule(root_gtp_psc_rte_items)
+        self.server.root_rules.append(rule)
+        self.server.tables.append(table)
+        _, table, rule = self.server.create_root_fwd_rule(root_gtp_rte_items, level=2,
+                                                          table_type=me.MLX5DR_TABLE_TYPE_NIC_RX,
+                                                          prio=2)
+        self.server.root_rules.append(rule)
+        self.server.tables.append(table)
+        # Non root
+        gtp_teid_qfi_tcp_rte_items = create_tunneled_gtp_teid_rte_items(with_qfi=True,
+                                                                        inner_l4=socket.IPPROTO_TCP)
+        gtp_teid_qfi_udp_rte_items = create_tunneled_gtp_teid_rte_items(with_qfi=True,
+                                                                        inner_l4=socket.IPPROTO_UDP)
+        gtp_teid_tcp_rte_items = create_tunneled_gtp_teid_rte_items(with_qfi=False,
+                                                                    inner_l4=socket.IPPROTO_TCP)
+        gtp_teid_udp_rte_items = create_tunneled_gtp_teid_rte_items(with_qfi=False,
+                                                                    inner_l4=socket.IPPROTO_UDP)
+        # Matchers
+        relaxed_flag = me.MLX5DR_MATCH_TEMPLATE_FLAG_RELAXED_MATCH
+        matcher1= self.create_templates_and_matcher(self.server, [gtp_teid_qfi_tcp_rte_items,
+                                                    gtp_teid_qfi_udp_rte_items], relaxed_flag,
+                                                    self.server.tables[0])
+        matcher2= self.create_templates_and_matcher(self.server, [gtp_teid_tcp_rte_items,
+                                                    gtp_teid_udp_rte_items], relaxed_flag,
+                                                    self.server.tables[1])
+        # Actions
+        self.server.rule_actions = self.create_actions_decap_tag_tir(self.server, TAG_VALUE_1)
+        # Rules
+        self.server.rules = []
+        self.server.rules.append(self.create_rules(self.server, matcher1,
+                                                   [gtp_teid_qfi_tcp_rte_items, gtp_teid_qfi_udp_rte_items],
+                                                   [self.server.rule_actions] * 2))
+        self.server.rule_actions[1].tag_value = TAG_VALUE_2
+        self.server.rules.append(self.create_rules(self.server, matcher2,
+                                                   [gtp_teid_tcp_rte_items, gtp_teid_udp_rte_items],
+                                                   [self.server.rule_actions] * 2))
+        # Traffic
+        outer = gen_outer_headers(self.server.msg_size, tunnel=TunnelType.GTP_U,
+                                  gtp_psc_qfi=PacketConsts.GTP_PSC_QFI)
+        un_exp_outer = gen_outer_headers(self.server.msg_size,  tunnel=TunnelType.GTP_U,
+                                         gtp_psc_qfi=PacketConsts.GTP_PSC_QFI, ttl=0)
+        self.def_34_test_traffic(outer, un_exp_outer, TAG_VALUE_1)
+
+        outer = gen_outer_headers(self.server.msg_size, tunnel=TunnelType.GTP_U)
+        un_exp_outer = gen_outer_headers(self.server.msg_size, tunnel=TunnelType.GTP_U, ttl=1)
+        self.def_34_test_traffic(outer, un_exp_outer, TAG_VALUE_2)

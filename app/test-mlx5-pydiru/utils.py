@@ -6,9 +6,13 @@ import socket
 import struct
 import time
 
+from pydiru.providers.mlx5.steering.mlx5dr_action import Mlx5drRuleAction, Mlx5drActionDestTable
 from pydiru.rte_flow import RteFlowItem, RteFlowItemEth, RteFlowItemIpv4, \
-    RteFlowItemUdp, RteFlowItemTcp, RteFlowItemEnd
+    RteFlowItemUdp, RteFlowItemTcp, RteFlowItemGtp, RteFlowItemGtpPsc, RteFlowItemEnd
+from pydiru.providers.mlx5.steering.mlx5dr_rule import Mlx5drRuleAttr, Mlx5drRule
+from pydiru.providers.mlx5.steering.mlx5dr_matcher import Mlx5drMacherTemplate
 from pyverbs.pyverbs_error import PyverbsError, PyverbsRDMAError
+import pydiru.providers.mlx5.steering.mlx5dr_enums as me
 from pyverbs.providers.mlx5.mlx5dv import Mlx5DevxObj
 from pyverbs.wr import SGE, SendWR, RecvWR
 import pydiru.pydiru_enums as p
@@ -94,6 +98,8 @@ def gen_outer_headers(msg_size, tunnel=TunnelType.GTP_U, **kwargs):
     :param kwargs: Arguments:
             * *gtp_psc_qfi*
                 QFI (QoS flow identifier) field to use in the GTP PSC header.
+            * *ttl*
+                Time to live value to use in the packet.
     :return: Outer headers
     """
 
@@ -109,11 +115,12 @@ def gen_outer_headers(msg_size, tunnel=TunnelType.GTP_U, **kwargs):
         dst_port = PacketConsts.VXLAN_PORT
 
     # IPv4 Header
+    ttl = kwargs.get('ttl', PacketConsts.TTL_HOP_LIMIT)
     ip_total_len = msg_size - PacketConsts.ETHER_HEADER_SIZE
     outer += struct.pack('!2B3H2BH4s4s', (PacketConsts.IP_V4 << 4) +
                          PacketConsts.IHL, 0, ip_total_len, 0,
                          PacketConsts.IP_V4_FLAGS << 13,
-                         PacketConsts.TTL_HOP_LIMIT, socket.IPPROTO_UDP, 0,
+                         ttl, socket.IPPROTO_UDP, 0,
                          socket.inet_aton(PacketConsts.SRC_IP),
                          socket.inet_aton(PacketConsts.DST_IP))
     # UDP Header
@@ -406,5 +413,117 @@ def create_eth_ipv4_rte_items(dmac=None, ttl=None):
     mask = RteFlowItemIpv4(ttl=0xff if ttl is not None else 0)
     val = RteFlowItemIpv4(ttl=ttl if ttl is not None else 0)
     rte_flow_items.append(RteFlowItem(p.RTE_FLOW_ITEM_TYPE_IPV4, val, mask))
+    rte_flow_items.append(RteFlowItemEnd())
+    return rte_flow_items
+
+
+def create_eth_rte_item(dst=None, src=None, eth_type=None, has_vlan=None):
+    mask = RteFlowItemEth(dst=bytes() if dst is None else bytes(6 * [0xff]),
+                          src=bytes() if src is None else bytes(6 * [0xff]),
+                          eth_type=0 if eth_type is None else 0xffff,
+                          has_vlan=0 if has_vlan is None else 0xffffffff)
+    val = RteFlowItemEth(dst=bytes() if dst is None else dst,
+                         src=bytes() if src is None else src,
+                         eth_type=0 if eth_type is None else eth_type,
+                         has_vlan=0 if has_vlan is None else has_vlan)
+    return RteFlowItem(p.RTE_FLOW_ITEM_TYPE_ETH, val, mask)
+
+def create_ipv4_rte_item(**kwargs):
+    dst_addr = kwargs.get('dst_addr', None)
+    src_addr = kwargs.get('src_addr', None)
+    next_proto = kwargs.get('next_proto', None)
+
+    mask = RteFlowItemIpv4(src_addr=0 if src_addr is None else bytes(4 * [0xff]),
+                           dst_addr=0 if dst_addr is None else bytes(4 * [0xff]),
+                           next_proto=0 if next_proto is None else 0xff)
+    val = RteFlowItemIpv4(src_addr=0 if src_addr is None else src_addr,
+                          dst_addr=0 if dst_addr is None else dst_addr,
+                          next_proto=0 if next_proto is None else next_proto)
+    return RteFlowItem(p.RTE_FLOW_ITEM_TYPE_IPV4, val, mask)
+
+def create_tcp_rte_item(**kwargs):
+    dst_port = kwargs.get('dst_port', None)
+    src_port = kwargs.get('src_port', None)
+
+    mask = RteFlowItemTcp(src_port=0 if src_port is None else 0xffff,
+                          dst_port=0 if dst_port is None else 0xffff)
+    val = RteFlowItemTcp(src_port=0 if src_port is None else src_port,
+                         dst_port=0 if dst_port is None else dst_port)
+    return RteFlowItem(p.RTE_FLOW_ITEM_TYPE_TCP, val, mask)
+
+def create_udp_rte_item(src_port=None, dst_port=None, length=None, cksum=None):
+    mask = RteFlowItemUdp(src_port=0 if src_port is None else 0xffff,
+                          dst_port=0 if dst_port is None else 0xffff,
+                          length=0 if length is None else 0xffff,
+                          cksum=0 if cksum is None else 0xffff)
+    val = RteFlowItemUdp(src_port=0 if src_port is None else src_port,
+                         dst_port=0 if dst_port is None else dst_port,
+                         length=0 if length is None else length,
+                         cksum=0 if cksum is None else cksum)
+    return RteFlowItem(p.RTE_FLOW_ITEM_TYPE_UDP, val, mask)
+
+def create_gtp_rte_item(flags=None, msg_type=None, msg_len=None, teid=None):
+    mask = RteFlowItemGtp(flags=0 if flags is None else 0xff,
+                          msg_type=0 if msg_type is None else 0xff,
+                          msg_len=0 if msg_len is None else 0xffff,
+                          teid=0 if teid is None else 0xffffffff)
+    val = RteFlowItemGtp(flags=0 if flags is None else flags,
+                         msg_type=0 if msg_type is None else msg_type,
+                         msg_len=0 if msg_len is None else msg_len,
+                         teid=0 if teid is None else teid)
+    return RteFlowItem(p.RTE_FLOW_ITEM_TYPE_GTP, val, mask)
+
+def create_gtp_psc_rte_item(pdu_type=None, qfi=None):
+    mask = RteFlowItemGtpPsc(pdu_type=0 if pdu_type is None else 0xff,
+                             qfi=0 if qfi is None else 0xff)
+    val = RteFlowItemGtpPsc(pdu_type=0 if pdu_type is None else pdu_type,
+                            qfi=0 if qfi is None else qfi)
+    return RteFlowItem(p.RTE_FLOW_ITEM_TYPE_GTP_PSC, val, mask)
+
+
+def create_tunneled_gtp_flags_rte_items(with_psc=False):
+    """
+    Created RTE items to match on eth / ipv4 / udp / gpt flags or
+                                  eth / ipv4 / udp / gpt flags / gtp psc pdu type
+    """
+    eth = create_eth_rte_item(eth_type=PacketConsts.ETHER_TYPE_IPV4,
+                              dst=bytes([int(i, 16) for i in PacketConsts.DST_MAC.split(':')]))
+    ipv4 = create_ipv4_rte_item(dst_addr=PacketConsts.DST_IP,
+                                next_proto=socket.IPPROTO_UDP)
+    udp = create_udp_rte_item()
+    # GTP
+    gtp_psc_ex = 1 if with_psc else 0
+    gtp_flags = (PacketConsts.GTPU_VERSION << 5) + (PacketConsts.PROTO_TYPE << 4) + \
+                (gtp_psc_ex << 2) + (gtp_psc_ex << 1)
+    gtp = create_gtp_rte_item(flags=gtp_flags)
+    rte_flow_items = [eth, ipv4, udp, gtp]
+    if with_psc:
+        rte_flow_items.append(create_gtp_psc_rte_item(pdu_type=PacketConsts.GTP_PSC_PDU_TYPE))
+    rte_flow_items.append(RteFlowItemEnd())
+    return rte_flow_items
+
+
+def create_tunneled_gtp_teid_rte_items(with_qfi=False, inner_l4=socket.IPPROTO_UDP):
+    """
+    Created RTE items to match on eth / ipv4 / udp / gpt teid / ipv4 / inner l4 or
+                                  eth / ipv4 / udp / gpt teid / gtp psc qfi / ipv4 / inner l4
+    """
+    eth = create_eth_rte_item()
+    ipv4 = create_ipv4_rte_item(src_addr=PacketConsts.SRC_IP)
+    udp = create_udp_rte_item()
+    gtp = create_gtp_rte_item(teid=PacketConsts.GTPU_TEID)
+    rte_flow_items = [eth, ipv4, udp, gtp]
+    if with_qfi:
+        rte_flow_items.append(create_gtp_psc_rte_item(qfi=PacketConsts.GTP_PSC_QFI))
+    # Inner IPs
+    rte_flow_items.append(create_ipv4_rte_item(src_addr=PacketConsts.SRC_IP,
+                                               dst_addr=PacketConsts.DST_IP))
+    # Inner UDP/TCP
+    if inner_l4 == socket.IPPROTO_UDP:
+        rte_flow_items.append(create_udp_rte_item(src_port=PacketConsts.SRC_PORT,
+                                                  dst_port=PacketConsts.DST_PORT))
+    else:
+        rte_flow_items.append(create_tcp_rte_item(src_port=PacketConsts.SRC_PORT,
+                                                  dst_port=PacketConsts.DST_PORT))
     rte_flow_items.append(RteFlowItemEnd())
     return rte_flow_items
