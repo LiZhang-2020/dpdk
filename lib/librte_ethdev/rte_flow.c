@@ -1424,7 +1424,7 @@ rte_flow_item_template_create(uint16_t port_id,
 
 int
 rte_flow_item_template_destroy(uint16_t port_id,
-			struct rte_flow_item_template *template,
+			struct rte_flow_item_template *it,
 			struct rte_flow_error *error)
 {
 	struct rte_eth_dev *dev = &rte_eth_devices[port_id];
@@ -1434,8 +1434,7 @@ rte_flow_item_template_destroy(uint16_t port_id,
 		return -rte_errno;
 	if (likely(!!ops->item_template_destroy)) {
 		return flow_err(port_id,
-				ops->item_template_destroy(dev, template,
-							   error),
+				ops->item_template_destroy(dev, it, error),
 				error);
 	}
 	return rte_flow_error_set(error, ENOTSUP,
@@ -1471,7 +1470,7 @@ rte_flow_action_template_create(uint16_t port_id,
 
 int
 rte_flow_action_template_destroy(uint16_t port_id,
-			struct rte_flow_action_template *template,
+			struct rte_flow_action_template *at,
 			struct rte_flow_error *error)
 {
 	struct rte_eth_dev *dev = &rte_eth_devices[port_id];
@@ -1481,8 +1480,7 @@ rte_flow_action_template_destroy(uint16_t port_id,
 		return -rte_errno;
 	if (likely(!!ops->action_template_destroy)) {
 		return flow_err(port_id,
-				ops->action_template_destroy(dev, template,
-							     error),
+				ops->action_template_destroy(dev, at, error),
 				error);
 	}
 	return rte_flow_error_set(error, ENOTSUP,

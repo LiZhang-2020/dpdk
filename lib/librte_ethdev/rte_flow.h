@@ -4789,7 +4789,7 @@ rte_flow_item_template_create(uint16_t port_id,
  *
  * @param port_id
  *   Port identifier of Ethernet device.
- * @param[in] template
+ * @param[in] it
  *   Handle of the template to be destroyed.
  * @param[out] error
  *   Perform verbose error reporting if not NULL.
@@ -4801,7 +4801,7 @@ rte_flow_item_template_create(uint16_t port_id,
 __rte_experimental
 int
 rte_flow_item_template_destroy(uint16_t port_id,
-			struct rte_flow_item_template *template,
+			struct rte_flow_item_template *it,
 			struct rte_flow_error *error);
 
 /**
@@ -4876,7 +4876,7 @@ rte_flow_action_template_create(uint16_t port_id,
  *
  * @param port_id
  *   Port identifier of Ethernet device.
- * @param[in] template
+ * @param[in] at
  *   Handle to the template to be destroyed.
  * @param[out] error
  *   Perform verbose error reporting if not NULL.
@@ -4888,7 +4888,7 @@ rte_flow_action_template_create(uint16_t port_id,
 __rte_experimental
 int
 rte_flow_action_template_destroy(uint16_t port_id,
-			struct rte_flow_action_template *template,
+			struct rte_flow_action_template *at,
 			struct rte_flow_error *error);
 
 

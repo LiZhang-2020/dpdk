@@ -187,7 +187,7 @@ struct rte_flow_ops {
 	/** See rte_flow_item_template_destroy() */
 	int (*item_template_destroy)
 		(struct rte_eth_dev *dev,
-		 struct rte_flow_item_template *template,
+		 struct rte_flow_item_template *it,
 		 struct rte_flow_error *err);
 	/** See rte_flow_action_template_create() */
 	struct rte_flow_action_template *(*action_template_create)
@@ -199,7 +199,7 @@ struct rte_flow_ops {
 	/** See rte_flow_action_template_destroy() */
 	int (*action_template_destroy)
 		(struct rte_eth_dev *dev,
-		 struct rte_flow_action_template *template,
+		 struct rte_flow_action_template *at,
 		 struct rte_flow_error *err);
 	/** See rte_flow_table_create() */
 	struct rte_flow_table *(*table_create)
