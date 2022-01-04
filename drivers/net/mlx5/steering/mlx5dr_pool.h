@@ -29,30 +29,51 @@ struct mlx5dr_pool_resource {
 	uint32_t range;
 };
 
+enum mlx5dr_pool_flags {
+	/* Only a one resource in that pool */
+	MLX5DR_POOL_FLAGS_ONE_RESOURCE = 1 << 0,
+	MLX5DR_POOL_FLAGS_RELEASE_FREE_RESOURCE = 1 << 1,
+	/* No sharing resources between chunks */
+	MLX5DR_POOL_FLAGS_RESOURCE_PER_CHUNK = 1 << 2,
+	/* All objects are in the same size */
+	MLX5DR_POOL_FLAGS_FIXED_SIZE_OBJECTS = 1 << 3,
+};
+
 struct mlx5dr_pool_attr {
 	enum mlx5dr_pool_type pool_type;
 	enum mlx5dr_table_type table_type;
-	/* Initial resource allocation */
-	size_t inital_log_sz;
+	enum mlx5dr_pool_flags flags;
 	/* Allocation size once memory is depleted */
 	size_t alloc_log_sz;
-	/* Only a single resource allocation is allowed */
-	bool single_resource;
 };
 
 enum mlx5dr_db_type {
-	MLX5DR_DB_TYPE_ONE_SIZE,
-	MLX5DR_DB_TYPE_BUDDY,
+	/* uses for allocating chunk of big memory, each element has its own resource in the FW*/
+	MLX5DR_POOL_DB_TYPE_GENERAL_SIZE,
+	/* one resource only, all the elements are with same one size */
+	MLX5DR_POOL_DB_TYPE_ONE_SIZE_RESOURCE,
+	/* many resources, the memory allocated with buddy mechanism */
+	MLX5DR_POOL_DB_TYPE_BUDDY,
 };
 
 struct mlx5dr_buddy_manager {
 	struct mlx5dr_buddy_mem *buddies[MLX5DR_POOL_RESOURCE_ARR_SZ];
 };
 
+struct mlx5dr_pool_elements {
+	uint32_t num_of_elements;
+	struct rte_bitmap *bitmap;
+	bool is_full;
+};
+
+struct mlx5dr_element_manager {
+	struct mlx5dr_pool_elements *elements[MLX5DR_POOL_RESOURCE_ARR_SZ];
+};
+
 struct mlx5dr_pool_db {
 	enum mlx5dr_db_type type;
 	union {
-		struct rte_bitmap	*bitmap; /*for one size elements db*/
+		struct mlx5dr_element_manager *element_manager;
 		struct mlx5dr_buddy_manager *buddy_manager;
 	};
 };
@@ -66,6 +87,7 @@ typedef void (*mlx5dr_pool_unint_db)(struct mlx5dr_pool *pool);
 struct mlx5dr_pool {
 	struct mlx5dr_context *ctx;
 	enum mlx5dr_pool_type type;
+	enum mlx5dr_pool_flags flags;
 	pthread_spinlock_t lock;
 	size_t alloc_log_sz;
 	uint32_t fw_ft_type;

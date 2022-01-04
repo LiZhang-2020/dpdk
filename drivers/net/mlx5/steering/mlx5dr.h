@@ -59,7 +59,7 @@ enum mlx5dr_send_queue_actions {
 struct mlx5dr_context_attr {
 	uint16_t queues;
 	uint16_t queue_size;
-	size_t initial_log_ste_memory;
+	size_t initial_log_ste_memory; /* Currently not in use */
 	/* Optional PD used for allocating res ources */
 	struct ibv_pd *pd;
 };

@@ -10,15 +10,14 @@ static int mlx5d_run_test_pool_operations(struct mlx5dr_context *ctx)
 	struct mlx5dr_pool_attr pool_attr = {0};
 	struct mlx5dr_pool *stc_pool;
 	struct mlx5dr_pool *ste_pool;
-	struct mlx5dr_pool_chunk stc_chunk = {0};
+	struct mlx5dr_pool_chunk stc_chunk[30];
 	struct mlx5dr_pool_chunk ste_chunk[100];
 	int ret, i;
 
 	/* Create an STC pool per FT type */
-	pool_attr.single_resource = 1;
 	pool_attr.pool_type = MLX5DR_POOL_TYPE_STC;
 	pool_attr.alloc_log_sz = MLX5DR_POOL_STC_LOG_SZ;
-	pool_attr.inital_log_sz = 0;
+	pool_attr.flags = MLX5DR_POOL_FLAGS_ONE_RESOURCE | MLX5DR_POOL_FLAGS_FIXED_SIZE_OBJECTS;
 
 	pool_attr.table_type = 0;
 	stc_pool = mlx5dr_pool_create(ctx, &pool_attr);
@@ -28,21 +27,22 @@ static int mlx5d_run_test_pool_operations(struct mlx5dr_context *ctx)
 	}
 
 	/* alloc chunks from it */
-	ret = mlx5dr_pool_chunk_alloc(stc_pool, &stc_chunk);
-	if (ret) {
-		printf("Failed to allocate single action STC");
-		goto out_free_stc_pool;
+	for (i = 0; i < 30; i++) {
+		stc_chunk[i].order = 0;
+		ret = mlx5dr_pool_chunk_alloc(stc_pool, &stc_chunk[i]);
+		if (ret) {
+			printf("Failed to allocate single action STC %d\n", i);
+			goto out_free_stc_pool;
+		}
 	}
-
-	mlx5dr_pool_chunk_free(stc_pool, &stc_chunk);
-
+	for (i = 0; i < 30; i++)
+		mlx5dr_pool_chunk_free(stc_pool, &stc_chunk[i]);
 
 	/* Create an STE pool per FT type */
-	pool_attr.single_resource = 0;
 	pool_attr.pool_type = MLX5DR_POOL_TYPE_STE;
 	pool_attr.alloc_log_sz = MLX5DR_POOL_STE_MIN_LOG_SZ;
-	pool_attr.inital_log_sz = MLX5DR_POOL_STE_MIN_LOG_SZ;
-
+	pool_attr.flags = MLX5DR_POOL_FLAGS_RELEASE_FREE_RESOURCE |
+		MLX5DR_POOL_FLAGS_RESOURCE_PER_CHUNK;
 	ste_pool = mlx5dr_pool_create(ctx, &pool_attr);
 	if (!ste_pool) {
 			printf("Failed to allocate STE pool");
@@ -50,8 +50,8 @@ static int mlx5d_run_test_pool_operations(struct mlx5dr_context *ctx)
 	}
 
 	/* alloc chunks from it */
-	for (i = 0; i < 30; i ++) {
-		ste_chunk[i].order = 20;
+	for (i = 0; i < 30; i++) {
+		ste_chunk[i].order = i % 10;
 		ret = mlx5dr_pool_chunk_alloc(ste_pool, &ste_chunk[i]);
 		if (ret) {
 			printf("Failed to allocate single action STE, index: %d", i);
@@ -59,7 +59,7 @@ static int mlx5d_run_test_pool_operations(struct mlx5dr_context *ctx)
 		}
 	}
 
-	for (i = 0; i < 30; i ++)
+	for (i = 0; i < 30; i++)
 		mlx5dr_pool_chunk_free(ste_pool, &ste_chunk[i]);
 
 	mlx5dr_pool_destroy(ste_pool);

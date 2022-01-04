@@ -7,88 +7,102 @@
 #include "mlx5dr_buddy.h"
 #include "mlx5dr_internal.h"
 
-static struct mlx5dr_pool_resource *
-mlx5dr_pool_resource_alloc(struct mlx5dr_pool *pool, uint32_t log_range);
-static int
-mlx5dr_pool_resource_free(struct mlx5dr_pool_resource *resource);
+static void mlx5dr_pool_resource_free(struct mlx5dr_pool_resource *resource)
+{
+	mlx5dr_cmd_destroy_obj(resource->devx_obj);
 
-static int mlx5dr_onesize_db_get_chunk(struct mlx5dr_pool *pool,
-				       struct mlx5dr_pool_chunk *chunk)
+	simple_free(resource);
+}
+
+static struct mlx5dr_pool_resource *
+mlx5dr_pool_resource_alloc(struct mlx5dr_pool *pool, uint32_t log_range)
+{
+	struct mlx5dr_cmd_ste_create_attr ste_attr;
+	struct mlx5dr_cmd_stc_create_attr stc_attr;
+	struct mlx5dr_pool_resource *resource;
+	struct mlx5dr_devx_obj *devx_obj;
+
+	resource = simple_malloc(sizeof(*resource));
+	if (!resource) {
+		rte_errno = ENOMEM;
+		return NULL;
+	}
+
+	switch (pool->type) {
+	case MLX5DR_POOL_TYPE_STE:
+		ste_attr.log_obj_range = log_range;
+		ste_attr.table_type = pool->fw_ft_type;
+		devx_obj = mlx5dr_cmd_ste_create(pool->ctx->ibv_ctx, &ste_attr);
+		break;
+	case MLX5DR_POOL_TYPE_STC:
+		stc_attr.log_obj_range = log_range;
+		stc_attr.table_type = pool->fw_ft_type;
+		devx_obj = mlx5dr_cmd_stc_create(pool->ctx->ibv_ctx, &stc_attr);
+		break;
+	default:
+		assert(0);
+		break;
+	}
+
+	if (!devx_obj) {
+		DR_LOG(ERR, "Failed to allocate resource objects");
+		goto free_resource;
+	}
+
+	resource->pool = pool;
+	resource->devx_obj = devx_obj;
+	resource->range = 1 << log_range;
+	resource->base_id = devx_obj->id;
+
+	return resource;
+
+free_resource:
+	simple_free(resource);
+	return NULL;
+}
+
+static int mlx5dr_pool_bitmap_get_free_slot(struct rte_bitmap *bitmap, uint32_t *iidx)
 {
 	uint64_t slab = 0;
-	uint32_t iidx = 0;
 
-	if (!pool->resource[0]) {
-		pool->resource[0] =
-			mlx5dr_pool_resource_alloc(pool, pool->alloc_log_sz);
-		if (!pool->resource[0]) {
-			DR_LOG(ERR, "Failed to allocate first and only resources for db: %d",
-			       pool->type);
-			return rte_errno;
-		}
-	}
-	__rte_bitmap_scan_init(pool->db.bitmap);
+	__rte_bitmap_scan_init(bitmap);
 
-	if (!rte_bitmap_scan(pool->db.bitmap, &iidx, &slab)) {
-		DR_LOG(ERR, "no more objects in db");
-		return rte_errno;
-	}
+	if (!rte_bitmap_scan(bitmap, iidx, &slab))
+		return ENOMEM;
 
-	iidx += __builtin_ctzll(slab);
+	*iidx += __builtin_ctzll(slab);
 
-	rte_bitmap_clear(pool->db.bitmap, iidx);
-
-	/* Assume only one array */
-	chunk->resource_idx = 0;
-	chunk->offset = iidx;
+	rte_bitmap_clear(bitmap, *iidx);
 
 	return 0;
 }
 
-static void mlx5dr_onesize_db_put_chunk(struct mlx5dr_pool *pool,
-					struct mlx5dr_pool_chunk *chunk)
+static struct rte_bitmap *mlx5dr_pool_create_and_init_bitmap(uint32_t log_range)
 {
-	rte_bitmap_set(pool->db.bitmap, chunk->offset);
-}
-
-static void mlx5dr_one_size_db_uninit(struct mlx5dr_pool *pool)
-{
-	rte_free(pool->db.bitmap);
-}
-
-static int mlx5dr_one_size_db_init(struct mlx5dr_pool *pool, uint32_t log_range)
-{
+	struct rte_bitmap *cur_bmp;
 	uint32_t bmp_size;
 	void *mem;
-	int ret = 0;
 
 	bmp_size = rte_bitmap_get_memory_footprint(1 << log_range);
 	mem = rte_zmalloc("create_stc_bmap", bmp_size, RTE_CACHE_LINE_SIZE);
 	if (!mem) {
-		DR_LOG(ERR, "no mem for bitmap");
-		return rte_errno;
+		DR_LOG(ERR, "No mem for bitmap");
+		rte_errno = ENOMEM;
+		return NULL;
 	}
 
-	pool->db.bitmap = rte_bitmap_init_with_all_set(1 << log_range,
-						       mem, bmp_size);
-	if (!pool->db.bitmap) {
+	cur_bmp = rte_bitmap_init_with_all_set(1 << log_range, mem, bmp_size);
+	if (!cur_bmp) {
+		rte_free(mem);
 		DR_LOG(ERR, "Failed to initialize stc bitmap.");
-		ret = rte_errno;
-		goto err_mem_alloc;
+		rte_errno = ENOMEM;
+		return NULL;
 	}
 
-	pool->p_db_uninit = &mlx5dr_one_size_db_uninit;
-	pool->p_get_chunk = &mlx5dr_onesize_db_get_chunk;
-	pool->p_put_chunk = &mlx5dr_onesize_db_put_chunk;
-
-	return 0;
-
-err_mem_alloc:
-	rte_free(mem);
-	return ret;
+	return cur_bmp;
 }
 
-static void mlx5dr_buddy_db_put_chunk(struct mlx5dr_pool *pool,
+static void mlx5dr_pool_buddy_db_put_chunk(struct mlx5dr_pool *pool,
 				      struct mlx5dr_pool_chunk *chunk)
 {
 	struct mlx5dr_buddy_mem *buddy;
@@ -181,7 +195,7 @@ out:
 	return err;
 }
 
-static int mlx5dr_buddy_db_get_chunk(struct mlx5dr_pool *pool,
+static int mlx5dr_pool_buddy_db_get_chunk(struct mlx5dr_pool *pool,
 				     struct mlx5dr_pool_chunk *chunk)
 {
 	int ret = 0;
@@ -191,13 +205,13 @@ static int mlx5dr_buddy_db_get_chunk(struct mlx5dr_pool *pool,
 					      &chunk->resource_idx,
 					      &chunk->offset);
 	if (ret)
-		DR_LOG(ERR, "failed to get free slot for chunk with order: %d",
+		DR_LOG(ERR, "Failed to get free slot for chunk with order: %d",
 			chunk->order);
 
 	return ret;
 }
 
-static void mlx5dr_buddy_db_uninit(struct mlx5dr_pool *pool)
+static void mlx5dr_pool_buddy_db_uninit(struct mlx5dr_pool *pool)
 {
 	struct mlx5dr_buddy_mem *buddy;
 	int i;
@@ -214,18 +228,284 @@ static void mlx5dr_buddy_db_uninit(struct mlx5dr_pool *pool)
 	simple_free(pool->db.buddy_manager);
 }
 
-static int mlx5dr_buddy_db_init(struct mlx5dr_pool *pool, uint32_t log_range)
+static int mlx5dr_pool_buddy_db_init(struct mlx5dr_pool *pool, uint32_t log_range)
 {
 	pool->db.buddy_manager = simple_calloc(1, sizeof(*pool->db.buddy_manager));
 	if (!pool->db.buddy_manager) {
-		DR_LOG(ERR, "no mem for buddy_manager with log_range: %d",
+		DR_LOG(ERR, "No mem for buddy_manager with log_range: %d",
 			log_range);
+		rte_errno = ENOMEM;
 		return rte_errno;
 	}
 
-	pool->p_db_uninit = &mlx5dr_buddy_db_uninit;
-	pool->p_get_chunk = &mlx5dr_buddy_db_get_chunk;
-	pool->p_put_chunk = &mlx5dr_buddy_db_put_chunk;
+	pool->p_db_uninit = &mlx5dr_pool_buddy_db_uninit;
+	pool->p_get_chunk = &mlx5dr_pool_buddy_db_get_chunk;
+	pool->p_put_chunk = &mlx5dr_pool_buddy_db_put_chunk;
+
+	return 0;
+}
+
+static int mlx5dr_pool_create_resource_on_index(struct mlx5dr_pool *pool,
+						uint32_t alloc_size, int idx)
+{
+	pool->resource[idx] = mlx5dr_pool_resource_alloc(pool, alloc_size);
+	if (!pool->resource[idx]) {
+		DR_LOG(ERR, "Failed to create resource type: %d: size %d index: %d",
+			pool->type, alloc_size, idx);
+		return rte_errno;
+	}
+
+	return 0;
+}
+
+static struct mlx5dr_pool_elements *
+mlx5dr_pool_element_create_new_elem(struct mlx5dr_pool *pool, uint32_t order, int idx)
+{
+	struct mlx5dr_pool_elements *elem;
+	uint32_t alloc_size;
+
+	alloc_size = pool->alloc_log_sz;
+
+	elem = simple_calloc(1, sizeof(*elem));
+	if (!elem) {
+		DR_LOG(ERR, "Failed to create elem order: %d index: %d",
+		       order, idx);
+		rte_errno = ENOMEM;
+		return NULL;
+	}
+	/*sharing the same resource, also means that all the elements are with size 1*/
+	if ((pool->flags & MLX5DR_POOL_FLAGS_FIXED_SIZE_OBJECTS) &&
+	    !(pool->flags & MLX5DR_POOL_FLAGS_RESOURCE_PER_CHUNK)) {
+		 /* Currently all chunks in size 1 */
+		elem->bitmap =  mlx5dr_pool_create_and_init_bitmap(alloc_size - order);
+		if (!elem->bitmap) {
+			DR_LOG(ERR, "Failed to create bitmap type: %d: size %d index: %d",
+			       pool->type, alloc_size, idx);
+			goto free_elem;
+		}
+	}
+
+	if (mlx5dr_pool_create_resource_on_index(pool, alloc_size, idx)) {
+		DR_LOG(ERR, "Failed to create resource type: %d: size %d index: %d",
+			pool->type, alloc_size, idx);
+		goto free_db;
+	}
+
+	pool->db.element_manager->elements[idx] = elem;
+
+	return elem;
+
+free_db:
+	rte_free(elem->bitmap);
+free_elem:
+	simple_free(elem);
+	return NULL;
+}
+
+static int mlx5dr_pool_element_find_seg(struct mlx5dr_pool_elements *elem, int *seg)
+{
+	if (mlx5dr_pool_bitmap_get_free_slot(elem->bitmap, (uint32_t *)seg)) {
+		elem->is_full = true;
+		return ENOMEM;
+	}
+	return 0;
+}
+
+static int
+mlx5dr_pool_onesize_element_get_mem_chunk(struct mlx5dr_pool *pool, uint32_t order,
+					  uint32_t *idx, int *seg)
+{
+	struct mlx5dr_pool_elements *elem;
+
+	elem = pool->db.element_manager->elements[0];
+	if (!elem)
+		elem = mlx5dr_pool_element_create_new_elem(pool, order, 0);
+	if (!elem)
+		goto err_no_elem;
+
+	*idx = 0;
+
+	if (mlx5dr_pool_element_find_seg(elem, seg) != 0) {
+		DR_LOG(ERR, "No more resources (last request order: %d)", order);
+		rte_errno = ENOMEM;
+		return ENOMEM;
+	}
+
+	elem->num_of_elements++;
+	return 0;
+
+err_no_elem:
+	DR_LOG(ERR, "Failed to allocate element for order: %d", order);
+	return ENOMEM;
+}
+
+static int
+mlx5dr_pool_general_element_get_mem_chunk(struct mlx5dr_pool *pool, uint32_t order,
+					  uint32_t *idx, int *seg)
+{
+	int ret;
+	int i;
+
+	for (i = 0; i < MLX5DR_POOL_RESOURCE_ARR_SZ; i++) {
+		if (!pool->resource[i]) {
+			ret = mlx5dr_pool_create_resource_on_index(pool, order, i);
+			if (ret)
+				goto err_no_res;
+			*idx = i;
+			*seg = 0; /* one memory slot in that element */
+			return 0;
+		}
+	}
+
+	rte_errno = ENOMEM;
+	DR_LOG(ERR, "No more resources (last request order: %d)", order);
+	return ENOMEM;
+
+err_no_res:
+	DR_LOG(ERR, "Failed to allocate element for order: %d", order);
+	return ENOMEM;
+}
+
+static int mlx5dr_pool_general_element_db_get_chunk(struct mlx5dr_pool *pool,
+						    struct mlx5dr_pool_chunk *chunk)
+{
+	int ret;
+
+	/* go over all memory elements and find/allocate free slot */
+	ret = mlx5dr_pool_general_element_get_mem_chunk(pool, chunk->order,
+							&chunk->resource_idx,
+							&chunk->offset);
+	if (ret)
+		DR_LOG(ERR, "Failed to get free slot for chunk with order: %d",
+			chunk->order);
+
+	return ret;
+}
+
+static void mlx5dr_pool_general_element_db_put_chunk(struct mlx5dr_pool *pool,
+						     struct mlx5dr_pool_chunk *chunk)
+{
+	assert(pool->resource[chunk->resource_idx]);
+
+	if (pool->flags & MLX5DR_POOL_FLAGS_RELEASE_FREE_RESOURCE) {
+		mlx5dr_pool_resource_free(pool->resource[chunk->resource_idx]);
+		pool->resource[chunk->resource_idx] = NULL;
+	}
+}
+
+static void mlx5dr_pool_general_element_db_uninit(struct mlx5dr_pool *pool)
+{
+	(void)pool;
+}
+
+/* This memory management works as the following:
+ * - At start doesn't allocate no mem at all.
+ * - When new request for chunk arrived:
+ *	allocate resource and give it.
+ * - When free that chunk:
+ *	the resource is freed.
+ */
+static int mlx5dr_pool_general_element_db_init(struct mlx5dr_pool *pool)
+{
+	pool->db.element_manager = simple_calloc(1, sizeof(*pool->db.element_manager));
+	if (!pool->db.element_manager) {
+		DR_LOG(ERR, "No mem for general elemnt_manager");
+		rte_errno = ENOMEM;
+		return rte_errno;
+	}
+
+	pool->p_db_uninit = &mlx5dr_pool_general_element_db_uninit;
+	pool->p_get_chunk = &mlx5dr_pool_general_element_db_get_chunk;
+	pool->p_put_chunk = &mlx5dr_pool_general_element_db_put_chunk;
+
+	return 0;
+}
+
+static void mlx5dr_onesize_element_db_destroy_element(struct mlx5dr_pool *pool,
+						      struct mlx5dr_pool_elements *elem,
+						      struct mlx5dr_pool_chunk *chunk)
+{
+	assert(pool->resource[chunk->resource_idx]);
+	mlx5dr_pool_resource_free(pool->resource[chunk->resource_idx]);
+	pool->resource[chunk->resource_idx] = NULL;
+	simple_free(elem);
+	pool->db.element_manager->elements[chunk->resource_idx] = NULL;
+}
+
+static void mlx5dr_onesize_element_db_put_chunk(struct mlx5dr_pool *pool,
+						struct mlx5dr_pool_chunk *chunk)
+{
+	struct mlx5dr_pool_elements *elem;
+
+	assert(chunk->resource_idx == 0);
+
+	elem = pool->db.element_manager->elements[chunk->resource_idx];
+	if (!elem) {
+		assert(false);
+		DR_LOG(ERR, "No such element (%d)", chunk->resource_idx);
+		return;
+	}
+
+	rte_bitmap_set(elem->bitmap, chunk->offset);
+	elem->is_full = false;
+	elem->num_of_elements--;
+
+	if (pool->flags & MLX5DR_POOL_FLAGS_RELEASE_FREE_RESOURCE &&
+	   !elem->num_of_elements)
+		mlx5dr_onesize_element_db_destroy_element(pool, elem, chunk);
+}
+
+static int mlx5dr_onesize_element_db_get_chunk(struct mlx5dr_pool *pool,
+					       struct mlx5dr_pool_chunk *chunk)
+{
+	int ret = 0;
+
+	/* go over all memory elements and find/allocate free slot */
+	ret = mlx5dr_pool_onesize_element_get_mem_chunk(pool, chunk->order,
+							&chunk->resource_idx,
+							&chunk->offset);
+	if (ret)
+		DR_LOG(ERR, "Failed to get free slot for chunk with order: %d",
+			chunk->order);
+
+	return ret;
+}
+
+static void mlx5dr_onesize_element_db_uninit(struct mlx5dr_pool *pool)
+{
+	struct mlx5dr_pool_elements *elem;
+	int i;
+
+	for (i = 0; i < MLX5DR_POOL_RESOURCE_ARR_SZ; i++) {
+		elem = pool->db.element_manager->elements[i];
+		if (elem) {
+			if (elem->bitmap)
+				rte_free(elem->bitmap);
+			simple_free(elem);
+			pool->db.element_manager->elements[i] = NULL;
+		}
+	}
+	simple_free(pool->db.element_manager);
+}
+
+/* This memory management works as the following:
+ * - At start doesn't allocate no mem at all.
+ * - When new request for chunk arrived:
+ *  aloocate the first and only slot of memory/resource
+ *  when it ended return error.
+ */
+static int mlx5dr_pool_onesize_element_db_init(struct mlx5dr_pool *pool)
+{
+	pool->db.element_manager = simple_calloc(1, sizeof(*pool->db.element_manager));
+	if (!pool->db.element_manager) {
+		DR_LOG(ERR, "No mem for general elemnt_manager");
+		rte_errno = ENOMEM;
+		return rte_errno;
+	}
+
+	pool->p_db_uninit = &mlx5dr_onesize_element_db_uninit;
+	pool->p_get_chunk = &mlx5dr_onesize_element_db_get_chunk;
+	pool->p_put_chunk = &mlx5dr_onesize_element_db_put_chunk;
 
 	return 0;
 }
@@ -234,18 +514,17 @@ static int mlx5dr_pool_db_init(struct mlx5dr_pool *pool,
 			       enum mlx5dr_db_type db_type)
 {
 	int ret;
-	if (db_type == MLX5DR_DB_TYPE_ONE_SIZE) {
-		ret = mlx5dr_one_size_db_init(pool, pool->alloc_log_sz);
-		if (ret) {
-			DR_LOG(ERR, "failed to init db (ret: %d)", ret);
-			return ret;
-		}
-	} else {
-		ret = mlx5dr_buddy_db_init(pool, pool->alloc_log_sz);
-		if (ret) {
-			DR_LOG(ERR, "failed to init buddy db (ret: %d)", ret);
-			return ret;
-		}
+
+	if (db_type == MLX5DR_POOL_DB_TYPE_GENERAL_SIZE)
+		ret = mlx5dr_pool_general_element_db_init(pool);
+	else if (db_type == MLX5DR_POOL_DB_TYPE_ONE_SIZE_RESOURCE)
+		ret = mlx5dr_pool_onesize_element_db_init(pool);
+	else
+		ret = mlx5dr_pool_buddy_db_init(pool, pool->alloc_log_sz);
+
+	if (ret) {
+		DR_LOG(ERR, "Failed to init general db : %d (ret: %d)", db_type, ret);
+		return ret;
 	}
 
 	return 0;
@@ -277,77 +556,11 @@ void mlx5dr_pool_chunk_free(struct mlx5dr_pool *pool,
 	pthread_spin_unlock(&pool->lock);
 }
 
-static int mlx5dr_pool_resource_free(struct mlx5dr_pool_resource *resource)
-{
-	int ret = 0;
-
-	if (resource->devx_obj)
-		ret = mlx5dr_cmd_destroy_obj(resource->devx_obj);
-
-	simple_free(resource);
-
-	return ret;
-}
-
-static struct mlx5dr_pool_resource *
-mlx5dr_pool_resource_alloc(struct mlx5dr_pool *pool, uint32_t log_range)
-{
-	struct mlx5dr_cmd_ste_create_attr ste_attr;
-	struct mlx5dr_cmd_stc_create_attr stc_attr;
-	struct mlx5dr_pool_resource *resource;
-	struct mlx5dr_devx_obj *devx_obj;
-
-	resource = simple_malloc(sizeof(*resource));
-	if (!resource) {
-		rte_errno = ENOMEM;
-		return NULL;
-	}
-
-	switch (pool->type) {
-	case MLX5DR_POOL_TYPE_STE:
-		ste_attr.log_obj_range = log_range;
-		ste_attr.table_type = pool->fw_ft_type;
-		devx_obj = mlx5dr_cmd_ste_create(pool->ctx->ibv_ctx, &ste_attr);
-		break;
-	case MLX5DR_POOL_TYPE_STC:
-		stc_attr.log_obj_range = log_range;
-		stc_attr.table_type = pool->fw_ft_type;
-		devx_obj = mlx5dr_cmd_stc_create(pool->ctx->ibv_ctx, &stc_attr);
-		break;
-	default:
-		assert(0);
-		break;
-	}
-
-	if (!devx_obj) {
-		DR_LOG(ERR, "Failed to allocate resource objects");
-		goto free_resource;
-	}
-
-	resource->pool = pool;
-	resource->devx_obj = devx_obj;
-	resource->range = 1 << log_range;
-	resource->base_id = devx_obj->id;
-
-	return resource;
-
-free_resource:
-	simple_free(resource);
-	return NULL;
-}
-
 struct mlx5dr_pool *
 mlx5dr_pool_create(struct mlx5dr_context *ctx, struct mlx5dr_pool_attr *pool_attr)
 {
 	enum mlx5dr_db_type res_db_type;
 	struct mlx5dr_pool *pool;
-
-	if (pool_attr->inital_log_sz) {
-		DR_LOG(ERR, "Unsupported pool_attr->inital_log_sz ");
-		/* TBD: Add support inital_log_sz != 0 */
-		rte_errno = ENOTSUP;
-		return NULL;
-	}
 
 	pool = simple_calloc(1, sizeof(*pool));
 	if (!pool)
@@ -356,6 +569,7 @@ mlx5dr_pool_create(struct mlx5dr_context *ctx, struct mlx5dr_pool_attr *pool_att
 	pool->ctx = ctx;
 	pool->type = pool_attr->pool_type;
 	pool->alloc_log_sz = pool_attr->alloc_log_sz;
+	pool->flags = pool_attr->flags;
 
 	pthread_spin_init(&pool->lock, PTHREAD_PROCESS_PRIVATE);
 
@@ -375,10 +589,15 @@ mlx5dr_pool_create(struct mlx5dr_context *ctx, struct mlx5dr_pool_attr *pool_att
 		goto free_pool;
 	}
 
-	if (pool_attr->single_resource)
-		res_db_type = MLX5DR_DB_TYPE_ONE_SIZE;
+	/* support general db */
+	if (pool->flags & (MLX5DR_POOL_FLAGS_RELEASE_FREE_RESOURCE |
+			   MLX5DR_POOL_FLAGS_RESOURCE_PER_CHUNK))
+		res_db_type = MLX5DR_POOL_DB_TYPE_GENERAL_SIZE;
+	else if (pool->flags & (MLX5DR_POOL_FLAGS_ONE_RESOURCE |
+				MLX5DR_POOL_FLAGS_FIXED_SIZE_OBJECTS))
+		res_db_type = MLX5DR_POOL_DB_TYPE_ONE_SIZE_RESOURCE;
 	else
-		res_db_type = MLX5DR_DB_TYPE_BUDDY;
+		res_db_type = MLX5DR_POOL_DB_TYPE_BUDDY;
 
 	pool->alloc_log_sz = pool_attr->alloc_log_sz;
 

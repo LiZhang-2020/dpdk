@@ -4,8 +4,14 @@
 
 #include "mlx5dr_internal.h"
 
-static int mlx5dr_context_pools_init(struct mlx5dr_context *ctx,
-				     size_t log_ste_memory)
+enum {
+	MLX5DR_CTX_FLAGS_FOR_STC_POOL = MLX5DR_POOL_FLAGS_ONE_RESOURCE |
+	MLX5DR_POOL_FLAGS_FIXED_SIZE_OBJECTS,
+	MLX5DR_CTX_FLAGS_FOR_MATCHER_STE_POOL = MLX5DR_POOL_FLAGS_RELEASE_FREE_RESOURCE |
+	MLX5DR_POOL_FLAGS_RESOURCE_PER_CHUNK,
+};
+
+static int mlx5dr_context_pools_init(struct mlx5dr_context *ctx)
 {
 	struct mlx5dr_pool_attr pool_attr = {0};
 	uint8_t max_log_sz;
@@ -15,11 +21,10 @@ static int mlx5dr_context_pools_init(struct mlx5dr_context *ctx,
 		return rte_errno;
 
 	/* Create an STC pool per FT type */
-	pool_attr.single_resource = 1;
 	pool_attr.pool_type = MLX5DR_POOL_TYPE_STC;
+	pool_attr.flags = MLX5DR_CTX_FLAGS_FOR_STC_POOL;
 	max_log_sz = RTE_MIN(MLX5DR_POOL_STC_LOG_SZ, ctx->caps->stc_alloc_log_max);
 	pool_attr.alloc_log_sz = RTE_MAX(max_log_sz, ctx->caps->stc_alloc_log_gran);
-	pool_attr.inital_log_sz = 0;
 
 	for (i = 0; i < MLX5DR_TABLE_TYPE_MAX; i++) {
 		pool_attr.table_type = i;
@@ -31,11 +36,10 @@ static int mlx5dr_context_pools_init(struct mlx5dr_context *ctx,
 	}
 
 	/* Create an STE pool per FT type */
-	pool_attr.single_resource = 0;
 	pool_attr.pool_type = MLX5DR_POOL_TYPE_STE;
+	pool_attr.flags = MLX5DR_CTX_FLAGS_FOR_MATCHER_STE_POOL;
 	max_log_sz = RTE_MIN(MLX5DR_POOL_STE_MIN_LOG_SZ, ctx->caps->ste_alloc_log_max);
 	pool_attr.alloc_log_sz = RTE_MAX(max_log_sz, ctx->caps->ste_alloc_log_gran);
-	pool_attr.inital_log_sz = log_ste_memory;
 
 	for (i = 0; i < MLX5DR_TABLE_TYPE_MAX; i++) {
 		pool_attr.table_type = i;
@@ -174,7 +178,7 @@ static int mlx5dr_context_init_hws(struct mlx5dr_context *ctx,
 	if (ret)
 		return ret;
 
-	ret = mlx5dr_context_pools_init(ctx, attr->initial_log_ste_memory);
+	ret = mlx5dr_context_pools_init(ctx);
 	if (ret)
 		goto uninit_pd;
 
