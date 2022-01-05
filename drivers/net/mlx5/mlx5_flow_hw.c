@@ -1378,10 +1378,9 @@ flow_hw_q_drain(struct rte_eth_dev *dev,
 		struct rte_flow_error *error __rte_unused)
 {
 	struct mlx5_priv *priv = dev->data->dev_private;
-	struct mlx5dr_context *dr_ctx = priv->dr_ctx;
 
-	mlx5dr_send_all_dep_wqe(&dr_ctx->send_queue[queue]);
-	return 0;
+	return mlx5dr_send_queue_action(priv->dr_ctx, queue,
+					MLX5DR_SEND_QUEUE_ACTION_DRAIN);
 }
 
 static struct rte_flow_table *
