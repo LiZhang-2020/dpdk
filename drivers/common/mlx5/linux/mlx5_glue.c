@@ -73,6 +73,12 @@ mlx5_glue_query_device_ex(struct ibv_context *context,
 	return ibv_query_device_ex(context, input, attr);
 }
 
+static const char *
+mlx5_glue_get_device_name(struct ibv_device *device)
+{
+        return ibv_get_device_name(device);
+}
+
 static int
 mlx5_glue_query_rt_values_ex(struct ibv_context *context,
 			  struct ibv_values_ex *values)
@@ -1503,6 +1509,7 @@ const struct mlx5_glue *mlx5_glue = &(const struct mlx5_glue) {
 	.close_device = mlx5_glue_close_device,
 	.query_device = mlx5_glue_query_device,
 	.query_device_ex = mlx5_glue_query_device_ex,
+	.get_device_name = mlx5_glue_get_device_name,
 	.query_rt_values_ex = mlx5_glue_query_rt_values_ex,
 	.query_port = mlx5_glue_query_port,
 	.create_comp_channel = mlx5_glue_create_comp_channel,

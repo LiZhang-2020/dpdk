@@ -160,6 +160,7 @@ struct mlx5_glue {
 	int (*query_device_ex)(struct ibv_context *context,
 			       const struct ibv_query_device_ex_input *input,
 			       struct ibv_device_attr_ex *attr);
+	const char *(*get_device_name)(struct ibv_device *device);
 	int (*query_rt_values_ex)(struct ibv_context *context,
 			       struct ibv_values_ex *values);
 	int (*query_port)(struct ibv_context *context, uint8_t port_num,
