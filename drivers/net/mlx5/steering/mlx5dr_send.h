@@ -137,7 +137,7 @@ struct mlx5dr_send_engine {
 	uint16_t rings;
 	uint16_t num_entries;
 	bool err;
-};
+} __rte_cache_aligned;
 
 struct mlx5dr_send_engine_post_ctrl {
 	struct mlx5dr_send_engine *queue;

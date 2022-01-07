@@ -346,7 +346,7 @@ struct mlx5_hw_q {
 	uint32_t size; /* LIFO size. */
 	LIST_HEAD(flow_list, rte_flow_hw) flow_list; /* Flow list. */
 	struct mlx5_hw_q_job **job; /* LIFO pointer. */
-};
+} __rte_cache_aligned;
 
 #define MLX5_COUNTERS_PER_POOL 512
 #define MLX5_MAX_PENDING_QUERIES 4
