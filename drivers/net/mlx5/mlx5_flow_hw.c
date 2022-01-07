@@ -1696,14 +1696,12 @@ flow_hw_grp_create_cb(void *tool_ctx, void *cb_ctx)
 		goto error;
 	grp_data->tbl = tbl;
 	if (attr->group) {
-		/*
 		jump = mlx5dr_action_create_dest_table
 			(priv->dr_ctx, tbl,
 			 mlx5_hw_dr_ft_flag[!!attr->group][dr_tbl_attr.type]);
 		if (!jump)
 			goto error;
 		grp_data->jump.hws_action = jump;
-		*/
 		jump = mlx5dr_action_create_dest_table
 			(priv->dr_ctx, tbl,
 			 mlx5_hw_dr_ft_flag[0][dr_tbl_attr.type]);
