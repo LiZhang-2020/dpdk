@@ -140,15 +140,27 @@ flow_hw_register_jump_action(struct rte_eth_dev *dev,
 }
 
 static void
-flow_hw_rxq_flag_set(struct rte_eth_dev *dev,
-		     struct mlx5_hrxq *hrxq)
+flow_hw_rxq_flag_trim(struct rte_eth_dev *dev)
 {
-	struct mlx5_ind_table_obj *ind_tbl = hrxq->ind_table;
+	struct mlx5_priv *priv = dev->data->dev_private;
 	unsigned int i;
 
-	for (i = 0; i != ind_tbl->queues_n; ++i) {
-		int idx = ind_tbl->queues[i];
-		struct mlx5_rxq_ctrl *rxq_ctrl = mlx5_rxq_ctrl_get(dev, idx);
+	for (i = 0; i < priv->rxqs_n; ++i) {
+		struct mlx5_rxq_ctrl *rxq_ctrl = mlx5_rxq_ctrl_get(dev, i);
+
+		rxq_ctrl->flow_mark_n--;
+		rxq_ctrl->rxq.mark = !!rxq_ctrl->flow_mark_n;
+	}
+}
+
+static void
+flow_hw_rxq_flag_set(struct rte_eth_dev *dev)
+{
+	struct mlx5_priv *priv = dev->data->dev_private;
+	unsigned int i;
+
+	for (i = 0; i < priv->rxqs_n; ++i) {
+		struct mlx5_rxq_ctrl *rxq_ctrl = mlx5_rxq_ctrl_get(dev, i);
 
 		rxq_ctrl->rxq.mark = 1;
 		rxq_ctrl->flow_mark_n++;
@@ -157,7 +169,7 @@ flow_hw_rxq_flag_set(struct rte_eth_dev *dev,
 
 static inline struct mlx5_hrxq*
 flow_hw_register_tir_action(struct rte_eth_dev *dev,
-			    uint32_t hws_flags, bool mark,
+			    uint32_t hws_flags,
 			    const struct rte_flow_action *action)
 {
 	struct mlx5_flow_rss_desc rss_desc = {
@@ -189,8 +201,6 @@ flow_hw_register_tir_action(struct rte_eth_dev *dev,
 		}
 	}
 	hrxq = mlx5_hrxq_get(dev, &rss_desc);
-	if (hrxq && mark)
-		flow_hw_rxq_flag_set(dev, hrxq);
 	return hrxq;
 }
 
@@ -412,7 +422,7 @@ flow_hw_actions_translate(struct rte_eth_dev *dev,
 	} mhdr_dummy;
 	struct mlx5_flow_dv_modify_hdr_resource *mhdr_act =
 						&mhdr_dummy.act;
-	bool actions_end = false, mark = false;
+	bool actions_end = false;
 	uint32_t type, i;
 	uint16_t reformat_pos = MLX5_HW_MAX_ACTS, reformat_src = 0;
 	uint16_t mhdr_pos = UINT16_MAX;
@@ -450,7 +460,6 @@ flow_hw_actions_translate(struct rte_eth_dev *dev,
 		case RTE_FLOW_ACTION_TYPE_VOID:
 			break;
 		case RTE_FLOW_ACTION_TYPE_MARK:
-			mark = true;
 			acts->mark = true;
 			if (masks->conf)
 				acts->rule_acts[i].tag.value =
@@ -462,6 +471,7 @@ flow_hw_actions_translate(struct rte_eth_dev *dev,
 				goto err;
 			acts->rule_acts[i++].action =
 				priv->hw_tag[!!attr->group][type];
+			flow_hw_rxq_flag_set(dev);
 			break;
 		case RTE_FLOW_ACTION_TYPE_DROP:
 			acts->rule_acts[i++].action =
@@ -492,7 +502,6 @@ flow_hw_actions_translate(struct rte_eth_dev *dev,
 				acts->tir = flow_hw_register_tir_action
 				(dev,
 				 mlx5_hw_dr_ft_flag[!!attr->group][type],
-				 mark,
 				 actions);
 				if (!acts->tir)
 					goto err;
@@ -510,7 +519,6 @@ flow_hw_actions_translate(struct rte_eth_dev *dev,
 				acts->tir = flow_hw_register_tir_action
 				(dev,
 				 mlx5_hw_dr_ft_flag[!!attr->group][type],
-				 mark,
 				 actions);
 				if (!acts->tir)
 					goto err;
@@ -850,7 +858,6 @@ err:
 
 static __rte_always_inline int
 flow_hw_shared_action_get(struct rte_eth_dev *dev,
-			  const struct mlx5_hw_actions *hw_acts,
 			  struct mlx5_action_construct_data *act_data,
 			  const uint64_t item_flags,
 			  struct mlx5dr_rule_action *rule_act)
@@ -873,8 +880,6 @@ flow_hw_shared_action_get(struct rte_eth_dev *dev,
 			hrxq = mlx5_ipool_get(priv->sh->ipool[MLX5_IPOOL_HRXQ],
 					      hrxq_idx);
 		if (hrxq) {
-			if (hw_acts->mark)
-				flow_hw_rxq_flag_set(dev, hrxq);
 			rule_act->action = hrxq->action;
 			return 0;
 		}
@@ -890,7 +895,6 @@ flow_hw_shared_action_get(struct rte_eth_dev *dev,
 static __rte_always_inline int
 flow_hw_shared_action_construct(struct rte_eth_dev *dev,
 				const struct rte_flow_action *action,
-				const struct mlx5_hw_actions *acts,
 				struct rte_flow_table *table,
 				const uint8_t it_idx,
 				struct mlx5dr_rule_action *rule_act)
@@ -919,7 +923,7 @@ flow_hw_shared_action_construct(struct rte_eth_dev *dev,
 					    shared_rss->origin.types;
 		item_flags = table->its[it_idx]->item_flags;
 		if (flow_hw_shared_action_get
-				(dev, acts, &act_data, item_flags, rule_act))
+				(dev, &act_data, item_flags, rule_act))
 			return -1;
 		break;
 	default:
@@ -989,7 +993,7 @@ flow_hw_actions_construct(struct rte_eth_dev *dev,
 		switch (act_data->type) {
 		case RTE_FLOW_ACTION_TYPE_INDIRECT:
 			if (flow_hw_shared_action_construct
-					(dev, action, hw_acts, table, it_idx,
+					(dev, action, table, it_idx,
 					 &rule_acts[act_data->action_dst]))
 				return -1;
 			break;
@@ -1015,7 +1019,6 @@ flow_hw_actions_construct(struct rte_eth_dev *dev,
 		case RTE_FLOW_ACTION_TYPE_QUEUE:
 			hrxq = flow_hw_register_tir_action(dev,
 					ft_flag,
-					hw_acts->mark,
 					action);
 			if (!hrxq)
 				return -1;
@@ -1026,7 +1029,7 @@ flow_hw_actions_construct(struct rte_eth_dev *dev,
 		case MLX5_RTE_FLOW_ACTION_TYPE_RSS:
 			item_flags = table->its[it_idx]->item_flags;
 			if (flow_hw_shared_action_get
-				(dev, hw_acts, act_data, item_flags,
+				(dev, act_data, item_flags,
 				 &rule_acts[act_data->action_dst]))
 				return -1;
 			break;
@@ -1531,6 +1534,8 @@ flow_hw_table_destroy(struct rte_eth_dev *dev,
 		__atomic_sub_fetch(&table->its[i]->refcnt,
 				   1, __ATOMIC_RELAXED);
 	for (i = 0; i < table->nb_action_templates; i++) {
+		if (table->ats[i].acts.mark)
+			flow_hw_rxq_flag_trim(dev);
 		__flow_hw_action_template_destroy(dev, &table->ats[i].acts);
 		__atomic_sub_fetch(&table->ats[i].action_template->refcnt,
 				   1, __ATOMIC_RELAXED);
