@@ -53,7 +53,7 @@ static int mlx5d_run_test_modify_header_action(struct mlx5dr_context *ctx)
 	}
 
 	mlx5dr_action_destroy(action2);
-	flags |=MLX5DR_ACTION_FLAG_INLINE;
+	flags |= MLX5DR_ACTION_FLAG_SHARED;
 	action2 = mlx5dr_action_create_modify_header(ctx, action_sz, modify_action_data, bulk_size, flags);
 	if (!action2) {
 		printf("failed to create action: action_sz: %zu bulk_size: %d, flags: 0x%x\n",

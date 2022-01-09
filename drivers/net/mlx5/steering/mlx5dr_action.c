@@ -598,7 +598,7 @@ static int mlx5dr_action_handle_reformat_args(struct mlx5dr_context *ctx,
 	}
 
 	/* when INLINE need to write the arg data */
-	if (action->flags & MLX5DR_ACTION_FLAG_INLINE) {
+	if (action->flags & MLX5DR_ACTION_FLAG_SHARED) {
 		ret = mlx5dr_arg_write_inline_arg_data(ctx,
 						       action->reformat.arg_obj->id,
 						       data,
@@ -947,7 +947,7 @@ mlx5dr_action_create_reformat(struct mlx5dr_context *ctx,
 	}
 
 	if (!mlx5dr_action_is_hws_flags(flags) ||
-	    ((flags & MLX5DR_ACTION_FLAG_INLINE) && log_bulk_size)) {
+	    ((flags & MLX5DR_ACTION_FLAG_SHARED) && log_bulk_size)) {
 		DR_LOG(ERR, "Reformat flags don't fit HWS (flags: %x0x)\n",
 			flags);
 		rte_errno = EINVAL;
@@ -1019,7 +1019,7 @@ mlx5dr_action_create_modify_header(struct mlx5dr_context *ctx,
 	}
 
 	if (!mlx5dr_action_is_hws_flags(flags) ||
-	    ((flags & MLX5DR_ACTION_FLAG_INLINE) && log_bulk_size)) {
+	    ((flags & MLX5DR_ACTION_FLAG_SHARED) && log_bulk_size)) {
 		DR_LOG(ERR, "flags don't fit hws (flags: %x0x, log_bulk_size: %d)\n",
 			flags, log_bulk_size);
 		rte_errno = EINVAL;
@@ -1319,7 +1319,7 @@ int mlx5dr_actions_quick_apply(struct mlx5dr_send_engine *queue,
 			stc_arr[MLX5DR_ACTION_STC_IDX_DW6] = stc_idx;
 			require_double = true;
 
-			if (!(action->flags & MLX5DR_ACTION_FLAG_INLINE))
+			if (!(action->flags & MLX5DR_ACTION_FLAG_SHARED))
 				mlx5dr_arg_write(queue, rule,
 						 action->reformat.arg_obj->id + arg_idx,
 						 rule_actions[i].reformat.data,
@@ -1332,7 +1332,7 @@ int mlx5dr_actions_quick_apply(struct mlx5dr_send_engine *queue,
 			stc_arr[MLX5DR_ACTION_STC_IDX_DW6] = stc_idx;
 			require_double = true;
 
-			if (!(action->flags & MLX5DR_ACTION_FLAG_INLINE))
+			if (!(action->flags & MLX5DR_ACTION_FLAG_SHARED))
 				mlx5dr_arg_decapl3_write(queue, rule,
 							 action->modify_header.arg_obj->id + arg_idx,
 							 rule_actions[i].reformat.data,
@@ -1351,7 +1351,7 @@ int mlx5dr_actions_quick_apply(struct mlx5dr_send_engine *queue,
 			stc_arr[MLX5DR_ACTION_STC_IDX_DW6] = stc_idx;
 			require_double = true;
 
-			if (!(action->flags & MLX5DR_ACTION_FLAG_INLINE))
+			if (!(action->flags & MLX5DR_ACTION_FLAG_SHARED))
 				mlx5dr_arg_write(queue, rule,
 						 action->reformat.arg_obj->id + arg_idx,
 						 rule_actions[i].reformat.data,
@@ -1365,7 +1365,7 @@ int mlx5dr_actions_quick_apply(struct mlx5dr_send_engine *queue,
 			stc_arr[MLX5DR_ACTION_STC_IDX_DW6] = stc_idx;
 			require_double = true;
 
-			if (!(action->flags & MLX5DR_ACTION_FLAG_INLINE))
+			if (!(action->flags & MLX5DR_ACTION_FLAG_SHARED))
 				mlx5dr_action_modify_write(queue, rule,
 							   action->modify_header.arg_obj->id + arg_idx,
 							   rule_actions[i].modify_header.data,

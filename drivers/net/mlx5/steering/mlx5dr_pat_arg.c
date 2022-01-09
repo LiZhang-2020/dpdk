@@ -439,7 +439,7 @@ mlx5dr_arg_create_modify_header_arg(struct mlx5dr_context *ctx,
 	}
 
 	/* when INLINE need to write the arg data */
-	if (flags & MLX5DR_ACTION_FLAG_INLINE)
+	if (flags & MLX5DR_ACTION_FLAG_SHARED)
 		ret = mlx5dr_arg_write_inline_arg_data(ctx,
 						       action->modify_header.arg_obj->id,
 						       (uint8_t *)pattern,

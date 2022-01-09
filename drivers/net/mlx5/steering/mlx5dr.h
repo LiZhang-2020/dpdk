@@ -33,7 +33,10 @@ enum mlx5dr_action_flags {
 	MLX5DR_ACTION_FLAG_HWS_RX = 1 << 3,
 	MLX5DR_ACTION_FLAG_HWS_TX = 1 << 4,
 	MLX5DR_ACTION_FLAG_HWS_FDB = 1 << 5,
-	MLX5DR_ACTION_FLAG_INLINE = 1 << 6,
+	/* Shared action can be used over a few threads, since data is written
+	 * only once at the creation of the action.
+	 */
+	MLX5DR_ACTION_FLAG_SHARED = 1 << 6,
 };
 
 enum mlx5dr_action_reformat_type {
@@ -92,6 +95,9 @@ struct mlx5dr_devx_obj {
 	uint32_t id;
 };
 
+/* In actions that take offset, the offset is unique, and the user should not
+ * reuse the same index because data changing is not atomic.
+ */
 struct mlx5dr_rule_action {
 	struct mlx5dr_action *action;
 	union {
