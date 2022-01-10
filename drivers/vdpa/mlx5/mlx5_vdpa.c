@@ -244,7 +244,9 @@ mlx5_vdpa_mtu_set(struct mlx5_vdpa_priv *priv)
 static void
 mlx5_vdpa_dev_cache_clean(struct mlx5_vdpa_priv *priv)
 {
-	mlx5_vdpa_virtqs_cleanup(priv);
+	/* Clean pre-created resource in dev removal only. */
+	if (!priv->queues)
+		mlx5_vdpa_virtqs_cleanup(priv);
 	mlx5_vdpa_mem_dereg(priv);
 }
 
@@ -495,6 +497,10 @@ mlx5_vdpa_args_check_handler(const char *key, const char *val, void *opaque)
 		priv->hw_max_latency_us = (uint32_t)tmp;
 	} else if (strcmp(key, "hw_max_pending_comp") == 0) {
 		priv->hw_max_pending_comp = (uint32_t)tmp;
+	} else if (strcmp(key, "queue_size") == 0) {
+		priv->queue_size = (uint16_t)tmp;
+	} else if (strcmp(key, "queues") == 0) {
+		priv->queues = (uint16_t)tmp;
 	} else {
 		DRV_LOG(WARNING, "Invalid key %s.", key);
 	}
@@ -520,9 +526,68 @@ mlx5_vdpa_config_get(struct rte_devargs *devargs, struct mlx5_vdpa_priv *priv)
 	if (!priv->event_us &&
 	    priv->event_mode == MLX5_VDPA_EVENT_MODE_DYNAMIC_TIMER)
 		priv->event_us = MLX5_VDPA_DEFAULT_TIMER_STEP_US;
+	if ((priv->queue_size && !priv->queues) ||
+		(!priv->queue_size && priv->queues)) {
+		priv->queue_size = 0;
+		priv->queues = 0;
+		DRV_LOG(WARNING, "Please provide both queue_size and queues.");
+	}
 	DRV_LOG(DEBUG, "event mode is %d.", priv->event_mode);
 	DRV_LOG(DEBUG, "event_us is %u us.", priv->event_us);
 	DRV_LOG(DEBUG, "no traffic max is %u.", priv->no_traffic_max);
+	DRV_LOG(DEBUG, "queues is %u, queue_size is %u.", priv->queues,
+		priv->queue_size);
+}
+
+static int
+mlx5_vdpa_virtq_resource_prepare(struct mlx5_vdpa_priv *priv)
+{
+	uint32_t index;
+	uint32_t i;
+
+	if (!priv->queues)
+		return 0;
+	for (index = 0; index < (priv->queues * 2); ++index) {
+		struct mlx5_vdpa_virtq *virtq = &priv->virtqs[index];
+
+		if (priv->caps.queue_counters_valid) {
+			if (!virtq->counters)
+				virtq->counters =
+					mlx5_devx_cmd_create_virtio_q_counters
+						(priv->cdev->ctx);
+			if (!virtq->counters) {
+				DRV_LOG(ERR, "Failed to create virtq couners for virtq"
+					" %d.", index);
+				return -1;
+			}
+		}
+		for (i = 0; i < RTE_DIM(virtq->umems); ++i) {
+			uint32_t size;
+			void *buf;
+			struct mlx5dv_devx_umem *obj;
+
+			size = priv->caps.umems[i].a * priv->queue_size +
+					priv->caps.umems[i].b;
+			buf = rte_zmalloc(__func__, size, 4096);
+			if (buf == NULL) {
+				DRV_LOG(ERR, "Cannot allocate umem %d memory for virtq"
+						" %u.", i, index);
+				return -1;
+			}
+			obj = mlx5_glue->devx_umem_reg(priv->cdev->ctx, buf,
+					size, IBV_ACCESS_LOCAL_WRITE);
+			if (obj == NULL) {
+				rte_free(buf);
+				DRV_LOG(ERR, "Failed to register umem %d for virtq %u.",
+						i, index);
+				return -1;
+			}
+			virtq->umems[i].size = size;
+			virtq->umems[i].buf = buf;
+			virtq->umems[i].obj = obj;
+		}
+	}
+	return 0;
 }
 
 static int
@@ -598,6 +663,8 @@ mlx5_vdpa_create_dev_resources(struct mlx5_vdpa_priv *priv)
 		return -rte_errno;
 	if (mlx5_vdpa_event_qp_global_prepare(priv))
 		return -rte_errno;
+	if (mlx5_vdpa_virtq_resource_prepare(priv))
+		return -rte_errno;
 	return 0;
 }
 
@@ -631,6 +698,7 @@ mlx5_vdpa_dev_probe(struct mlx5_common_device *cdev)
 		priv->num_lag_ports = 1;
 	pthread_mutex_init(&priv->vq_config_lock, NULL);
 	priv->cdev = cdev;
+	mlx5_vdpa_config_get(cdev->dev->devargs, priv);
 	if (mlx5_vdpa_create_dev_resources(priv))
 		goto error;
 	priv->vdev = rte_vdpa_register_device(cdev->dev, &mlx5_vdpa_ops);
@@ -639,7 +707,6 @@ mlx5_vdpa_dev_probe(struct mlx5_common_device *cdev)
 		rte_errno = rte_errno ? rte_errno : EINVAL;
 		goto error;
 	}
-	mlx5_vdpa_config_get(cdev->dev->devargs, priv);
 	SLIST_INIT(&priv->mr_list);
 	pthread_mutex_lock(&priv_list_lock);
 	TAILQ_INSERT_TAIL(&priv_list, priv, next);
@@ -677,6 +744,8 @@ mlx5_vdpa_release_dev_resources(struct mlx5_vdpa_priv *priv)
 {
 	uint32_t i;
 
+	if (priv->queues)
+		mlx5_vdpa_virtqs_cleanup(priv);
 	mlx5_vdpa_dev_cache_clean(priv);
 	for (i = 0; i < priv->caps.max_num_virtio_queues * 2; i++) {
 		if (!priv->virtqs[i].counters)

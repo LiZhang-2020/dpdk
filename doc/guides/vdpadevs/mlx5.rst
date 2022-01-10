@@ -162,6 +162,21 @@ Driver options
 
   - 0, HW default.
 
+- ``queue_size`` parameter [int]
+
+  - 1 - 1024, Virio Queue depth for pre-creating queue resource to speed up
+e   first time queue creation. Set it together with queues devarg.
+
+  - 0, default value, no pre-create virtq resource.
+
+- ``queues`` parameter [int]
+
+  - 1 - 128, Max number of virio queue pair(including 1 rx queue and 1 tx queue)
+    for pre-create queue resource to speed up first time queue creation. Set it
+    together with queue_size devarg.
+
+  - 0, default value, no pre-create virtq resource.
+
 Devargs example
 ^^^^^^^^^^^^^^^
 
