@@ -376,11 +376,6 @@ int run_test_rule_insert_mult(struct ibv_context *ibv_ctx)
 	struct mlx5dr_match_template *mt;
 	struct mlx5dr_action *drop;
 
-	if (rte_lcore_count() < NUM_CORES) {
-		printf("The app requires at least %d cores.\n", NUM_CORES);
-		return -1;
-	}
-
 	dr_ctx_attr.initial_log_ste_memory = 0;
 	dr_ctx_attr.pd = NULL;
 	dr_ctx_attr.queues = NUM_OF_QUEUES;
