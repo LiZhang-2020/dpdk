@@ -179,6 +179,36 @@ static void mlx5dr_action_fill_stc_attr(struct mlx5dr_action *action,
 		attr->reformat.arg_id = action->reformat.arg_obj->id;
 		attr->reformat.header_size = action->reformat.header_size;
 		break;
+	case MLX5DR_ACTION_TYP_MH_SET:
+		attr->action_offset = MLX5DR_ACTION_OFFSET_DW6;
+		attr->action_type = MLX5_IFC_STC_ACTION_TYPE_SET;
+		attr->modify_action.src_field =
+			action->modify_action.src_field;
+		attr->modify_action.src_offset =
+			action->modify_action.src_offset;
+		attr->modify_action.length =
+			action->modify_action.length;
+		break;
+	case MLX5DR_ACTION_TYP_MH_ADD:
+		attr->action_offset = MLX5DR_ACTION_OFFSET_DW6;
+		attr->action_type = MLX5_IFC_STC_ACTION_TYPE_ADD;
+		attr->modify_action.src_field =
+			action->modify_action.src_field;
+		break;
+	case MLX5DR_ACTION_TYP_MH_COPY:
+		attr->action_offset = MLX5DR_ACTION_OFFSET_DW6;
+		attr->action_type = MLX5_IFC_STC_ACTION_TYPE_COPY;
+		attr->modify_action.src_field =
+			action->modify_action.src_field;
+		attr->modify_action.src_offset =
+			action->modify_action.src_offset;
+		attr->modify_action.length =
+			action->modify_action.length;
+		attr->modify_action.dst_field =
+			action->modify_action.dst_field;
+		attr->modify_action.dst_offset =
+			action->modify_action.dst_offset;
+		break;
 	default:
 		DR_LOG(ERR, "Invalid action type %d", action->type);
 		assert(false);
@@ -991,6 +1021,75 @@ mlx5dr_action_create_modify_header_root(struct mlx5dr_action *action,
 	return 0;
 }
 
+static enum mlx5dr_action_type mlx5dr_action_get_mh_action_type(__be64 pattern)
+{
+	u8 action_type;
+
+	 action_type = MLX5_GET(set_action_in, &pattern, action_type);
+	switch (action_type) {
+	case MLX5_MODIFICATION_TYPE_SET:
+		return MLX5DR_ACTION_TYP_MH_SET;
+	case MLX5_MODIFICATION_TYPE_ADD:
+		return MLX5DR_ACTION_TYP_MH_ADD;
+	case MLX5_MODIFICATION_TYPE_COPY:
+		return MLX5DR_ACTION_TYP_MH_COPY;
+	default:
+		assert(false);
+		DR_LOG(ERR, "Unsupported action type: 0x%x\n", action_type);
+		rte_errno = ENOTSUP;
+		return MLX5DR_ACTION_TYP_MAX;
+	}
+}
+
+static int mlx5dr_action_fill_modify_action(struct mlx5dr_action *action,
+					     __be64 pattern)
+{
+	enum mlx5dr_action_type action_type;
+
+	action_type = mlx5dr_action_get_mh_action_type(pattern);
+	if (action_type == MLX5DR_ACTION_TYP_MAX)
+		return ENOTSUP;
+
+	action->type = action_type;
+	switch (action_type) {
+	case MLX5DR_ACTION_TYP_MH_SET:
+		action->modify_action.src_field =
+			MLX5_GET(set_action_in, &pattern, field);
+		action->modify_action.src_offset =
+			MLX5_GET(set_action_in, &pattern, offset);
+		action->modify_action.length =
+			MLX5_GET(set_action_in, &pattern, length);
+		break;
+	case MLX5DR_ACTION_TYP_MH_ADD:
+		action->modify_action.src_field =
+			MLX5_GET(set_action_in, &pattern, field);
+		break;
+	case MLX5DR_ACTION_TYP_MH_COPY:
+		action->modify_action.src_field =
+			MLX5_GET(copy_action_in, &pattern, src_field);
+		action->modify_action.src_offset =
+			MLX5_GET(copy_action_in, &pattern, src_offset);
+		action->modify_action.length =
+			MLX5_GET(copy_action_in, &pattern, length);
+		action->modify_action.dst_field =
+			MLX5_GET(copy_action_in, &pattern, dst_field);
+		action->modify_action.dst_offset =
+			MLX5_GET(copy_action_in, &pattern, dst_offset);
+		break;
+	default:
+		rte_errno = ENOTSUP;
+		assert(false);
+		return ENOTSUP;
+	}
+	/* in shared(inline) action the data kept inline the struct */
+	if (action->flags & MLX5DR_ACTION_FLAG_SHARED &&
+	    action_type != MLX5DR_ACTION_TYP_MH_COPY)
+		action->modify_action.data =
+		MLX5_GET(set_action_in, &pattern, data);
+
+	return 0;
+}
+
 struct mlx5dr_action *
 mlx5dr_action_create_modify_header(struct mlx5dr_context *ctx,
 				   size_t pattern_sz,
@@ -1026,11 +1125,18 @@ mlx5dr_action_create_modify_header(struct mlx5dr_context *ctx,
 		goto free_action;
 	}
 
-	ret = mlx5dr_pat_arg_create_modify_header(ctx, action, pattern_sz,
-						  pattern, log_bulk_size);
-	if (ret) {
-		DR_LOG(ERR, "Failed allocating modify-header\n");
-		goto free_action;
+	if (pattern_sz / MLX5DR_MODIFY_ACTION_SIZE == 1) {
+		if (mlx5dr_action_fill_modify_action(action, pattern[0])) {
+			DR_LOG(ERR, "Failed allocating modify-header one action\n");
+			goto free_action;
+		}
+	} else {
+		ret = mlx5dr_pat_arg_create_modify_header(ctx, action, pattern_sz,
+							  pattern, log_bulk_size);
+		if (ret) {
+			DR_LOG(ERR, "Failed allocating modify-header\n");
+			goto free_action;
+		}
 	}
 
 	ret = mlx5dr_action_create_stcs(action, NULL);
@@ -1056,6 +1162,9 @@ static void mlx5dr_action_destroy_hws(struct mlx5dr_action *action)
 	case MLX5DR_ACTION_TYP_CTR:
 	case MLX5DR_ACTION_TYP_FT:
 	case MLX5DR_ACTION_TYP_TNL_L2_TO_L2:
+	case MLX5DR_ACTION_TYP_MH_SET:
+	case MLX5DR_ACTION_TYP_MH_ADD:
+	case MLX5DR_ACTION_TYP_MH_COPY:
 		mlx5dr_action_destroy_stcs(action);
 		break;
 	case MLX5DR_ACTION_TYP_TNL_L3_TO_L2:
@@ -1370,6 +1479,21 @@ int mlx5dr_actions_quick_apply(struct mlx5dr_send_engine *queue,
 							   action->modify_header.arg_obj->id + arg_idx,
 							   rule_actions[i].modify_header.data,
 							   action->modify_header.num_of_actions);
+			break;
+		case MLX5DR_ACTION_TYP_MH_ADD:
+		case MLX5DR_ACTION_TYP_MH_SET:
+			stc_arr[MLX5DR_ACTION_STC_IDX_DW6] = stc_idx;
+			require_double = true;
+
+			if (!(action->flags & MLX5DR_ACTION_FLAG_SHARED))
+				raw_wqe[MLX5DR_ACTION_OFFSET_DW7] =
+				(uint32_t)rule_actions[i].modify_header.data[0];
+			else
+				raw_wqe[MLX5DR_ACTION_OFFSET_DW7] = action->modify_action.data;
+			break;
+		case MLX5DR_ACTION_TYP_MH_COPY:
+			stc_arr[MLX5DR_ACTION_STC_IDX_DW6] = stc_idx;
+			require_double = true;
 			break;
 		case MLX5DR_ACTION_TYP_DROP:
 		case MLX5DR_ACTION_TYP_FT:

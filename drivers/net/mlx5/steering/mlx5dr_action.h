@@ -47,6 +47,9 @@ enum mlx5dr_action_type {
 	MLX5DR_ACTION_TYP_ASO_FIRST_HIT,
 	MLX5DR_ACTION_TYP_ASO_FLOW_METER,
 	MLX5DR_ACTION_TYP_ASO_CT,
+	MLX5DR_ACTION_TYP_MH_SET,
+	MLX5DR_ACTION_TYP_MH_ADD,
+	MLX5DR_ACTION_TYP_MH_COPY,
 	MLX5DR_ACTION_TYP_MAX,
 };
 
@@ -91,7 +94,14 @@ struct mlx5dr_action {
 					struct mlx5dr_devx_obj *arg_obj;
 					uint16_t num_of_actions;
 				} modify_header;
-
+				struct {
+					uint16_t src_field;
+					uint8_t src_offset;
+					uint8_t length;
+					uint16_t dst_field;
+					uint8_t dst_offset;
+					uint32_t data;
+				} modify_action;
 				struct {
 					struct mlx5dr_devx_obj *arg_obj;
 					uint32_t header_size;

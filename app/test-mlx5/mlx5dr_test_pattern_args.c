@@ -17,19 +17,19 @@ static int mlx5d_run_test_modify_header_action(struct mlx5dr_context *ctx)
 
 	action_ptr = (uint8_t *) modify_action_data;
 	MLX5_SET(add_action_in, action_ptr, action_type, MLX5_MODIFICATION_TYPE_ADD);
-	MLX5_SET(add_action_in, action_ptr, field, 0xa /*MLX5_ACTION_IN_FIELD_OUT_IP_TTL*/);
-	MLX5_SET(add_action_in, action_ptr, data, 7);
+	MLX5_SET(add_action_in, action_ptr, field, 0xa);
+	MLX5_SET(add_action_in, action_ptr, data, 0xab);
 
 	action_ptr += 8;
 
 	MLX5_SET(set_action_in, action_ptr, action_type, MLX5_MODIFICATION_TYPE_SET);
-	MLX5_SET(set_action_in, action_ptr, field, 91 /*MLX5_MODI_OUT_TCP_ACK_NUM*/);
+	MLX5_SET(set_action_in, action_ptr, field, 0x5b);//MLX5_ACTION_IN_FIELD_OUT_TCP_ACK_NUM
+	MLX5_SET(set_action_in, action_ptr, length, 2);
 	MLX5_SET(set_action_in, action_ptr, offset, 30);
-	MLX5_SET(set_action_in, action_ptr, length, 1);
 	MLX5_SET(set_action_in, action_ptr, data, 5);
 
 	action_sz = 16;
-	bulk_size = 10;
+	bulk_size = 12;
 	flags = MLX5DR_ACTION_FLAG_HWS_RX;
 
 	action1 = mlx5dr_action_create_modify_header(ctx, action_sz, modify_action_data, bulk_size, flags);
@@ -54,14 +54,33 @@ static int mlx5d_run_test_modify_header_action(struct mlx5dr_context *ctx)
 
 	mlx5dr_action_destroy(action2);
 	flags |= MLX5DR_ACTION_FLAG_SHARED;
+	bulk_size = 0;
+
 	action2 = mlx5dr_action_create_modify_header(ctx, action_sz, modify_action_data, bulk_size, flags);
 	if (!action2) {
 		printf("failed to create action: action_sz: %zu bulk_size: %d, flags: 0x%x\n",
 		       action_sz, bulk_size, flags);
 		goto clean_action_1;
 	}
-	/* check that inline uses different pattern */
+
+	mlx5dr_action_destroy(action2);
+
 	mlx5dr_action_destroy(action1);
+
+	/* check the creation of one-action-size optimization */
+	action_sz = 8;
+	bulk_size = 12;
+	flags = MLX5DR_ACTION_FLAG_HWS_RX;
+
+	action1 = mlx5dr_action_create_modify_header(ctx, action_sz, modify_action_data, bulk_size, flags);
+	if (!action1) {
+		printf("failed to create action: action_sz: %zu bulk_size: %d, flags: 0x%x\n",
+		       action_sz, bulk_size, flags);
+		return -1;
+	}
+
+	mlx5dr_action_destroy(action1);
+
 	return 0;
 
 clean_actions:

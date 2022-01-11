@@ -2023,6 +2023,20 @@ struct mlx5_ifc_set_action_in_bits {
 	u8 data[0x20];
 };
 
+struct mlx5_ifc_copy_action_in_bits {
+	u8 action_type[0x4];
+	u8 src_field[0xc];
+	u8 reserved_at_10[0x3];
+	u8 src_offset[0x5];
+	u8 reserved_at_18[0x3];
+	u8 length[0x5];
+	u8 reserved_at_20[0x4];
+	u8 dst_field[0xc];
+	u8 reserved_at_30[0x3];
+	u8 dst_offset[0x5];
+	u8 reserved_at_38[0x8];
+};
+
 struct mlx5_ifc_query_hca_cap_out_bits {
 	u8 status[0x8];
 	u8 reserved_at_8[0x18];
@@ -2949,6 +2963,9 @@ struct mlx5_ifc_rtc_bits {
 
 enum mlx5_ifc_stc_action_type {
 	MLX5_IFC_STC_ACTION_TYPE_NOP = 0x00,
+	MLX5_IFC_STC_ACTION_TYPE_COPY = 0x05, /* TODO not final in PRM */
+	MLX5_IFC_STC_ACTION_TYPE_SET = 0x06, /* TODO not final in PRM */
+	MLX5_IFC_STC_ACTION_TYPE_ADD = 0x07, /* TODO not final in PRM */
 	MLX5_IFC_STC_ACTION_TYPE_HEADER_REMOVE = 0x09,
 	MLX5_IFC_STC_ACTION_TYPE_HEADER_INSERT = 0x0b,
 	MLX5_IFC_STC_ACTION_TYPE_TAG = 0x0c,
@@ -3035,6 +3052,9 @@ union mlx5_ifc_stc_param_bits {
 	struct mlx5_ifc_stc_ste_param_header_modify_list_bits modify_header;
 	struct mlx5_ifc_stc_ste_param_remove_bits remove_header;
 	struct mlx5_ifc_stc_ste_param_insert_bits insert_header;
+	struct mlx5_ifc_set_action_in_bits add;
+	struct mlx5_ifc_set_action_in_bits set;
+	struct mlx5_ifc_copy_action_in_bits copy;
 	u8 reserved_at_0[0x80];
 };
 
@@ -4305,17 +4325,6 @@ enum {
 	FS_FT_NIC_RX = 0x0,
 	FS_FT_NIC_TX = 0x1,
 	FS_FT_FDB = 0X4,
-};
-
-struct mlx5_ifc_double_action_add_bits {
-	u8 action_id[0x8];
-	u8 destination_dw_offset[0x8];
-	u8 reserved_at_10[0x2];
-	u8 destination_left_shifter[0x6];
-	u8 reserved_at_18[0x2];
-	u8 destination_length[0x6];
-
-	u8 add_value[0x20];
 };
 
 struct mlx5_ifc_flow_table_context_bits {

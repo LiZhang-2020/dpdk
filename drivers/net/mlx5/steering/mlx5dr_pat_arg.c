@@ -69,7 +69,7 @@ static bool mlx5dr_pat_compare_pattern(enum mlx5dr_action_type cur_type,
 
 	for (i = 0; i < num_of_actions; i++) {
 		u8 action_id =
-			MLX5_GET(double_action_add, &actions[i], action_id);
+			MLX5_GET(set_action_in, &actions[i], action_type);
 
 		if (action_id == MLX5_MODIFICATION_TYPE_COPY) {
 			if (actions[i] != cur_actions[i])
