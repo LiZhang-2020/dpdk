@@ -13,6 +13,7 @@ from libc.stdint cimport uintptr_t
 cimport pydiru.libpydiru as pdr
 cimport pydiru.libibverbs as v
 import pydiru.pydiru_enums as e
+cimport libc.stdio as s
 import weakref
 
 
@@ -119,6 +120,21 @@ cdef class Mlx5drContext(PydiruCM):
         if res < 0:
             raise PydiruError('Polling for completion failed', res)
         return results
+
+    def dump(self, filepath):
+        """
+        Dumps the debug info of the context into a file.
+        :param filepath: Path to the file
+        """
+        cdef s.FILE *fp
+        fp = s.fopen(filepath.encode('utf-8'), 'w+')
+        if fp == NULL:
+            raise PydiruError('Opening dump file failed.')
+        rc = dr.mlx5dr_debug_dump(self.context, fp)
+        if s.fclose(fp) != 0:
+            raise PydiruError('Closing dump file failed.')
+        if rc != 0:
+            raise PydiruError('Context dump failed.', rc)
 
     def __dealloc__(self):
         self.close()
