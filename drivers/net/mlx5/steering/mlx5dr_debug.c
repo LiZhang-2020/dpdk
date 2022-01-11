@@ -10,16 +10,17 @@ static int mlx5dr_debug_dump_matcher_nic(FILE *f,
 					 struct mlx5dr_matcher_nic *matcher_nic)
 {
 	struct mlx5dr_pool *pool = matcher->tbl->ctx->ste_pool[matcher->tbl->type];
-	struct mlx5dr_devx_obj *ste_obj;
+	struct mlx5dr_devx_obj *ste_obj = NULL;
 	int ret;
 
-	ste_obj = pool->resource[matcher_nic->ste.resource_idx]->devx_obj;
+	if (matcher->tbl->level != MLX5DR_ROOT_LEVEL)
+		ste_obj = pool->resource[matcher_nic->ste.resource_idx]->devx_obj;
 
 	ret = fprintf(f, "%d,0x%" PRIx64 ",%d,%d\n",
 		      type,
 		      (uint64_t)(uintptr_t)matcher,
 		      (matcher->tbl->level == MLX5DR_ROOT_LEVEL) ? 0 : matcher_nic->rtc->id,
-		      ste_obj->id);
+		      ste_obj ? ste_obj->id : 0);
 	if (ret < 0) {
 		rte_errno = EINVAL;
 		return rte_errno;
