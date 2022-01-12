@@ -3,10 +3,12 @@
 
 from pydiru.providers.mlx5.steering.mlx5dr_action import Mlx5drRuleAction, Mlx5drActionModify, \
     Mlx5drActionDestTable
+from pydiru.rte_flow import RteFlowItem, RteFlowItemEth, RteFlowItemEnd
 from pydiru.providers.mlx5.steering.mlx5dr_rule import Mlx5drRuleAttr, Mlx5drRule
 from pydiru.providers.mlx5.steering.mlx5dr_matcher import Mlx5drMacherTemplate
 from pydiru.providers.mlx5.steering.mlx5dr_devx_objects import Mlx5drDevxObj
 import pydiru.providers.mlx5.steering.mlx5dr_enums as me
+import pydiru.pydiru_enums as p
 
 from .utils import raw_traffic, gen_packet, PacketConsts, create_sipv4_rte_items, TunnelType, gen_outer_headers, \
     get_l2_header, create_dipv4_rte_items, create_devx_counter, query_counter, BULK_512, \
@@ -497,3 +499,47 @@ class Mlx5drTrafficTest(PydiruTrafficTestCase):
         outer = gen_outer_headers(self.server.msg_size, tunnel=TunnelType.GTP_U)
         un_exp_outer = gen_outer_headers(self.server.msg_size, tunnel=TunnelType.GTP_U, ttl=1)
         self.def_34_test_traffic(outer, un_exp_outer, TAG_VALUE_2)
+
+    def test_mlx5dr_action_def33_encap_tx(self):
+        """
+        Create root TX matcher eth with action go to non root table.
+        On non root table create TX matcher eth / IPv4 src, dst /UDP src, dst
+        with action encap GTP + PSC
+        On non root table create TX matcher eth / IPv4 src, dst /TCP src, dst
+        with action encap GTP + PSC
+        Send traffic and verify.
+        """
+        rte_items = [RteFlowItem(p.RTE_FLOW_ITEM_TYPE_ETH, RteFlowItemEth(), RteFlowItemEth()),
+                     RteFlowItemEnd()]
+        udp_rte_items = create_eth_ipv4_l4_rte_items(next_proto=socket.IPPROTO_UDP)
+        tcp_rte_items = create_eth_ipv4_l4_rte_items(next_proto=socket.IPPROTO_TCP)
+        self.server.init_steering_resources(rte_items=rte_items)
+        self.client.init_steering_resources(rte_items=rte_items,
+                                            table_type=me.MLX5DR_TABLE_TYPE_NIC_TX)
+        # Override matcher_templates and matcher on TX
+        self.client.matcher_templates =  [Mlx5drMacherTemplate(udp_rte_items),
+                                          Mlx5drMacherTemplate(tcp_rte_items)]
+        self.client.matcher = self.client.create_matcher(self.client.table,
+                                                         self.client.matcher_templates,
+                                                         prio=0)
+        encap_data = gen_outer_headers(self.server.msg_size, tunnel=TunnelType.GTP_U,
+                                       gtp_psc_qfi=PacketConsts.GTP_PSC_QFI)
+        _, tir_ra = self.server.create_rule_action('tir')
+        _, encap_ra = self.client.create_rule_action('reformat', me.MLX5DR_ACTION_FLAG_HWS_TX,
+                                                     ref_type=me.MLX5DR_ACTION_REFORMAT_TYPE_L2_TO_TNL_L3,
+                                                     data=encap_data,
+                                                     data_sz=len(encap_data), log_bulk_size=12)
+        self.tx_rule_udp = Mlx5drRule(self.client.matcher, 0, udp_rte_items, [encap_ra], 1,
+                                      Mlx5drRuleAttr(user_data=bytes(8)), self.client.dr_ctx)
+        self.tx_rule_tcp = Mlx5drRule(self.client.matcher, 1, tcp_rte_items, [encap_ra], 1,
+                                      Mlx5drRuleAttr(user_data=bytes(8)), self.client.dr_ctx)
+        self.rx_rule = Mlx5drRule(self.server.matcher, 0, rte_items, [tir_ra], 1,
+                                  Mlx5drRuleAttr(user_data=bytes(8)), self.server.dr_ctx)
+        # Build packets
+        send_packet = gen_packet(self.server.msg_size - len(encap_data))
+        l3_packet_len = self.server.msg_size - len(encap_data) - PacketConsts.ETHER_HEADER_SIZE
+        expected_packet = encap_data + gen_packet(l3_packet_len, l2=False)
+        # Skip indexes which are offloaded by HW (UDP {source port and len}, ipv4 {id, checksum and
+        # total len}, gtp-u {length})
+        raw_traffic(self.client, self.server, self.server.num_msgs, [send_packet], expected_packet,
+                    skip_idxs=[16, 17, 18, 19, 24, 25, 34, 35, 38, 39, 44, 45])
