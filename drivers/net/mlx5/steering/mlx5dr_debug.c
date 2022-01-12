@@ -405,7 +405,7 @@ static int mlx5dr_debug_dump_context(FILE *f, struct mlx5dr_context *ctx)
 	return 0;
 }
 
-int mlx5dr_debug_dump(FILE *f, struct mlx5dr_context *ctx)
+int mlx5dr_debug_dump(struct mlx5dr_context *ctx, FILE *f)
 {
 	int ret;
 
