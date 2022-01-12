@@ -1301,6 +1301,136 @@ flow_hw_table_destroy(struct rte_eth_dev *dev,
 	return 0;
 }
 
+static int
+flow_hw_validate_action_modify_field(const struct rte_flow_action *action,
+				     const struct rte_flow_action *mask,
+				     struct rte_flow_error *error)
+{
+	const struct rte_flow_action_modify_field *action_conf =
+		action->conf;
+	const struct rte_flow_action_modify_field *mask_conf =
+		mask->conf;
+
+	if (action_conf->operation != mask_conf->operation)
+		return rte_flow_error_set(error, EINVAL,
+				RTE_FLOW_ERROR_TYPE_ACTION, action,
+				"modify_field operation mask and template are not equal");
+	if (action_conf->dst.field != mask_conf->dst.field)
+		return rte_flow_error_set(error, EINVAL,
+				RTE_FLOW_ERROR_TYPE_ACTION, action,
+				"destination field mask and template are not equal");
+	if (action_conf->dst.field == RTE_FLOW_FIELD_POINTER ||
+	    action_conf->dst.field == RTE_FLOW_FIELD_VALUE)
+		return rte_flow_error_set(error, EINVAL,
+				RTE_FLOW_ERROR_TYPE_ACTION, action,
+				"immediate value and pointer cannot be used as destination");
+	if (mask_conf->dst.level != UINT32_MAX)
+		return rte_flow_error_set(error, EINVAL,
+			RTE_FLOW_ERROR_TYPE_ACTION, action,
+			"destination encapsulation level must be fully masked");
+	if (mask_conf->dst.offset != UINT32_MAX)
+		return rte_flow_error_set(error, EINVAL,
+			RTE_FLOW_ERROR_TYPE_ACTION, action,
+			"destination offset level must be fully masked");
+	if (action_conf->src.field != mask_conf->src.field)
+		return rte_flow_error_set(error, EINVAL,
+				RTE_FLOW_ERROR_TYPE_ACTION, action,
+				"destination field mask and template are not equal");
+	if (action_conf->src.field != RTE_FLOW_FIELD_POINTER &&
+	    action_conf->src.field != RTE_FLOW_FIELD_VALUE) {
+		if (mask_conf->src.level != UINT32_MAX)
+			return rte_flow_error_set(error, EINVAL,
+				RTE_FLOW_ERROR_TYPE_ACTION, action,
+				"source encapsulation level must be fully masked");
+		if (mask_conf->src.offset != UINT32_MAX)
+			return rte_flow_error_set(error, EINVAL,
+				RTE_FLOW_ERROR_TYPE_ACTION, action,
+				"source offset level must be fully masked");
+	}
+	if (mask_conf->width != UINT32_MAX)
+		return rte_flow_error_set(error, EINVAL,
+				RTE_FLOW_ERROR_TYPE_ACTION, action,
+				"modify_field width field must be fully masked");
+	return 0;
+}
+
+static int
+flow_hw_action_validate(const struct rte_flow_action actions[],
+			const struct rte_flow_action masks[],
+			struct rte_flow_error *error)
+{
+	int i;
+	bool actions_end = false;
+	int ret;
+
+	for (i = 0; !actions_end; ++i) {
+		const struct rte_flow_action *action = &actions[i];
+		const struct rte_flow_action *mask = &masks[i];
+
+		if (action->type != mask->type)
+			return rte_flow_error_set(error, ENOTSUP,
+						  RTE_FLOW_ERROR_TYPE_ACTION,
+						  action,
+						  "mask type does not match action type");
+		switch (action->type) {
+		case RTE_FLOW_ACTION_TYPE_VOID:
+			break;
+		case RTE_FLOW_ACTION_TYPE_INDIRECT:
+			/* TODO: Validation logic */
+			break;
+		case RTE_FLOW_ACTION_TYPE_MARK:
+			/* TODO: Validation logic */
+			break;
+		case RTE_FLOW_ACTION_TYPE_DROP:
+			/* TODO: Validation logic */
+			break;
+		case RTE_FLOW_ACTION_TYPE_JUMP:
+			/* TODO: Validation logic */
+			break;
+		case RTE_FLOW_ACTION_TYPE_QUEUE:
+			/* TODO: Validation logic */
+			break;
+		case RTE_FLOW_ACTION_TYPE_RSS:
+			/* TODO: Validation logic */
+			break;
+		case RTE_FLOW_ACTION_TYPE_VXLAN_ENCAP:
+			/* TODO: Validation logic */
+			break;
+		case RTE_FLOW_ACTION_TYPE_NVGRE_ENCAP:
+			/* TODO: Validation logic */
+			break;
+		case RTE_FLOW_ACTION_TYPE_VXLAN_DECAP:
+			/* TODO: Validation logic */
+			break;
+		case RTE_FLOW_ACTION_TYPE_NVGRE_DECAP:
+			/* TODO: Validation logic */
+			break;
+		case RTE_FLOW_ACTION_TYPE_RAW_ENCAP:
+			/* TODO: Validation logic */
+			break;
+		case RTE_FLOW_ACTION_TYPE_RAW_DECAP:
+			/* TODO: Validation logic */
+			break;
+		case RTE_FLOW_ACTION_TYPE_MODIFY_FIELD:
+			ret = flow_hw_validate_action_modify_field(action,
+									mask,
+									error);
+			if (ret < 0)
+				return ret;
+			break;
+		case RTE_FLOW_ACTION_TYPE_END:
+			actions_end = true;
+			break;
+		default:
+			return rte_flow_error_set(error, ENOTSUP,
+						  RTE_FLOW_ERROR_TYPE_ACTION,
+						  action,
+						  "action not supported in template API");
+		}
+	}
+	return 0;
+}
+
 static struct rte_flow_action_template *
 flow_hw_action_template_create(struct rte_eth_dev *dev,
 			       const struct rte_flow_action_template_attr *attr,
@@ -1312,6 +1442,8 @@ flow_hw_action_template_create(struct rte_eth_dev *dev,
 	int len, act_len, mask_len, i;
 	struct rte_flow_action_template *at;
 
+	if (flow_hw_action_validate(actions, masks, error))
+		return NULL;
 	act_len = rte_flow_conv(RTE_FLOW_CONV_OP_ACTIONS,
 				NULL, 0, actions, error);
 	if (act_len <= 0)
