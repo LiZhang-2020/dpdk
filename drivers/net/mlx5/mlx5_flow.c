@@ -9160,9 +9160,12 @@ mlx5_flow_dev_dump(struct rte_eth_dev *dev, struct rte_flow *flow_idx,
 		if (mlx5_flow_dev_dump_sh_all(dev, file, error))
 			return -EINVAL;
 #endif
-		return mlx5_devx_cmd_flow_dump(sh->fdb_domain,
-					sh->rx_domain,
-					sh->tx_domain, file);
+		if (priv->config.dv_flow_en == 2)
+			return mlx5dr_debug_dump(priv->dr_ctx, file);
+		else
+			return mlx5_devx_cmd_flow_dump(sh->fdb_domain,
+						       sh->rx_domain,
+						       sh->tx_domain, file);
 	}
 	/* dump one */
 	flow = mlx5_ipool_get(priv->flows
@@ -9179,10 +9182,14 @@ mlx5_flow_dev_dump(struct rte_eth_dev *dev, struct rte_flow *flow_idx,
 		if (!dh)
 			return -ENOENT;
 		if (dh->drv_flow) {
-			ret = mlx5_devx_cmd_flow_single_dump(dh->drv_flow,
-					file);
-			if (ret)
-				return -ENOENT;
+			if (priv->config.dv_flow_en == 2) {
+				return -ENOTSUP;
+			} else {
+				ret = mlx5_devx_cmd_flow_single_dump(dh->drv_flow,
+								     file);
+				if (ret)
+					return -ENOENT;
+			}
 		}
 		handle_idx = dh->next.next;
 	}
