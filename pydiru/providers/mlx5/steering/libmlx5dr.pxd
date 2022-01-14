@@ -124,3 +124,4 @@ cdef extern  from '../../../../drivers/net/mlx5/steering/mlx5dr.h':
     int mlx5dr_send_queue_poll(mlx5dr_context *ctx, uint16_t queue_id, pdr.rte_flow_op_result *res,
                                uint32_t res_nb)
     int mlx5dr_debug_dump(mlx5dr_context *ctx, s.FILE *f)
+    int mlx5dr_send_queue_action(mlx5dr_context *ctx, uint16_t queue_id, uint32_t actions)

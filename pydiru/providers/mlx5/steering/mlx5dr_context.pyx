@@ -136,6 +136,16 @@ cdef class Mlx5drContext(PydiruCM):
         if rc != 0:
             raise PydiruError('Context dump failed.', rc)
 
+    def send_queue_action(self, queue_id, actions):
+        """
+        Perform an action on the queue.
+        :param queue_id: The id of the queue to perform the action on.
+        :param actions: Actions to perform on the queue. (enum mlx5dr_send_queue_actions)
+        """
+        res = dr.mlx5dr_send_queue_action(self.context, queue_id, actions)
+        if res:
+            raise PydiruError('Send queue action failed.', res)
+
     def __dealloc__(self):
         self.close()
 

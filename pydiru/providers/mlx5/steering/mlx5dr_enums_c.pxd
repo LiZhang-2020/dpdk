@@ -30,3 +30,6 @@ cdef extern  from '../../../../drivers/net/mlx5/steering/mlx5dr.h':
         MLX5DR_ACTION_REFORMAT_TYPE_L2_TO_TNL_L2
         MLX5DR_ACTION_REFORMAT_TYPE_TNL_L3_TO_L2
         MLX5DR_ACTION_REFORMAT_TYPE_L2_TO_TNL_L3
+
+    cpdef enum mlx5dr_send_queue_actions:
+        MLX5DR_SEND_QUEUE_ACTION_DRAIN
