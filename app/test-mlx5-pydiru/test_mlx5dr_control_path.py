@@ -4,6 +4,7 @@
 import struct
 import socket
 import time
+import os
 
 from pydiru.providers.mlx5.steering.mlx5dr_rule import Mlx5drRuleAttr, Mlx5drRule
 import pydiru.providers.mlx5.steering.mlx5dr_enums as me
@@ -79,3 +80,15 @@ class Mlx5drMatcherTest(PydiruAPITestCase):
         Try creating 5 rules. Expect at least one completion with error.
         """
         self.small_matcher(mode=me.MLX5DR_MATCHER_RESOURCE_MODE_HTABLE)
+
+    def test_dr_dump_sanity(self):
+        """
+        Create HWS resources then open dump file and verify it's created and not
+        empty.
+        """
+        dump_path = '/tmp/hws_dump'
+        rte_items = create_sipv4_rte_items(PacketConsts.SRC_IP)
+        self.resources.init_steering_resources(rte_items=rte_items)
+        self.resources.dr_ctx.dump(dump_path)
+        self.assertTrue(os.path.isfile(dump_path), 'Dump file does not exist.')
+        self.assertGreater(os.path.getsize(dump_path), 0, 'Dump file is empty')
