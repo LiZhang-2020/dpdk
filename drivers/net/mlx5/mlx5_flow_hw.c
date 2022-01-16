@@ -152,28 +152,16 @@ static void
 flow_hw_rxq_flag_trim(struct rte_eth_dev *dev)
 {
 	struct mlx5_priv *priv = dev->data->dev_private;
-	unsigned int i;
 
-	for (i = 0; i < priv->rxqs_n; ++i) {
-		struct mlx5_rxq_ctrl *rxq_ctrl = mlx5_rxq_ctrl_get(dev, i);
-
-		rxq_ctrl->flow_mark_n--;
-		rxq_ctrl->rxq.mark = !!rxq_ctrl->flow_mark_n;
-	}
+	priv->mark_enabled = 0;
 }
 
 static void
 flow_hw_rxq_flag_set(struct rte_eth_dev *dev)
 {
 	struct mlx5_priv *priv = dev->data->dev_private;
-	unsigned int i;
 
-	for (i = 0; i < priv->rxqs_n; ++i) {
-		struct mlx5_rxq_ctrl *rxq_ctrl = mlx5_rxq_ctrl_get(dev, i);
-
-		rxq_ctrl->rxq.mark = 1;
-		rxq_ctrl->flow_mark_n++;
-	}
+	priv->mark_enabled = 1;
 }
 
 static inline struct mlx5_hrxq*

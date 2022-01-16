@@ -444,7 +444,6 @@ mlx5_sft_start(struct rte_eth_dev *dev, uint16_t nb_queue,
 {
 	struct mlx5_priv *priv = dev->data->dev_private;
 	struct mlx5_dev_ctx_shared *sh = priv->sh;
-	uint32_t idx;
 
 	if (priv->sft_en)
 		return 0;
@@ -461,14 +460,7 @@ mlx5_sft_start(struct rte_eth_dev *dev, uint16_t nb_queue,
 					 RTE_SFT_ERROR_TYPE_UNSPECIFIED, NULL,
 					 "failed to allocate PMD sft memory");
 	/* Enable MARK for all Rx queues. */
-	for (idx = 0; idx < priv->rxqs_n; idx++) {
-		struct mlx5_rxq_ctrl *rxq_ctrl = mlx5_rxq_ctrl_get(dev, idx);
-
-		if (rxq_ctrl == NULL)
-			continue;
-		rxq_ctrl->rxq.mark = 1;
-		rxq_ctrl->flow_mark_n++;
-	}
+	priv->mark_enabled = 1;
 	if (mlx5_create_sft_flows(dev, error))
 		goto err;
 	sh->nb_sft_queue = nb_queue;
@@ -484,21 +476,13 @@ static int mlx5_sft_stop(struct rte_eth_dev *dev, struct rte_sft_error *error)
 {
 	struct mlx5_priv *priv = dev->data->dev_private;
 	struct mlx5_dev_ctx_shared *sh = priv->sh;
-	uint32_t idx;
 
 	if (!priv->config.sft_en)
 		return rte_sft_error_set(error, ENOTSUP,
 					 RTE_SFT_ERROR_TYPE_UNSPECIFIED, NULL,
 					 "no PMD support for SFT");
 	mlx5_destroy_sft_flows(dev, error);
-	for (idx = 0; idx < priv->rxqs_n; idx++) {
-		struct mlx5_rxq_ctrl *rxq_ctrl = mlx5_rxq_ctrl_get(dev, idx);
-
-		if (rxq_ctrl == NULL)
-			continue;
-		rxq_ctrl->flow_mark_n--;
-		rxq_ctrl->rxq.mark = !!rxq_ctrl->flow_mark_n;
-	}
+	priv->mark_enabled = 0;
 	mlx5_sft_release_mem(dev, sh->nb_sft_queue, error);
 	return 0;
 }
