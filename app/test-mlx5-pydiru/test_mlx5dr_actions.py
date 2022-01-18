@@ -8,6 +8,7 @@ from pydiru.providers.mlx5.steering.mlx5dr_rule import Mlx5drRuleAttr, Mlx5drRul
 from pydiru.providers.mlx5.steering.mlx5dr_matcher import Mlx5drMacherTemplate
 from pydiru.providers.mlx5.steering.mlx5dr_devx_objects import Mlx5drDevxObj
 import pydiru.providers.mlx5.steering.mlx5dr_enums as me
+from pyverbs.pyverbs_error import PyverbsError
 import pydiru.pydiru_enums as p
 
 from .utils import raw_traffic, gen_packet, PacketConsts, create_sipv4_rte_items, TunnelType, gen_outer_headers, \
@@ -19,6 +20,7 @@ from .base import BaseDrResources, PydiruTrafficTestCase
 from .prm_structs import SetActionIn
 import struct
 import socket
+import time
 
 
 OUT_SMAC_47_16_FIELD_ID = 0x1
@@ -543,3 +545,60 @@ class Mlx5drTrafficTest(PydiruTrafficTestCase):
         # total len}, gtp-u {length})
         raw_traffic(self.client, self.server, self.server.num_msgs, [send_packet], expected_packet,
                     skip_idxs=[16, 17, 18, 19, 24, 25, 34, 35, 38, 39, 44, 45])
+
+    def create_burst_rules_without_polling(self, is_burst):
+        """
+        Function creates a rule with burst flag on. Verifies with traffic that
+        the rule wasn't written. Forces the rule to be written by creating
+        another rule with bust flag off or by drain action flag using send
+        queue action API. Verifies with traffic that the rule was written.
+        :param is_burst: If true - the second rule is created with burst flag off. If false -
+                         use send queue action API with action drain flag.
+        """
+        tir_rte_items = create_sipv4_rte_items(PacketConsts.SRC_IP)
+        _, tir_ra = self.server.create_rule_action('tir')
+        packet = gen_packet(self.server.msg_size)
+        self.server.init_steering_resources(rte_items=tir_rte_items)
+        self.tir_rule1 = Mlx5drRule(self.server.matcher, 0, tir_rte_items, [tir_ra], 1,
+                                    Mlx5drRuleAttr(user_data=bytes(8), burst=1))
+        try:
+            raw_traffic(self.client, self.server, self.server.num_msgs, [packet])
+        except PyverbsError:
+            self.logger.debug("Not receiving packet yet as expected.")
+        except Exception as ex:
+            raise ex
+        if is_burst:
+            _, tag_ra = self.server.create_rule_action('tag')
+            tag_ra.tag_value = 0x1234
+            self.tir_rule2 = Mlx5drRule(self.server.matcher, 0,
+                                        create_sipv4_rte_items(PacketConsts.DST_IP), [tag_ra], 1,
+                                        Mlx5drRuleAttr(user_data=bytes(8)), self.server.dr_ctx)
+        else:
+            self.server.dr_ctx.send_queue_action(0, me.MLX5DR_SEND_QUEUE_ACTION_DRAIN)
+        res = []
+        polling_timeout = 5
+        start_poll_t = time.perf_counter()
+        while not res and (time.perf_counter() - start_poll_t) < polling_timeout:
+            res = self.server.dr_ctx.poll_send_queue(0, 1)
+        if not res:
+            raise PyverbsError(f'Got timeout on polling.')
+        raw_traffic(self.client, self.server, self.server.num_msgs, [packet])
+
+    def test_mlx5dr_burst(self):
+        """
+        Create rule with burst flag on.
+        Send packet - validate rule wasn't created.
+        Add another rule with burst=0.
+        Resend the packet to check the rule was created.
+        """
+        self.create_burst_rules_without_polling(is_burst=True)
+
+
+    def test_mlx5dr_drain(self):
+        """
+        Create rule with burst flag on.
+        Send packet - validate rule wasn't created.
+        Use send queue action with DRAIN flag to force rule to be written.
+        Resend the packet to check the rule was created.
+        """
+        self.create_burst_rules_without_polling(is_burst=False)
