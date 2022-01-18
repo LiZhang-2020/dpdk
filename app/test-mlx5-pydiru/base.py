@@ -85,6 +85,8 @@ class PydiruTrafficTestCase(unittest.TestCase):
         self.devx_objects = []
 
     def setUp(self):
+        self.logger = logging.getLogger(self.__class__.__name__)
+        self.logger.setLevel(logging.INFO)
         self.ib_port = self.config['port']
         self.dev_name = self.config['dev']
         if not self.dev_name:
