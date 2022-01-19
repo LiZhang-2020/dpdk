@@ -436,8 +436,8 @@ Limitations
      - yellow: NULL or END.
      - RED: DROP / END.
   - The only supported meter policy actions:
-     - green: QUEUE, RSS, PORT_ID, REPRESENTED_PORT, JUMP, DROP, MARK and SET_TAG.
-     - yellow: QUEUE, RSS, PORT_ID, REPRESENTED_PORT, JUMP, DROP, MARK and SET_TAG.
+     - green: QUEUE, RSS, PORT_ID, REPRESENTED_PORT, JUMP, DROP, MODIFY_FIELD, MARK and SET_TAG.
+     - yellow: QUEUE, RSS, PORT_ID, REPRESENTED_PORT, JUMP, DROP, MODIFY_FIELD, MARK and SET_TAG.
      - RED: must be DROP.
   - Policy actions of RSS for green and yellow should have the same configuration except queues.
   - Policy with RSS/queue action is not supported when ``dv_xmeta_en`` enabled.

@@ -8140,12 +8140,13 @@ int
 mlx5_flow_create_mtr_acts(struct rte_eth_dev *dev,
 		      struct mlx5_flow_meter_policy *mtr_policy,
 		      const struct rte_flow_action *actions[RTE_COLORS],
+		      struct rte_flow_attr *attr,
 		      struct rte_mtr_error *error)
 {
 	const struct mlx5_flow_driver_ops *fops;
 
 	fops = flow_get_drv_ops(MLX5_FLOW_TYPE_DV);
-	return fops->create_mtr_acts(dev, mtr_policy, actions, error);
+	return fops->create_mtr_acts(dev, mtr_policy, actions, attr, error);
 }
 
 /**
