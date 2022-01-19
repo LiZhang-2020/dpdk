@@ -2575,6 +2575,12 @@ flow_hw_configure(struct rte_eth_dev *dev,
 		.free = mlx5_free,
 		.type = "mlx5_hw_action_construct_data",
 	};
+	/* Adds one queue to be used by PMD.
+	 * The last queue will be used by the PMD.
+	 */
+	uint16_t nb_q_updated;
+	struct rte_flow_queue_attr **_queue_attr = NULL;
+	struct rte_flow_queue_attr ctrl_queue_attr = {0};
 
 	if (!port_attr || !nb_queue || !queue_attr) {
 		rte_errno = EINVAL;
@@ -2583,7 +2589,7 @@ flow_hw_configure(struct rte_eth_dev *dev,
 	/* In case re-configuring, release existing context at first. */
 	if (priv->dr_ctx) {
 		/* */
-		for (i = 0; i < nb_queue; i++) {
+		for (i = 0; i < priv->nb_queue; i++) {
 			hw_q = &priv->hw_q[i];
 			/* Make sure all queues are empty. */
 			if (hw_q->size != hw_q->job_idx) {
@@ -2593,17 +2599,31 @@ flow_hw_configure(struct rte_eth_dev *dev,
 		}
 		flow_hw_resource_release(dev);
 	}
+	ctrl_queue_attr.size = queue_attr[0]->size;
+	nb_q_updated = nb_queue + 1;
+	_queue_attr = mlx5_malloc(MLX5_MEM_ZERO,
+				  nb_q_updated *
+				  sizeof(struct rte_flow_queue_attr *),
+				  64, SOCKET_ID_ANY);
+	if (!_queue_attr) {
+		rte_errno = ENOMEM;
+		goto err;
+	}
+
+	memcpy(_queue_attr, queue_attr,
+	       sizeof(void *) * nb_queue);
+	_queue_attr[nb_queue] = &ctrl_queue_attr;
 	priv->acts_ipool = mlx5_ipool_create(&cfg);
 	if (!priv->acts_ipool)
 		goto err;
 	/* Allocate the queue job descriptor LIFO. */
-	mem_size = sizeof(priv->hw_q[0]) * nb_queue;
-	for (i = 0; i < nb_queue; i++) {
+	mem_size = sizeof(priv->hw_q[0]) * nb_q_updated;
+	for (i = 0; i < nb_q_updated; i++) {
 		/*
 		 * Check if the queues' size are all the same as the
 		 * limitation from HWS layer.
 		 */
-		if (queue_attr[i]->size != queue_attr[0]->size) {
+		if (_queue_attr[i]->size != _queue_attr[0]->size) {
 			rte_errno = EINVAL;
 			goto err;
 		}
@@ -2612,7 +2632,7 @@ flow_hw_configure(struct rte_eth_dev *dev,
 			    sizeof(uint8_t) * MLX5_ENCAP_MAX_LEN +
 			    sizeof(struct mlx5_modification_cmd) *
 			    MLX5_MHDR_MAX_CMD) *
-			    queue_attr[0]->size;
+			    _queue_attr[i]->size;
 	}
 	priv->hw_q = mlx5_malloc(MLX5_MEM_ZERO, mem_size,
 				 64, SOCKET_ID_ANY);
@@ -2620,41 +2640,41 @@ flow_hw_configure(struct rte_eth_dev *dev,
 		rte_errno = ENOMEM;
 		goto err;
 	}
-	for (i = 0; i < nb_queue; i++) {
+	for (i = 0; i < nb_q_updated; i++) {
 		uint8_t *encap = NULL;
 		struct mlx5_modification_cmd *mhdr_cmd = NULL;
 
-		priv->hw_q[i].job_idx = queue_attr[i]->size;
-		priv->hw_q[i].size = queue_attr[i]->size;
+		priv->hw_q[i].job_idx = _queue_attr[i]->size;
+		priv->hw_q[i].size = _queue_attr[i]->size;
 		if (i == 0)
 			priv->hw_q[i].job = (struct mlx5_hw_q_job **)
-					    &priv->hw_q[nb_queue];
+					    &priv->hw_q[nb_q_updated];
 		else
 			priv->hw_q[i].job = (struct mlx5_hw_q_job **)
-				&job[queue_attr[i - 1]->size - 1].encap_data
+				&job[_queue_attr[i - 1]->size - 1].encap_data
 				 [MLX5_ENCAP_MAX_LEN];
 		job = (struct mlx5_hw_q_job *)
-		      &priv->hw_q[i].job[queue_attr[i]->size];
+		      &priv->hw_q[i].job[_queue_attr[i]->size];
 		mhdr_cmd = (struct mlx5_modification_cmd *)
-			   &job[queue_attr[i]->size];
+			   &job[_queue_attr[i]->size];
 		encap = (uint8_t *)
-			 &mhdr_cmd[queue_attr[i]->size * MLX5_MHDR_MAX_CMD];
-		for (j = 0; j < queue_attr[i]->size; j++) {
+			 &mhdr_cmd[_queue_attr[i]->size * MLX5_MHDR_MAX_CMD];
+		for (j = 0; j < _queue_attr[i]->size; j++) {
 			job[j].mhdr_cmd = &mhdr_cmd[j * MLX5_MHDR_MAX_CMD];
 			job[j].encap_data = &encap[j * MLX5_ENCAP_MAX_LEN];
 			priv->hw_q[i].job[j] = &job[j];
 		}
 	}
 	dr_ctx_attr.pd = priv->sh->cdev->pd;
-	dr_ctx_attr.queues = nb_queue;
+	dr_ctx_attr.queues = nb_q_updated;
 	/* Queue size should all be the same. Take the first one. */
-	dr_ctx_attr.queue_size = queue_attr[0]->size;
+	dr_ctx_attr.queue_size = _queue_attr[0]->size;
 	dr_ctx = mlx5dr_context_open(priv->sh->cdev->ctx, &dr_ctx_attr);
 	/* rte_errno has been updated by HWS layer. */
 	if (!dr_ctx)
 		goto err;
 	priv->dr_ctx = dr_ctx;
-	priv->nb_queue = nb_queue;
+	priv->nb_queue = nb_q_updated;
 	/* Add global actions. */
 	for (i = 0; i < MLX5_HW_ACTION_FLAG_MAX; i++) {
 		for (j = 0; j < MLX5DR_TABLE_TYPE_MAX; j++) {
@@ -2668,6 +2688,8 @@ flow_hw_configure(struct rte_eth_dev *dev,
 		if (!priv->hw_tag[i])
 			goto err;
 	}
+	if (_queue_attr)
+		mlx5_free(_queue_attr);
 	return 0;
 err:
 	for (i = 0; i < MLX5_HW_ACTION_FLAG_MAX; i++) {
@@ -2686,6 +2708,8 @@ err:
 		mlx5_ipool_destroy(priv->acts_ipool);
 		priv->acts_ipool = NULL;
 	}
+	if (_queue_attr)
+		mlx5_free(_queue_attr);
 	return rte_flow_error_set(error, rte_errno,
 				  RTE_FLOW_ERROR_TYPE_UNSPECIFIED, NULL,
 				  "fail to configure port");
