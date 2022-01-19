@@ -72,4 +72,10 @@ static inline void simple_free(void *addr)
 	mlx5_free(addr);
 }
 
+static inline bool is_mem_zero(const uint8_t *mem, size_t size)
+{
+	assert(size);
+	return (*mem == 0) && memcmp(mem, mem + 1, size - 1) == 0;
+}
+
 #endif

@@ -248,8 +248,8 @@ struct mlx5_ifc_definer_hl_bits {
 	u8 reserved_at_480[0x380];
 	struct mlx5_ifc_definer_hl_ipv4_src_dst_bits ipv4_src_dest_outer;
 	struct mlx5_ifc_definer_hl_ipv4_src_dst_bits ipv4_src_dest_inner;
-	struct mlx5_ifc_definer_hl_ipv6_addr_bits ipv6_dest_outer;
-	struct mlx5_ifc_definer_hl_ipv6_addr_bits ipv6_dest_inner;
+	struct mlx5_ifc_definer_hl_ipv6_addr_bits ipv6_dst_outer;
+	struct mlx5_ifc_definer_hl_ipv6_addr_bits ipv6_dst_inner;
 	struct mlx5_ifc_definer_hl_ipv6_addr_bits ipv6_src_outer;
 	struct mlx5_ifc_definer_hl_ipv6_addr_bits ipv6_src_inner;
 	u8 unsupported_dest_ib_l3[0x80];
@@ -308,6 +308,18 @@ struct mlx5_ifc_header_gtp_psc_bits {
 	u8 flags[0x4];
 	u8 qfi[0x8];
 	u8 reserved2[0x8];
+};
+
+struct mlx5_ifc_header_ipv6_bits {
+	u8 version[0x4];
+	u8 dscp[0x6];
+	u8 ecn[0x2];
+	u8 flow_label[0x14];
+	u8 payload_len[0x10];
+	u8 next_header[0x8];
+	u8 hop_limits[0x8];
+	u8 src_addr[0x80];
+	u8 dst_addr[0x80];
 };
 
 struct mlx5dr_definer {

@@ -33,6 +33,10 @@
 		*((rte_be32_t *)(p) + (byte_off / 4)) = (v); \
 	} while (0)
 
+/* Setter function based on byte offset to directly set BE32 value from ptr  */
+#define DR_SET_BE32P(p, v_ptr, byte_off, bit_off, mask) \
+	memcpy(((rte_be32_t *)(p) + (byte_off / 4)), v_ptr, 4);
+
 /* Setter function based on byte offset to directly set BE16 value  */
 #define DR_SET_BE16(p, v, byte_off, bit_off, mask) \
 	do { \
@@ -53,6 +57,10 @@
 		} \
 	} while (0)
 
+ #define DR_GET(typ, p, fld) \
+	((rte_be_to_cpu_32(*((const rte_be32_t *)(p) + \
+	__mlx5_dw_off(typ, fld))) >> __mlx5_dw_bit_off(typ, fld)) & \
+	__mlx5_mask(typ, fld))
 
 enum mlx5dr_definer_fname {
 	MLX5DR_DEFINER_FNAME_ETH_SMAC_48_16_O,
@@ -67,14 +75,38 @@ enum mlx5dr_definer_fname {
 	MLX5DR_DEFINER_FNAME_ETH_TYPE_I,
 	MLX5DR_DEFINER_FNAME_IPV4_IHL_O,
 	MLX5DR_DEFINER_FNAME_IPV4_IHL_I,
-	MLX5DR_DEFINER_FNAME_IPV4_TTL_O,
-	MLX5DR_DEFINER_FNAME_IPV4_TTL_I,
+	MLX5DR_DEFINER_FNAME_IP_TTL_O,
+	MLX5DR_DEFINER_FNAME_IP_TTL_I,
 	MLX5DR_DEFINER_FNAME_IPV4_DST_O,
 	MLX5DR_DEFINER_FNAME_IPV4_DST_I,
 	MLX5DR_DEFINER_FNAME_IPV4_SRC_O,
 	MLX5DR_DEFINER_FNAME_IPV4_SRC_I,
-	MLX5DR_DEFINER_FNAME_IPV4_VERSION_O,
-	MLX5DR_DEFINER_FNAME_IPV4_VERSION_I,
+	MLX5DR_DEFINER_FNAME_IP_VERSION_O,
+	MLX5DR_DEFINER_FNAME_IP_VERSION_I,
+	MLX5DR_DEFINER_FNAME_IPV6_PAYLOAD_LEN_O,
+	MLX5DR_DEFINER_FNAME_IPV6_PAYLOAD_LEN_I,
+	MLX5DR_DEFINER_FNAME_IP_ECN_O,
+	MLX5DR_DEFINER_FNAME_IP_ECN_I,
+	MLX5DR_DEFINER_FNAME_IP_DSCP_O,
+	MLX5DR_DEFINER_FNAME_IP_DSCP_I,
+	MLX5DR_DEFINER_FNAME_IPV6_FLOW_LABEL_O,
+	MLX5DR_DEFINER_FNAME_IPV6_FLOW_LABEL_I,
+	MLX5DR_DEFINER_FNAME_IPV6_DST_127_96_O,
+	MLX5DR_DEFINER_FNAME_IPV6_DST_95_64_O,
+	MLX5DR_DEFINER_FNAME_IPV6_DST_63_32_O,
+	MLX5DR_DEFINER_FNAME_IPV6_DST_31_0_O,
+	MLX5DR_DEFINER_FNAME_IPV6_DST_127_96_I,
+	MLX5DR_DEFINER_FNAME_IPV6_DST_95_64_I,
+	MLX5DR_DEFINER_FNAME_IPV6_DST_63_32_I,
+	MLX5DR_DEFINER_FNAME_IPV6_DST_31_0_I,
+	MLX5DR_DEFINER_FNAME_IPV6_SRC_127_96_O,
+	MLX5DR_DEFINER_FNAME_IPV6_SRC_95_64_O,
+	MLX5DR_DEFINER_FNAME_IPV6_SRC_63_32_O,
+	MLX5DR_DEFINER_FNAME_IPV6_SRC_31_0_O,
+	MLX5DR_DEFINER_FNAME_IPV6_SRC_127_96_I,
+	MLX5DR_DEFINER_FNAME_IPV6_SRC_95_64_I,
+	MLX5DR_DEFINER_FNAME_IPV6_SRC_63_32_I,
+	MLX5DR_DEFINER_FNAME_IPV6_SRC_31_0_I,
 	MLX5DR_DEFINER_FNAME_IP_PROTOCOL_O,
 	MLX5DR_DEFINER_FNAME_IP_PROTOCOL_I,
 	MLX5DR_DEFINER_FNAME_L4_SPORT_O,
@@ -136,6 +168,18 @@ struct mlx5dr_definer_conv_data {
 	X(SET_BE32,	ipv4_src_addr,		v->src_addr,		rte_ipv4_hdr) \
 	X(SET,		ipv4_next_proto,	v->next_proto_id,	rte_ipv4_hdr) \
 	X(SET,		ipv4_version,		STE_IPV4,		rte_ipv4_hdr) \
+	X(SET_BE16,	ipv6_payload_len,	v->hdr.payload_len,	rte_flow_item_ipv6) \
+	X(SET,		ipv6_proto,		v->hdr.proto,		rte_flow_item_ipv6) \
+	X(SET,		ipv6_hop_limits,	v->hdr.hop_limits,	rte_flow_item_ipv6) \
+	X(SET_BE32P,	ipv6_src_addr_127_96,	&v->hdr.src_addr[0],	rte_flow_item_ipv6) \
+	X(SET_BE32P,	ipv6_src_addr_95_64,	&v->hdr.src_addr[4],	rte_flow_item_ipv6) \
+	X(SET_BE32P,	ipv6_src_addr_63_32,	&v->hdr.src_addr[8],	rte_flow_item_ipv6) \
+	X(SET_BE32P,	ipv6_src_addr_31_0,	&v->hdr.src_addr[12],	rte_flow_item_ipv6) \
+	X(SET_BE32P,	ipv6_dst_addr_127_96,	&v->hdr.dst_addr[0],	rte_flow_item_ipv6) \
+	X(SET_BE32P,	ipv6_dst_addr_95_64,	&v->hdr.dst_addr[4],	rte_flow_item_ipv6) \
+	X(SET_BE32P,	ipv6_dst_addr_63_32,	&v->hdr.dst_addr[8],	rte_flow_item_ipv6) \
+	X(SET_BE32P,	ipv6_dst_addr_31_0,	&v->hdr.dst_addr[12],	rte_flow_item_ipv6) \
+	X(SET,		ipv6_version,		STE_IPV6,		rte_flow_item_ipv6) \
 	X(SET,		udp_protocol,		STE_UDP,		rte_flow_item_udp) \
 	X(SET_BE16,	udp_src_port,		v->hdr.src_port,	rte_flow_item_udp) \
 	X(SET_BE16,	udp_dst_port,		v->hdr.dst_port,	rte_flow_item_udp) \
@@ -169,6 +213,39 @@ mlx5dr_definer_ones_set(struct mlx5dr_definer_fc *fc,
 			__rte_unused uint8_t *tag)
 {
 	DR_SET(tag, -1, fc->byte_off, fc->bit_off, fc->bit_mask);
+}
+
+static void
+mlx5dr_definer_ipv6_ecn_set(struct mlx5dr_definer_fc *fc,
+			    const void *item_spec,
+			    uint8_t *tag)
+{
+	const struct rte_flow_item_ipv6 *v = item_spec;
+	uint8_t ecn = DR_GET(header_ipv6, &v->hdr, ecn);
+
+	DR_SET(tag, ecn, fc->byte_off, fc->bit_off, fc->bit_mask);
+}
+
+static void
+mlx5dr_definer_ipv6_dscp_set(struct mlx5dr_definer_fc *fc,
+			     const void *item_spec,
+			     uint8_t *tag)
+{
+	const struct rte_flow_item_ipv6 *v = item_spec;
+	uint8_t dscp = DR_GET(header_ipv6, &v->hdr, dscp);
+
+	DR_SET(tag, dscp, fc->byte_off, fc->bit_off, fc->bit_mask);
+}
+
+static void
+mlx5dr_definer_ipv6_flow_label_set(struct mlx5dr_definer_fc *fc,
+				   const void *item_spec,
+				   uint8_t *tag)
+{
+	const struct rte_flow_item_ipv6 *v = item_spec;
+	uint32_t flow_label = DR_GET(header_ipv6, &v->hdr, flow_label);
+
+	DR_SET(tag, flow_label, fc->byte_off, fc->bit_off, fc->bit_mask);
 }
 
 static void
@@ -293,7 +370,7 @@ mlx5dr_definer_conv_item_ipv4(struct mlx5dr_definer_conv_data *cd,
 	bool inner = cd->tunnel;
 
 	if (!cd->relaxed) {
-		fc = &cd->fc[DR_CALC_FNAME(IPV4_VERSION, inner)];
+		fc = &cd->fc[DR_CALC_FNAME(IP_VERSION, inner)];
 		fc->item_idx = item_idx;
 		fc->tag_set = &mlx5dr_definer_ipv4_version_set;
 		fc->tag_mask_set = &mlx5dr_definer_ones_set;
@@ -341,10 +418,141 @@ mlx5dr_definer_conv_item_ipv4(struct mlx5dr_definer_conv_data *cd,
 	}
 
 	if (m->time_to_live) {
-		fc = &cd->fc[DR_CALC_FNAME(IPV4_TTL, inner)];
+		fc = &cd->fc[DR_CALC_FNAME(IP_TTL, inner)];
 		fc->item_idx = item_idx;
 		fc->tag_set = &mlx5dr_definer_ipv4_time_to_live_set;
 		DR_CALC_SET(fc, eth_l3, time_to_live_hop_limit, inner);
+	}
+
+	return 0;
+}
+
+static int
+mlx5dr_definer_conv_item_ipv6(struct mlx5dr_definer_conv_data *cd,
+			      struct rte_flow_item *item,
+			      int item_idx)
+{
+	const struct rte_flow_item_ipv6 *m = item->mask;
+	struct mlx5dr_definer_fc *fc;
+	bool inner = cd->tunnel;
+
+	if (!cd->relaxed) {
+		fc = &cd->fc[DR_CALC_FNAME(IP_VERSION, inner)];
+		fc->item_idx = item_idx;
+		fc->tag_set = &mlx5dr_definer_ipv6_version_set;
+		fc->tag_mask_set = &mlx5dr_definer_ones_set;
+		DR_CALC_SET(fc, eth_l2, l3_type, inner);
+
+		/* Overwrite - Unset ethertype if present */
+		memset(&cd->fc[DR_CALC_FNAME(ETH_TYPE, inner)], 0, sizeof(*fc));
+	}
+
+	if (!m)
+		return 0;
+
+	if (m->has_hop_ext || m->has_route_ext || m->has_frag_ext ||
+	    m->has_auth_ext || m->has_esp_ext || m->has_dest_ext ||
+	    m->has_mobil_ext || m->has_hip_ext || m->has_shim6_ext) {
+		rte_errno = ENOTSUP;
+		return rte_errno;
+	}
+
+	if (DR_GET(header_ipv6, &m->hdr, dscp)) {
+		fc = &cd->fc[DR_CALC_FNAME(IP_DSCP, inner)];
+		fc->item_idx = item_idx;
+		fc->tag_set = &mlx5dr_definer_ipv6_dscp_set;
+		DR_CALC_SET(fc, eth_l3, dscp, inner);
+	}
+
+	if (DR_GET(header_ipv6, &m->hdr, ecn)) {
+		fc = &cd->fc[DR_CALC_FNAME(IP_ECN, inner)];
+		fc->item_idx = item_idx;
+		fc->tag_set = &mlx5dr_definer_ipv6_ecn_set;
+		DR_CALC_SET(fc, eth_l3, ecn, inner);
+	}
+
+	if (DR_GET(header_ipv6, &m->hdr, flow_label)) {
+		fc = &cd->fc[DR_CALC_FNAME(IPV6_FLOW_LABEL, inner)];
+		fc->item_idx = item_idx;
+		fc->tag_set = &mlx5dr_definer_ipv6_flow_label_set;
+		DR_CALC_SET(fc, eth_l3, flow_label, inner);
+	}
+
+	if (m->hdr.payload_len) {
+		fc = &cd->fc[DR_CALC_FNAME(IPV6_PAYLOAD_LEN, inner)];
+		fc->item_idx = item_idx;
+		fc->tag_set = &mlx5dr_definer_ipv6_payload_len_set;
+		DR_CALC_SET(fc, eth_l3, ipv6_payload_length, inner);
+	}
+
+	if (m->hdr.proto) {
+		fc = &cd->fc[DR_CALC_FNAME(IP_PROTOCOL, inner)];
+		fc->item_idx = item_idx;
+		fc->tag_set = &mlx5dr_definer_ipv6_proto_set;
+		DR_CALC_SET(fc, eth_l3, protocol_next_header, inner);
+	}
+
+	if (m->hdr.hop_limits) {
+		fc = &cd->fc[DR_CALC_FNAME(IP_TTL, inner)];
+		fc->item_idx = item_idx;
+		fc->tag_set = &mlx5dr_definer_ipv6_hop_limits_set;
+		DR_CALC_SET(fc, eth_l3, time_to_live_hop_limit, inner);
+	}
+
+	if (!is_mem_zero(m->hdr.src_addr, 4)) {
+		fc = &cd->fc[DR_CALC_FNAME(IPV6_SRC_127_96, inner)];
+		fc->item_idx = item_idx;
+		fc->tag_set = &mlx5dr_definer_ipv6_src_addr_127_96_set;
+		DR_CALC_SET(fc, ipv6_src, ipv6_address_127_96, inner);
+	}
+
+	if (!is_mem_zero(m->hdr.src_addr + 4, 4)) {
+		fc = &cd->fc[DR_CALC_FNAME(IPV6_SRC_95_64, inner)];
+		fc->item_idx = item_idx;
+		fc->tag_set = &mlx5dr_definer_ipv6_src_addr_95_64_set;
+		DR_CALC_SET(fc, ipv6_src, ipv6_address_95_64, inner);
+	}
+
+	if (!is_mem_zero(m->hdr.src_addr + 8, 4)) {
+		fc = &cd->fc[DR_CALC_FNAME(IPV6_SRC_63_32, inner)];
+		fc->item_idx = item_idx;
+		fc->tag_set = &mlx5dr_definer_ipv6_src_addr_63_32_set;
+		DR_CALC_SET(fc, ipv6_src, ipv6_address_63_32, inner);
+	}
+
+	if (!is_mem_zero(m->hdr.src_addr + 12, 4)) {
+		fc = &cd->fc[DR_CALC_FNAME(IPV6_SRC_31_0, inner)];
+		fc->item_idx = item_idx;
+		fc->tag_set = &mlx5dr_definer_ipv6_src_addr_31_0_set;
+		DR_CALC_SET(fc, ipv6_src, ipv6_address_31_0, inner);
+	}
+
+	if (!is_mem_zero(m->hdr.dst_addr, 4)) {
+		fc = &cd->fc[DR_CALC_FNAME(IPV6_DST_127_96, inner)];
+		fc->item_idx = item_idx;
+		fc->tag_set = &mlx5dr_definer_ipv6_dst_addr_127_96_set;
+		DR_CALC_SET(fc, ipv6_dst, ipv6_address_127_96, inner);
+	}
+
+	if (!is_mem_zero(m->hdr.dst_addr + 4, 4)) {
+		fc = &cd->fc[DR_CALC_FNAME(IPV6_DST_95_64, inner)];
+		fc->item_idx = item_idx;
+		fc->tag_set = &mlx5dr_definer_ipv6_dst_addr_95_64_set;
+		DR_CALC_SET(fc, ipv6_dst, ipv6_address_95_64, inner);
+	}
+
+	if (!is_mem_zero(m->hdr.dst_addr + 8, 4)) {
+		fc = &cd->fc[DR_CALC_FNAME(IPV6_DST_63_32, inner)];
+		fc->item_idx = item_idx;
+		fc->tag_set = &mlx5dr_definer_ipv6_dst_addr_63_32_set;
+		DR_CALC_SET(fc, ipv6_dst, ipv6_address_63_32, inner);
+	}
+
+	if (!is_mem_zero(m->hdr.dst_addr + 12, 4)) {
+		fc = &cd->fc[DR_CALC_FNAME(IPV6_DST_31_0, inner)];
+		fc->item_idx = item_idx;
+		fc->tag_set = &mlx5dr_definer_ipv6_dst_addr_31_0_set;
+		DR_CALC_SET(fc, ipv6_dst, ipv6_address_31_0, inner);
 	}
 
 	return 0;
@@ -614,6 +822,11 @@ mlx5dr_definer_conv_items_to_hl(struct mlx5dr_context *ctx,
 			ret = mlx5dr_definer_conv_item_ipv4(&cd, items, i);
 			item_flags |= cd.tunnel ? MLX5_FLOW_LAYER_INNER_L3_IPV4 :
 						  MLX5_FLOW_LAYER_OUTER_L3_IPV4;
+			break;
+		case RTE_FLOW_ITEM_TYPE_IPV6:
+			ret = mlx5dr_definer_conv_item_ipv6(&cd, items, i);
+			item_flags |= cd.tunnel ? MLX5_FLOW_LAYER_INNER_L3_IPV6 :
+						  MLX5_FLOW_LAYER_OUTER_L3_IPV6;
 			break;
 		case RTE_FLOW_ITEM_TYPE_UDP:
 			ret = mlx5dr_definer_conv_item_udp(&cd, items, i);
