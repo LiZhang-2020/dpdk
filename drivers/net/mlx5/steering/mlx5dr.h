@@ -46,6 +46,13 @@ enum mlx5dr_action_reformat_type {
 	MLX5DR_ACTION_REFORMAT_TYPE_L2_TO_TNL_L3,
 };
 
+enum mlx5dr_action_aso_flow_meter_init_color {
+	MLX5DR_ACTION_ASO_FLOW_METER_INIT_COLOR_RED = 0x0,
+	MLX5DR_ACTION_ASO_FLOW_METER_INIT_COLOR_YELLOW = 0x1,
+	MLX5DR_ACTION_ASO_FLOW_METER_INIT_COLOR_GREEN = 0x2,
+	MLX5DR_ACTION_ASO_FLOW_METER_INIT_COLOR_UNDEFINED = 0x3,
+};
+
 enum mlx5dr_match_template_flags {
 	/* Allow relaxed matching by skipping derived dependent match fields. */
 	MLX5DR_MATCH_TEMPLATE_FLAG_RELAXED_MATCH = 1,
@@ -122,6 +129,15 @@ struct mlx5dr_rule_action {
 		struct {
 			__be32 vlan_hdr;
 		} push_vlan;
+
+		struct {
+			uint32_t offset;
+			union {
+				struct {
+					enum mlx5dr_action_aso_flow_meter_init_color init_color;
+				} flow_meter;
+			};
+		} aso;
 	};
 };
 
@@ -385,6 +401,24 @@ mlx5dr_action_create_modify_header(struct mlx5dr_context *ctx,
 				   __be64 pattern[],
 				   uint32_t log_bulk_size,
 				   uint32_t flags);
+
+/* Create direct rule ASO flow meter action.
+ *
+ * @param[in] ctx
+ *	The context in which the new action will be created.
+ * @param[in] devx_obj
+ *	The DEVX ASO object.
+ * @param[in] return_reg_c
+ *	Copy the ASO object value into this reg_c, after a packet hits a rule with this ASO object.
+ * @param[in] flags
+ *	Action creation flags. (enum mlx5dr_action_flags)
+ * @return pointer to mlx5dr_action on success NULL otherwise.
+ */
+struct mlx5dr_action *
+mlx5dr_action_create_aso_flow_meter(struct mlx5dr_context *ctx,
+				    struct mlx5dr_devx_obj *devx_obj,
+				    uint8_t return_reg_c,
+				    uint32_t flags);
 
 /* Destroy direct rule action.
  *

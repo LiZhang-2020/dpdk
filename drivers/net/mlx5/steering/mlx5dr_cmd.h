@@ -66,6 +66,10 @@ struct mlx5dr_cmd_stc_modify_attr {
 			uint8_t encap;
 			uint16_t insert_anchor;
 		} reformat;
+		struct {
+			uint32_t devx_obj_id;
+			uint8_t return_reg_id;
+		} aso;
 
 		uint32_t dest_table_id;
 		uint32_t dest_tir_num;

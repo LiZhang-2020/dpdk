@@ -4,6 +4,8 @@
 
 #include "mlx5dr_internal.h"
 
+#define MLX5DR_ACTION_ASO_METER_INIT_COLOR_OFFSET 1
+
 int mlx5dr_action_root_build_attr(struct mlx5dr_rule_action rule_actions[],
 				  uint32_t num_actions,
 				  struct mlx5dv_flow_action_attr *attr)
@@ -233,6 +235,12 @@ static void mlx5dr_action_fill_stc_attr(struct mlx5dr_action *action,
 			action->modify_action.dst_field;
 		attr->modify_action.dst_offset =
 			action->modify_action.dst_offset;
+		break;
+	case MLX5DR_ACTION_TYP_ASO_FLOW_METER:
+		attr->action_offset = MLX5DR_ACTION_OFFSET_DW6;
+		attr->action_type = MLX5_IFC_STC_ACTION_TYPE_ASO;
+		attr->aso.devx_obj_id = obj->id;
+		attr->aso.return_reg_id = action->aso.return_reg_id;
 		break;
 	default:
 		DR_LOG(ERR, "Invalid action type %d", action->type);
@@ -504,6 +512,38 @@ mlx5dr_action_create_tag(struct mlx5dr_context *ctx,
 		if (ret)
 			goto free_action;
 	}
+
+	return action;
+
+free_action:
+	simple_free(action);
+	return NULL;
+}
+struct mlx5dr_action *
+mlx5dr_action_create_aso_flow_meter(struct mlx5dr_context *ctx,
+				    struct mlx5dr_devx_obj *devx_obj,
+				    uint8_t return_reg_id,
+				    uint32_t flags)
+{
+	struct mlx5dr_action *action;
+	int ret;
+
+	if (mlx5dr_action_is_root_flags(flags)) {
+		DR_LOG(ERR, "ASO flow meter action cannot be used for root");
+		rte_errno = ENOTSUP;
+		return NULL;
+	}
+
+	action = mlx5dr_action_create_generic(ctx, flags, MLX5DR_ACTION_TYP_ASO_FLOW_METER);
+	if (!action)
+		return NULL;
+
+	action->aso.devx_obj = devx_obj;
+	action->aso.return_reg_id = return_reg_id;
+
+	ret = mlx5dr_action_create_stcs(action, devx_obj);
+	if (ret)
+		goto free_action;
 
 	return action;
 
@@ -1227,6 +1267,7 @@ static void mlx5dr_action_destroy_hws(struct mlx5dr_action *action)
 	case MLX5DR_ACTION_TYP_MH_SET:
 	case MLX5DR_ACTION_TYP_MH_ADD:
 	case MLX5DR_ACTION_TYP_MH_COPY:
+	case MLX5DR_ACTION_TYP_ASO_FLOW_METER:
 		mlx5dr_action_destroy_stcs(action);
 		break;
 	case MLX5DR_ACTION_TYP_TNL_L3_TO_L2:
@@ -1461,6 +1502,7 @@ int mlx5dr_actions_quick_apply(struct mlx5dr_send_engine *queue,
 	 * - Location are hardcoded, double, single, hit
 	 */
 	for (i = 0; i < num_actions; i++) {
+		uint32_t exe_aso_ctrl;
 		uint32_t arg_idx;
 		uint8_t arg_sz;
 
@@ -1561,6 +1603,20 @@ int mlx5dr_actions_quick_apply(struct mlx5dr_send_engine *queue,
 		case MLX5DR_ACTION_TYP_TIR:
 		case MLX5DR_ACTION_TYP_MISS:
 			stc_arr[MLX5DR_ACTION_STC_IDX_HIT] = stc_idx;
+			break;
+		case MLX5DR_ACTION_TYP_ASO_FLOW_METER:
+			/* exe_aso_ctrl format:
+			 * [STC only and reserved bits 29B][init_color 2B][meter_id 1B]
+			 */
+			exe_aso_ctrl = rule_actions[i].aso.offset % MLX5_ASO_FLOW_METER_NUM_PER_OBJ;
+			exe_aso_ctrl |= rule_actions[i].aso.flow_meter.init_color <<
+				MLX5DR_ACTION_ASO_METER_INIT_COLOR_OFFSET;
+			/* aso_object_offset format: [24B] */
+			raw_wqe[MLX5DR_ACTION_OFFSET_DW6] = htobe32(rule_actions[i].aso.offset /
+				MLX5_ASO_FLOW_METER_NUM_PER_OBJ);
+			raw_wqe[MLX5DR_ACTION_OFFSET_DW7] = htobe32(exe_aso_ctrl);
+			stc_arr[MLX5DR_ACTION_STC_IDX_DW6] = stc_idx;
+			require_double = true;
 			break;
 		default:
 			DR_LOG(ERR, "Found unsupported action type: %d", action->type);

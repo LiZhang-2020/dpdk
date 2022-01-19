@@ -105,6 +105,10 @@ struct mlx5dr_action {
 					struct mlx5dr_devx_obj *arg_obj;
 					uint32_t header_size;
 				} reformat;
+				struct {
+					struct mlx5dr_devx_obj *devx_obj;
+					uint8_t return_reg_id;
+				} aso;
 			};
 		};
 
