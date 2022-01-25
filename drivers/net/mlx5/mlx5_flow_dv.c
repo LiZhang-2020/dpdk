@@ -3761,6 +3761,15 @@ flow_dv_validate_action_modify_field(struct rte_eth_dev *dev,
 				RTE_FLOW_ERROR_TYPE_ACTION, action,
 				"add and sub operations"
 				" are not supported");
+	if (action_modify_field->dst.field == RTE_FLOW_FIELD_IPV4_ECN ||
+	    action_modify_field->src.field == RTE_FLOW_FIELD_IPV4_ECN ||
+	    action_modify_field->dst.field == RTE_FLOW_FIELD_IPV6_ECN ||
+	    action_modify_field->src.field == RTE_FLOW_FIELD_IPV6_ECN)
+		if (!config->hca_attr.modify_outer_ip_ecn &&
+		    !attr->transfer && !attr->group)
+			return rte_flow_error_set(error, ENOTSUP,
+				RTE_FLOW_ERROR_TYPE_ACTION, action,
+				"modifications of the ECN for current firmware is not supported");
 	return (action_modify_field->width / 32) +
 	       !!(action_modify_field->width % 32);
 }

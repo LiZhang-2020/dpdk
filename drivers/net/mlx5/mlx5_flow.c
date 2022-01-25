@@ -11786,6 +11786,9 @@ mlx5_flow_item_field_width(struct rte_eth_dev *dev,
 	case RTE_FLOW_FIELD_POINTER:
 	case RTE_FLOW_FIELD_VALUE:
 		return inherit < 0 ? 0 : inherit;
+	case RTE_FLOW_FIELD_IPV4_ECN:
+	case RTE_FLOW_FIELD_IPV6_ECN:
+		return 2;
 	default:
 		MLX5_ASSERT(false);
 	}
@@ -12200,6 +12203,13 @@ mlx5_flow_field_id_to_modify_info
 			else
 				info[idx].offset = data->offset;
 		}
+		break;
+	case RTE_FLOW_FIELD_IPV4_ECN:
+	case RTE_FLOW_FIELD_IPV6_ECN:
+		info[idx] = (struct field_modify_info){1, 0,
+					MLX5_MODI_OUT_IP_ECN};
+		if (mask)
+			mask[idx] = 0x3 >> (2 - width);
 		break;
 	case RTE_FLOW_FIELD_POINTER:
 	case RTE_FLOW_FIELD_VALUE:
