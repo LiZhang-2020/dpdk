@@ -196,6 +196,23 @@ cdef class Mlx5drActionDestVport(Mlx5drAction):
             raise PydiruErrno('Mlx5drActionDestVport creation failed.')
 
 
+cdef class Mlx5drAsoFlowMeter(Mlx5drAction):
+    def __init__(self, Mlx5drContext ctx, Mlx5drDevxObj aso_obj, flags, reg_c=0):
+        """
+        Initializes ASO flow meter action
+        :param ctx: Mlx5drContext context
+        :param aso_obj: DR devx ASO object
+        :param flags: Action flags
+        :param reg_c: Reg C index for setting the color
+        """
+        super().__init__(ctx)
+        self.action = mlx5._action_create_aso_flow_meter(ctx.context, &aso_obj.dr_devx_obj, reg_c, flags)
+        if self.action == NULL:
+            raise PydiruErrno('Mlx5drAsoFlowMeter creation failed.')
+        self.aso_obj = aso_obj
+        aso_obj.add_ref(self)
+
+
 cdef class Mlx5drRuleAction(PydiruCM):
     """
     Class Mlx5drRuleAction representing mlx5dr_rule_action struct.
@@ -207,7 +224,8 @@ cdef class Mlx5drRuleAction(PydiruCM):
         :param action: Mlx5drAction action
         :param kwargs: value - for tag value
                        data - for modify or reformat actions data
-                       offset - offset for modify, reformat of counter actions
+                       offset - offset for modify, reformat, ASO flow meter or counter actions
+                       meter_init_color - init color for ASO flow meter
         """
         super().__init__()
         self.rule_action.action = action.action
@@ -227,6 +245,9 @@ cdef class Mlx5drRuleAction(PydiruCM):
             self.reformat_offset = offset
         elif isinstance(self.action, Mlx5drActionCounter):
             self.counter_offset = kwargs.get('offset', 0)
+        elif isinstance(self.action, Mlx5drAsoFlowMeter):
+            self.aso_flow_meter_offset = kwargs.get('offset', 0)
+            self.aso_flow_meter_init_color = kwargs.get('meter_init_color', 0)
 
     @property
     def tag_value(self):
@@ -296,6 +317,22 @@ cdef class Mlx5drRuleAction(PydiruCM):
     @reformat_offset.setter
     def reformat_offset(self, offset):
         self.rule_action.reformat.offset = offset
+
+    @property
+    def aso_flow_meter_offset(self):
+        return self.rule_action.aso_meter.offset
+
+    @aso_flow_meter_offset.setter
+    def aso_flow_meter_offset(self, offset):
+        self.rule_action.aso_meter.offset = offset
+
+    @property
+    def aso_flow_meter_init_color(self):
+        return self.rule_action.aso_meter.init_color
+
+    @aso_flow_meter_init_color.setter
+    def aso_flow_meter_init_color(self, init_color):
+        self.rule_action.aso_meter.init_color = init_color
 
     def __dealloc__(self):
         self.close()

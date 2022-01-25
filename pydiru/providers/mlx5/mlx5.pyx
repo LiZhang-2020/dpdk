@@ -81,6 +81,11 @@ cdef dr.mlx5dr_action *_action_create_counter(dr.mlx5dr_context *ctx, dr.mlx5dr_
 cdef dr.mlx5dr_action *_action_create_dest_vport(dr.mlx5dr_context *ctx, ib_port_num, flags):
     return dr.mlx5dr_action_create_dest_vport(ctx, ib_port_num, flags)
 
+cdef dr.mlx5dr_action *_action_create_aso_flow_meter(dr.mlx5dr_context *ctx,
+                                                     dr.mlx5dr_devx_obj *devx_obj, return_reg_c,
+                                                     flags):
+    return dr.mlx5dr_action_create_aso_meter(ctx, devx_obj, return_reg_c, flags)
+
 cdef _action_destroy(dr.mlx5dr_action *action):
     return dr.mlx5dr_action_destroy(action)
 

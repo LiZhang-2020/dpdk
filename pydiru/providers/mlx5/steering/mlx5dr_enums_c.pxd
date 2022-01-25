@@ -42,3 +42,9 @@ cdef extern  from '../../../../drivers/net/mlx5/mlx5_flow.h':
         MLX5_RTE_FLOW_ITEM_TYPE_TX_QUEUE
         MLX5_RTE_FLOW_ITEM_TYPE_VLAN
         MLX5_RTE_FLOW_ITEM_TYPE_TUNNEL
+
+    cpdef enum mlx5dr_action_aso_meter_color:
+        MLX5DR_ACTION_ASO_METER_COLOR_RED
+        MLX5DR_ACTION_ASO_METER_COLOR_YELLOW
+        MLX5DR_ACTION_ASO_METER_COLOR_GREEN
+        MLX5DR_ACTION_ASO_METER_COLOR_UNDEFINED
