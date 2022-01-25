@@ -26,6 +26,9 @@ static int mlx5dr_table_init(struct mlx5dr_table *tbl)
 	case MLX5DR_TABLE_TYPE_NIC_TX:
 	        tbl->fw_ft_type = FS_FT_NIC_TX;
 	        break;
+	case MLX5DR_TABLE_TYPE_FDB:
+		tbl->fw_ft_type = FS_FT_FDB;
+		break;
 	default:
 	        assert(0);
 	        break;
@@ -68,7 +71,7 @@ struct mlx5dr_table *mlx5dr_table_create(struct mlx5dr_context *ctx,
 	struct mlx5dr_table *tbl;
 	int ret;
 
-	if (attr->type >= MLX5DR_TABLE_TYPE_FDB) {
+	if (attr->type > MLX5DR_TABLE_TYPE_FDB) {
 		DR_LOG(ERR, "Invalid table type %d", attr->type);
 		return NULL;
 	}

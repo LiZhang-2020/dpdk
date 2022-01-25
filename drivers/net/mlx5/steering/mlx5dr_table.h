@@ -17,6 +17,21 @@ struct mlx5dr_table {
 	LIST_ENTRY(mlx5dr_table) next;
 };
 
+static inline
+uint32_t mlx5dr_table_get_res_fw_ft_type(struct mlx5dr_table *tbl,
+					 uint8_t id)
+{
+	if (tbl->type == MLX5DR_TABLE_TYPE_NIC_RX ||
+	    tbl->type == MLX5DR_TABLE_TYPE_NIC_TX)
+		return tbl->fw_ft_type;
+
+	if (tbl->type == MLX5DR_TABLE_TYPE_FDB)
+		return id ? FS_FT_FDB_TX : FS_FT_FDB_RX;
+
+	assert(0);
+	return 0;
+}
+
 static inline bool mlx5dr_table_is_root(struct mlx5dr_table *tbl)
 {
 	return (tbl->level == MLX5DR_ROOT_LEVEL);

@@ -86,8 +86,7 @@ struct mlx5dr_action {
 	struct mlx5dr_context *ctx;
 	union {
 		struct {
-			struct mlx5dr_pool_chunk stc_rx;
-			struct mlx5dr_pool_chunk stc_tx;
+			struct mlx5dr_pool_chunk stc[MLX5DR_TABLE_TYPE_MAX];
 			union {
 				struct {
 					struct mlx5dr_devx_obj *pattern_obj;
@@ -132,7 +131,7 @@ int mlx5dr_actions_quick_apply(struct mlx5dr_send_engine *queue,
 			       struct mlx5dr_wqe_gta_data_seg_ste *wqe_data,
 			       struct mlx5dr_rule_action rule_actions[],
 			       uint8_t num_actions,
-			       bool is_rx);
+			       enum mlx5dr_table_type tbl_type);
 
 void
 mlx5dr_action_prepare_decap_l3_data(uint8_t *src, uint8_t *dst,

@@ -66,7 +66,9 @@ mlx5dr_cmd_flow_table_modify(struct mlx5dr_devx_obj *devx_obj,
 	MLX5_SET(modify_flow_table_in, in, table_id, devx_obj->id);
 
 	ft_ctx = MLX5_ADDR_OF(modify_flow_table_in, in, flow_table_context);
-	MLX5_SET(flow_table_context, ft_ctx, rtc_id, ft_attr->rtc_id);
+
+	MLX5_SET(flow_table_context, ft_ctx, rtc_id, ft_attr->rtc_id_0);
+	MLX5_SET(flow_table_context, ft_ctx, rtc_id, ft_attr->rtc_id_1); // TODO once FW ready
 
 	ret = mlx5_glue->devx_obj_modify(devx_obj->obj, in, sizeof(in), out, sizeof(out));
 	if (ret) {
@@ -287,7 +289,7 @@ mlx5dr_cmd_stc_modify(struct mlx5dr_devx_obj *devx_obj,
 
 	ret = mlx5_glue->devx_obj_modify(devx_obj->obj, in, sizeof(in), out, sizeof(out));
 	if (ret) {
-		DR_LOG(ERR, "Failed to modify STC");
+		DR_LOG(ERR, "Failed to modify STC FW action_type %d", stc_attr->action_type);
 		rte_errno = errno;
 	}
 

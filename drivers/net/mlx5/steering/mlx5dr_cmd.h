@@ -8,13 +8,13 @@
 struct mlx5dr_cmd_ft_create_attr {
 	uint8_t type;
 	uint8_t level;
-	uint32_t rtc_id;
 	bool wqe_based_flow_update;
 };
 
 struct mlx5dr_cmd_ft_modify_attr {
 	uint8_t type;
-	uint32_t rtc_id;
+	uint32_t rtc_id_0;
+	uint32_t rtc_id_1;
 	uint64_t modify_fs;
 	bool wqe_based_flow_update;
 };

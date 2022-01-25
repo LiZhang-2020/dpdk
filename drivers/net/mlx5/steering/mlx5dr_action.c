@@ -71,8 +71,9 @@ mlx5dr_action_alloc_single_stc(struct mlx5dr_context *ctx,
 			       uint32_t table_type,
 			       struct mlx5dr_pool_chunk *stc)
 {
+	struct mlx5dr_cmd_stc_modify_attr cleanup_stc_attr = {0};
 	struct mlx5dr_pool *stc_pool = ctx->stc_pool[table_type];
-	struct mlx5dr_devx_obj *devx_obj;
+	struct mlx5dr_devx_obj *devx_obj_0;
 	int ret;
 
 	ret = mlx5dr_pool_chunk_alloc(stc_pool, stc);
@@ -83,16 +84,34 @@ mlx5dr_action_alloc_single_stc(struct mlx5dr_context *ctx,
 
 	stc_attr->stc_offset = stc->offset;
 
-	devx_obj = mlx5dr_pool_chunk_get_base_devx_obj_0(stc_pool, stc);
-
-	ret = mlx5dr_cmd_stc_modify(devx_obj, stc_attr);
+	devx_obj_0 = mlx5dr_pool_chunk_get_base_devx_obj_0(stc_pool, stc);
+	ret = mlx5dr_cmd_stc_modify(devx_obj_0, stc_attr);
 	if (ret) {
-		DR_LOG(ERR, "Failed to modify STC to type %d", stc_attr->action_type);
+		DR_LOG(ERR, "Failed to modify STC action_type %d tbl_type %d",
+		       stc_attr->action_type, table_type);
 		goto free_chunk;
+	}
+
+	/* Modify the FDB peer */
+	if (table_type == MLX5DR_TABLE_TYPE_FDB) {
+		struct mlx5dr_devx_obj *devx_obj_1;
+
+		devx_obj_1 = mlx5dr_pool_chunk_get_base_devx_obj_1(stc_pool, stc);
+		ret = mlx5dr_cmd_stc_modify(devx_obj_1, stc_attr);
+		if (ret) {
+			DR_LOG(ERR, "Failed to modify peer STC action_type %d tbl_type %d",
+			       stc_attr->action_type, table_type);
+			goto clean_devx_obj_0;
+		}
 	}
 
 	return 0;
 
+clean_devx_obj_0:
+	cleanup_stc_attr.action_type = MLX5_IFC_STC_ACTION_TYPE_DROP;
+	cleanup_stc_attr.action_offset = MLX5DR_ACTION_OFFSET_HIT;
+	cleanup_stc_attr.stc_offset = stc->offset;
+	mlx5dr_cmd_stc_modify(devx_obj_0, &cleanup_stc_attr);
 free_chunk:
        mlx5dr_pool_chunk_free(stc_pool, stc);
        return rte_errno;
@@ -114,6 +133,11 @@ mlx5dr_action_free_single_stc(struct mlx5dr_context *ctx,
 	devx_obj = mlx5dr_pool_chunk_get_base_devx_obj_0(stc_pool, stc);
 	mlx5dr_cmd_stc_modify(devx_obj, &stc_attr);
 
+	if (table_type == MLX5DR_TABLE_TYPE_FDB) {
+		devx_obj = mlx5dr_pool_chunk_get_base_devx_obj_1(stc_pool, stc);
+		mlx5dr_cmd_stc_modify(devx_obj, &stc_attr);
+	}
+
 	mlx5dr_pool_chunk_free(stc_pool, stc);
 }
 
@@ -133,6 +157,7 @@ static void mlx5dr_action_fill_stc_attr(struct mlx5dr_action *action,
 	case MLX5DR_ACTION_TYP_MISS:
 		attr->action_type = MLX5_IFC_STC_ACTION_TYPE_ALLOW;
 		attr->action_offset = MLX5DR_ACTION_OFFSET_HIT;
+		/* TODO Need to support default miss for FDB */
 		break;
 	case MLX5DR_ACTION_TYP_CTR:
 		attr->id = obj->id;
@@ -232,7 +257,7 @@ mlx5dr_action_create_stcs(struct mlx5dr_action *action,
 	if (action->flags & MLX5DR_ACTION_FLAG_HWS_RX) {
 		ret = mlx5dr_action_alloc_single_stc(ctx, &stc_attr,
 						     MLX5DR_TABLE_TYPE_NIC_RX,
-						     &action->stc_rx);
+						     &action->stc[MLX5DR_TABLE_TYPE_NIC_RX]);
 		if (ret)
 			goto out_err;
 	}
@@ -241,19 +266,34 @@ mlx5dr_action_create_stcs(struct mlx5dr_action *action,
 	if (action->flags & MLX5DR_ACTION_FLAG_HWS_TX) {
 		ret = mlx5dr_action_alloc_single_stc(ctx, &stc_attr,
 						     MLX5DR_TABLE_TYPE_NIC_TX,
-						     &action->stc_tx);
+						     &action->stc[MLX5DR_TABLE_TYPE_NIC_TX]);
 		if (ret)
-		       goto free_stc_rx;
+			goto free_nic_rx_stc;
 	}
 
-	/* TODO FDB */
+	/* Allocate STC for FDB */
+	if (action->flags & MLX5DR_ACTION_FLAG_HWS_FDB) {
+		ret = mlx5dr_action_alloc_single_stc(ctx, &stc_attr,
+						     MLX5DR_TABLE_TYPE_FDB,
+						     &action->stc[MLX5DR_TABLE_TYPE_FDB]);
+		if (ret)
+			goto free_nic_tx_stc;
+	}
 
 	pthread_spin_unlock(&ctx->ctrl_lock);
+
 	return 0;
 
-free_stc_rx:
+free_nic_tx_stc:
+	if (action->flags & MLX5DR_ACTION_FLAG_HWS_TX)
+		mlx5dr_action_free_single_stc(ctx,
+					      MLX5DR_TABLE_TYPE_NIC_TX,
+					      &action->stc[MLX5DR_TABLE_TYPE_NIC_TX]);
+free_nic_rx_stc:
 	if (action->flags & MLX5DR_ACTION_FLAG_HWS_RX)
-		mlx5dr_action_free_single_stc(ctx, MLX5DR_TABLE_TYPE_NIC_RX, &action->stc_rx);
+		mlx5dr_action_free_single_stc(ctx,
+					      MLX5DR_TABLE_TYPE_NIC_RX,
+					      &action->stc[MLX5DR_TABLE_TYPE_NIC_RX]);
 out_err:
 	pthread_spin_unlock(&ctx->ctrl_lock);
 	return rte_errno;
@@ -267,11 +307,17 @@ mlx5dr_action_destroy_stcs(struct mlx5dr_action *action)
 	/* Block unsupported parallel devx obj modify over the same base */
 	pthread_spin_lock(&ctx->ctrl_lock);
 
-	if (action->flags & MLX5DR_ACTION_FLAG_HWS_TX)
-		mlx5dr_action_free_single_stc(ctx, MLX5DR_TABLE_TYPE_NIC_TX, &action->stc_tx);
-
 	if (action->flags & MLX5DR_ACTION_FLAG_HWS_RX)
-		mlx5dr_action_free_single_stc(ctx, MLX5DR_TABLE_TYPE_NIC_RX, &action->stc_rx);
+		mlx5dr_action_free_single_stc(ctx, MLX5DR_TABLE_TYPE_NIC_RX,
+					      &action->stc[MLX5DR_TABLE_TYPE_NIC_RX]);
+
+	if (action->flags & MLX5DR_ACTION_FLAG_HWS_TX)
+		mlx5dr_action_free_single_stc(ctx, MLX5DR_TABLE_TYPE_NIC_TX,
+					      &action->stc[MLX5DR_TABLE_TYPE_NIC_TX]);
+
+	if (action->flags & MLX5DR_ACTION_FLAG_HWS_FDB)
+		mlx5dr_action_free_single_stc(ctx, MLX5DR_TABLE_TYPE_FDB,
+					      &action->stc[MLX5DR_TABLE_TYPE_FDB]);
 
 	pthread_spin_unlock(&ctx->ctrl_lock);
 }
@@ -598,7 +644,7 @@ static int mlx5dr_action_handle_reformat_args(struct mlx5dr_context *ctx,
 	int ret;
 
 	if (data_sz % 2 != 0) {
-		DR_LOG(ERR, "data size should be multiply of 2");
+		DR_LOG(ERR, "Data size should be multiply of 2");
 		rte_errno = EINVAL;
 		return rte_errno;
 	}
@@ -613,7 +659,7 @@ static int mlx5dr_action_handle_reformat_args(struct mlx5dr_context *ctx,
 	args_log_size += bulk_size;
 
 	if (!mlx5dr_arg_is_valid_arg_request_size(ctx, args_log_size)) {
-		DR_LOG(ERR, "arg size %d does not fit FW requests",
+		DR_LOG(ERR, "Arg size %d does not fit FW requests",
 		       args_log_size);
 		rte_errno = EINVAL;
 		return rte_errno;
@@ -657,13 +703,13 @@ static int mlx5dr_action_handle_l2_to_tunnel_l2(struct mlx5dr_context *ctx,
 	ret = mlx5dr_action_handle_reformat_args(ctx, data_sz, data, bulk_size,
 						 action);
 	if (ret) {
-		DR_LOG(ERR, "failed to create args for reformat");
+		DR_LOG(ERR, "Failed to create args for reformat");
 		return ret;
 	}
 
 	ret = mlx5dr_action_create_stcs(action, NULL);
 	if (ret) {
-		DR_LOG(ERR, "failed to create stc for reformat");
+		DR_LOG(ERR, "Failed to create stc for reformat");
 		goto free_arg;
 	}
 
@@ -768,11 +814,24 @@ static int mlx5dr_action_get_shared_stc(struct mlx5dr_action *action)
 			goto clean_nic_rx_stc;
 		}
 	}
+
+	if (action->flags & MLX5DR_ACTION_FLAG_HWS_FDB) {
+		ret = mlx5dr_action_get_shared_stc_nic(ctx, MLX5DR_TABLE_TYPE_FDB);
+		if (ret) {
+			DR_LOG(ERR, "Failed to allocate memory for FDB shared STCs");
+			goto clean_nic_tx_stc;
+		}
+	}
+
 	return 0;
 
+clean_nic_tx_stc:
+	if (action->flags & MLX5DR_ACTION_FLAG_HWS_TX)
+		mlx5dr_action_put_shared_stc_nic(ctx, MLX5DR_TABLE_TYPE_NIC_TX);
 clean_nic_rx_stc:
 	if (action->flags & MLX5DR_ACTION_FLAG_HWS_RX)
 		mlx5dr_action_put_shared_stc_nic(ctx, MLX5DR_TABLE_TYPE_NIC_RX);
+
 	return ret;
 }
 
@@ -785,6 +844,9 @@ static void mlx5dr_action_put_shared_stc(struct mlx5dr_action *action)
 
 	if (action->flags & MLX5DR_ACTION_FLAG_HWS_TX)
 		mlx5dr_action_put_shared_stc_nic(ctx, MLX5DR_TABLE_TYPE_NIC_TX);
+
+	if (action->flags & MLX5DR_ACTION_FLAG_HWS_FDB)
+		mlx5dr_action_put_shared_stc_nic(ctx, MLX5DR_TABLE_TYPE_FDB);
 }
 
 static int mlx5dr_action_handle_l2_to_tunnel_l3(struct mlx5dr_context *ctx,
@@ -798,20 +860,20 @@ static int mlx5dr_action_handle_l2_to_tunnel_l3(struct mlx5dr_context *ctx,
 	ret = mlx5dr_action_handle_reformat_args(ctx, data_sz, data, bulk_size,
 						 action);
 	if (ret) {
-		DR_LOG(ERR, "failed to create args for reformat");
+		DR_LOG(ERR, "Failed to create args for reformat");
 		return ret;
 	}
 
 	/* the action is remove-l2-header + insert-l3-header */
 	ret = mlx5dr_action_get_shared_stc(action);
 	if (ret) {
-		DR_LOG(ERR, "failed to create remove stc for reformat");
+		DR_LOG(ERR, "Failed to create remove stc for reformat");
 		goto free_arg;
 	}
 
 	ret = mlx5dr_action_create_stcs(action, NULL);
 	if (ret) {
-		DR_LOG(ERR, "failed to create insert stc for reformat");
+		DR_LOG(ERR, "Failed to create insert stc for reformat");
 		goto down_shared;
 	}
 
@@ -1373,13 +1435,13 @@ int mlx5dr_actions_quick_apply(struct mlx5dr_send_engine *queue,
 			       struct mlx5dr_wqe_gta_data_seg_ste *wqe_data,
 			       struct mlx5dr_rule_action rule_actions[],
 			       uint8_t num_actions,
-			       bool is_rx)
+			       enum mlx5dr_table_type tbl_type)
 {
 	struct mlx5dr_action_default_stc *default_stc = common_res->default_stc;
 	uint32_t stc_arr[MLX5DR_ACTION_STC_IDX_MAX] = {0};
 	uint32_t *raw_wqe = (uint32_t *)wqe_data;
 	struct mlx5dr_action *action;
-	bool require_double = false;;
+	bool require_double = false;
 	int stc_idx;
 	int i;
 
@@ -1405,7 +1467,7 @@ int mlx5dr_actions_quick_apply(struct mlx5dr_send_engine *queue,
 		uint8_t arg_sz;
 
 		action = rule_actions[i].action;
-		stc_idx = is_rx ? action->stc_rx.offset : action->stc_tx.offset;
+		stc_idx = action->stc[tbl_type].offset;
 
 		switch (action->type) {
 		case MLX5DR_ACTION_TYP_TAG:

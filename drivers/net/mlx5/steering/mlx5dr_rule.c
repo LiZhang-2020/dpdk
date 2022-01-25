@@ -55,10 +55,9 @@ static int mlx5dr_rule_create_hws(struct mlx5dr_rule *rule,
 	dep_wqe = mlx5dr_send_add_new_dep_wqe(queue);
 	dep_wqe->rule = rule;
 	dep_wqe->user_data = attr->user_data;
-	dep_wqe->rtc_id = is_rx ? matcher->rx.rtc->id : matcher->tx.rtc->id;
+	dep_wqe->rtc_id = matcher->rtc_0->id;
 	if (matcher->col_matcher) {
-		dep_wqe->col_rtc_id = is_rx ? matcher->col_matcher->rx.rtc->id :
-			matcher->col_matcher->tx.rtc->id;
+		dep_wqe->col_rtc_id = matcher->col_matcher->rtc_0->id;
 	} else {
 		dep_wqe->col_rtc_id = 0;
 	}

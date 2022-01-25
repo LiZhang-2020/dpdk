@@ -4331,7 +4331,9 @@ struct mlx5_ifc_query_q_counter_in_bits {
 enum {
 	FS_FT_NIC_RX = 0x0,
 	FS_FT_NIC_TX = 0x1,
-	FS_FT_FDB = 0X4,
+	FS_FT_FDB = 0x4,
+	FS_FT_FDB_RX = 0xa,
+	FS_FT_FDB_TX = 0xb,
 };
 
 struct mlx5_ifc_flow_table_context_bits {
