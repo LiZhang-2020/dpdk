@@ -7,6 +7,7 @@ import socket
 
 import pydiru.pydiru_enums as e
 import ipaddress
+import struct
 
 
 cdef class RteFlowItemEth(PydiruCM):
@@ -34,6 +35,28 @@ cdef class RteFlowItemIpv4(PydiruCM):
         self.item.hdr.src_addr = socket.htonl(int(ipaddress.ip_address(src_addr)))
         self.item.hdr.dst_addr = socket.htonl(int(ipaddress.ip_address(dst_addr)))
 
+cdef class RteFlowItemIpv6(PydiruCM):
+    def __init__(self, vtc_flow=0, payload_len=0, proto=0, hop_limits=0, src_addr='::',
+                 dst_addr='::', has_hop_ext=0, has_route_ext=0, has_frag_ext=0, has_auth_ext=0,
+                 has_esp_ext=0, has_dest_ext=0, has_mobil_ext=0, has_hip_ext=0, has_shim6_ext=0):
+        self.item.hdr.vtc_flow = socket.htonl(vtc_flow)
+        self.item.hdr.payload_len = socket.htons(payload_len)
+        self.item.hdr.proto = proto
+        self.item.hdr.hop_limits = hop_limits
+        dst = socket.inet_pton(socket.AF_INET6, dst_addr)
+        src = socket.inet_pton(socket.AF_INET6, src_addr)
+        for i in range(16):
+            self.item.hdr.src_addr[i] = src[i]
+            self.item.hdr.dst_addr[i] = dst[i]
+        self.item.has_hop_ext = has_hop_ext
+        self.item.has_route_ext = has_route_ext
+        self.item.has_frag_ext = has_frag_ext
+        self.item.has_auth_ext = has_auth_ext
+        self.item.has_esp_ext = has_esp_ext
+        self.item.has_dest_ext = has_dest_ext
+        self.item.has_mobil_ext = has_mobil_ext
+        self.item.has_hip_ext = has_hip_ext
+        self.item.has_shim6_ext = has_shim6_ext
 
 cdef class RteFlowItemTcp(PydiruCM):
     def __init__(self, src_port=0, dst_port=0, sent_seq=0, recv_ack=0, data_off=0,
@@ -106,6 +129,8 @@ cdef class RteFlowItem(PydiruCM):
             size = sizeof(pdr.rte_flow_item_eth)
         if flow_item_type == e.RTE_FLOW_ITEM_TYPE_IPV4:
             size = sizeof(pdr.rte_flow_item_ipv4)
+        if flow_item_type == e.RTE_FLOW_ITEM_TYPE_IPV6:
+            size = sizeof(pdr.rte_flow_item_ipv6)
         if flow_item_type == e.RTE_FLOW_ITEM_TYPE_TCP:
             size = sizeof(pdr.rte_flow_item_tcp)
         if flow_item_type == e.RTE_FLOW_ITEM_TYPE_UDP:
