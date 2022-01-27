@@ -11,6 +11,9 @@
 #define STE_UDP		0x2
 #define GTP_PDU_SC	0x85
 #define BAD_PORT	0xBAD
+#define ETH_TYPE_IPV4_VXLAN	0x0800
+#define ETH_TYPE_IPV6_VXLAN	0x86DD
+#define ETH_VXLAN_DEFAULT_PORT	4789
 
 #define DR_CALC_FNAME(field, inner) \
 	((inner) ? MLX5DR_DEFINER_FNAME_##field##_I : \
@@ -138,6 +141,8 @@ enum mlx5dr_definer_fname {
 	MLX5DR_DEFINER_FNAME_FLEX_PARSER_6,
 	MLX5DR_DEFINER_FNAME_FLEX_PARSER_7,
 	MLX5DR_DEFINER_FNAME_VPORT_REG_C_0,
+	MLX5DR_DEFINER_FNAME_VXLAN_FLAGS,
+	MLX5DR_DEFINER_FNAME_VXLAN_VNI,
 	MLX5DR_DEFINER_FNAME_MAX,
 };
 
@@ -212,7 +217,10 @@ struct mlx5dr_definer_conv_data {
 	X(SET,		gtp_ext_flag,		!!v->v_pt_rsv_flags,	rte_flow_item_gtp) \
 	X(SET,		gtp_next_ext_hdr,	GTP_PDU_SC,		rte_flow_item_gtp_psc) \
 	X(SET,		gtp_ext_hdr_pdu,	v->pdu_type,		rte_flow_item_gtp_psc) \
-	X(SET,		gtp_ext_hdr_qfi,	v->qfi,			rte_flow_item_gtp_psc)
+	X(SET,		gtp_ext_hdr_qfi,	v->qfi,			rte_flow_item_gtp_psc) \
+	X(SET,		vxlan_flags,		v->flags,		rte_flow_item_vxlan) \
+	X(SET,		vxlan_udp_port,		ETH_VXLAN_DEFAULT_PORT,	rte_flow_item_vxlan)
+
 
 /* Item set function format */
 #define X(set_type, func_name, value, itme_type) \
@@ -233,6 +241,16 @@ mlx5dr_definer_ones_set(struct mlx5dr_definer_fc *fc,
 			__rte_unused uint8_t *tag)
 {
 	DR_SET(tag, -1, fc->byte_off, fc->bit_off, fc->bit_mask);
+}
+
+static void
+mlx5dr_definer_vxlan_vni_set(struct mlx5dr_definer_fc *fc,
+			     const void *item_spec,
+			     uint8_t *tag)
+{
+	const struct rte_flow_item_vxlan *v = item_spec;
+
+	memcpy(tag + fc->byte_off, v->vni, sizeof(v->vni));
 }
 
 static void
@@ -832,6 +850,74 @@ mlx5dr_definer_conv_item_port(struct mlx5dr_definer_conv_data *cd,
 }
 
 static int
+mlx5dr_definer_conv_item_vxlan(struct mlx5dr_definer_conv_data *cd,
+			       struct rte_flow_item *item,
+			       int item_idx)
+{
+	const struct rte_flow_item_vxlan *m = item->mask;
+	struct mlx5dr_definer_fc *fc;
+	bool inner = cd->tunnel;
+
+	/* In order to match on VXLAN we must match on ether_type, ip_protocol
+	 * and l4_dport.
+	 */
+	if (!cd->relaxed) {
+		fc = &cd->fc[DR_CALC_FNAME(IP_PROTOCOL, inner)];
+		if(!fc->tag_set) {
+			fc->item_idx = item_idx;
+			fc->tag_mask_set = &mlx5dr_definer_ones_set;
+			fc->tag_set = mlx5dr_definer_udp_protocol_set;
+			DR_CALC_SET(fc, eth_l2, l4_type_bwc, inner);
+		}
+
+		fc = &cd->fc[DR_CALC_FNAME(L4_DPORT, inner)];
+		if(!fc->tag_set) {
+			fc->item_idx = item_idx;
+			fc->tag_mask_set = &mlx5dr_definer_ones_set;
+			fc->tag_set = &mlx5dr_definer_vxlan_udp_port_set;
+			DR_CALC_SET(fc, eth_l4, destination_port, inner);
+		}
+	}
+
+	if (!m)
+		return 0;
+
+	if (m->flags) {
+		if (inner) {
+			DR_LOG(ERR, "Inner VXLAN flags item not supported");
+			rte_errno = ENOTSUP;
+			return rte_errno;
+		}
+
+		fc = &cd->fc[MLX5DR_DEFINER_FNAME_VXLAN_FLAGS];
+		fc->item_idx = item_idx;
+		fc->tag_mask_set = &mlx5dr_definer_ones_set;
+		fc->tag_set = &mlx5dr_definer_vxlan_flags_set;
+		DR_CALC_SET_HDR(fc, tunnel_header, tunnel_header_0);
+		fc->bit_mask = __mlx5_mask(header_vxlan, flags);
+		fc->bit_off = __mlx5_dw_bit_off(header_vxlan, flags);
+	}
+
+	if (!is_mem_zero(m->vni, 3)) {
+		if (inner) {
+			DR_LOG(ERR, "Inner VXLAN vni item not supported");
+			rte_errno = ENOTSUP;
+			return rte_errno;
+		}
+
+		fc = &cd->fc[MLX5DR_DEFINER_FNAME_VXLAN_VNI];
+		fc->item_idx = item_idx;
+		fc->tag_mask_set = &mlx5dr_definer_ones_set;
+		fc->tag_set = &mlx5dr_definer_vxlan_vni_set;
+		DR_CALC_SET_HDR(fc, tunnel_header, tunnel_header_1);
+		fc->bit_mask = __mlx5_mask(header_vxlan, vni);
+		fc->bit_off = __mlx5_dw_bit_off(header_vxlan, vni);
+	}
+
+	return 0;
+}
+
+static int
 mlx5dr_definer_conv_items_to_hl(struct mlx5dr_context *ctx,
 				struct mlx5dr_match_template *mt,
 				uint8_t *hl)
@@ -892,6 +978,11 @@ mlx5dr_definer_conv_items_to_hl(struct mlx5dr_context *ctx,
 			item_flags |= MLX5_FLOW_ITEM_PORT_ID;
 			mt->vport_item_id = i;
 			break;
+		case RTE_FLOW_ITEM_TYPE_VXLAN:
+			ret = mlx5dr_definer_conv_item_vxlan(&cd, items, i);
+			item_flags |= MLX5_FLOW_LAYER_VXLAN;
+			break;
+
 		default:
 			DR_LOG(ERR, "Unsupported item type %d", items->type);
 			rte_errno = ENOTSUP;
