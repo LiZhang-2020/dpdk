@@ -189,7 +189,9 @@ def gen_packet(msg_size, l2=True, l3=PacketConsts.IP_V4, l4=PacketConsts.UDP_PRO
             * *src_mac*
                 Source MAC address to use in the packet.
             * *src_ip*
-                Source IPv4 address to use in the packet.
+                Source IPv4/IPv6 address to use in the packet.
+            * *dst_ip*
+                Destination IPv4/IPv6 address to use in the packet.
             * *ttl*
                 Time to live value to use in the packet.
             * *src_port*
@@ -224,18 +226,21 @@ def gen_packet(msg_size, l2=True, l3=PacketConsts.IP_V4, l4=PacketConsts.UDP_PRO
     if l3 == PacketConsts.IP_V4:
         # IPv4 header
         src_ip = kwargs.get('src_ip', PacketConsts.SRC_IP)
+        dst_ip = kwargs.get('dst_ip', PacketConsts.DST_IP)
         packet += struct.pack('!2B3H2BH4s4s', (PacketConsts.IP_V4 << 4) +
                               PacketConsts.IHL, 0, ip_total_len, 0,
                               PacketConsts.IP_V4_FLAGS << 13,
                               ttl, next_hdr, 0,
                               socket.inet_aton(src_ip),
-                              socket.inet_aton(PacketConsts.DST_IP))
+                              socket.inet_aton(dst_ip))
     else:
         # IPv6 header
+        src_ip = kwargs.get('src_ip', PacketConsts.SRC_IP6)
+        dst_ip = kwargs.get('dst_ip', PacketConsts.DST_IP6)
         packet += struct.pack('!IH2B16s16s', (PacketConsts.IP_V6 << 28),
-                       ip_total_len, next_hdr, ttl,
-                       socket.inet_pton(socket.AF_INET6, PacketConsts.SRC_IP6),
-                       socket.inet_pton(socket.AF_INET6, PacketConsts.DST_IP6))
+                              ip_total_len, next_hdr, ttl,
+                              socket.inet_pton(socket.AF_INET6, src_ip),
+                              socket.inet_pton(socket.AF_INET6, dst_ip))
 
     src_port = kwargs.get('src_port', PacketConsts.SRC_PORT)
     dst_port = kwargs.get('dst_port', PacketConsts.DST_PORT)
