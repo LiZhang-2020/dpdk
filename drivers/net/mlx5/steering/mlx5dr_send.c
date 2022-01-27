@@ -18,39 +18,27 @@ mlx5dr_send_add_new_dep_wqe(struct mlx5dr_send_engine *queue)
 void mlx5dr_send_all_dep_wqe(struct mlx5dr_send_engine *queue)
 {
 	struct mlx5dr_send_ring_sq *send_sq = &queue->send_ring->send_sq;
-	struct mlx5dr_send_engine_post_attr send_attr = {0};
-	struct mlx5dr_wqe_gta_data_seg_ste *wqe_data;
-	struct mlx5dr_wqe_gta_ctrl_seg *wqe_ctrl;
-	struct mlx5dr_send_engine_post_ctrl ctrl;
+	struct mlx5dr_send_rule_attr send_attr = {0};
 	struct mlx5dr_send_ring_dep_wqe *dep_wqe;
-	size_t wqe_len;
 
-	send_attr.opcode = MLX5DR_WQE_OPCODE_TBL_ACCESS;
-	send_attr.opmod = MLX5DR_WQE_GTA_OPMOD_STE;
-	send_attr.len = MLX5DR_WQE_SZ_GTA_CTRL + MLX5DR_WQE_SZ_GTA_DATA;
 	/* Fence first from previous depend WQEs  */
 	send_attr.fence = 1;
 
 	while (send_sq->head_dep_idx != send_sq->tail_dep_idx) {
 		dep_wqe = &send_sq->dep_wqe[send_sq->tail_dep_idx++ & (queue->num_entries - 1)];
 
-		/* Allocate WQE */
-		ctrl = mlx5dr_send_engine_post_start(queue);
-		mlx5dr_send_engine_post_req_wqe(&ctrl, (void *)&wqe_ctrl, &wqe_len);
-		mlx5dr_send_engine_post_req_wqe(&ctrl, (void *)&wqe_data, &wqe_len);
-
-		/* Copy dependent WQE */
-		memcpy(wqe_ctrl, &dep_wqe->wqe_ctrl, sizeof(*wqe_ctrl));
-		memcpy(wqe_data, &dep_wqe->wqe_data, sizeof(*wqe_data));
-
-		send_attr.rule = dep_wqe->rule;
 		/* Notify HW on the last WQE */
 		send_attr.notify_hw = (send_sq->tail_dep_idx == send_sq->head_dep_idx);
 		send_attr.user_data = dep_wqe->user_data;
-		send_attr.id = dep_wqe->rtc_id;
-		send_attr.backup_id = dep_wqe->col_rtc_id;
+		send_attr.rtc_0 = dep_wqe->rtc_0;
+		send_attr.rtc_1 = dep_wqe->rtc_1;
+		send_attr.retry_rtc_0 = dep_wqe->retry_rtc_0;
+		send_attr.retry_rtc_1 = dep_wqe->retry_rtc_1;
+		send_attr.wqe_ctrl = &dep_wqe->wqe_ctrl;
+		send_attr.wqe_data = &dep_wqe->wqe_data;
+		send_attr.queue = queue;
 
-		mlx5dr_send_engine_post_end(&ctrl, &send_attr);
+		mlx5dr_send_rule(dep_wqe->rule, &send_attr);
 
 		/* Fencing is done only on the first WQE */
 		send_attr.fence = 0;
@@ -127,17 +115,78 @@ void mlx5dr_send_engine_post_end(struct mlx5dr_send_engine_post_ctrl *ctrl,
 	flags |= attr->fence ? MLX5_WQE_CTRL_SMALL_FENCE : 0;
 	wqe_ctrl->flags = rte_cpu_to_be_32(flags);
 
+	sq->wr_priv[idx].id = attr->id;
+	sq->wr_priv[idx].retry_id = attr->retry_id;
+
 	sq->wr_priv[idx].rule = attr->rule;
 	sq->wr_priv[idx].user_data = attr->user_data;
-	if (attr->user_data)
-		attr->rule->rtc_used = attr->id;
-	sq->wr_priv[idx].backup_id = attr->backup_id;
 	sq->wr_priv[idx].num_wqebbs = ctrl->num_wqebbs;
+
+	if (attr->rule) {
+		sq->wr_priv[idx].rule->pending_wqes++;
+		sq->wr_priv[idx].used_id = attr->used_id;
+	}
 
 	sq->cur_post += ctrl->num_wqebbs;
 
 	if (attr->notify_hw)
 		mlx5dr_send_engine_post_ring(sq, ctrl->queue->uar, wqe_ctrl);
+}
+
+void mlx5dr_send_rule(struct mlx5dr_rule *rule, struct mlx5dr_send_rule_attr *attr)
+{
+	struct mlx5dr_send_engine_post_attr send_attr = {0};
+	struct mlx5dr_wqe_gta_data_seg_ste *wqe_data;
+	struct mlx5dr_wqe_gta_ctrl_seg *wqe_ctrl;
+	struct mlx5dr_send_engine_post_ctrl ctrl;
+	size_t wqe_len;
+
+	/* Set shared send attributes */
+	send_attr.rule = rule;
+	send_attr.user_data = attr->user_data;
+	send_attr.opmod = MLX5DR_WQE_GTA_OPMOD_STE;
+	send_attr.opcode = MLX5DR_WQE_OPCODE_TBL_ACCESS;
+	send_attr.len = MLX5DR_WQE_SZ_GTA_CTRL + MLX5DR_WQE_SZ_GTA_DATA;
+
+	if (attr->rtc_1) {
+		send_attr.id = attr->rtc_1;
+		send_attr.used_id = &rule->rtc_1;
+		send_attr.retry_id = attr->retry_rtc_1;
+		send_attr.fence = attr->fence;
+		send_attr.notify_hw = attr->notify_hw && !attr->rtc_0;
+
+		ctrl = mlx5dr_send_engine_post_start(attr->queue);
+		mlx5dr_send_engine_post_req_wqe(&ctrl, (void *)&wqe_ctrl, &wqe_len);
+		mlx5dr_send_engine_post_req_wqe(&ctrl, (void *)&wqe_data, &wqe_len);
+
+		memcpy(wqe_ctrl, attr->wqe_ctrl, sizeof(*wqe_ctrl));
+		if (attr->wqe_data)
+			memcpy(wqe_data, attr->wqe_data, sizeof(*wqe_data));
+		else if (attr->wqe_tag)
+			memcpy(wqe_data->tag, attr->wqe_tag, MLX5DR_MATCH_TAG_SZ);
+
+		mlx5dr_send_engine_post_end(&ctrl, &send_attr);
+	}
+
+	if (attr->rtc_0) {
+		send_attr.id = attr->rtc_0;
+		send_attr.used_id = &rule->rtc_0;
+		send_attr.retry_id = attr->retry_rtc_0;
+		send_attr.fence = attr->fence && !attr->rtc_1;
+		send_attr.notify_hw = attr->notify_hw;
+
+		ctrl = mlx5dr_send_engine_post_start(attr->queue);
+		mlx5dr_send_engine_post_req_wqe(&ctrl, (void *)&wqe_ctrl, &wqe_len);
+		mlx5dr_send_engine_post_req_wqe(&ctrl, (void *)&wqe_data, &wqe_len);
+
+		memcpy(wqe_ctrl, attr->wqe_ctrl, sizeof(*wqe_ctrl));
+		if (attr->wqe_data)
+			memcpy(wqe_data, attr->wqe_data, sizeof(*wqe_data));
+		else if (attr->wqe_tag)
+			memcpy(wqe_data->tag, attr->wqe_tag, MLX5DR_MATCH_TAG_SZ);
+
+		mlx5dr_send_engine_post_end(&ctrl, &send_attr);
+	}
 }
 
 static void mlx5dr_send_engine_retry_post_send(struct mlx5dr_send_engine *queue,
@@ -160,9 +209,8 @@ static void mlx5dr_send_engine_retry_post_send(struct mlx5dr_send_engine *queue,
 	send_attr.notify_hw = 1;
 	send_attr.fence = 0;
 	send_attr.user_data = priv->user_data;
-	send_attr.id = priv->backup_id;
-
-	priv->rule->status = MLX5DR_RULE_STATUS_CREATING;
+	send_attr.id = priv->retry_id;
+	send_attr.used_id = priv->used_id;
 
 	ctrl = mlx5dr_send_engine_post_start(queue);
 	mlx5dr_send_engine_post_req_wqe(&ctrl, (void *)&wqe_ctrl, &wqe_len);
@@ -198,14 +246,50 @@ void mlx5dr_send_engine_flush_queue(struct mlx5dr_send_engine *queue)
 }
 
 static void mlx5dr_send_engine_update_rule(struct mlx5dr_send_engine *queue,
-					   struct mlx5_cqe64 *cqe,
 					   struct mlx5dr_send_ring_priv *priv,
-					   struct rte_flow_q_op_res res[],
-					   int64_t *i,
-					   uint32_t res_nb,
-					   uint16_t wqe_cnt)
+					   uint16_t wqe_cnt,
+					   enum rte_flow_q_op_status *status)
 {
+	priv->rule->pending_wqes--;
 
+	if (*status == RTE_FLOW_Q_OP_ERROR) {
+		if (priv->retry_id) {
+			mlx5dr_send_engine_retry_post_send(queue, priv, wqe_cnt);
+			return;
+		}
+		/* Some part of the rule failed */
+		priv->rule->status = MLX5DR_RULE_STATUS_FAILING;
+		*priv->used_id = 0;
+	} else {
+		*priv->used_id = priv->id;
+	}
+
+	/* Update rule status for the last completion */
+	if (!priv->rule->pending_wqes) {
+		if (unlikely(priv->rule->status == MLX5DR_RULE_STATUS_FAILING)) {
+			/* Rule completely failed and doesn't require cleanup */
+			if (!priv->rule->rtc_0 && !priv->rule->rtc_1)
+				priv->rule->status = MLX5DR_RULE_STATUS_FAILED;
+
+			*status = RTE_FLOW_Q_OP_ERROR;
+		} else {
+			/* Increase the status, this only works on good flow as the enum
+			 * is arrange it away creating -> created -> deleting -> deleted
+			 */
+			priv->rule->status++;
+			*status = RTE_FLOW_Q_OP_SUCCESS;
+		}
+	}
+}
+
+static void mlx5dr_send_engine_update(struct mlx5dr_send_engine *queue,
+				      struct mlx5_cqe64 *cqe,
+				      struct mlx5dr_send_ring_priv *priv,
+				      struct rte_flow_q_op_res res[],
+				      int64_t *i,
+				      uint32_t res_nb,
+				      uint16_t wqe_cnt)
+{
 	enum rte_flow_q_op_status status;
 
 	if (!cqe || (likely(rte_be_to_cpu_32(cqe->byte_cnt) >> 31 == 0) &&
@@ -216,18 +300,11 @@ static void mlx5dr_send_engine_update_rule(struct mlx5dr_send_engine *queue,
 	}
 
 	if (priv->user_data) {
-		/* Increase the status, this only works on good flow as the enum
-		 * is arrange it away creating -> created -> deleting -> deleted
-		 */
-		if (status == RTE_FLOW_Q_OP_SUCCESS) {
-			priv->rule->status++;
-		} else {
-			if (priv->backup_id) {
-				mlx5dr_send_engine_retry_post_send(queue, priv, wqe_cnt);
+		if (priv->rule) {
+			mlx5dr_send_engine_update_rule(queue, priv, wqe_cnt, &status);
+			/* Completion is provided on the last rule WQE */
+			if (priv->rule->pending_wqes)
 				return;
-                        }
-                        priv->rule->status = MLX5DR_RULE_STATUS_FAILED;
-			status = RTE_FLOW_Q_OP_ERROR;
 		}
 
 		if (*i < res_nb) {
@@ -276,13 +353,13 @@ static void mlx5dr_send_engine_poll_cq(struct mlx5dr_send_engine *queue,
 
 	while (cq->poll_wqe != wqe_cnt) {
 		priv = &sq->wr_priv[cq->poll_wqe];
-		mlx5dr_send_engine_update_rule(queue, NULL, priv, res, i, res_nb, 0);
+		mlx5dr_send_engine_update(queue, NULL, priv, res, i, res_nb, 0);
 		cq->poll_wqe = (cq->poll_wqe + priv->num_wqebbs) & sq->buf_mask;
 	}
 
 	priv = &sq->wr_priv[wqe_cnt];
 	cq->poll_wqe = (wqe_cnt + priv->num_wqebbs) & sq->buf_mask;
-	mlx5dr_send_engine_update_rule(queue, cqe, priv, res, i, res_nb, wqe_cnt);
+	mlx5dr_send_engine_update(queue, cqe, priv, res, i, res_nb, wqe_cnt);
 	cq->cons_index++;
 }
 

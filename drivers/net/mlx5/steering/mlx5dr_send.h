@@ -82,15 +82,19 @@ struct mlx5dr_send_ring_priv {
 	struct mlx5dr_rule *rule;
 	void *user_data;
 	uint32_t num_wqebbs;
-	uint32_t backup_id;
+	uint32_t id;
+	uint32_t retry_id;
+	uint32_t *used_id;
 };
 
 struct mlx5dr_send_ring_dep_wqe {
 	struct mlx5dr_wqe_gta_ctrl_seg wqe_ctrl;
 	struct mlx5dr_wqe_gta_data_seg_ste wqe_data;
 	struct mlx5dr_rule *rule;
-	uint32_t rtc_id;
-	uint32_t col_rtc_id;
+	uint32_t rtc_0;
+	uint32_t rtc_1;
+	uint32_t retry_rtc_0;
+	uint32_t retry_rtc_1;
 	void *user_data;
 };
 
@@ -151,10 +155,26 @@ struct mlx5dr_send_engine_post_attr {
 	size_t len;
 	struct mlx5dr_rule *rule;
 	uint32_t id;
-	uint32_t backup_id;
+	uint32_t retry_id;
+	uint32_t *used_id;
 	void *user_data;
 	uint8_t notify_hw;
 	uint8_t fence;
+};
+
+struct mlx5dr_send_rule_attr {
+	uint8_t opmod;
+	uint32_t rtc_0;
+	uint32_t rtc_1;
+	uint32_t retry_rtc_0;
+	uint32_t retry_rtc_1;
+	void *user_data;
+	uint8_t notify_hw;
+	uint8_t fence;
+	struct mlx5dr_send_engine *queue;
+	struct mlx5dr_wqe_gta_ctrl_seg *wqe_ctrl;
+	struct mlx5dr_wqe_gta_data_seg_ste *wqe_data;
+	uint8_t *wqe_tag;
 };
 
 /**
@@ -197,6 +217,8 @@ void mlx5dr_send_engine_post_req_wqe(struct mlx5dr_send_engine_post_ctrl *ctrl,
 				     char **buf, size_t *len);
 void mlx5dr_send_engine_post_end(struct mlx5dr_send_engine_post_ctrl *ctrl,
 				 struct mlx5dr_send_engine_post_attr *attr);
+
+void mlx5dr_send_rule(struct mlx5dr_rule *rule, struct mlx5dr_send_rule_attr *attr);
 
 void mlx5dr_send_engine_flush_queue(struct mlx5dr_send_engine *queue);
 

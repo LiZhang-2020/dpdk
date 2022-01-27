@@ -4,11 +4,50 @@
 
 #include "mlx5dr_internal.h"
 
-static inline void mlx5dr_rule_gen_comp(struct mlx5dr_send_engine *queue,
-					struct mlx5dr_rule *rule,
-					bool err,
-					void *user_data,
-					enum mlx5dr_rule_status rule_status_on_succ)
+static void mlx5dr_rule_init_dep_wqe(struct mlx5dr_send_ring_dep_wqe *dep_wqe,
+				     struct mlx5dr_rule *rule,
+				     void *user_data)
+{
+	struct mlx5dr_matcher *matcher = rule->matcher;
+	struct mlx5dr_table *tbl = matcher->tbl;
+
+	dep_wqe->rule = rule;
+	dep_wqe->user_data = user_data;
+
+	switch (tbl->type) {
+	case MLX5DR_TABLE_TYPE_NIC_RX:
+	case MLX5DR_TABLE_TYPE_NIC_TX:
+		dep_wqe->rtc_0 = matcher->rtc_0->id;
+		dep_wqe->retry_rtc_0 = matcher->col_matcher ?
+				       matcher->col_matcher->rtc_0->id : 0;
+		dep_wqe->rtc_1 = 0;
+		dep_wqe->retry_rtc_1 = 0;
+		break;
+
+	case MLX5DR_TABLE_TYPE_FDB:
+		// TODO add SKIP FDB_RX / FDB_TX logic
+		dep_wqe->rtc_0 = matcher->rtc_0->id;
+		dep_wqe->rtc_1 = matcher->rtc_1->id;
+		if (matcher->col_matcher) {
+			dep_wqe->retry_rtc_0 = matcher->col_matcher->rtc_0->id;
+			dep_wqe->retry_rtc_1 = matcher->col_matcher->rtc_1->id;
+		} else {
+			dep_wqe->retry_rtc_0 = 0;
+			dep_wqe->retry_rtc_1 = 0;
+		}
+		break;
+
+	default:
+		assert(false);
+		break;
+	}
+}
+
+static void mlx5dr_rule_gen_comp(struct mlx5dr_send_engine *queue,
+				 struct mlx5dr_rule *rule,
+				 bool err,
+				 void *user_data,
+				 enum mlx5dr_rule_status rule_status_on_succ)
 {
 	enum rte_flow_q_op_status comp_status;
 
@@ -36,7 +75,6 @@ static int mlx5dr_rule_create_hws(struct mlx5dr_rule *rule,
 	struct mlx5dr_table *tbl = matcher->tbl;
 	struct mlx5dr_context *ctx = tbl->ctx;
 	struct mlx5dr_send_engine *queue;
-	bool is_rx;
 
 	queue = &ctx->send_queue[attr->queue_id];
 	if (unlikely(mlx5dr_send_engine_err(queue))) {
@@ -46,21 +84,16 @@ static int mlx5dr_rule_create_hws(struct mlx5dr_rule *rule,
 
 	mlx5dr_send_engine_inc_rule(queue);
 
+	/* Initialise rule */
+	rule->rtc_1 = 0;
+	rule->pending_wqes = 0;
 	rule->status = MLX5DR_RULE_STATUS_CREATING;
 
 	/* Today we assume all rules have a dependent WQE.
 	 * This is inefficient and should be optimised.
 	 */
-	is_rx = tbl->type == MLX5DR_TABLE_TYPE_NIC_RX;
 	dep_wqe = mlx5dr_send_add_new_dep_wqe(queue);
-	dep_wqe->rule = rule;
-	dep_wqe->user_data = attr->user_data;
-	dep_wqe->rtc_id = matcher->rtc_0->id;
-	if (matcher->col_matcher) {
-		dep_wqe->col_rtc_id = matcher->col_matcher->rtc_0->id;
-	} else {
-		dep_wqe->col_rtc_id = 0;
-	}
+	mlx5dr_rule_init_dep_wqe(dep_wqe, rule, attr->user_data);
 
 	/* Apply action on */
 	mlx5dr_actions_quick_apply(queue, rule,
@@ -68,7 +101,7 @@ static int mlx5dr_rule_create_hws(struct mlx5dr_rule *rule,
 				   &dep_wqe->wqe_ctrl,
 				   &dep_wqe->wqe_data,
 				   rule_actions, num_actions,
-				   is_rx);
+				   tbl->type);
 
 	/* Create tag directly on WQE and backup it on the rule for deletion */
 	mlx5dr_definer_create_tag(items,
@@ -107,30 +140,25 @@ static void mlx5dr_rule_destroy_failed_hws(struct mlx5dr_rule *rule,
 }
 
 static int mlx5dr_rule_destroy_hws(struct mlx5dr_rule *rule,
-				    struct mlx5dr_rule_attr *attr)
+				   struct mlx5dr_rule_attr *attr)
 {
 	struct mlx5dr_context *ctx = rule->matcher->tbl->ctx;
-	struct mlx5dr_send_engine_post_attr send_attr = {0};
-	struct mlx5dr_wqe_gta_data_seg_ste *wqe_data;
-	struct mlx5dr_wqe_gta_ctrl_seg *wqe_ctrl;
-	struct mlx5dr_send_engine_post_ctrl ctrl;
+	struct mlx5dr_wqe_gta_ctrl_seg wqe_ctrl = {0};
+	struct mlx5dr_send_rule_attr send_attr = {0};
 	struct mlx5dr_send_engine *queue;
-	size_t wqe_len;
 
 	queue = &ctx->send_queue[attr->queue_id];
 
-	/* In case the rule is not completed */
-	if (rule->status != MLX5DR_RULE_STATUS_CREATED) {
-		if (rule->status == MLX5DR_RULE_STATUS_CREATING) {
-			rte_errno = EBUSY;
-			return rte_errno;
-		}
+	/* Rule is not completed yet */
+	if (rule->status == MLX5DR_RULE_STATUS_CREATING) {
+		rte_errno = EBUSY;
+		return rte_errno;
+	}
 
-		/* In case the rule is not completed */
-		if (rule->status == MLX5DR_RULE_STATUS_FAILED) {
-			mlx5dr_rule_destroy_failed_hws(rule, attr);
-			return 0;
-		}
+	/* Rule failed and doesn't require cleanup */
+	if (rule->status == MLX5DR_RULE_STATUS_FAILED) {
+		mlx5dr_rule_destroy_failed_hws(rule, attr);
+		return 0;
 	}
 
 	if (unlikely(mlx5dr_send_engine_err(queue))) {
@@ -146,25 +174,17 @@ static int mlx5dr_rule_destroy_hws(struct mlx5dr_rule *rule,
 
 	rule->status = MLX5DR_RULE_STATUS_DELETING;
 
-	/* Allocate WQE */
-	ctrl = mlx5dr_send_engine_post_start(queue);
-	mlx5dr_send_engine_post_req_wqe(&ctrl, (void *)&wqe_ctrl, &wqe_len);
-	mlx5dr_send_engine_post_req_wqe(&ctrl, (void *)&wqe_data, &wqe_len);
+	wqe_ctrl.op_dirix = htobe32(MLX5DR_WQE_GTA_OP_DEACTIVATE << 28);
 
-	wqe_ctrl->op_dirix = htobe32(MLX5DR_WQE_GTA_OP_DEACTIVATE << 28);
-
-	memcpy(wqe_data->tag, rule->match_tag, MLX5DR_MATCH_TAG_SZ);
-
-	send_attr.rule = rule;
-	send_attr.opcode = MLX5DR_WQE_OPCODE_TBL_ACCESS;
-	send_attr.opmod = MLX5DR_WQE_GTA_OPMOD_STE;
-	send_attr.len = 48 + 64;
 	send_attr.notify_hw = !attr->burst;
-	send_attr.fence = 0;
 	send_attr.user_data = attr->user_data;
-	send_attr.id = rule->rtc_used;
+	send_attr.rtc_0 = rule->rtc_0;
+	send_attr.rtc_1 = rule->rtc_1;
+	send_attr.wqe_ctrl = &wqe_ctrl;
+	send_attr.wqe_tag = rule->match_tag;
+	send_attr.queue = queue;
 
-	mlx5dr_send_engine_post_end(&ctrl, &send_attr);
+	mlx5dr_send_rule(rule, &send_attr);
 
 	return 0;
 }

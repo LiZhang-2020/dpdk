@@ -16,6 +16,7 @@ enum mlx5dr_rule_status {
 	MLX5DR_RULE_STATUS_CREATED,
 	MLX5DR_RULE_STATUS_DELETING,
 	MLX5DR_RULE_STATUS_DELETED,
+	MLX5DR_RULE_STATUS_FAILING,
 	MLX5DR_RULE_STATUS_FAILED,
 };
 
@@ -25,8 +26,10 @@ struct mlx5dr_rule {
 		uint8_t match_tag[MLX5DR_MATCH_TAG_SZ];
 		struct ibv_flow *flow;
 	};
-	enum mlx5dr_rule_status status;
-	uint32_t rtc_used; /* The RTC into which the STE was inserted */
+	uint32_t rtc_0; /* The RTC into which the STE was inserted */
+	uint32_t rtc_1; /* The RTC into which the STE was inserted */
+	uint8_t status; /* enum mlx5dr_rule_status */
+	uint8_t pending_wqes;
 };
 
 #endif
