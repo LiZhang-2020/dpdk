@@ -16,6 +16,7 @@ from pyverbs import enums as v
 from .prm_structs import AllocFlowCounterIn, AllocFlowCounterOut, QueryFlowCounterIn, \
     QueryFlowCounterOut, TrafficCounter
 
+MAX_DIFF_PACKETS = 5
 BULK_COUNTER_SIZE = 512
 BULK_512 = 0b100
 
@@ -320,10 +321,11 @@ def raw_traffic(client, server, num_msgs, packets, expected_packet=None, tag_val
                       verifying the packet.
     :return: None
     """
+    assert(len(packets) <= MAX_DIFF_PACKETS)
     skip_idxs  = [] if skip_idxs is None else skip_idxs
     expected_packet = packets[0] if expected_packet is None else expected_packet
     for _ in range(num_msgs):
-        post_recv(server.wq, server.mr, server.msg_size)
+        post_recv(server.wq, server.mr, server.msg_size, len(packets))
         send_packets(client, packets)
         poll_cq(server.cq, tag_value=tag_value)
         msg_received = server.mr.read(server.msg_size, 0)
