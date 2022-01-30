@@ -1383,12 +1383,11 @@ void mlx5dr_action_put_default_stc(struct mlx5dr_context *ctx,
 }
 
 static void mlx5dr_action_modify_write(struct mlx5dr_send_engine *queue,
-				       struct mlx5dr_rule *rule,
 				       uint32_t arg_idx,
 				       uint8_t *arg_data,
 				       uint16_t num_of_actions)
 {
-	mlx5dr_arg_write(queue, rule, arg_idx, arg_data,
+	mlx5dr_arg_write(queue, NULL, arg_idx, arg_data,
 			 num_of_actions * MLX5DR_MODIFY_ACTION_SIZE);
 }
 
@@ -1429,7 +1428,6 @@ mlx5dr_action_prepare_decap_l3_data(uint8_t *src, uint8_t *dst,
 }
 
 int mlx5dr_actions_quick_apply(struct mlx5dr_send_engine *queue,
-			       struct mlx5dr_rule *rule,
 			       struct mlx5dr_context_common_res *common_res,
 			       struct mlx5dr_wqe_gta_ctrl_seg *wqe_ctrl,
 			       struct mlx5dr_wqe_gta_data_seg_ste *wqe_data,
@@ -1491,7 +1489,7 @@ int mlx5dr_actions_quick_apply(struct mlx5dr_send_engine *queue,
 			require_double = true;
 
 			if (!(action->flags & MLX5DR_ACTION_FLAG_SHARED))
-				mlx5dr_arg_write(queue, rule,
+				mlx5dr_arg_write(queue, NULL,
 						 action->reformat.arg_obj->id + arg_idx,
 						 rule_actions[i].reformat.data,
 						 action->reformat.header_size);
@@ -1504,7 +1502,7 @@ int mlx5dr_actions_quick_apply(struct mlx5dr_send_engine *queue,
 			require_double = true;
 
 			if (!(action->flags & MLX5DR_ACTION_FLAG_SHARED))
-				mlx5dr_arg_decapl3_write(queue, rule,
+				mlx5dr_arg_decapl3_write(queue,
 							 action->modify_header.arg_obj->id + arg_idx,
 							 rule_actions[i].reformat.data,
 							 action->modify_header.num_of_actions);
@@ -1523,7 +1521,7 @@ int mlx5dr_actions_quick_apply(struct mlx5dr_send_engine *queue,
 			require_double = true;
 
 			if (!(action->flags & MLX5DR_ACTION_FLAG_SHARED))
-				mlx5dr_arg_write(queue, rule,
+				mlx5dr_arg_write(queue, NULL,
 						 action->reformat.arg_obj->id + arg_idx,
 						 rule_actions[i].reformat.data,
 						 action->reformat.header_size);
@@ -1537,7 +1535,7 @@ int mlx5dr_actions_quick_apply(struct mlx5dr_send_engine *queue,
 			require_double = true;
 
 			if (!(action->flags & MLX5DR_ACTION_FLAG_SHARED))
-				mlx5dr_action_modify_write(queue, rule,
+				mlx5dr_action_modify_write(queue,
 							   action->modify_header.arg_obj->id + arg_idx,
 							   rule_actions[i].modify_header.data,
 							   action->modify_header.num_of_actions);

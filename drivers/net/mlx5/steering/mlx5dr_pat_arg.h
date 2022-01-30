@@ -56,12 +56,11 @@ void mlx5dr_pat_arg_destroy_modify_header(struct mlx5dr_context *ctx,
 bool mlx5dr_arg_is_valid_arg_request_size(struct mlx5dr_context *ctx,
 					  uint32_t arg_size);
 void mlx5dr_arg_write(struct mlx5dr_send_engine *queue,
-		      struct mlx5dr_rule *rule,
+		      void *comp_data,
 		      uint32_t arg_idx,
 		      uint8_t *arg_data,
 		      size_t data_size);
 void mlx5dr_arg_decapl3_write(struct mlx5dr_send_engine *queue,
-			      struct mlx5dr_rule *rule,
 			      uint32_t arg_idx,
 			      uint8_t *arg_data,
 			      uint16_t num_of_actions);

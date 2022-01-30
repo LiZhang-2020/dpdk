@@ -266,19 +266,17 @@ clean_pattern:
 
 static void
 mlx5d_arg_init_send_attr(struct mlx5dr_send_engine_post_attr *send_attr,
-			 struct mlx5dr_rule *rule,
+			 void *comp_data,
 			 uint32_t arg_idx)
 {
 	send_attr->opcode = MLX5DR_WQE_OPCODE_TBL_ACCESS;
 	send_attr->opmod = MLX5DR_WQE_GTA_OPMOD_MOD_ARG;
 	send_attr->len = MLX5DR_WQE_SZ_GTA_CTRL + MLX5DR_WQE_SZ_GTA_DATA;
-	send_attr->rule = rule;
 	send_attr->id = arg_idx;
-	send_attr->user_data = rule;
+	send_attr->user_data = comp_data;
 }
 
 void mlx5dr_arg_decapl3_write(struct mlx5dr_send_engine *queue,
-			      struct mlx5dr_rule *rule,
 			      uint32_t arg_idx,
 			      uint8_t *arg_data,
 			      uint16_t num_of_actions)
@@ -289,7 +287,7 @@ void mlx5dr_arg_decapl3_write(struct mlx5dr_send_engine *queue,
 	struct mlx5dr_wqe_gta_ctrl_seg *wqe_ctrl;
 	size_t wqe_len;
 
-	mlx5d_arg_init_send_attr(&send_attr, rule, arg_idx);
+	mlx5d_arg_init_send_attr(&send_attr, NULL, arg_idx);
 
 	ctrl = mlx5dr_send_engine_post_start(queue);
 	mlx5dr_send_engine_post_req_wqe(&ctrl, (void *)&wqe_ctrl, &wqe_len);
@@ -322,7 +320,7 @@ mlx5dr_arg_poll_for_comp(struct mlx5dr_context *ctx, uint16_t queue_id)
 }
 
 void mlx5dr_arg_write(struct mlx5dr_send_engine *queue,
-		      struct mlx5dr_rule *rule,
+		      void *comp_data,
 		      uint32_t arg_idx,
 		      uint8_t *arg_data,
 		      size_t data_size)
@@ -334,7 +332,7 @@ void mlx5dr_arg_write(struct mlx5dr_send_engine *queue,
 	int i, full_iter, leftover;
 	size_t wqe_len;
 
-	mlx5d_arg_init_send_attr(&send_attr, rule, arg_idx);
+	mlx5d_arg_init_send_attr(&send_attr, comp_data, arg_idx);
 
 	/* Each WQE can hold 64B of data, it might require multiple iteration */
 	full_iter = data_size / MLX5DR_ARG_DATA_SIZE;
@@ -370,7 +368,6 @@ int mlx5dr_arg_write_inline_arg_data(struct mlx5dr_context *ctx,
 				     size_t data_size)
 {
 	struct mlx5dr_send_engine *queue;
-	struct mlx5dr_rule rule = {0};
 	int ret;
 
 	pthread_spin_lock(&ctx->ctrl_lock);
@@ -378,7 +375,7 @@ int mlx5dr_arg_write_inline_arg_data(struct mlx5dr_context *ctx,
 	/* get the control queue */
 	queue = &ctx->send_queue[ctx->queues - 1];
 
-	mlx5dr_arg_write(queue, &rule, arg_idx, arg_data, data_size);
+	mlx5dr_arg_write(queue, arg_data, arg_idx, arg_data, data_size);
 
 	mlx5dr_send_engine_flush_queue(queue);
 

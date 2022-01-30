@@ -96,7 +96,7 @@ static int mlx5dr_rule_create_hws(struct mlx5dr_rule *rule,
 	mlx5dr_rule_init_dep_wqe(dep_wqe, rule, attr->user_data);
 
 	/* Apply action on */
-	mlx5dr_actions_quick_apply(queue, rule,
+	mlx5dr_actions_quick_apply(queue,
 				   &ctx->common_res[tbl->type],
 				   &dep_wqe->wqe_ctrl,
 				   &dep_wqe->wqe_data,
