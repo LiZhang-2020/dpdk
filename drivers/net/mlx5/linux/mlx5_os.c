@@ -1741,6 +1741,21 @@ err_secondary:
 	priv->drop_queue.hrxq = mlx5_drop_action_create(eth_dev);
 	if (!priv->drop_queue.hrxq)
 		goto error;
+	if (!priv->config.dv_esw_en &&
+	    priv->config.dv_xmeta_en != MLX5_XMETA_MODE_LEGACY) {
+		DRV_LOG(WARNING, "metadata mode %u is not supported "
+				 "(no E-Switch)", priv->config.dv_xmeta_en);
+		priv->config.dv_xmeta_en = MLX5_XMETA_MODE_LEGACY;
+	}
+	mlx5_set_metadata_mask(eth_dev);
+	if (priv->config.dv_xmeta_en != MLX5_XMETA_MODE_LEGACY &&
+	    !priv->sh->dv_regc0_mask) {
+		DRV_LOG(ERR, "metadata mode %u is not supported "
+			     "(no metadata reg_c[0] is available)",
+			     priv->config.dv_xmeta_en);
+			err = ENOTSUP;
+			goto error;
+	}
 	if (priv->vport_meta_mask)
 		flow_hw_set_port_info(eth_dev);
 	if (priv->config.dv_flow_en == 2)
@@ -1756,21 +1771,6 @@ err_secondary:
 	if (err < 0) {
 		err = -err;
 		goto error;
-	}
-	if (!priv->config.dv_esw_en &&
-	    priv->config.dv_xmeta_en != MLX5_XMETA_MODE_LEGACY) {
-		DRV_LOG(WARNING, "metadata mode %u is not supported "
-				 "(no E-Switch)", priv->config.dv_xmeta_en);
-		priv->config.dv_xmeta_en = MLX5_XMETA_MODE_LEGACY;
-	}
-	mlx5_set_metadata_mask(eth_dev);
-	if (priv->config.dv_xmeta_en != MLX5_XMETA_MODE_LEGACY &&
-	    !priv->sh->dv_regc0_mask) {
-		DRV_LOG(ERR, "metadata mode %u is not supported "
-			     "(no metadata reg_c[0] is available)",
-			     priv->config.dv_xmeta_en);
-			err = ENOTSUP;
-			goto error;
 	}
 	/* Query availability of metadata reg_c's. */
 	if (!priv->sh->metadata_regc_check_flag) {
