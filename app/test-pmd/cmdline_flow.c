@@ -7976,6 +7976,7 @@ parse_vc_modify_field_id(struct context *ctx, const struct token *token,
 {
 	struct rte_flow_action_modify_field *action_modify_field;
 	unsigned int i;
+	int ret;
 
 	(void)token;
 	(void)buf;
@@ -7991,9 +7992,15 @@ parse_vc_modify_field_id(struct context *ctx, const struct token *token,
 	if (!ctx->object)
 		return len;
 	action_modify_field = ctx->object;
-	if (ctx->curr == ACTION_MODIFY_FIELD_DST_TYPE_VALUE)
+	if (ctx->curr == ACTION_MODIFY_FIELD_DST_TYPE_VALUE) {
 		action_modify_field->dst.field = (enum rte_flow_field_id)i;
-	else
+		if (action_modify_field->dst.field == RTE_FLOW_FIELD_META) {
+			ret = rte_flow_dynf_metadata_register();
+			if (ret < 0)
+				return -1;
+		}
+
+	} else
 		action_modify_field->src.field = (enum rte_flow_field_id)i;
 	return len;
 }
