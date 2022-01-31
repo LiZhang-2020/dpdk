@@ -227,6 +227,11 @@ __flow_hw_action_template_destroy(struct rte_eth_dev *dev,
 		mlx5_free(acts->encap_decap);
 		acts->encap_decap = NULL;
 	}
+	if (acts->mhdr) {
+		if (acts->mhdr->action)
+			mlx5dr_action_destroy(acts->mhdr->action);
+		mlx5_free(acts->mhdr);
+	}
 }
 
 static __rte_always_inline struct mlx5_action_construct_data *
@@ -290,13 +295,26 @@ __flow_hw_append_act_data_hdr_modify(struct mlx5_priv *priv,
 				     enum rte_flow_action_type type,
 				     uint16_t action_src,
 				     uint16_t action_dst,
-				     uint16_t sub_action_dst)
+				     uint16_t mhdr_cmds_off,
+				     uint16_t mhdr_cmds_end,
+				     bool shared,
+				     struct field_modify_info *field,
+				     struct field_modify_info *dcopy,
+				     uint32_t *mask)
 {	struct mlx5_action_construct_data *act_data;
 
 	act_data = __flow_hw_alloc_act_data(priv, type, action_src, action_dst);
 	if (!act_data)
 		return -1;
-	act_data->modify_header.sub_action_dst = sub_action_dst;
+	act_data->modify_header.mhdr_cmds_off = mhdr_cmds_off;
+	act_data->modify_header.mhdr_cmds_end = mhdr_cmds_end;
+	act_data->modify_header.shared = shared;
+	rte_memcpy(act_data->modify_header.field, field,
+		   sizeof(*field) * MLX5_ACT_MAX_MOD_FIELDS);
+	rte_memcpy(act_data->modify_header.dcopy, dcopy,
+		   sizeof(*dcopy) * MLX5_ACT_MAX_MOD_FIELDS);
+	rte_memcpy(act_data->modify_header.mask, mask,
+		   sizeof(*mask) * MLX5_ACT_MAX_MOD_FIELDS);
 	LIST_INSERT_HEAD(&acts->act_list, act_data, next);
 	return 0;
 }
@@ -394,6 +412,228 @@ flow_hw_shared_action_translate(struct rte_eth_dev *dev,
 	return 0;
 }
 
+static __rte_always_inline bool
+flow_hw_action_modify_field_is_shared(const struct rte_flow_action *action,
+				      const struct rte_flow_action *mask)
+{
+	const struct rte_flow_action_modify_field *v = action->conf;
+	const struct rte_flow_action_modify_field *m = mask->conf;
+
+	if (v->src.field == RTE_FLOW_FIELD_VALUE) {
+		uint32_t j;
+
+		if (m == NULL)
+			return false;
+		for (j = 0; j < RTE_DIM(m->src.value); ++j) {
+			/*
+			 * Immediate value is considered to be masked
+			 * (and thus shared by all flow rules), if mask
+			 * is non-zero. Partial mask over immediate value
+			 * is not allowed.
+			 */
+			if (m->src.value[j])
+				return true;
+		}
+		return false;
+	}
+	if (v->src.field == RTE_FLOW_FIELD_POINTER)
+		return m->src.pvalue != NULL;
+	/*
+	 * Source field types other than VALUE and
+	 * POINTER are always shared.
+	 */
+	return true;
+}
+
+static __rte_always_inline bool
+flow_hw_should_insert_nop(const struct mlx5_hw_modify_header_action *mhdr,
+			  const struct mlx5_flow_dv_modify_hdr_resource *resource)
+{
+	struct mlx5_modification_cmd last_cmd = { { 0 } };
+	struct mlx5_modification_cmd new_cmd = { { 0 } };
+	const uint32_t cmds_num = mhdr->mhdr_cmds_num;
+	unsigned int last_type;
+	bool should_insert = false;
+
+	if (cmds_num == 0)
+		return false;
+	last_cmd = *(&mhdr->mhdr_cmds[cmds_num - 1]);
+	last_cmd.data0 = rte_be_to_cpu_32(last_cmd.data0);
+	last_cmd.data1 = rte_be_to_cpu_32(last_cmd.data1);
+	last_type = last_cmd.action_type;
+	MLX5_ASSERT(resource->actions_num >= 1);
+	new_cmd = *(&resource->actions[0]);
+	new_cmd.data0 = rte_be_to_cpu_32(new_cmd.data0);
+	new_cmd.data1 = rte_be_to_cpu_32(new_cmd.data1);
+	switch (new_cmd.action_type) {
+	case MLX5_MODIFICATION_TYPE_SET:
+	case MLX5_MODIFICATION_TYPE_ADD:
+		if (last_type == MLX5_MODIFICATION_TYPE_SET ||
+		    last_type == MLX5_MODIFICATION_TYPE_ADD)
+			should_insert = new_cmd.field == last_cmd.field;
+		else if (last_type == MLX5_MODIFICATION_TYPE_COPY)
+			should_insert = new_cmd.field == last_cmd.dst_field;
+		else
+			MLX5_ASSERT(false); /* Other types are not supported. */
+		break;
+	case MLX5_MODIFICATION_TYPE_COPY:
+		if (last_type == MLX5_MODIFICATION_TYPE_SET ||
+		    last_type == MLX5_MODIFICATION_TYPE_ADD)
+			should_insert = (new_cmd.field == last_cmd.field ||
+					 new_cmd.dst_field == last_cmd.field);
+		else if (last_type == MLX5_MODIFICATION_TYPE_COPY)
+			should_insert = (new_cmd.field == last_cmd.dst_field ||
+					 new_cmd.dst_field == last_cmd.dst_field);
+		else
+			MLX5_ASSERT(false); /* Other types are not supported. */
+		break;
+	default:
+		/* Other action types should be rejected on AT validation. */
+		MLX5_ASSERT(false);
+		break;
+	}
+	return should_insert;
+}
+
+static __rte_always_inline int
+flow_hw_append_mhdr_cmd_nop(struct mlx5_hw_modify_header_action *mhdr)
+{
+	struct mlx5_modification_cmd *nop;
+	uint32_t num = mhdr->mhdr_cmds_num;
+
+	if (num + 1 >= MLX5_MHDR_MAX_CMD)
+		return -ENOMEM;
+	nop = mhdr->mhdr_cmds + num;
+	nop->data0 = 0;
+	nop->action_type = MLX5_MODIFICATION_TYPE_NOP;
+	nop->data0 = rte_cpu_to_be_32(nop->data0);
+	nop->data1 = 0;
+	mhdr->mhdr_cmds_num = num + 1;
+	return 0;
+}
+
+static __rte_always_inline int
+flow_hw_append_converted_mhdr_cmds(struct mlx5_hw_modify_header_action *mhdr,
+				   struct mlx5_flow_dv_modify_hdr_resource *resource)
+{
+	uint32_t cmds_num = mhdr->mhdr_cmds_num;
+	struct mlx5_modification_cmd *dst;
+	struct mlx5_modification_cmd *src;
+	size_t size;
+
+	if (cmds_num + resource->actions_num >= MLX5_MHDR_MAX_CMD)
+		return -ENOMEM;
+	dst = mhdr->mhdr_cmds + cmds_num;
+	src = &resource->actions[0];
+	size = sizeof(resource->actions[0]) * resource->actions_num;
+	rte_memcpy(dst, src, size);
+	mhdr->mhdr_cmds_num = cmds_num + resource->actions_num;
+	return 0;
+}
+
+static __rte_always_inline void
+flow_hw_modify_field_init(struct mlx5_hw_modify_header_action *mhdr)
+{
+	memset(mhdr, 0, sizeof(*mhdr));
+	/* Modify header action without any commands is shared by default. */
+	mhdr->shared = true;
+	mhdr->pos = UINT16_MAX;
+}
+
+static __rte_always_inline int
+flow_hw_modify_field_compile(struct rte_eth_dev *dev,
+			     const struct rte_flow_attr *attr,
+			     const struct rte_flow_action *action_start, /* Start of AT actions. */
+			     const struct rte_flow_action *action, /* Current action from AT. */
+			     const struct rte_flow_action *action_mask, /* Current mask from AT. */
+			     struct mlx5_hw_actions *acts,
+			     struct mlx5_hw_modify_header_action *mhdr,
+			     struct rte_flow_error *error)
+{
+	struct mlx5_priv *priv = dev->data->dev_private;
+	const struct rte_flow_action_modify_field *conf = action->conf;
+	union {
+		struct mlx5_flow_dv_modify_hdr_resource resource;
+		uint8_t data[sizeof(struct mlx5_flow_dv_modify_hdr_resource) +
+			     sizeof(struct mlx5_modification_cmd) * MLX5_MHDR_MAX_CMD];
+	} dummy;
+	struct mlx5_flow_dv_modify_hdr_resource *resource;
+	struct rte_flow_item item = {
+		.spec = NULL,
+		.mask = NULL
+	};
+	struct field_modify_info field[MLX5_ACT_MAX_MOD_FIELDS] = {
+						{0, 0, MLX5_MODI_OUT_NONE} };
+	struct field_modify_info dcopy[MLX5_ACT_MAX_MOD_FIELDS] = {
+						{0, 0, MLX5_MODI_OUT_NONE} };
+	uint32_t mask[MLX5_ACT_MAX_MOD_FIELDS] = { 0 };
+	uint32_t type, meta = 0;
+	uint16_t cmds_start, cmds_end;
+	bool shared;
+	int ret;
+
+	/*
+	 * Modify header action is shared if previous modify_field actions
+	 * are shared and currently compiled action is shared.
+	 */
+	shared = flow_hw_action_modify_field_is_shared(action, action_mask);
+	mhdr->shared &= shared;
+	if (conf->src.field == RTE_FLOW_FIELD_POINTER ||
+	    conf->src.field == RTE_FLOW_FIELD_VALUE) {
+		type = conf->operation == RTE_FLOW_MODIFY_SET ? MLX5_MODIFICATION_TYPE_SET :
+								MLX5_MODIFICATION_TYPE_ADD;
+		/* For SET/ADD fill the destination field (field) first. */
+		mlx5_flow_field_id_to_modify_info(&conf->dst, field, mask,
+						  conf->width, dev,
+						  attr, error);
+		item.spec = conf->src.field == RTE_FLOW_FIELD_POINTER ?
+				(void *)(uintptr_t)conf->src.pvalue :
+				(void *)(uintptr_t)&conf->src.value;
+		if (conf->dst.field == RTE_FLOW_FIELD_META) {
+			meta = *(const unaligned_uint32_t *)item.spec;
+			meta = rte_cpu_to_be_32(meta);
+			item.spec = &meta;
+		}
+	} else {
+		type = MLX5_MODIFICATION_TYPE_COPY;
+		/* For COPY fill the destination field (dcopy) without mask. */
+		mlx5_flow_field_id_to_modify_info(&conf->dst, dcopy, NULL,
+						  conf->width, dev,
+						  attr, error);
+		/* Then construct the source field (field) with mask. */
+		mlx5_flow_field_id_to_modify_info(&conf->src, field, mask,
+						  conf->width, dev,
+						  attr, error);
+	}
+	item.mask = &mask;
+	memset(&dummy, 0, sizeof(dummy));
+	resource = &dummy.resource;
+	ret = flow_convert_modify_action(&item, field, dcopy, resource, type, error);
+	if (ret)
+		return ret;
+	if (flow_hw_should_insert_nop(mhdr, resource)) {
+		ret = flow_hw_append_mhdr_cmd_nop(mhdr);
+		if (ret)
+			return rte_flow_error_set(error, ret, RTE_FLOW_ERROR_TYPE_UNSPECIFIED,
+						  NULL, "too many modify field operations specified");
+	}
+	cmds_start = mhdr->mhdr_cmds_num;
+	ret = flow_hw_append_converted_mhdr_cmds(mhdr, resource);
+	if (ret)
+		return rte_flow_error_set(error, ret, RTE_FLOW_ERROR_TYPE_UNSPECIFIED,
+					  NULL, "too many modify field operations specified");
+
+	cmds_end = mhdr->mhdr_cmds_num;
+	ret = __flow_hw_append_act_data_hdr_modify(priv, acts, RTE_FLOW_ACTION_TYPE_MODIFY_FIELD,
+						   action - action_start, mhdr->pos,
+						   cmds_start, cmds_end, shared,
+						   field, dcopy, mask);
+	if (ret)
+		return rte_flow_error_set(error, ENOMEM, RTE_FLOW_ERROR_TYPE_UNSPECIFIED,
+					  NULL, "not enough memory to store modify field metadata");
+	return 0;
+}
+
 static int
 flow_hw_actions_translate(struct rte_eth_dev *dev,
 			  const struct rte_flow_table_attr *table_attr,
@@ -417,27 +657,20 @@ flow_hw_actions_translate(struct rte_eth_dev *dev,
 	const struct rte_flow_item *enc_item = NULL, *enc_item_m = NULL;
 	uint8_t *encap_data = NULL;
 	size_t data_size = 0;
-	union {
-		struct mlx5_flow_dv_modify_hdr_resource act;
-		uint8_t len[sizeof(struct mlx5_flow_dv_modify_hdr_resource) +
-			    sizeof(struct mlx5_modification_cmd) *
-			    (MLX5_MAX_MODIFY_NUM * 2 + 1)];
-	} mhdr_dummy;
-	struct mlx5_flow_dv_modify_hdr_resource *mhdr_act =
-						&mhdr_dummy.act;
 	bool actions_end = false;
 	uint32_t type, i;
 	uint16_t reformat_pos = MLX5_HW_MAX_ACTS, reformat_src = 0;
-	uint16_t mhdr_pos = UINT16_MAX;
+	struct mlx5_hw_modify_header_action mhdr = { 0 };
+	int ret;
 	int err;
 
+	flow_hw_modify_field_init(&mhdr);
 	if (attr->transfer)
 		type = MLX5DR_TABLE_TYPE_FDB;
 	else if (attr->egress)
 		type = MLX5DR_TABLE_TYPE_NIC_TX;
 	else
 		type = MLX5DR_TABLE_TYPE_NIC_RX;
-	memset(&mhdr_dummy, 0, sizeof(mhdr_dummy));
 	for (i = 0; !actions_end; actions++, masks++) {
 		uint32_t jump_group;
 		const struct rte_flow_action_jump *jump_m;
@@ -585,17 +818,13 @@ flow_hw_actions_translate(struct rte_eth_dev *dev,
 			refmt_type = MLX5DR_ACTION_REFORMAT_TYPE_TNL_L2_TO_L2;
 			break;
 		case RTE_FLOW_ACTION_TYPE_MODIFY_FIELD:
-			if (mhdr_pos == UINT16_MAX)
-				mhdr_pos = i++;
-			if (__flow_hw_append_act_data_hdr_modify
-				(priv, acts, actions->type,
-				 actions - action_start,
-				 mhdr_pos, mhdr_act->actions_num) ||
-			    flow_convert_action_modify_field
-					(dev, mhdr_act,
-					 actions, attr, error))
+			if (mhdr.pos == UINT16_MAX)
+				mhdr.pos = i++;
+			ret = flow_hw_modify_field_compile(dev, attr, action_start,
+							   actions, masks, acts, &mhdr,
+							   error);
+			if (ret)
 				goto err;
-			MLX5_HW_INS_NOP_ACT(mhdr_act->actions_num);
 			break;
 		case RTE_FLOW_ACTION_TYPE_END:
 			actions_end = true;
@@ -604,28 +833,30 @@ flow_hw_actions_translate(struct rte_eth_dev *dev,
 			break;
 		}
 	}
-	if (mhdr_act->actions_num) {
+	if (mhdr.pos != UINT16_MAX) {
+		uint32_t flags;
+		uint32_t bulk_size;
 		size_t mhdr_len;
 
-		/* Remove the tail NOP action. */
-		mhdr_act->actions_num -= MLX5_HW_NOP_MODI_HDR_ACT;
-		mhdr_len = mhdr_act->actions_num *
-			   sizeof(struct mlx5_modification_cmd);
-		mhdr_act->action = mlx5dr_action_create_modify_header
-				(priv->dr_ctx, mhdr_len,
-				 (__be64 *)mhdr_act->actions,
-				 rte_log2_u32(table_attr->nb_flows),
-				 mlx5_hw_dr_ft_flag[!!attr->group][type]);
-		if (!mhdr_act->action)
+		acts->mhdr = mlx5_malloc(MLX5_MEM_ZERO, sizeof(*acts->mhdr),
+					 0, SOCKET_ID_ANY);
+		if (!acts->mhdr)
 			goto err;
-		mhdr_len += sizeof(*acts->hdr_modify);
-		acts->hdr_modify = mlx5_malloc(MLX5_MEM_ZERO, mhdr_len,
-					       0, SOCKET_ID_ANY);
-		if (!acts->hdr_modify)
+		rte_memcpy(acts->mhdr, &mhdr, sizeof(*acts->mhdr));
+		mhdr_len = sizeof(struct mlx5_modification_cmd) * acts->mhdr->mhdr_cmds_num;
+		flags = mlx5_hw_dr_ft_flag[!!attr->group][type];
+		if (acts->mhdr->shared) {
+			flags |= MLX5DR_ACTION_FLAG_SHARED;
+			bulk_size = 0;
+		} else {
+			bulk_size = rte_log2_u32(table_attr->nb_flows);
+		}
+		acts->mhdr->action = mlx5dr_action_create_modify_header
+				(priv->dr_ctx, mhdr_len, (__be64 *)acts->mhdr->mhdr_cmds,
+				 bulk_size, flags);
+		if (!acts->mhdr->action)
 			goto err;
-		memcpy(acts->hdr_modify, mhdr_act, mhdr_len);
-		acts->rule_acts[mhdr_pos].action = mhdr_act->action;
-		acts->hdr_modify_pos = mhdr_pos;
+		acts->rule_acts[acts->mhdr->pos].action = acts->mhdr->action;
 	}
 	if (reformat_pos != MLX5_HW_MAX_ACTS) {
 		uint8_t buf[MLX5_ENCAP_MAX_LEN];
@@ -754,6 +985,60 @@ flow_hw_shared_action_construct(struct rte_eth_dev *dev,
 }
 
 static __rte_always_inline int
+flow_hw_modify_field_construct(struct mlx5_hw_q_job *job,
+			       struct mlx5_action_construct_data *act_data,
+			       const struct mlx5_hw_actions *hw_acts,
+			       const struct rte_flow_action *action)
+{
+	const struct rte_flow_action_modify_field *mhdr_action = action->conf;
+	uint8_t values[16] = { 0 };
+	unaligned_uint32_t *meta_p;
+	uint32_t i;
+	struct field_modify_info *field;
+
+	if (!hw_acts->mhdr)
+		return -1;
+	if (hw_acts->mhdr->shared || act_data->modify_header.shared)
+		return 0;
+	MLX5_ASSERT(mhdr_action->operation == RTE_FLOW_MODIFY_SET ||
+		    mhdr_action->operation == RTE_FLOW_MODIFY_ADD);
+	if (mhdr_action->src.field != RTE_FLOW_FIELD_VALUE &&
+	    mhdr_action->src.field != RTE_FLOW_FIELD_POINTER)
+		return 0;
+	if (mhdr_action->src.field == RTE_FLOW_FIELD_VALUE)
+		rte_memcpy(values, &mhdr_action->src.value, sizeof(values));
+	else
+		rte_memcpy(values, mhdr_action->src.pvalue, sizeof(values));
+	if (mhdr_action->dst.field == RTE_FLOW_FIELD_META) {
+		meta_p = (unaligned_uint32_t *)values;
+		*meta_p = rte_cpu_to_be_32(*meta_p);
+	}
+	i = act_data->modify_header.mhdr_cmds_off;
+	field = act_data->modify_header.field;
+	do {
+		uint32_t off_b;
+		uint32_t mask;
+		uint32_t data;
+		const uint8_t *mask_src;
+
+		if (i >= act_data->modify_header.mhdr_cmds_end)
+			return -1;
+		mask_src = (const uint8_t *)act_data->modify_header.mask;
+		mask = flow_fetch_field(mask_src + field->offset, field->size);
+		if (!mask) {
+			++field;
+			continue;
+		}
+		off_b = rte_bsf32(mask);
+		data = flow_fetch_field(values + field->offset, field->size);
+		data = (data & mask) >> off_b;
+		job->mhdr_cmd[i++].data1 = rte_cpu_to_be_32(data);
+		++field;
+	} while (field->size);
+	return 0;
+}
+
+static __rte_always_inline int
 flow_hw_actions_construct(struct rte_eth_dev *dev,
 			  struct mlx5_hw_q_job *job,
 			  const struct mlx5_hw_actions *hw_acts,
@@ -771,14 +1056,6 @@ flow_hw_actions_construct(struct rte_eth_dev *dev,
 		.ingress = 1,
 	};
 	uint32_t ft_flag;
-	union {
-		struct mlx5_flow_dv_modify_hdr_resource act;
-		uint8_t len[sizeof(struct mlx5_flow_dv_modify_hdr_resource) +
-			    sizeof(struct mlx5_modification_cmd) *
-			    (MLX5_MAX_MODIFY_NUM * 2 + 1)];
-	} mhdr_dummy;
-	struct mlx5_flow_dv_modify_hdr_resource *mhdr_act =
-						&mhdr_dummy.act;
 	struct mlx5_action_construct_data *act_data;
 
 	ft_flag = mlx5_hw_dr_ft_flag[!!table->grp->group_id][table->type];
@@ -795,8 +1072,21 @@ flow_hw_actions_construct(struct rte_eth_dev *dev,
 	memcpy(rule_acts, hw_acts->rule_acts,
 	       sizeof(*rule_acts) * hw_acts->acts_num);
 	*acts_num = hw_acts->acts_num;
-	if (hw_acts->hdr_modify)
-		mhdr_act->actions_num = 0;
+	if (hw_acts->mhdr && hw_acts->mhdr->mhdr_cmds_num > 0) {
+		uint16_t pos = hw_acts->mhdr->pos;
+
+		if (!hw_acts->mhdr->shared) {
+			rule_acts[pos].modify_header.offset =
+						job->flow->idx - 1;
+			rule_acts[pos].modify_header.data =
+						(uint8_t *)job->mhdr_cmd;
+			memcpy(job->mhdr_cmd, hw_acts->mhdr->mhdr_cmds,
+			       sizeof(*job->mhdr_cmd) * hw_acts->mhdr->mhdr_cmds_num);
+		} else {
+			rule_acts[pos].modify_header.offset = 0;
+			rule_acts[pos].modify_header.data = NULL;
+		}
+	}
 	if (hw_acts->encap_decap && hw_acts->encap_decap->data_size)
 		memcpy(buf, hw_acts->encap_decap->data,
 		       hw_acts->encap_decap->data_size);
@@ -806,6 +1096,7 @@ flow_hw_actions_construct(struct rte_eth_dev *dev,
 		uint64_t item_flags;
 		struct mlx5_hrxq *hrxq;
 		struct mlx5_hw_jump_action *jump;
+		int ret;
 
 		action = &actions[act_data->action_src];
 		MLX5_ASSERT(action->type == RTE_FLOW_ACTION_TYPE_INDIRECT ||
@@ -877,22 +1168,14 @@ flow_hw_actions_construct(struct rte_eth_dev *dev,
 				    act_data->encap.len);
 			break;
 		case RTE_FLOW_ACTION_TYPE_MODIFY_FIELD:
-			mhdr_act->actions_num =
-				act_data->modify_header.sub_action_dst;
-			flow_convert_action_modify_field
-					(dev, mhdr_act, action, &attr, NULL);
+			ret = flow_hw_modify_field_construct(job, act_data,
+							     hw_acts, action);
+			if (ret)
+				return -1;
 			break;
 		default:
 			break;
 		}
-	}
-	if (hw_acts->hdr_modify) {
-		rule_acts[hw_acts->hdr_modify_pos].modify_header.offset =
-					job->flow->idx - 1;
-		rule_acts[hw_acts->hdr_modify_pos].modify_header.data =
-					(uint8_t *)job->mhdr_cmd;
-		memcpy(job->mhdr_cmd, mhdr_act->actions,
-		       sizeof(*job->mhdr_cmd) * mhdr_act->actions_num);
 	}
 	if (hw_acts->encap_decap) {
 		rule_acts[hw_acts->encap_decap_pos].reformat.offset =

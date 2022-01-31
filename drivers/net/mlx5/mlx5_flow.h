@@ -1148,8 +1148,27 @@ struct mlx5_action_construct_data {
 			uint16_t len;
 		} encap;
 		struct {
-			/* modify header dst action offset. */
-			uint16_t sub_action_dst;
+			/* Modify header action offset in pattern. */
+			uint16_t mhdr_cmds_off;
+			/* Offset in pattern after modify header actions. */
+			uint16_t mhdr_cmds_end;
+			/*
+			 * True if this action is masked and does not need to
+			 * be generated.
+			 */
+			bool shared;
+			/*
+			 * Modified field definitions in dst field (SET, ADD)
+			 * or src field (COPY).
+			 */
+			struct field_modify_info field[MLX5_ACT_MAX_MOD_FIELDS];
+			/* Modified field definitions in dst field (COPY). */
+			struct field_modify_info dcopy[MLX5_ACT_MAX_MOD_FIELDS];
+			/*
+			 * Masks applied to field values to generate
+			 * PRM actions.
+			 */
+			uint32_t mask[MLX5_ACT_MAX_MOD_FIELDS];
 		} modify_header;
 		struct {
 			uint64_t types; /* RSS hash types. */
@@ -1192,6 +1211,19 @@ struct mlx5_hw_encap_decap_action {
 	uint8_t data[];
 };
 
+struct mlx5_hw_modify_header_action {
+	/* Reference to DR action */
+	struct mlx5dr_action *action;
+	/* Modify header action position in action rule table. */
+	uint16_t pos;
+	/* Is MODIFY_HEADER action shared across flows in table. */
+	bool shared;
+	/* Amount of modification commands stored in the precompiled buffer. */
+	uint32_t mhdr_cmds_num;
+	/* Precompiled modification commands. */
+	struct mlx5_modification_cmd mhdr_cmds[MLX5_MHDR_MAX_CMD];
+};
+
 /* The maximum actions support in the flow. */
 #define MLX5_HW_MAX_ACTS 16
 
@@ -1199,11 +1231,9 @@ struct mlx5_hw_actions {
 	LIST_HEAD(act_list, mlx5_action_construct_data) act_list;
 	struct mlx5_hw_jump_action *jump; /* Jump action. */
 	struct mlx5_hrxq *tir; /* TIR action. */
-	/* Modify header action. */
-	struct mlx5_flow_dv_modify_hdr_resource *hdr_modify;
+	struct mlx5_hw_modify_header_action *mhdr; /* Modify header action. */
 	/* Encap/Decap action. */
 	struct mlx5_hw_encap_decap_action *encap_decap;
-	uint16_t hdr_modify_pos; /* Modify header action position. */
 	uint16_t encap_decap_pos; /* Encap/Decap action position. */
 	uint32_t acts_num:4; /* Total action number. */
 	uint32_t mark:1; /* Indicate the mark action. */
