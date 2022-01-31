@@ -2297,6 +2297,12 @@ int flow_convert_action_modify_ipv6_dscp
 enum modify_reg flow_get_metadata_reg(struct rte_eth_dev *dev,
 		      const struct rte_flow_attr *attr,
 		      struct rte_flow_error *error);
+void mlx5_flow_field_id_to_modify_info
+			(const struct rte_flow_action_modify_data *data,
+			 struct field_modify_info *info, uint32_t *mask,
+			 uint32_t width, struct rte_eth_dev *dev,
+			 const struct rte_flow_attr *attr,
+			 struct rte_flow_error *error);
 int mlx5_flow_item_field_width(struct rte_eth_dev *dev,
 			       enum rte_flow_field_id field,
 			       int inherit,

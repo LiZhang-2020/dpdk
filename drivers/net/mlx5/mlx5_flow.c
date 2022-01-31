@@ -11817,7 +11817,7 @@ flow_modify_info_mask_32_masked(uint32_t length, uint32_t off, uint32_t post_mas
 	return rte_cpu_to_be_32(mask & post_mask);
 }
 
-static void
+void
 mlx5_flow_field_id_to_modify_info
 		(const struct rte_flow_action_modify_data *data,
 		 struct field_modify_info *info, uint32_t *mask,
