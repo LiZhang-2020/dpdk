@@ -100,7 +100,7 @@ struct mlx5dr_action {
 					uint8_t length;
 					uint16_t dst_field;
 					uint8_t dst_offset;
-					uint32_t data;
+					__be32 data;
 				} modify_action;
 				struct {
 					struct mlx5dr_devx_obj *arg_obj;

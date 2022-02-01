@@ -1085,7 +1085,7 @@ static int mlx5dr_action_fill_modify_action(struct mlx5dr_action *action,
 	if (action->flags & MLX5DR_ACTION_FLAG_SHARED &&
 	    action_type != MLX5DR_ACTION_TYP_MH_COPY)
 		action->modify_action.data =
-		MLX5_GET(set_action_in, &pattern, data);
+		htobe32(MLX5_GET(set_action_in, &pattern, data));
 
 	return 0;
 }
@@ -1486,8 +1486,9 @@ int mlx5dr_actions_quick_apply(struct mlx5dr_send_engine *queue,
 			require_double = true;
 
 			if (!(action->flags & MLX5DR_ACTION_FLAG_SHARED))
+				/* modify_header.data: | 4 bytes pattern | 4 bytes data| */
 				raw_wqe[MLX5DR_ACTION_OFFSET_DW7] =
-				(uint32_t)rule_actions[i].modify_header.data[0];
+				*(uint32_t *)&rule_actions[i].modify_header.data[4];
 			else
 				raw_wqe[MLX5DR_ACTION_OFFSET_DW7] = action->modify_action.data;
 			break;
