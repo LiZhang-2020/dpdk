@@ -196,6 +196,18 @@ class BaseDrResources(object):
         attr = Mlx5drMatcherAttr(prio, mode, log_row, log_col, log_rules)
         return Mlx5drMatcher(table, matcher_templates, len(matcher_templates), attr)
 
+    def create_root_fwd_rule(self, rte_items, level=1, table_type=me.MLX5DR_TABLE_TYPE_NIC_RX,
+                             prio=1, action_flag=me.MLX5DR_ACTION_FLAG_ROOT_RX):
+        self.root_matcher_templates.append([Mlx5drMacherTemplate(rte_items)])
+        root_matcher = self.create_matcher(self.root_table, self.root_matcher_templates[-1],
+                                           prio=prio)
+        table = self.create_table(table_type=table_type, level=level)
+        tbl_action = Mlx5drActionDestTable(self.dr_ctx, table, action_flag)
+        root_ra = Mlx5drRuleAction(tbl_action)
+        rule = Mlx5drRule(root_matcher, 0, rte_items, [root_ra], 1,
+                                        Mlx5drRuleAttr(user_data=bytes(8)), self.dr_ctx)
+        return root_matcher, table, rule
+
     def init_steering_resources(self, rte_items=None, table_type=me.MLX5DR_TABLE_TYPE_NIC_RX,
                                 root_rte_items=None):
         """
@@ -210,15 +222,11 @@ class BaseDrResources(object):
         self.root_table = self.create_table(0, table_type=table_type)
         self.table = self.create_table(table_type=table_type)
         root_rte_items = root_rte_items if root_rte_items is not None else rte_items
-        # Create Root matcher.
-        root_action_type = me.MLX5DR_ACTION_FLAG_ROOT_RX
-        self.tbl_action = Mlx5drActionDestTable(self.dr_ctx, self.table, root_action_type)
-        self.root_ra = Mlx5drRuleAction(self.tbl_action)
-        self.root_matcher_templates = [Mlx5drMacherTemplate(root_rte_items)]
-        self.root_matcher = self.create_matcher(self.root_table, self.root_matcher_templates)
         # Create root rule.
-        self.root_dest_tbl_rule = Mlx5drRule(self.root_matcher, 0, root_rte_items, [self.root_ra], 1,
-                                             Mlx5drRuleAttr(user_data=bytes(8)), self.dr_ctx)
+        self.root_matcher_templates = []
+        self.root_matcher, self.table, self.root_dest_tbl_rule = \
+            self.create_root_fwd_rule(root_rte_items, level=1, table_type=table_type)
+
         template_relaxed_match = me.MLX5DR_MATCH_TEMPLATE_FLAG_RELAXED_MATCH
         # Create table 1 matcher.
         self.matcher_templates = [Mlx5drMacherTemplate(rte_items, flags=template_relaxed_match)]
