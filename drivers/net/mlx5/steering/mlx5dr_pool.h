@@ -37,6 +37,8 @@ enum mlx5dr_pool_flags {
 	MLX5DR_POOL_FLAGS_RESOURCE_PER_CHUNK = 1 << 2,
 	/* All objects are in the same size */
 	MLX5DR_POOL_FLAGS_FIXED_SIZE_OBJECTS = 1 << 3,
+	/* internal flag, indicates pool that uses for FDB */
+	MLX5DR_POOL_FLAGS_MIRROR_RESOURCES = 1 << 4,
 };
 
 struct mlx5dr_pool_attr {
@@ -92,6 +94,7 @@ struct mlx5dr_pool {
 	size_t alloc_log_sz;
 	uint32_t fw_ft_type;
 	struct mlx5dr_pool_resource *resource[MLX5DR_POOL_RESOURCE_ARR_SZ];
+	struct mlx5dr_pool_resource *mirror_resource[MLX5DR_POOL_RESOURCE_ARR_SZ];
 	/* db */
 	struct mlx5dr_pool_db db;
 	/* functions */
@@ -113,9 +116,16 @@ void mlx5dr_pool_chunk_free(struct mlx5dr_pool *pool,
 			    struct mlx5dr_pool_chunk *chunk);
 
 static inline struct mlx5dr_devx_obj *
-mlx5dr_pool_chunk_get_base_devx_obj(struct mlx5dr_pool *pool,
-				    struct mlx5dr_pool_chunk *chunk)
+mlx5dr_pool_chunk_get_base_devx_obj_0(struct mlx5dr_pool *pool,
+				      struct mlx5dr_pool_chunk *chunk)
 {
 	return pool->resource[chunk->resource_idx]->devx_obj;
+}
+
+static inline struct mlx5dr_devx_obj *
+mlx5dr_pool_chunk_get_base_devx_obj_1(struct mlx5dr_pool *pool,
+				      struct mlx5dr_pool_chunk *chunk)
+{
+	return pool->mirror_resource[chunk->resource_idx]->devx_obj;
 }
 #endif

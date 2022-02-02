@@ -7,15 +7,28 @@
 #include "mlx5dr_buddy.h"
 #include "mlx5dr_internal.h"
 
-static void mlx5dr_pool_resource_free(struct mlx5dr_pool_resource *resource)
+static void mlx5dr_pool_free_one_resource(struct mlx5dr_pool_resource *resource)
 {
 	mlx5dr_cmd_destroy_obj(resource->devx_obj);
 
 	simple_free(resource);
 }
 
+static void mlx5dr_pool_resource_free(struct mlx5dr_pool *pool,
+				      int resource_idx)
+{
+	mlx5dr_pool_free_one_resource(pool->resource[resource_idx]);
+	pool->resource[resource_idx] = NULL;
+
+	if (pool->flags & MLX5DR_POOL_FLAGS_MIRROR_RESOURCES) {
+		mlx5dr_pool_free_one_resource(pool->mirror_resource[resource_idx]);
+		pool->mirror_resource[resource_idx] = NULL;
+	}
+}
+
 static struct mlx5dr_pool_resource *
-mlx5dr_pool_resource_alloc(struct mlx5dr_pool *pool, uint32_t log_range)
+mlx5dr_pool_crete_one_resource(struct mlx5dr_pool *pool, uint32_t log_range,
+			       uint32_t fw_ft_type)
 {
 	struct mlx5dr_cmd_ste_create_attr ste_attr;
 	struct mlx5dr_cmd_stc_create_attr stc_attr;
@@ -31,12 +44,12 @@ mlx5dr_pool_resource_alloc(struct mlx5dr_pool *pool, uint32_t log_range)
 	switch (pool->type) {
 	case MLX5DR_POOL_TYPE_STE:
 		ste_attr.log_obj_range = log_range;
-		ste_attr.table_type = pool->fw_ft_type;
+		ste_attr.table_type = fw_ft_type;
 		devx_obj = mlx5dr_cmd_ste_create(pool->ctx->ibv_ctx, &ste_attr);
 		break;
 	case MLX5DR_POOL_TYPE_STC:
 		stc_attr.log_obj_range = log_range;
-		stc_attr.table_type = pool->fw_ft_type;
+		stc_attr.table_type = fw_ft_type;
 		devx_obj = mlx5dr_cmd_stc_create(pool->ctx->ibv_ctx, &stc_attr);
 		break;
 	default:
@@ -59,6 +72,42 @@ mlx5dr_pool_resource_alloc(struct mlx5dr_pool *pool, uint32_t log_range)
 free_resource:
 	simple_free(resource);
 	return NULL;
+}
+
+static uint32_t mlx5dr_pool_get_mirror_fw_type(struct mlx5dr_pool *pool)
+{
+	(void)pool;
+	return 0xb; /* TBD: change it to the function Alex has */
+}
+
+static int
+mlx5dr_pool_resource_alloc(struct mlx5dr_pool *pool, uint32_t log_range, int idx)
+{
+	struct mlx5dr_pool_resource *resource;
+
+	resource = mlx5dr_pool_crete_one_resource(pool, log_range, pool->fw_ft_type);
+	if (!resource) {
+		DR_LOG(ERR, "Failed allocating resource");
+		return rte_errno;
+	}
+	pool->resource[idx] = resource;
+
+	if (pool->flags & MLX5DR_POOL_FLAGS_MIRROR_RESOURCES) {
+		struct mlx5dr_pool_resource *mir_resource;
+
+		mir_resource =
+			mlx5dr_pool_crete_one_resource(pool,
+						       log_range,
+						       mlx5dr_pool_get_mirror_fw_type(pool));
+		if (!mir_resource) {
+			DR_LOG(ERR, "Failed allocating mirrored resource");
+			mlx5dr_pool_free_one_resource(resource);
+			return rte_errno;
+		}
+		pool->mirror_resource[idx] = mir_resource;
+	}
+
+	return 0;
 }
 
 static int mlx5dr_pool_bitmap_get_free_slot(struct rte_bitmap *bitmap, uint32_t *iidx)
@@ -137,8 +186,7 @@ mlx5dr_pool_buddy_get_next_buddy(struct mlx5dr_pool *pool, int idx,
 		return NULL;
 	}
 
-	pool->resource[idx] = mlx5dr_pool_resource_alloc(pool, new_buddy_size);
-	if (!pool->resource[idx]) {
+	if (mlx5dr_pool_resource_alloc(pool, new_buddy_size, idx) != 0) {
 		DR_LOG(ERR, "Failed to create resource type: %d: size %d index: %d",
 			pool->type, new_buddy_size, idx);
 		mlx5dr_buddy_cleanup(buddy);
@@ -248,8 +296,7 @@ static int mlx5dr_pool_buddy_db_init(struct mlx5dr_pool *pool, uint32_t log_rang
 static int mlx5dr_pool_create_resource_on_index(struct mlx5dr_pool *pool,
 						uint32_t alloc_size, int idx)
 {
-	pool->resource[idx] = mlx5dr_pool_resource_alloc(pool, alloc_size);
-	if (!pool->resource[idx]) {
+	if (mlx5dr_pool_resource_alloc(pool, alloc_size, idx) != 0) {
 		DR_LOG(ERR, "Failed to create resource type: %d: size %d index: %d",
 			pool->type, alloc_size, idx);
 		return rte_errno;
@@ -387,10 +434,8 @@ static void mlx5dr_pool_general_element_db_put_chunk(struct mlx5dr_pool *pool,
 {
 	assert(pool->resource[chunk->resource_idx]);
 
-	if (pool->flags & MLX5DR_POOL_FLAGS_RELEASE_FREE_RESOURCE) {
-		mlx5dr_pool_resource_free(pool->resource[chunk->resource_idx]);
-		pool->resource[chunk->resource_idx] = NULL;
-	}
+	if (pool->flags & MLX5DR_POOL_FLAGS_RELEASE_FREE_RESOURCE)
+		mlx5dr_pool_resource_free(pool, chunk->resource_idx);
 }
 
 static void mlx5dr_pool_general_element_db_uninit(struct mlx5dr_pool *pool)
@@ -426,8 +471,9 @@ static void mlx5dr_onesize_element_db_destroy_element(struct mlx5dr_pool *pool,
 						      struct mlx5dr_pool_chunk *chunk)
 {
 	assert(pool->resource[chunk->resource_idx]);
-	mlx5dr_pool_resource_free(pool->resource[chunk->resource_idx]);
-	pool->resource[chunk->resource_idx] = NULL;
+
+	mlx5dr_pool_resource_free(pool, chunk->resource_idx);
+
 	simple_free(elem);
 	pool->db.element_manager->elements[chunk->resource_idx] = NULL;
 }
@@ -581,7 +627,8 @@ mlx5dr_pool_create(struct mlx5dr_context *ctx, struct mlx5dr_pool_attr *pool_att
 		pool->fw_ft_type = FS_FT_NIC_TX;
 		break;
 	case MLX5DR_TABLE_TYPE_FDB:
-		pool->fw_ft_type = FS_FT_FDB;
+		pool->flags |= MLX5DR_POOL_FLAGS_MIRROR_RESOURCES;
+		pool->fw_ft_type = FS_FT_FDB; /* TBD: Change it in Alex's set to have the RX_FDB */
 		break;
 	default:
 		DR_LOG(ERR, "Unsupported memory pool type");
@@ -618,7 +665,7 @@ int mlx5dr_pool_destroy(struct mlx5dr_pool *pool)
 
 	for (i = 0; i < MLX5DR_POOL_RESOURCE_ARR_SZ; i++)
 		if (pool->resource[i])
-			mlx5dr_pool_resource_free(pool->resource[i]);
+			mlx5dr_pool_resource_free(pool, i);
 
 	mlx5dr_pool_db_unint(pool);
 
