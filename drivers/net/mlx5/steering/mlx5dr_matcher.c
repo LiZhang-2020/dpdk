@@ -25,7 +25,7 @@ static int mlx5dr_matcher_create_end_ft(struct mlx5dr_matcher *matcher)
 	struct mlx5dr_table *tbl = matcher->tbl;
 
 	ft_attr.type = tbl->fw_ft_type;
-	ft_attr.wqe_based_flow_update = true;
+	ft_attr.rtc_valid = true;
 	ft_attr.level = tbl->ctx->caps->nic_ft.max_level - 1;
 	// TODO Need to support default miss behaviour for FDB
 
@@ -73,7 +73,7 @@ static int mlx5dr_matcher_connect(struct mlx5dr_matcher *matcher)
 
 connect:
 	ft_attr.modify_fs = MLX5_IFC_MODIFY_FLOW_TABLE_RTC_ID;
-	ft_attr.wqe_based_flow_update = true;
+	ft_attr.rtc_valid = true;
 	ft_attr.type = tbl->fw_ft_type;
 
 	/* Connect to next */
@@ -132,7 +132,7 @@ static int mlx5dr_matcher_disconnect(struct mlx5dr_matcher *matcher)
 
 	ft_attr.modify_fs = MLX5_IFC_MODIFY_FLOW_TABLE_RTC_ID;
 	ft_attr.type = matcher->tbl->fw_ft_type;
-	ft_attr.wqe_based_flow_update = true;
+	ft_attr.rtc_valid = true;
 
 	/* Connect previous end FT to next RTC if exists */
 	if (next) {

@@ -35,7 +35,7 @@ static int mlx5dr_table_init(struct mlx5dr_table *tbl)
 	}
 
 	ft_attr.type = tbl->fw_ft_type;
-	ft_attr.wqe_based_flow_update = true;
+	ft_attr.rtc_valid = true;
 	ft_attr.level = ctx->caps->nic_ft.max_level - 1;
 	// TODO Need to support default miss behaviour for FDB
 
