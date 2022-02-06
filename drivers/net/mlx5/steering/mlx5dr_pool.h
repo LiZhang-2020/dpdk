@@ -37,8 +37,6 @@ enum mlx5dr_pool_flags {
 	MLX5DR_POOL_FLAGS_RESOURCE_PER_CHUNK = 1 << 2,
 	/* All objects are in the same size */
 	MLX5DR_POOL_FLAGS_FIXED_SIZE_OBJECTS = 1 << 3,
-	/* internal flag, indicates pool that uses for FDB */
-	MLX5DR_POOL_FLAGS_MIRROR_RESOURCES = 1 << 4,
 
 	/* These values should be used by the caller */
 	MLX5DR_POOL_FLAGS_FOR_STC_POOL = MLX5DR_POOL_FLAGS_ONE_RESOURCE |
@@ -98,7 +96,7 @@ struct mlx5dr_pool {
 	enum mlx5dr_pool_flags flags;
 	pthread_spinlock_t lock;
 	size_t alloc_log_sz;
-	uint32_t fw_ft_type;
+	enum mlx5dr_table_type tbl_type;
 	struct mlx5dr_pool_resource *resource[MLX5DR_POOL_RESOURCE_ARR_SZ];
 	struct mlx5dr_pool_resource *mirror_resource[MLX5DR_POOL_RESOURCE_ARR_SZ];
 	/* db */

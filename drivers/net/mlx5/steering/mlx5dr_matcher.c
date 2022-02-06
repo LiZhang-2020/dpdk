@@ -184,7 +184,7 @@ static int mlx5dr_matcher_create_rtc(struct mlx5dr_matcher *matcher)
 	rtc_attr.update_index_mode = MLX5_IFC_RTC_STE_UPDATE_MODE_BY_HASH;
 	rtc_attr.log_depth = matcher->attr.table.sz_col_log;
 	rtc_attr.log_size = matcher->attr.table.sz_row_log;
-	rtc_attr.table_type = mlx5dr_table_get_res_fw_ft_type(tbl, 0);
+	rtc_attr.table_type = mlx5dr_table_get_res_fw_ft_type(tbl->type, 0);
 	rtc_attr.pd = ctx->pd_num;
 	/* The first match template is used since all share the same definer */
 	rtc_attr.definer_id = mlx5dr_definer_get_id(matcher->mt[0]->definer);
@@ -203,7 +203,7 @@ static int mlx5dr_matcher_create_rtc(struct mlx5dr_matcher *matcher)
 	if (tbl->type == MLX5DR_TABLE_TYPE_FDB) {
 		devx_obj = mlx5dr_pool_chunk_get_base_devx_obj_1(ste_pool, &matcher->ste);
 		rtc_attr.ste_base = devx_obj->id;
-		rtc_attr.table_type = mlx5dr_table_get_res_fw_ft_type(tbl, 1);
+		rtc_attr.table_type = mlx5dr_table_get_res_fw_ft_type(tbl->type, 1);
 
 		devx_obj = mlx5dr_pool_chunk_get_base_devx_obj_1(stc_pool, &default_stc->default_hit);
 		rtc_attr.stc_base = devx_obj->id;

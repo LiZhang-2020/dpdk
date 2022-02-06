@@ -20,7 +20,7 @@ static void mlx5dr_pool_resource_free(struct mlx5dr_pool *pool,
 	mlx5dr_pool_free_one_resource(pool->resource[resource_idx]);
 	pool->resource[resource_idx] = NULL;
 
-	if (pool->flags & MLX5DR_POOL_FLAGS_MIRROR_RESOURCES) {
+	if (pool->tbl_type == MLX5DR_TABLE_TYPE_FDB) {
 		mlx5dr_pool_free_one_resource(pool->mirror_resource[resource_idx]);
 		pool->mirror_resource[resource_idx] = NULL;
 	}
@@ -74,34 +74,29 @@ free_resource:
 	return NULL;
 }
 
-static uint32_t mlx5dr_pool_get_mirror_fw_type(struct mlx5dr_pool *pool)
-{
-	(void)pool;
-	return 0xb; /* TBD: change it to the function Alex has */
-}
-
 static int
 mlx5dr_pool_resource_alloc(struct mlx5dr_pool *pool, uint32_t log_range, int idx)
 {
 	struct mlx5dr_pool_resource *resource;
+	uint32_t fw_ft_type;
 
-	resource = mlx5dr_pool_crete_one_resource(pool, log_range, pool->fw_ft_type);
+	fw_ft_type = mlx5dr_table_get_res_fw_ft_type(pool->tbl_type, 0);
+	resource = mlx5dr_pool_crete_one_resource(pool, log_range, fw_ft_type);
 	if (!resource) {
 		DR_LOG(ERR, "Failed allocating resource");
 		return rte_errno;
 	}
 	pool->resource[idx] = resource;
 
-	if (pool->flags & MLX5DR_POOL_FLAGS_MIRROR_RESOURCES) {
+	if (pool->tbl_type == MLX5DR_TABLE_TYPE_FDB) {
 		struct mlx5dr_pool_resource *mir_resource;
 
-		mir_resource =
-			mlx5dr_pool_crete_one_resource(pool,
-						       log_range,
-						       mlx5dr_pool_get_mirror_fw_type(pool));
+		fw_ft_type = mlx5dr_table_get_res_fw_ft_type(pool->tbl_type, 1);
+		mir_resource = mlx5dr_pool_crete_one_resource(pool, log_range, fw_ft_type);
 		if (!mir_resource) {
 			DR_LOG(ERR, "Failed allocating mirrored resource");
 			mlx5dr_pool_free_one_resource(resource);
+			pool->resource[idx] = NULL;
 			return rte_errno;
 		}
 		pool->mirror_resource[idx] = mir_resource;
@@ -616,25 +611,9 @@ mlx5dr_pool_create(struct mlx5dr_context *ctx, struct mlx5dr_pool_attr *pool_att
 	pool->type = pool_attr->pool_type;
 	pool->alloc_log_sz = pool_attr->alloc_log_sz;
 	pool->flags = pool_attr->flags;
+	pool->tbl_type = pool_attr->table_type;
 
 	pthread_spin_init(&pool->lock, PTHREAD_PROCESS_PRIVATE);
-
-	switch (pool_attr->table_type) {
-	case MLX5DR_TABLE_TYPE_NIC_RX:
-		pool->fw_ft_type = FS_FT_NIC_RX;
-		break;
-	case MLX5DR_TABLE_TYPE_NIC_TX:
-		pool->fw_ft_type = FS_FT_NIC_TX;
-		break;
-	case MLX5DR_TABLE_TYPE_FDB:
-		pool->flags |= MLX5DR_POOL_FLAGS_MIRROR_RESOURCES;
-		pool->fw_ft_type = FS_FT_FDB; /* TBD: Change it in Alex's set to have the RX_FDB */
-		break;
-	default:
-		DR_LOG(ERR, "Unsupported memory pool type");
-		rte_errno = ENOTSUP;
-		goto free_pool;
-	}
 
 	/* support general db */
 	if (pool->flags & (MLX5DR_POOL_FLAGS_RELEASE_FREE_RESOURCE |
