@@ -39,6 +39,12 @@ enum mlx5dr_pool_flags {
 	MLX5DR_POOL_FLAGS_FIXED_SIZE_OBJECTS = 1 << 3,
 	/* internal flag, indicates pool that uses for FDB */
 	MLX5DR_POOL_FLAGS_MIRROR_RESOURCES = 1 << 4,
+
+	/* These values should be used by the caller */
+	MLX5DR_POOL_FLAGS_FOR_STC_POOL = MLX5DR_POOL_FLAGS_ONE_RESOURCE |
+	MLX5DR_POOL_FLAGS_FIXED_SIZE_OBJECTS,
+	MLX5DR_POOL_FLAGS_FOR_MATCHER_STE_POOL = MLX5DR_POOL_FLAGS_RELEASE_FREE_RESOURCE |
+	MLX5DR_POOL_FLAGS_RESOURCE_PER_CHUNK,
 };
 
 struct mlx5dr_pool_attr {

@@ -4,13 +4,6 @@
 
 #include "mlx5dr_internal.h"
 
-enum {
-	MLX5DR_CTX_FLAGS_FOR_STC_POOL = MLX5DR_POOL_FLAGS_ONE_RESOURCE |
-	MLX5DR_POOL_FLAGS_FIXED_SIZE_OBJECTS,
-	MLX5DR_CTX_FLAGS_FOR_MATCHER_STE_POOL = MLX5DR_POOL_FLAGS_RELEASE_FREE_RESOURCE |
-	MLX5DR_POOL_FLAGS_RESOURCE_PER_CHUNK,
-};
-
 static int mlx5dr_context_pools_init(struct mlx5dr_context *ctx)
 {
 	struct mlx5dr_pool_attr pool_attr = {0};
@@ -22,7 +15,7 @@ static int mlx5dr_context_pools_init(struct mlx5dr_context *ctx)
 
 	/* Create an STC pool per FT type */
 	pool_attr.pool_type = MLX5DR_POOL_TYPE_STC;
-	pool_attr.flags = MLX5DR_CTX_FLAGS_FOR_STC_POOL;
+	pool_attr.flags = MLX5DR_POOL_FLAGS_FOR_STC_POOL;
 	max_log_sz = RTE_MIN(MLX5DR_POOL_STC_LOG_SZ, ctx->caps->stc_alloc_log_max);
 	pool_attr.alloc_log_sz = RTE_MAX(max_log_sz, ctx->caps->stc_alloc_log_gran);
 
@@ -37,7 +30,7 @@ static int mlx5dr_context_pools_init(struct mlx5dr_context *ctx)
 
 	/* Create an STE pool per FT type */
 	pool_attr.pool_type = MLX5DR_POOL_TYPE_STE;
-	pool_attr.flags = MLX5DR_CTX_FLAGS_FOR_MATCHER_STE_POOL;
+	pool_attr.flags = MLX5DR_POOL_FLAGS_FOR_MATCHER_STE_POOL;
 	max_log_sz = RTE_MIN(MLX5DR_POOL_STE_MIN_LOG_SZ, ctx->caps->ste_alloc_log_max);
 	pool_attr.alloc_log_sz = RTE_MAX(max_log_sz, ctx->caps->ste_alloc_log_gran);
 
