@@ -70,31 +70,50 @@ class Mlx5drTrafficTest(PydiruTrafficTestCase):
         raw_traffic(self.client, self.server, self.server.num_msgs, [packet],
                     tag_value=0x1234)
 
-    def test_mlx5dr_modify(self):
+    def smac_modify_rule_traffic(self, smac_15_0_only=False):
         """
-        Create modify action on RX with two set actions to change the src mac, send
+        Create modify action on RX with one/two set actions to change the src mac, send
         packet and verify using TIR action.
+        :param smac_15_0_only: If True modify only the last 2 bytes of smac
         """
         rte_items = create_sipv4_rte_items(PacketConsts.SRC_IP)
         self.server.init_steering_resources(rte_items=rte_items)
         smac_47_16 = 0x88888888
         smac_15_0 = 0x8888
         str_smac = "88:88:88:88:88:88"
-        self.action1 = SetActionIn(action_type=SET_ACTION, field=OUT_SMAC_47_16_FIELD_ID,
-                                   length=OUT_SMAC_47_16_FIELD_LENGTH, data=smac_47_16)
-        self.action2 = SetActionIn(action_type=SET_ACTION, field=OUT_SMAC_15_0_FIELD_ID,
-                                   length=OUT_SMAC_15_0_FIELD_LENGTH, data=smac_15_0)
+        actions = []
+        if not smac_15_0_only:
+            actions.append(SetActionIn(action_type=SET_ACTION, field=OUT_SMAC_47_16_FIELD_ID,
+                                       length=OUT_SMAC_47_16_FIELD_LENGTH, data=smac_47_16))
+        actions.append(SetActionIn(action_type=SET_ACTION, field=OUT_SMAC_15_0_FIELD_ID,
+                                   length=OUT_SMAC_15_0_FIELD_LENGTH, data=smac_15_0))
         _, self.modify_ra = self.server.create_rule_action('modify', log_bulk_size=12, offset=0,
-                                                           actions=[self.action1, self.action2])
+                                                           actions=actions)
         _, tir_ra = self.server.create_rule_action('tir')
         self.modify_rule = Mlx5drRule(matcher=self.server.matcher, mt_idx=0, rte_items=rte_items,
                                       rule_actions=[self.modify_ra, tir_ra], num_of_actions=2,
                                       rule_attr_create=Mlx5drRuleAttr(user_data=bytes(8)),
                                       dr_ctx=self.server.dr_ctx)
+        if smac_15_0_only:
+            str_smac = PacketConsts.SRC_MAC[:12] + str_smac[12:]
         exp_src_mac = struct.pack('!6s', bytes.fromhex(str_smac.replace(':', '')))
         exp_packet = gen_packet(self.server.msg_size, src_mac=exp_src_mac)
         packet = gen_packet(self.server.msg_size)
         raw_traffic(self.client, self.server, self.server.num_msgs, [packet], exp_packet)
+
+    def test_mlx5dr_modify(self):
+        """
+        Create modify action on RX with two set actions to change the src mac,
+        send packet and verify using TIR action.
+        """
+        self.smac_modify_rule_traffic()
+
+    def test_mlx5dr_modify_single_action(self):
+        """
+        Create modify action with single set action on RX and validate by
+        sending a packet and verifying using TIR action.
+        """
+        self.smac_modify_rule_traffic(smac_15_0_only=True)
 
     @staticmethod
     def create_miss_rule(agr_obj, rte_items, rule_actions):
