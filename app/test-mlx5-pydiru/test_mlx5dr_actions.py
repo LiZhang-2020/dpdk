@@ -115,6 +115,42 @@ class Mlx5drTrafficTest(PydiruTrafficTestCase):
         """
         self.smac_modify_rule_traffic(smac_15_0_only=True)
 
+    def test_mlx5dr_modify_shared(self):
+        """
+        Create shared modify action and 3 RX matchers, use this action on all matchers
+        and validate with traffic.
+        """
+        items = [create_sipv4_rte_items(f'{i}.{i}.{i}.{i}') for i in range(1, 4)]
+        dip_rte = create_dipv4_rte_items()
+        self.server.init_steering_resources(rte_items=items[0], root_rte_items=dip_rte)
+        self.server.matcher2 = self.server.create_matcher(self.server.table,
+                                                          [Mlx5drMacherTemplate(items[1])], prio=2)
+        self.server.matcher3 = self.server.create_matcher(self.server.table,
+                                                          [Mlx5drMacherTemplate(items[2])], prio=3)
+        matchers = [self.server.matcher, self.server.matcher2, self.server.matcher3]
+        str_smac = "88:88:88:88:88:88"
+        action1 = SetActionIn(action_type=SET_ACTION, field=OUT_SMAC_47_16_FIELD_ID,
+                              length=OUT_SMAC_47_16_FIELD_LENGTH, data=0x88888888)
+        action2 = SetActionIn(action_type=SET_ACTION, field=OUT_SMAC_15_0_FIELD_ID,
+                              length=OUT_SMAC_15_0_FIELD_LENGTH, data=0x8888)
+        modify_flags = me.MLX5DR_ACTION_FLAG_SHARED | me.MLX5DR_ACTION_FLAG_HWS_RX
+        _, self.modify_ra = self.server.create_rule_action('modify', flags=modify_flags,
+                                                           log_bulk_size=0, offset=0,
+                                                           actions=[action1, action2])
+        _, tir_ra = self.server.create_rule_action('tir')
+        modify_rules = []
+        dr_rule_attr = Mlx5drRuleAttr(user_data=bytes(8))
+        for i in range(len(matchers)):
+            modify_rules.append(Mlx5drRule(matcher=matchers[i], mt_idx=0, rte_items=items[i],
+                                           rule_actions=[self.modify_ra, tir_ra], num_of_actions=2,
+                                           rule_attr_create=dr_rule_attr, dr_ctx=self.server.dr_ctx))
+        exp_src_mac = struct.pack('!6s', bytes.fromhex(str_smac.replace(':', '')))
+        for i in range(1, 4):
+            sip = f'{i}.{i}.{i}.{i}'
+            exp_packet = gen_packet(self.server.msg_size, src_ip=sip, src_mac=exp_src_mac)
+            packet = gen_packet(self.server.msg_size, src_ip=sip)
+            raw_traffic(self.client, self.server, self.server.num_msgs, [packet], exp_packet)
+
     @staticmethod
     def create_miss_rule(agr_obj, rte_items, rule_actions):
         return Mlx5drRule(matcher=agr_obj.matcher, mt_idx=0, rte_items=rte_items,
