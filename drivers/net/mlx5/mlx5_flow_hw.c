@@ -1509,6 +1509,9 @@ it_error:
 error:
 	err = rte_errno;
 	if (tbl) {
+		if (tbl->grp)
+			mlx5_hlist_unregister(priv->sh->groups,
+					      &tbl->grp->entry);
 		if (tbl->flow)
 			mlx5_ipool_destroy(tbl->flow);
 		mlx5_free(tbl);
