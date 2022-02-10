@@ -1936,6 +1936,33 @@ flow_hw_resource_release(struct rte_eth_dev *dev)
 	claim_zero(mlx5dr_context_close(priv->dr_ctx));
 }
 
+/* Sets vport tag and mask, for given port, used in HWS rules. */
+void
+flow_hw_set_port_info(struct rte_eth_dev *dev)
+{
+	struct mlx5_priv *priv = dev->data->dev_private;
+	uint16_t port_id = dev->data->port_id;
+	struct flow_hw_port_info *info;
+
+	MLX5_ASSERT(port_id < RTE_MAX_ETHPORTS);
+	info = &mlx5_flow_hw_port_infos[port_id];
+	info->regc_mask = priv->vport_meta_mask;
+	info->regc_value = priv->vport_meta_tag;
+}
+
+/* Clears vport tag and mask used for HWS rules. */
+void
+flow_hw_clear_port_info(struct rte_eth_dev *dev)
+{
+	uint16_t port_id = dev->data->port_id;
+	struct flow_hw_port_info *info;
+
+	MLX5_ASSERT(port_id < RTE_MAX_ETHPORTS);
+	info = &mlx5_flow_hw_port_infos[port_id];
+	info->regc_mask = 0;
+	info->regc_value = 0;
+}
+
 static struct rte_flow_action_handle *
 flow_hw_action_handle_create(struct rte_eth_dev *dev, uint32_t queue,
 			     const struct rte_flow_q_ops_attr *attr,

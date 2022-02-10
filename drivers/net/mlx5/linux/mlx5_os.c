@@ -1739,6 +1739,8 @@ err_secondary:
 	priv->drop_queue.hrxq = mlx5_drop_action_create(eth_dev);
 	if (!priv->drop_queue.hrxq)
 		goto error;
+	if (priv->vport_meta_mask)
+		flow_hw_set_port_info(eth_dev);
 	if (priv->config.dv_flow_en == 2)
 		return eth_dev;
 	/* Port representor shares the same max prioirity with master. */
