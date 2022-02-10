@@ -488,6 +488,12 @@ static int mlx5dr_matcher_init_root(struct mlx5dr_matcher *matcher)
 		break;
 	}
 
+	if (matcher->attr.priority > UINT16_MAX) {
+		DR_LOG(ERR, "Root matcher priority exceeds allowed limit");
+		rte_errno = EINVAL;
+		return rte_errno;
+	}
+
 	mask = simple_calloc(1, MLX5_ST_SZ_BYTES(fte_match_param) +
 			     offsetof(struct mlx5dv_flow_match_parameters, match_buf));
 	if (!mask) {
