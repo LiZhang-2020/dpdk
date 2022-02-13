@@ -176,7 +176,7 @@ static int mlx5dr_matcher_create_rtc(struct mlx5dr_matcher *matcher)
 		return ret;
 	}
 
-	devx_obj = mlx5dr_pool_chunk_get_base_devx_obj_0(ste_pool, &matcher->ste);
+	devx_obj = mlx5dr_pool_chunk_get_base_devx_obj(ste_pool, &matcher->ste);
 
 	rtc_attr.ste_base = devx_obj->id;
 	rtc_attr.ste_offset = matcher->ste.offset;
@@ -184,14 +184,14 @@ static int mlx5dr_matcher_create_rtc(struct mlx5dr_matcher *matcher)
 	rtc_attr.update_index_mode = MLX5_IFC_RTC_STE_UPDATE_MODE_BY_HASH;
 	rtc_attr.log_depth = matcher->attr.table.sz_col_log;
 	rtc_attr.log_size = matcher->attr.table.sz_row_log;
-	rtc_attr.table_type = mlx5dr_table_get_res_fw_ft_type(tbl->type, 0);
+	rtc_attr.table_type = mlx5dr_table_get_res_fw_ft_type(tbl->type, false);
 	rtc_attr.pd = ctx->pd_num;
 	/* The first match template is used since all share the same definer */
 	rtc_attr.definer_id = mlx5dr_definer_get_id(matcher->mt[0]->definer);
 
 	/* STC is a single resource (devx_obj), use any STC for the ID */
 	default_stc = ctx->common_res[tbl->type].default_stc;
-	devx_obj = mlx5dr_pool_chunk_get_base_devx_obj_0(stc_pool, &default_stc->default_hit);
+	devx_obj = mlx5dr_pool_chunk_get_base_devx_obj(stc_pool, &default_stc->default_hit);
 	rtc_attr.stc_base = devx_obj->id;
 
 	matcher->rtc_0 = mlx5dr_cmd_rtc_create(ctx->ibv_ctx, &rtc_attr);
@@ -201,11 +201,11 @@ static int mlx5dr_matcher_create_rtc(struct mlx5dr_matcher *matcher)
 	}
 
 	if (tbl->type == MLX5DR_TABLE_TYPE_FDB) {
-		devx_obj = mlx5dr_pool_chunk_get_base_devx_obj_1(ste_pool, &matcher->ste);
+		devx_obj = mlx5dr_pool_chunk_get_base_devx_obj_mirror(ste_pool, &matcher->ste);
 		rtc_attr.ste_base = devx_obj->id;
-		rtc_attr.table_type = mlx5dr_table_get_res_fw_ft_type(tbl->type, 1);
+		rtc_attr.table_type = mlx5dr_table_get_res_fw_ft_type(tbl->type, true);
 
-		devx_obj = mlx5dr_pool_chunk_get_base_devx_obj_1(stc_pool, &default_stc->default_hit);
+		devx_obj = mlx5dr_pool_chunk_get_base_devx_obj_mirror(stc_pool, &default_stc->default_hit);
 		rtc_attr.stc_base = devx_obj->id;
 
 		matcher->rtc_1 = mlx5dr_cmd_rtc_create(ctx->ibv_ctx, &rtc_attr);

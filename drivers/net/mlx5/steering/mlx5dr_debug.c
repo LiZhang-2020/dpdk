@@ -115,9 +115,9 @@ static int mlx5dr_debug_dump_matcher(FILE *f, struct mlx5dr_matcher *matcher)
 	int ret;
 
 	ste_pool = ctx->ste_pool[tbl_type];
-	ste_0 = mlx5dr_pool_chunk_get_base_devx_obj_0(ste_pool, &matcher->ste);
+	ste_0 = mlx5dr_pool_chunk_get_base_devx_obj(ste_pool, &matcher->ste);
 	if (tbl_type == MLX5DR_TABLE_TYPE_FDB)
-		ste_1 = mlx5dr_pool_chunk_get_base_devx_obj_1(ste_pool, &matcher->ste);
+		ste_1 = mlx5dr_pool_chunk_get_base_devx_obj_mirror(ste_pool, &matcher->ste);
 
 	ret = fprintf(f, "%d,0x%" PRIx64 ",0x%" PRIx64 ",%d,%d,0x%" PRIx64 ",%d,%d,%d,%d\n",
 		      MLX5DR_DEBUG_RES_TYPE_MATCHER,

@@ -80,7 +80,7 @@ mlx5dr_pool_resource_alloc(struct mlx5dr_pool *pool, uint32_t log_range, int idx
 	struct mlx5dr_pool_resource *resource;
 	uint32_t fw_ft_type;
 
-	fw_ft_type = mlx5dr_table_get_res_fw_ft_type(pool->tbl_type, 0);
+	fw_ft_type = mlx5dr_table_get_res_fw_ft_type(pool->tbl_type, false);
 	resource = mlx5dr_pool_crete_one_resource(pool, log_range, fw_ft_type);
 	if (!resource) {
 		DR_LOG(ERR, "Failed allocating resource");
@@ -91,7 +91,7 @@ mlx5dr_pool_resource_alloc(struct mlx5dr_pool *pool, uint32_t log_range, int idx
 	if (pool->tbl_type == MLX5DR_TABLE_TYPE_FDB) {
 		struct mlx5dr_pool_resource *mir_resource;
 
-		fw_ft_type = mlx5dr_table_get_res_fw_ft_type(pool->tbl_type, 1);
+		fw_ft_type = mlx5dr_table_get_res_fw_ft_type(pool->tbl_type, true);
 		mir_resource = mlx5dr_pool_crete_one_resource(pool, log_range, fw_ft_type);
 		if (!mir_resource) {
 			DR_LOG(ERR, "Failed allocating mirrored resource");

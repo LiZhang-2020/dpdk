@@ -19,14 +19,14 @@ struct mlx5dr_table {
 
 static inline
 uint32_t mlx5dr_table_get_res_fw_ft_type(enum mlx5dr_table_type tbl_type,
-					 uint8_t id)
+					 bool is_mirror)
 {
 	if (tbl_type == MLX5DR_TABLE_TYPE_NIC_RX)
 		return FS_FT_NIC_RX;
 	else if (tbl_type == MLX5DR_TABLE_TYPE_NIC_TX)
 		return FS_FT_NIC_TX;
 	else if (tbl_type == MLX5DR_TABLE_TYPE_FDB)
-		return id ? FS_FT_FDB_TX : FS_FT_FDB_RX;
+		return is_mirror ? FS_FT_FDB_TX : FS_FT_FDB_RX;
 
 	assert(0);
 	return 0;

@@ -120,15 +120,15 @@ void mlx5dr_pool_chunk_free(struct mlx5dr_pool *pool,
 			    struct mlx5dr_pool_chunk *chunk);
 
 static inline struct mlx5dr_devx_obj *
-mlx5dr_pool_chunk_get_base_devx_obj_0(struct mlx5dr_pool *pool,
-				      struct mlx5dr_pool_chunk *chunk)
+mlx5dr_pool_chunk_get_base_devx_obj(struct mlx5dr_pool *pool,
+				    struct mlx5dr_pool_chunk *chunk)
 {
 	return pool->resource[chunk->resource_idx]->devx_obj;
 }
 
 static inline struct mlx5dr_devx_obj *
-mlx5dr_pool_chunk_get_base_devx_obj_1(struct mlx5dr_pool *pool,
-				      struct mlx5dr_pool_chunk *chunk)
+mlx5dr_pool_chunk_get_base_devx_obj_mirror(struct mlx5dr_pool *pool,
+					   struct mlx5dr_pool_chunk *chunk)
 {
 	return pool->mirror_resource[chunk->resource_idx]->devx_obj;
 }
