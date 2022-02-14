@@ -19,6 +19,18 @@ struct mlx5dr_cmd_ft_modify_attr {
 	bool rtc_valid;
 };
 
+struct mlx5dr_cmd_fg_attr {
+	uint32_t	table_id;
+	uint32_t	table_type;
+};
+
+struct mlx5dr_cmd_forward_tbl {
+	struct mlx5dr_devx_obj	*ft;
+	struct mlx5dr_devx_obj	*fg;
+	struct mlx5dr_devx_obj	*fte;
+	uint32_t refcount;
+};
+
 struct mlx5dr_cmd_rtc_create_attr {
 	uint32_t pd;
 	uint32_t stc_base;
@@ -172,5 +184,11 @@ int mlx5dr_cmd_sq_modify_rdy(struct mlx5dr_devx_obj *devx_obj);
 
 int mlx5dr_cmd_query_caps(struct ibv_context *ctx,
 			  struct mlx5dr_cmd_query_caps *caps);
+
+void mlx5dr_cmd_miss_ft_destroy(struct mlx5dr_cmd_forward_tbl *tbl);
+struct mlx5dr_cmd_forward_tbl *
+mlx5dr_cmd_miss_ft_create(struct ibv_context *ctx,
+			  struct mlx5dr_cmd_ft_create_attr *ft_attr,
+			  uint32_t vport);
 #endif
 

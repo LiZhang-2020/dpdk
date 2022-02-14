@@ -26,8 +26,8 @@ mlx5dr_cmd_flow_table_create(struct ibv_context *ctx,
 	devx_obj = simple_malloc(sizeof(*devx_obj));
 	if (!devx_obj) {
 		DR_LOG(ERR, "Failed to allocate memory for flow table object");
-                rte_errno = ENOMEM;
-                return NULL;
+		rte_errno = ENOMEM;
+		return NULL;
 	}
 
 	MLX5_SET(create_flow_table_in, in, opcode, MLX5_CMD_OP_CREATE_FLOW_TABLE);
@@ -76,6 +76,137 @@ mlx5dr_cmd_flow_table_modify(struct mlx5dr_devx_obj *devx_obj,
 	}
 
 	return ret;
+}
+
+static struct mlx5dr_devx_obj *
+mlx5dr_cmd_flow_group_create(struct ibv_context *ctx,
+			     struct mlx5dr_cmd_fg_attr *fg_attr)
+{
+	uint32_t out[MLX5_ST_SZ_DW(create_flow_group_out)] = {0};
+	uint32_t in[MLX5_ST_SZ_DW(create_flow_group_in)] = {0};
+	struct mlx5dr_devx_obj *devx_obj;
+
+	devx_obj = simple_malloc(sizeof(*devx_obj));
+	if (!devx_obj) {
+		DR_LOG(ERR, "Failed to allocate memory for flow group object");
+		rte_errno = ENOMEM;
+		return NULL;
+	}
+
+	MLX5_SET(create_flow_group_in, in, opcode, MLX5_CMD_OP_CREATE_FLOW_GROUP);
+	MLX5_SET(create_flow_group_in, in, table_type, fg_attr->table_type);
+	MLX5_SET(create_flow_group_in, in, table_id, fg_attr->table_id);
+
+	devx_obj->obj = mlx5_glue->devx_obj_create(ctx, in, sizeof(in), out, sizeof(out));
+	if (!devx_obj->obj) {
+		DR_LOG(ERR, "Failed to create Flow group");
+		simple_free(devx_obj);
+		rte_errno = errno;
+		return NULL;
+	}
+
+	devx_obj->id = MLX5_GET(create_flow_group_out, out, group_id);
+
+	return devx_obj;
+}
+
+static struct mlx5dr_devx_obj *
+mlx5dr_cmd_set_vport_fte(struct ibv_context *ctx,
+			 uint32_t table_type,
+			 uint32_t table_id,
+			 uint32_t group_id,
+			 uint32_t vport_id)
+{
+	uint32_t in[MLX5_ST_SZ_DW(set_fte_in) + MLX5_ST_SZ_DW(dest_format)] = {0};
+	uint32_t out[MLX5_ST_SZ_DW(set_fte_out)] = {0};
+	struct mlx5dr_devx_obj *devx_obj;
+	void *in_flow_context;
+	void *in_dests;
+
+	devx_obj = simple_malloc(sizeof(*devx_obj));
+	if (!devx_obj) {
+		DR_LOG(ERR, "Failed to allocate memory for fte object");
+		rte_errno = ENOMEM;
+		return NULL;
+	}
+
+	MLX5_SET(set_fte_in, in, opcode, MLX5_CMD_OP_SET_FLOW_TABLE_ENTRY);
+	MLX5_SET(set_fte_in, in, table_type, table_type);
+	MLX5_SET(set_fte_in, in, table_id, table_id);
+
+	in_flow_context = MLX5_ADDR_OF(set_fte_in, in, flow_context);
+	MLX5_SET(flow_context, in_flow_context, group_id, group_id);
+	MLX5_SET(flow_context, in_flow_context, destination_list_size, 1);
+	MLX5_SET(flow_context, in_flow_context, action, MLX5_FLOW_CONTEXT_ACTION_FWD_DEST);
+
+	in_dests = MLX5_ADDR_OF(flow_context, in_flow_context, destination);
+	MLX5_SET(dest_format, in_dests, destination_type,
+		 MLX5_FLOW_DESTINATION_TYPE_VPORT);
+	MLX5_SET(dest_format, in_dests, destination_id, vport_id);
+
+	devx_obj->obj = mlx5_glue->devx_obj_create(ctx, in, sizeof(in), out, sizeof(out));
+	if (!devx_obj->obj) {
+		DR_LOG(ERR, "Failed to create FTE");
+		simple_free(devx_obj);
+		rte_errno = errno;
+		return NULL;
+	}
+
+	return devx_obj;
+}
+
+void mlx5dr_cmd_miss_ft_destroy(struct mlx5dr_cmd_forward_tbl *tbl)
+{
+	mlx5dr_cmd_destroy_obj(tbl->fte);
+	mlx5dr_cmd_destroy_obj(tbl->fg);
+	mlx5dr_cmd_destroy_obj(tbl->ft);
+}
+
+struct mlx5dr_cmd_forward_tbl *
+mlx5dr_cmd_miss_ft_create(struct ibv_context *ctx,
+			  struct mlx5dr_cmd_ft_create_attr *ft_attr,
+			  uint32_t vport)
+{
+	struct mlx5dr_cmd_fg_attr fg_attr = {0};
+	struct mlx5dr_cmd_forward_tbl *tbl;
+
+	tbl = simple_calloc(1, sizeof(*tbl));
+	if (!tbl) {
+		DR_LOG(ERR, "Failed to allocate memory for forward default");
+		rte_errno = ENOMEM;
+		return NULL;
+	}
+
+	tbl->ft = mlx5dr_cmd_flow_table_create(ctx, ft_attr);
+	if (!tbl->ft) {
+		DR_LOG(ERR, "Failed to create FT for miss-table");
+		goto free_tbl;
+	}
+
+	fg_attr.table_id = tbl->ft->id;
+	fg_attr.table_type = ft_attr->type;
+
+	tbl->fg = mlx5dr_cmd_flow_group_create(ctx, &fg_attr);
+	if (!tbl->fg) {
+		DR_LOG(ERR, "Failed to create FG for miss-table");
+		goto free_ft;
+	}
+
+	tbl->fte = mlx5dr_cmd_set_vport_fte(ctx, ft_attr->type, tbl->ft->id, tbl->fg->id, vport);
+	if (!tbl->fte) {
+		DR_LOG(ERR, "Failed to create FTE for miss-table");
+		goto free_fg;
+	}
+
+	return tbl;
+
+free_fg:
+	mlx5dr_cmd_destroy_obj(tbl->fg);
+free_ft:
+	mlx5dr_cmd_destroy_obj(tbl->ft);
+free_tbl:
+	simple_free(tbl);
+	return NULL;
 }
 
 struct mlx5dr_devx_obj *
