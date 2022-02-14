@@ -470,8 +470,6 @@ mlx5_vdpa_args_check_handler(const char *key, const char *val, void *opaque)
 	unsigned long tmp;
 	int n_cores = sysconf(_SC_NPROCESSORS_ONLN);
 
-	if (strcmp(key, RTE_DEVARGS_KEY_CLASS) == 0)
-		return 0;
 	errno = 0;
 	tmp = strtoul(val, NULL, 0);
 	if (errno) {
@@ -502,28 +500,35 @@ mlx5_vdpa_args_check_handler(const char *key, const char *val, void *opaque)
 		priv->queue_size = (uint16_t)tmp;
 	} else if (strcmp(key, "queues") == 0) {
 		priv->queues = (uint16_t)tmp;
-	} else {
-		DRV_LOG(WARNING, "Invalid key %s.", key);
 	}
 	return 0;
 }
 
 static void
-mlx5_vdpa_config_get(struct rte_devargs *devargs, struct mlx5_vdpa_priv *priv)
+mlx5_vdpa_config_get(struct mlx5_kvargs_ctrl *mkvlist,
+		     struct mlx5_vdpa_priv *priv)
 {
-	struct rte_kvargs *kvlist;
+	const char **params = (const char *[]){
+		"event_core",
+		"event_mode",
+		"event_us",
+		"hw_latency_mode",
+		"hw_max_latency_us",
+		"hw_max_pending_comp",
+		"no_traffic_time",
+		"queue_size",
+		"queues",
+		NULL,
+	};
 
 	priv->event_mode = MLX5_VDPA_EVENT_MODE_FIXED_TIMER;
 	priv->event_us = 0;
 	priv->event_core = -1;
 	priv->no_traffic_max = MLX5_VDPA_DEFAULT_NO_TRAFFIC_MAX;
-	if (devargs == NULL)
+	if (mkvlist == NULL)
 		return;
-	kvlist = rte_kvargs_parse(devargs->args, NULL);
-	if (kvlist == NULL)
-		return;
-	rte_kvargs_process(kvlist, NULL, mlx5_vdpa_args_check_handler, priv);
-	rte_kvargs_free(kvlist);
+	mlx5_kvargs_process(mkvlist, params, mlx5_vdpa_args_check_handler,
+			    priv);
 	if (!priv->event_us &&
 	    priv->event_mode == MLX5_VDPA_EVENT_MODE_DYNAMIC_TIMER)
 		priv->event_us = MLX5_VDPA_DEFAULT_TIMER_STEP_US;
@@ -677,7 +682,8 @@ mlx5_vdpa_create_dev_resources(struct mlx5_vdpa_priv *priv)
 }
 
 static int
-mlx5_vdpa_dev_probe(struct mlx5_common_device *cdev)
+mlx5_vdpa_dev_probe(struct mlx5_common_device *cdev,
+		    struct mlx5_kvargs_ctrl *mkvlist)
 {
 	struct mlx5_vdpa_priv *priv = NULL;
 	struct mlx5_hca_attr *attr = &cdev->config.hca_attr;
@@ -706,7 +712,7 @@ mlx5_vdpa_dev_probe(struct mlx5_common_device *cdev)
 		priv->num_lag_ports = 1;
 	pthread_mutex_init(&priv->vq_config_lock, NULL);
 	priv->cdev = cdev;
-	mlx5_vdpa_config_get(cdev->dev->devargs, priv);
+	mlx5_vdpa_config_get(mkvlist, priv);
 	if (mlx5_vdpa_create_dev_resources(priv))
 		goto error;
 	priv->vdev = rte_vdpa_register_device(cdev->dev, &mlx5_vdpa_ops);

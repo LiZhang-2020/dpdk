@@ -84,6 +84,8 @@ INTERNAL {
 	mlx5_hlist_unregister;
 	mlx5_hlist_destroy;
 
+	mlx5_kvargs_process;
+
 	mlx5_mp_init_primary;
 	mlx5_mp_uninit_primary;
 	mlx5_mp_init_secondary;
