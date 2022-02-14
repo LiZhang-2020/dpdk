@@ -1041,7 +1041,7 @@ mlx5_flow_get_reg_id(struct rte_eth_dev *dev,
 		     struct rte_flow_error *error)
 {
 	struct mlx5_priv *priv = dev->data->dev_private;
-	struct mlx5_dev_config *config = &priv->config;
+	struct mlx5_sh_config *config = &priv->sh->config;
 	enum modify_reg start_reg;
 	bool skip_mtr_reg = false;
 
@@ -2143,7 +2143,7 @@ mlx5_flow_validate_attributes(struct rte_eth_dev *dev,
 		return rte_flow_error_set(error, ENOTSUP,
 					  RTE_FLOW_ERROR_TYPE_ATTR_EGRESS, NULL,
 					  "egress is not supported");
-	if (attributes->transfer && !priv->config.dv_esw_en)
+	if (attributes->transfer && !priv->sh->config.dv_esw_en)
 		return rte_flow_error_set(error, ENOTSUP,
 					  RTE_FLOW_ERROR_TYPE_ATTR_TRANSFER,
 					  NULL, "transfer is not supported");
@@ -2855,7 +2855,7 @@ mlx5_flow_validate_item_vxlan_gpe(const struct rte_flow_item *item,
 		uint8_t vni[4];
 	} id = { .vlan_id = 0, };
 
-	if (!priv->config.l3_vxlan_en)
+	if (!priv->sh->config.l3_vxlan_en)
 		return rte_flow_error_set(error, ENOTSUP,
 					  RTE_FLOW_ERROR_TYPE_ITEM, item,
 					  "L3 VXLAN is not enabled by device"
@@ -3733,14 +3733,14 @@ flow_get_drv_type(struct rte_eth_dev *dev, const struct rte_flow_attr *attr)
 	 * Currently when dv_flow_en == 2, only HW steering engine is
 	 * supported. New engines can also be chosen here if ready.
 	 */
-	if (priv->config.dv_flow_en == 2)
+	if (priv->sh->config.dv_flow_en == 2)
 		return MLX5_FLOW_TYPE_HW;
 	/* If no OS specific type - continue with DV/VERBS selection */
-	if (attr->transfer && priv->config.dv_esw_en)
+	if (attr->transfer && priv->sh->config.dv_esw_en)
 		type = MLX5_FLOW_TYPE_DV;
 	if (!attr->transfer)
-		type = priv->config.dv_flow_en ? MLX5_FLOW_TYPE_DV :
-						 MLX5_FLOW_TYPE_VERBS;
+		type = priv->sh->config.dv_flow_en ? MLX5_FLOW_TYPE_DV :
+						     MLX5_FLOW_TYPE_VERBS;
 	return type;
 }
 
@@ -4432,7 +4432,7 @@ static bool flow_check_modify_action_type(struct rte_eth_dev *dev,
 		return true;
 	case RTE_FLOW_ACTION_TYPE_FLAG:
 	case RTE_FLOW_ACTION_TYPE_MARK:
-		if (priv->config.dv_xmeta_en != MLX5_XMETA_MODE_LEGACY)
+		if (priv->sh->config.dv_xmeta_en != MLX5_XMETA_MODE_LEGACY)
 			return true;
 		else
 			return false;
@@ -4859,8 +4859,8 @@ flow_mreg_add_default_copy_action(struct rte_eth_dev *dev,
 	uint32_t mark_id;
 
 	/* Check whether extensive metadata feature is engaged. */
-	if (!priv->config.dv_flow_en ||
-	    priv->config.dv_xmeta_en == MLX5_XMETA_MODE_LEGACY ||
+	if (!priv->sh->config.dv_flow_en ||
+	    priv->sh->config.dv_xmeta_en == MLX5_XMETA_MODE_LEGACY ||
 	    !mlx5_flow_ext_mreg_supported(dev) ||
 	    !priv->sh->dv_regc0_mask)
 		return 0;
@@ -4919,7 +4919,7 @@ flow_mreg_update_copy_table(struct rte_eth_dev *dev,
 			    struct rte_flow_error *error)
 {
 	struct mlx5_priv *priv = dev->data->dev_private;
-	struct mlx5_dev_config *config = &priv->config;
+	struct mlx5_sh_config *config = &priv->sh->config;
 	struct mlx5_flow_mreg_copy_resource *mcp_res;
 	const struct rte_flow_action_mark *mark;
 
@@ -6128,7 +6128,7 @@ flow_create_split_metadata(struct rte_eth_dev *dev,
 			   struct rte_flow_error *error)
 {
 	struct mlx5_priv *priv = dev->data->dev_private;
-	struct mlx5_dev_config *config = &priv->config;
+	struct mlx5_sh_config *config = &priv->sh->config;
 	const struct rte_flow_action *qrss = NULL;
 	struct rte_flow_action *ext_actions = NULL;
 	struct mlx5_flow *dev_flow = NULL;
@@ -7482,7 +7482,7 @@ mlx5_flow_list_flush(struct rte_eth_dev *dev, enum mlx5_flow_type type,
 	uint32_t num_flushed = 0, fidx = 1;
 	struct rte_flow *flow;
 
-	if (priv->config.dv_flow_en == 2 &&
+	if (priv->sh->config.dv_flow_en == 2 &&
 	    type == MLX5_FLOW_TYPE_GEN) {
 		flow_hw_q_flow_flush(dev, NULL);
 		return;
@@ -9413,7 +9413,7 @@ mlx5_flow_discover_mreg_c(struct rte_eth_dev *dev)
 		struct rte_flow *flow;
 		struct rte_flow_error error;
 
-		if (!priv->config.dv_flow_en)
+		if (!priv->sh->config.dv_flow_en)
 			break;
 		/* Create internal flow, validation skips copy action. */
 		flow_idx = mlx5_flow_list_create(dev, MLX5_FLOW_TYPE_GEN, &attr,
@@ -9730,7 +9730,7 @@ mlx5_flow_dev_dump(struct rte_eth_dev *dev, struct rte_flow *flow_idx,
 	struct mlx5_flow_handle *dh;
 	struct rte_flow *flow;
 
-	if (!priv->config.dv_flow_en) {
+	if (!sh->config.dv_flow_en) {
 		if (fputs("device dv flow disabled\n", file) <= 0)
 			return -errno;
 		return -ENOTSUP;
@@ -9742,7 +9742,7 @@ mlx5_flow_dev_dump(struct rte_eth_dev *dev, struct rte_flow *flow_idx,
 		if (mlx5_flow_dev_dump_sh_all(dev, file, error))
 			return -EINVAL;
 #endif
-		if (priv->config.dv_flow_en == 2)
+		if (priv->sh->config.dv_flow_en == 2)
 			return mlx5dr_debug_dump(priv->dr_ctx, file);
 		else
 			return mlx5_devx_cmd_flow_dump(sh->fdb_domain,
@@ -9764,7 +9764,7 @@ mlx5_flow_dev_dump(struct rte_eth_dev *dev, struct rte_flow *flow_idx,
 		if (!dh)
 			return -ENOENT;
 		if (dh->drv_flow) {
-			if (priv->config.dv_flow_en == 2) {
+			if (priv->sh->config.dv_flow_en == 2) {
 				return -ENOTSUP;
 			} else {
 				ret = mlx5_devx_cmd_flow_single_dump(dh->drv_flow,
@@ -10715,7 +10715,7 @@ mlx5_flow_tunnel_validate(struct rte_eth_dev *dev,
 {
 	struct mlx5_priv *priv = dev->data->dev_private;
 
-	if (!priv->config.dv_flow_en)
+	if (!priv->sh->config.dv_flow_en)
 		return rte_flow_error_set(error, ENOTSUP,
 					  RTE_FLOW_ERROR_TYPE_ACTION_CONF, NULL,
 					  "flow DV interface is off");
@@ -11109,7 +11109,7 @@ mlx5_flow_discover_priorities(struct rte_eth_dev *dev)
 	type = mlx5_flow_os_get_type();
 	if (type == MLX5_FLOW_TYPE_MAX) {
 		type = MLX5_FLOW_TYPE_VERBS;
-		if (priv->sh->cdev->config.devx && priv->config.dv_flow_en)
+		if (priv->sh->cdev->config.devx && priv->sh->config.dv_flow_en)
 			type = MLX5_FLOW_TYPE_DV;
 	}
 	fops = flow_get_drv_ops(type);

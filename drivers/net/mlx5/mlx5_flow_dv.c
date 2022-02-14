@@ -644,7 +644,8 @@ flow_dv_convert_action_copy_mreg(struct rte_eth_dev *dev,
 		uint32_t reg_c0 = priv->sh->dv_regc0_mask;
 
 		MLX5_ASSERT(reg_c0);
-		MLX5_ASSERT(priv->config.dv_xmeta_en != MLX5_XMETA_MODE_LEGACY);
+		MLX5_ASSERT(priv->sh->config.dv_xmeta_en !=
+			    MLX5_XMETA_MODE_LEGACY);
 		if (conf->dst == REG_C_0) {
 			/* Copy to reg_c[0], within mask only. */
 			reg_dst.offset = rte_bsf32(reg_c0);
@@ -793,7 +794,7 @@ flow_dv_validate_item_mark(struct rte_eth_dev *dev,
 			   struct rte_flow_error *error)
 {
 	struct mlx5_priv *priv = dev->data->dev_private;
-	struct mlx5_dev_config *config = &priv->config;
+	struct mlx5_sh_config *config = &priv->sh->config;
 	const struct rte_flow_item_mark *spec = item->spec;
 	const struct rte_flow_item_mark *mask = item->mask;
 	const struct rte_flow_item_mark nic_mask = {
@@ -867,7 +868,7 @@ flow_dv_validate_item_meta(struct rte_eth_dev *dev __rte_unused,
 			   struct rte_flow_error *error)
 {
 	struct mlx5_priv *priv = dev->data->dev_private;
-	struct mlx5_dev_config *config = &priv->config;
+	struct mlx5_sh_config *config = &priv->sh->config;
 	const struct rte_flow_item_meta *spec = item->spec;
 	const struct rte_flow_item_meta *mask = item->mask;
 	struct rte_flow_item_meta nic_mask = {
@@ -1979,7 +1980,7 @@ flow_dv_validate_action_flag(struct rte_eth_dev *dev,
 			     struct rte_flow_error *error)
 {
 	struct mlx5_priv *priv = dev->data->dev_private;
-	struct mlx5_dev_config *config = &priv->config;
+	struct mlx5_sh_config *config = &priv->sh->config;
 	int ret;
 
 	/* Fall back if no extended metadata register support. */
@@ -2038,7 +2039,7 @@ flow_dv_validate_action_mark(struct rte_eth_dev *dev,
 			     struct rte_flow_error *error)
 {
 	struct mlx5_priv *priv = dev->data->dev_private;
-	struct mlx5_dev_config *config = &priv->config;
+	struct mlx5_sh_config *config = &priv->sh->config;
 	const struct rte_flow_action_mark *mark = action->conf;
 	int ret;
 
@@ -2112,7 +2113,7 @@ flow_dv_validate_action_set_meta(struct rte_eth_dev *dev,
 				 struct rte_flow_error *error)
 {
 	struct mlx5_priv *priv = dev->data->dev_private;
-	struct mlx5_dev_config *config = &priv->config;
+	struct mlx5_sh_config *config = &priv->sh->config;
 	const struct rte_flow_action_set_meta *conf;
 	uint32_t nic_mask = UINT32_MAX;
 	int reg;
@@ -2344,7 +2345,7 @@ flow_dv_validate_action_decap(struct rte_eth_dev *dev,
 	const struct mlx5_priv *priv = dev->data->dev_private;
 
 	if (priv->sh->cdev->config.hca_attr.scatter_fcs_w_decap_disable &&
-	    !priv->config.decap_en)
+	    !priv->sh->config.decap_en)
 		return rte_flow_error_set(error, ENOTSUP,
 					  RTE_FLOW_ERROR_TYPE_ACTION, NULL,
 					  "decap is not enabled");
@@ -3259,7 +3260,7 @@ flow_dv_validate_action_modify_mac(struct rte_eth_dev *dev,
 	struct mlx5_priv *priv = dev->data->dev_private;
 
 	ret = flow_dv_validate_action_modify_hdr(action_flags, action, error);
-	if (!ret && (priv->config.dv_validate_mod || !attr->group)) {
+	if (!ret && (priv->sh->config.dv_validate_mod || !attr->group)) {
 		if (!(item_flags & MLX5_FLOW_LAYER_L2))
 			return rte_flow_error_set(error, EINVAL,
 						  RTE_FLOW_ERROR_TYPE_ACTION,
@@ -3297,7 +3298,7 @@ flow_dv_validate_action_modify_ipv4(struct rte_eth_dev *dev,
 	uint64_t layer;
 
 	ret = flow_dv_validate_action_modify_hdr(action_flags, action, error);
-	if (!ret && (priv->config.dv_validate_mod || !attr->group)) {
+	if (!ret && (priv->sh->config.dv_validate_mod || !attr->group)) {
 		layer = (action_flags & MLX5_FLOW_ACTION_DECAP) ?
 				 MLX5_FLOW_LAYER_INNER_L3_IPV4 :
 				 MLX5_FLOW_LAYER_OUTER_L3_IPV4;
@@ -3338,7 +3339,7 @@ flow_dv_validate_action_modify_ipv6(struct rte_eth_dev *dev,
 	uint64_t layer;
 
 	ret = flow_dv_validate_action_modify_hdr(action_flags, action, error);
-	if (!ret && (priv->config.dv_validate_mod || !attr->group)) {
+	if (!ret && (priv->sh->config.dv_validate_mod || !attr->group)) {
 		layer = (action_flags & MLX5_FLOW_ACTION_DECAP) ?
 				 MLX5_FLOW_LAYER_INNER_L3_IPV6 :
 				 MLX5_FLOW_LAYER_OUTER_L3_IPV6;
@@ -3396,7 +3397,7 @@ flow_dv_validate_action_modify_tp(struct rte_eth_dev *dev,
 			return 0;
 	}
 
-	if (priv->config.dv_validate_mod || !attr->group ||
+	if (priv->sh->config.dv_validate_mod || !attr->group ||
 		(item_flags & layer)) {
 		if (action_type == RTE_FLOW_ACTION_TYPE_SET_UDP_TP_SRC ||
 		    action_type == RTE_FLOW_ACTION_TYPE_SET_UDP_TP_DST) {
@@ -3456,7 +3457,7 @@ flow_dv_validate_action_modify_tcp_seq(struct rte_eth_dev *dev,
 
 	ret = flow_dv_validate_action_modify_hdr(action_flags, action, error);
 	if (!ret) {
-		if (priv->config.dv_validate_mod || !attr->group) {
+		if (priv->sh->config.dv_validate_mod || !attr->group) {
 			layer = (action_flags & MLX5_FLOW_ACTION_DECAP) ?
 				MLX5_FLOW_LAYER_INNER_L4_TCP :
 				MLX5_FLOW_LAYER_OUTER_L4_TCP;
@@ -3510,7 +3511,7 @@ flow_dv_validate_action_modify_tcp_ack(struct rte_eth_dev *dev,
 
 	ret = flow_dv_validate_action_modify_hdr(action_flags, action, error);
 	if (!ret) {
-		if (priv->config.dv_validate_mod || !attr->group) {
+		if (priv->sh->config.dv_validate_mod || !attr->group) {
 			layer = (action_flags & MLX5_FLOW_ACTION_DECAP) ?
 				MLX5_FLOW_LAYER_INNER_L4_TCP :
 				MLX5_FLOW_LAYER_OUTER_L4_TCP;
@@ -3578,7 +3579,7 @@ flow_dv_validate_action_modify_ttl(struct rte_eth_dev *dev,
 		else
 			return 0;
 	}
-	if (priv->config.dv_validate_mod || !attr->group ||
+	if (priv->sh->config.dv_validate_mod || !attr->group ||
 		(item_flags & layer)) {
 		if (action_type == RTE_FLOW_ACTION_TYPE_DEC_IPV4_TTL ||
 		    action_type == RTE_FLOW_ACTION_TYPE_SET_IPV4_TTL) {
@@ -3634,7 +3635,7 @@ flow_dv_validate_action_modify_field(struct rte_eth_dev *dev,
 {
 	int ret = 0;
 	struct mlx5_priv *priv = dev->data->dev_private;
-	struct mlx5_dev_config *config = &priv->config;
+	struct mlx5_sh_config *config = &priv->sh->config;
 	const struct rte_flow_action_modify_field *action_modify_field =
 		action->conf;
 	uint32_t dst_width = mlx5_flow_item_field_width(dev,
@@ -3761,7 +3762,7 @@ flow_dv_validate_action_modify_field(struct rte_eth_dev *dev,
 	    action_modify_field->src.field == RTE_FLOW_FIELD_IPV4_ECN ||
 	    action_modify_field->dst.field == RTE_FLOW_FIELD_IPV6_ECN ||
 	    action_modify_field->src.field == RTE_FLOW_FIELD_IPV6_ECN)
-		if (!config->hca_attr.modify_outer_ip_ecn &&
+		if (!priv->sh->cdev->config.hca_attr.modify_outer_ip_ecn &&
 		    !attr->transfer && !attr->group)
 			return rte_flow_error_set(error, ENOTSUP,
 				RTE_FLOW_ERROR_TYPE_ACTION, action,
@@ -4166,7 +4167,7 @@ flow_dv_validate_action_modify_ipv4_dscp(struct rte_eth_dev *dev,
 	struct mlx5_priv *priv = dev->data->dev_private;
 
 	ret = flow_dv_validate_action_modify_hdr(action_flags, action, error);
-	if (!ret && (priv->config.dv_validate_mod || !attr->group)) {
+	if (!ret && (priv->sh->config.dv_validate_mod || !attr->group)) {
 		if (!(item_flags & MLX5_FLOW_LAYER_L3_IPV4))
 			return rte_flow_error_set(error, EINVAL,
 						  RTE_FLOW_ERROR_TYPE_ACTION,
@@ -4203,7 +4204,7 @@ flow_dv_validate_action_modify_ipv6_dscp(struct rte_eth_dev *dev,
 	struct mlx5_priv *priv = dev->data->dev_private;
 
 	ret = flow_dv_validate_action_modify_hdr(action_flags, action, error);
-	if (!ret && (priv->config.dv_validate_mod || !attr->group)) {
+	if (!ret && (priv->sh->config.dv_validate_mod || !attr->group)) {
 		if (!(item_flags & MLX5_FLOW_LAYER_L3_IPV6))
 			return rte_flow_error_set(error, EINVAL,
 						  RTE_FLOW_ERROR_TYPE_ACTION,
@@ -4245,8 +4246,9 @@ flow_dv_modify_ipool_get(struct mlx5_dev_ctx_shared *sh, uint8_t index)
 		       .grow_trunk = 3,
 		       .grow_shift = 2,
 		       .need_lock = 1,
-		       .release_mem_en = !!sh->reclaim_mode,
-		       .per_core_cache = sh->reclaim_mode ? 0 : (1 << 16),
+		       .release_mem_en = !!sh->config.reclaim_mode,
+		       .per_core_cache =
+				       sh->config.reclaim_mode ? 0 : (1 << 16),
 		       .malloc = mlx5_malloc,
 		       .free = mlx5_free,
 		       .type = "mlx5_modify_action_resource",
@@ -4393,7 +4395,7 @@ flow_dv_validate_action_sample(uint64_t *action_flags,
 			       struct rte_flow_error *error)
 {
 	struct mlx5_priv *priv = dev->data->dev_private;
-	struct mlx5_dev_config *dev_conf = &priv->config;
+	struct mlx5_sh_config *dev_conf = &priv->sh->config;
 	const struct rte_flow_action_sample *sample = action->conf;
 	const struct rte_flow_action *act;
 	uint64_t sub_action_flags = 0;
@@ -5520,7 +5522,7 @@ flow_dv_validate_attributes(struct rte_eth_dev *dev,
 					  NULL,
 					  "priority out of range");
 	if (attributes->transfer) {
-		if (!priv->config.dv_esw_en)
+		if (!priv->sh->config.dv_esw_en)
 			return rte_flow_error_set
 				(error, ENOTSUP,
 				 RTE_FLOW_ERROR_TYPE_UNSPECIFIED, NULL,
@@ -5805,7 +5807,7 @@ flow_dv_validate(struct rte_eth_dev *dev, const struct rte_flow_attr *attr,
 		},
 	};
 	struct mlx5_priv *priv = dev->data->dev_private;
-	struct mlx5_dev_config *dev_conf = &priv->config;
+	struct mlx5_sh_config *dev_conf = &priv->sh->config;
 	uint16_t queue_index = 0xFFFF;
 	const struct rte_flow_item_vlan *vlan_m = NULL;
 	uint32_t rw_act_num = 0;
@@ -5832,7 +5834,7 @@ flow_dv_validate(struct rte_eth_dev *dev, const struct rte_flow_attr *attr,
 	tunnel = is_tunnel_offload_active(dev) ?
 		 mlx5_get_tof(items, actions, &tof_rule_type) : NULL;
 	if (tunnel) {
-		if (!priv->config.dv_flow_en)
+		if (!dev_conf->dv_flow_en)
 			return rte_flow_error_set
 				(error, ENOTSUP,
 				 RTE_FLOW_ERROR_TYPE_UNSPECIFIED,
@@ -12842,7 +12844,7 @@ flow_dv_translate(struct rte_eth_dev *dev,
 		  struct rte_flow_error *error)
 {
 	struct mlx5_priv *priv = dev->data->dev_private;
-	struct mlx5_dev_config *dev_conf = &priv->config;
+	struct mlx5_sh_config *dev_conf = &priv->sh->config;
 	struct rte_flow *flow = dev_flow->flow;
 	struct mlx5_flow_handle *handle = dev_flow->handle;
 	struct mlx5_flow_workspace *wks = mlx5_flow_get_thread_workspace();
@@ -13915,7 +13917,7 @@ flow_dv_apply(struct rte_eth_dev *dev, struct rte_flow *flow,
 				(error, errno,
 				RTE_FLOW_ERROR_TYPE_UNSPECIFIED,
 				NULL,
-				(!priv->config.allow_duplicate_pattern &&
+				(!priv->sh->config.allow_duplicate_pattern &&
 				errno == EEXIST) ?
 				"duplicating pattern is not allowed" :
 				"hardware refuses to create flow");
@@ -14663,7 +14665,7 @@ __flow_dv_action_rss_setup(struct rte_eth_dev *dev,
 	/* Set non-zero value to indicate a shared RSS. */
 	rss_desc.shared_rss = action_idx;
 	rss_desc.ind_tbl = shared_rss->ind_tbl;
-	if (priv->config.dv_flow_en == 2)
+	if (priv->sh->config.dv_flow_en == 2)
 		rss_desc.hws_flags = MLX5DR_ACTION_FLAG_HWS_RX;
 	for (i = 0; i < MLX5_RSS_HASH_FIELDS_LEN; i++) {
 		struct mlx5_hrxq *hrxq;
@@ -16026,7 +16028,7 @@ flow_dv_destroy_mtr_tbls(struct rte_eth_dev *dev,
 	struct mlx5_priv *priv = dev->data->dev_private;
 	int i;
 
-	if (!fm || !priv->config.dv_flow_en)
+	if (!fm || !priv->sh->config.dv_flow_en)
 		return;
 	for (i = 0; i < MLX5_MTR_DOMAIN_MAX; i++) {
 		if (fm->drop_rule[i]) {
@@ -16635,7 +16637,8 @@ flow_dv_create_def_policy(struct rte_eth_dev *dev)
 
 	/* Non-termination policy table. */
 	for (i = 0; i < MLX5_MTR_DOMAIN_MAX; i++) {
-		if (!priv->config.dv_esw_en && i == MLX5_MTR_DOMAIN_TRANSFER)
+		if (!priv->sh->config.dv_esw_en &&
+		    i == MLX5_MTR_DOMAIN_TRANSFER)
 			continue;
 		if (__flow_dv_create_domain_def_policy(dev, i)) {
 			DRV_LOG(ERR, "Failed to create default policy");
@@ -17761,7 +17764,7 @@ flow_dv_validate_mtr_policy_acts(struct rte_eth_dev *dev,
 			struct rte_mtr_error *error)
 {
 	struct mlx5_priv *priv = dev->data->dev_private;
-	struct mlx5_dev_config *dev_conf = &priv->config;
+	struct mlx5_sh_config *dev_conf = &priv->sh->config;
 	const struct rte_flow_action *act;
 	uint64_t action_flags[RTE_COLORS] = {0};
 	int actions_n;
@@ -17775,7 +17778,7 @@ flow_dv_validate_mtr_policy_acts(struct rte_eth_dev *dev,
 	bool def_yellow = false;
 	const struct rte_flow_action_rss *rss_color[RTE_COLORS] = {NULL};
 
-	if (!priv->config.dv_esw_en)
+	if (!dev_conf->dv_esw_en)
 		def_domain &= ~MLX5_MTR_DOMAIN_TRANSFER_BIT;
 	*domain_bitmap = def_domain;
 	/* Red color could only support DROP action. */
@@ -17820,7 +17823,7 @@ flow_dv_validate_mtr_policy_acts(struct rte_eth_dev *dev,
 			switch (act->type) {
 			case RTE_FLOW_ACTION_TYPE_PORT_ID:
 			case RTE_FLOW_ACTION_TYPE_REPRESENTED_PORT:
-				if (!priv->config.dv_esw_en)
+				if (!dev_conf->dv_esw_en)
 					return -rte_mtr_error_set(error,
 					ENOTSUP,
 					RTE_MTR_ERROR_TYPE_METER_POLICY,

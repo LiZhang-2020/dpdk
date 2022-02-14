@@ -1105,7 +1105,7 @@ mlx5_dev_start(struct rte_eth_dev *dev)
 			dev->data->port_id, strerror(rte_errno));
 		goto error;
 	}
-	if (priv->sh->cdev->config.devx && priv->config.dv_flow_en &&
+	if (priv->sh->cdev->config.devx && priv->sh->config.dv_flow_en &&
 	    priv->sh->dev_cap.dest_tir) {
 		ret = mlx5_rxq_ibv_obj_dummy_lb_create(dev);
 		if (ret)
@@ -1276,8 +1276,6 @@ mlx5_dev_stop(struct rte_eth_dev *dev)
  * Enable traffic flows configured by control plane
  *
  * @param dev
- *   Pointer to Ethernet device private data.
- * @param dev
  *   Pointer to Ethernet device structure.
  *
  * @return
@@ -1310,7 +1308,7 @@ mlx5_traffic_enable(struct rte_eth_dev *dev)
 	unsigned int j;
 	int ret;
 
-	if (priv->config.dv_flow_en > 1)
+	if (priv->sh->config.dv_flow_en > 1)
 		return 0;
 
 	/*
@@ -1333,7 +1331,7 @@ mlx5_traffic_enable(struct rte_eth_dev *dev)
 				goto error;
 			}
 		}
-		if (priv->config.dv_esw_en) {
+		if (priv->sh->config.dv_esw_en) {
 			if (mlx5_flow_create_devx_sq_miss_flow(dev, i) == 0) {
 				DRV_LOG(ERR,
 					"Port %u Tx queue %u SQ create representor devx default miss rule failed.",
@@ -1343,7 +1341,7 @@ mlx5_traffic_enable(struct rte_eth_dev *dev)
 		}
 		mlx5_txq_release(dev, i);
 	}
-	if (priv->config.dv_esw_en) {
+	if (priv->sh->config.dv_esw_en) {
 		if (mlx5_flow_create_esw_table_zero_flow(dev))
 			priv->fdb_def_rule = 1;
 		else
@@ -1351,7 +1349,7 @@ mlx5_traffic_enable(struct rte_eth_dev *dev)
 				" configured - only Eswitch group 0 flows are"
 				" supported.", dev->data->port_id);
 	}
-	if (!priv->config.lacp_by_user && priv->pf_bond >= 0) {
+	if (!priv->sh->config.lacp_by_user && priv->pf_bond >= 0) {
 		ret = mlx5_flow_lacp_miss(dev);
 		if (ret)
 			DRV_LOG(INFO, "port %u LACP rule cannot be created - "
