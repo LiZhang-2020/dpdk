@@ -8,6 +8,7 @@
 #include <stdio.h>
 
 #include <rte_pci.h>
+#include <rte_bus_pci.h>
 #include <rte_debug.h>
 #include <rte_atomic.h>
 #include <rte_rwlock.h>
@@ -528,6 +529,20 @@ mlx5_os_wrapped_mkey_create(struct mlx5_common_device *cdev, void *addr,
 __rte_internal
 void
 mlx5_os_wrapped_mkey_destroy(struct mlx5_pmd_wrapped_mr *pmd_mr);
+
+/**
+ * Test PCI device is a VF device.
+ *
+ * @param pci_dev
+ *   Pointer to PCI device.
+ *
+ * @return
+ *   - True on PCI device is a VF device.
+ *   - False otherwise.
+ */
+__rte_internal
+bool
+mlx5_dev_is_vf_pci(struct rte_pci_device *pci_dev);
 
 __rte_internal
 int
