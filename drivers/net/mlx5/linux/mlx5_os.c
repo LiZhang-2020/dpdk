@@ -968,10 +968,6 @@ err_secondary:
 	if (!sh)
 		return NULL;
 	/* Update final values for devargs before check sibling config. */
-	if (config->dv_miss_info) {
-		if (switch_info->master || switch_info->representor)
-			config->dv_xmeta_en = MLX5_XMETA_MODE_META16;
-	}
 #if !defined(HAVE_IBV_FLOW_DV_SUPPORT) || !defined(HAVE_MLX5DV_DR)
 	if (config->dv_flow_en) {
 		DRV_LOG(WARNING, "DV flow is not supported.");
@@ -979,8 +975,7 @@ err_secondary:
 	}
 #endif
 #ifdef HAVE_MLX5DV_DR_ESWITCH
-	if (!(hca_attr->eswitch_manager && config->dv_flow_en &&
-	      (switch_info->representor || switch_info->master)))
+	if (!(hca_attr->eswitch_manager && config->dv_flow_en && sh->esw_mode))
 		config->dv_esw_en = 0;
 #else
 	config->dv_esw_en = 0;
@@ -991,6 +986,8 @@ err_secondary:
 			DRV_LOG(INFO,
 				"Maybe cap_sys_rawio capability is not set?");
 	}
+	if (config->dv_miss_info && config->dv_esw_en)
+		config->dv_xmeta_en = MLX5_XMETA_MODE_META16;
 	if (!config->dv_esw_en &&
 	    config->dv_xmeta_en != MLX5_XMETA_MODE_LEGACY) {
 		DRV_LOG(WARNING,
@@ -1155,7 +1152,7 @@ err_secondary:
 	 * register to match on vport index. The engaged part of metadata
 	 * register is defined by mask.
 	 */
-	if (switch_info->representor || switch_info->master) {
+	if (sh->esw_mode) {
 		err = mlx5_glue->devx_port_query(sh->cdev->ctx,
 						 spawn->phys_port,
 						 &vport_info);
@@ -1186,8 +1183,7 @@ err_secondary:
 	}
 	if (vport_info.query_flags & MLX5_PORT_QUERY_VPORT) {
 		priv->vport_id = vport_info.vport_id;
-	} else if (spawn->pf_bond >= 0 &&
-		   (switch_info->representor || switch_info->master)) {
+	} else if (spawn->pf_bond >= 0 && sh->esw_mode) {
 		DRV_LOG(ERR,
 			"Cannot deduce vport index for port %d on bonding device %s",
 			spawn->phys_port, spawn->phys_dev_name);
