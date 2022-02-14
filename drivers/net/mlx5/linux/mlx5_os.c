@@ -692,6 +692,7 @@ mlx5_flow_counter_mode_config(struct rte_eth_dev *dev __rte_unused)
 #ifdef HAVE_IBV_FLOW_DV_SUPPORT
 	struct mlx5_priv *priv = dev->data->dev_private;
 	struct mlx5_dev_ctx_shared *sh = priv->sh;
+	struct mlx5_hca_attr *hca_attr = &sh->cdev->config.hca_attr;
 	bool fallback;
 
 #ifndef HAVE_IBV_DEVX_ASYNC
@@ -699,16 +700,16 @@ mlx5_flow_counter_mode_config(struct rte_eth_dev *dev __rte_unused)
 #else
 	fallback = false;
 	if (!sh->devx || !priv->config.dv_flow_en ||
-	    !priv->config.hca_attr.flow_counters_dump ||
-	    !(priv->config.hca_attr.flow_counter_bulk_alloc_bitmap & 0x4) ||
+	    !hca_attr->flow_counters_dump ||
+	    !(hca_attr->flow_counter_bulk_alloc_bitmap & 0x4) ||
 	    (mlx5_flow_dv_discover_counter_offset_support(dev) == -ENOTSUP))
 		fallback = true;
 #endif
 	if (fallback)
 		DRV_LOG(INFO, "Use fall-back DV counter management. Flow "
 			"counter dump:%d, bulk_alloc_bitmap:0x%hhx.",
-			priv->config.hca_attr.flow_counters_dump,
-			priv->config.hca_attr.flow_counter_bulk_alloc_bitmap);
+			hca_attr->flow_counters_dump,
+			hca_attr->flow_counter_bulk_alloc_bitmap);
 	/* Initialize fallback mode only on the port initializes sh. */
 	if (sh->refcnt == 1)
 		sh->cmng.counter_fallback = fallback;
@@ -892,6 +893,7 @@ mlx5_dev_spawn(struct rte_device *dpdk_dev,
 {
 	const struct mlx5_switch_info *switch_info = &spawn->info;
 	struct mlx5_dev_ctx_shared *sh = NULL;
+	struct mlx5_hca_attr *hca_attr = &spawn->cdev->config.hca_attr;
 	struct ibv_port_attr port_attr = { .state = IBV_PORT_NOP };
 	struct mlx5dv_context dv_attr = { .comp_mask = 0 };
 	struct rte_eth_dev *eth_dev = NULL;
@@ -1007,7 +1009,7 @@ err_secondary:
 	}
 #endif
 #ifdef HAVE_MLX5DV_DR_ESWITCH
-	if (!(sh->cdev->config.hca_attr.eswitch_manager && config->dv_flow_en &&
+	if (!(hca_attr->eswitch_manager && config->dv_flow_en &&
 	      (switch_info->representor || switch_info->master)))
 		config->dv_esw_en = 0;
 #else
@@ -1015,7 +1017,7 @@ err_secondary:
 #endif
 	if (config->dv_esw_en == 0) {
 		DRV_LOG(INFO, "Eswitch flows (transfer) are not supported.");
-		if (sh->cdev->config.hca_attr.eswitch_manager == 0)
+		if (hca_attr->eswitch_manager == 0)
 			DRV_LOG(INFO,
 				"Maybe cap_sys_rawio capability is not set?");
 	}
@@ -1337,14 +1339,12 @@ err_secondary:
 		config->mps == MLX5_MPW ? "legacy " : "",
 		config->mps != MLX5_MPW_DISABLED ? "enabled" : "disabled");
 	if (sh->devx) {
-		config->hca_attr = sh->cdev->config.hca_attr;
-		sh->steering_format_version =
-			config->hca_attr.steering_format_version;
+		sh->steering_format_version = hca_attr->steering_format_version;
 		/* Check for LRO support. */
-		if (config->dest_tir && config->hca_attr.lro_cap &&
+		if (config->dest_tir && hca_attr->lro_cap &&
 		    config->dv_flow_en) {
 			/* TBD check tunnel lro caps. */
-			config->lro.supported = config->hca_attr.lro_cap;
+			config->lro.supported = hca_attr->lro_cap;
 			DRV_LOG(DEBUG, "Device supports LRO");
 			/*
 			 * If LRO timeout is not configured by application,
@@ -1352,21 +1352,19 @@ err_secondary:
 			 */
 			if (!config->lro.timeout)
 				config->lro.timeout =
-				config->hca_attr.lro_timer_supported_periods[0];
+				       hca_attr->lro_timer_supported_periods[0];
 			DRV_LOG(DEBUG, "LRO session timeout set to %d usec",
 				config->lro.timeout);
 			DRV_LOG(DEBUG, "LRO minimal size of TCP segment "
 				"required for coalescing is %d bytes",
-				config->hca_attr.lro_min_mss_size);
+				hca_attr->lro_min_mss_size);
 		}
 #if defined(HAVE_MLX5DV_DR) && \
 	(defined(HAVE_MLX5_DR_CREATE_ACTION_FLOW_METER) || \
 	 defined(HAVE_MLX5_DR_CREATE_ACTION_ASO))
-		if (config->hca_attr.qos.sup &&
-		    config->hca_attr.qos.srtcm_sup &&
+		if (hca_attr->qos.sup && hca_attr->qos.srtcm_sup &&
 		    config->dv_flow_en) {
-			uint8_t reg_c_mask =
-				config->hca_attr.qos.flow_meter_reg_c_ids;
+			uint8_t reg_c_mask = hca_attr->qos.flow_meter_reg_c_ids;
 			/*
 			 * Meter needs two REG_C's for color match and pre-sfx
 			 * flow match. Here get the REG_C for color match.
@@ -1391,19 +1389,18 @@ err_secondary:
 							      - 1 + REG_C_0;
 				priv->mtr_en = 1;
 				priv->mtr_reg_share =
-				      config->hca_attr.qos.flow_meter_reg_share;
+					hca_attr->qos.flow_meter_reg_share;
 				DRV_LOG(DEBUG, "The REG_C meter uses is %d",
 					priv->mtr_color_reg);
 			}
 		}
-		if (config->hca_attr.qos.sup &&
-			config->hca_attr.qos.flow_meter_aso_sup) {
+		if (hca_attr->qos.sup && hca_attr->qos.flow_meter_aso_sup) {
 			uint32_t log_obj_size =
 				rte_log2_u32(MLX5_ASO_MTRS_PER_POOL >> 1);
 			if (log_obj_size >=
-			config->hca_attr.qos.log_meter_aso_granularity &&
-			log_obj_size <=
-			config->hca_attr.qos.log_meter_aso_max_alloc)
+			    hca_attr->qos.log_meter_aso_granularity &&
+			    log_obj_size <=
+			    hca_attr->qos.log_meter_aso_max_alloc)
 				sh->meter_aso_en = 1;
 		}
 		if (priv->mtr_en) {
@@ -1413,14 +1410,13 @@ err_secondary:
 				goto error;
 			}
 		}
-		if (config->hca_attr.flow.tunnel_header_0_1)
+		if (hca_attr->flow.tunnel_header_0_1)
 			sh->tunnel_header_0_1 = 1;
 		if (config->hca_attr.flow.tunnel_header_2_3)
 			sh->tunnel_header_2_3 = 1;
 #endif
 #ifdef HAVE_MLX5_DR_CREATE_ACTION_ASO
-		if (config->hca_attr.flow_hit_aso &&
-		    priv->mtr_color_reg == REG_C_3) {
+		if (hca_attr->flow_hit_aso && priv->mtr_color_reg == REG_C_3) {
 			sh->flow_hit_aso_en = 1;
 			err = mlx5_flow_aso_age_mng_init(sh);
 			if (err) {
@@ -1432,8 +1428,7 @@ err_secondary:
 #endif /* HAVE_MLX5_DR_CREATE_ACTION_ASO */
 #if defined (HAVE_MLX5_DR_CREATE_ACTION_ASO) && \
     defined (HAVE_MLX5_DR_ACTION_ASO_CT)
-		if (config->hca_attr.ct_offload &&
-		    priv->mtr_color_reg == REG_C_3) {
+		if (hca_attr->ct_offload && priv->mtr_color_reg == REG_C_3) {
 			err = mlx5_flow_aso_ct_mng_init(sh);
 			if (err) {
 				err = -err;
@@ -1444,15 +1439,15 @@ err_secondary:
 		}
 #endif /* HAVE_MLX5_DR_CREATE_ACTION_ASO */
 #if defined(HAVE_MLX5DV_DR) && defined(HAVE_MLX5_DR_CREATE_ACTION_FLOW_SAMPLE)
-		if (config->hca_attr.log_max_ft_sampler_num > 0  &&
+		if (hca_attr->log_max_ft_sampler_num > 0  &&
 		    config->dv_flow_en) {
 			priv->sampler_en = 1;
 			DRV_LOG(DEBUG, "The Sampler enabled!\n");
 		} else {
 			priv->sampler_en = 0;
-			if (!config->hca_attr.log_max_ft_sampler_num)
-				DRV_LOG(WARNING, "No available register for"
-						" Sampler.");
+			if (!hca_attr->log_max_ft_sampler_num)
+				DRV_LOG(WARNING,
+					"No available register for sampler.");
 			else
 				DRV_LOG(DEBUG, "DV flow is not supported!\n");
 		}
@@ -1464,13 +1459,13 @@ err_secondary:
 		config->cqe_comp = 0;
 	}
 	if (config->cqe_comp_fmt == MLX5_CQE_RESP_FORMAT_FTAG_STRIDX &&
-	    (!sh->devx || !config->hca_attr.mini_cqe_resp_flow_tag)) {
+	    (!sh->devx || !hca_attr->mini_cqe_resp_flow_tag)) {
 		DRV_LOG(WARNING, "Flow Tag CQE compression"
 				 " format isn't supported.");
 		config->cqe_comp = 0;
 	}
 	if (config->cqe_comp_fmt == MLX5_CQE_RESP_FORMAT_L34H_STRIDX &&
-	    (!sh->devx || !config->hca_attr.mini_cqe_resp_l3_l4_tag)) {
+	    (!sh->devx || !hca_attr->mini_cqe_resp_l3_l4_tag)) {
 		DRV_LOG(WARNING, "L3/L4 Header CQE compression"
 				 " format isn't supported.");
 		config->cqe_comp = 0;
@@ -1479,55 +1474,55 @@ err_secondary:
 			config->cqe_comp ? "" : "not ");
 	if (config->tx_pp) {
 		DRV_LOG(DEBUG, "Timestamp counter frequency %u kHz",
-			config->hca_attr.dev_freq_khz);
+			hca_attr->dev_freq_khz);
 		DRV_LOG(DEBUG, "Packet pacing is %ssupported",
-			config->hca_attr.qos.packet_pacing ? "" : "not ");
+			hca_attr->qos.packet_pacing ? "" : "not ");
 		DRV_LOG(DEBUG, "Cross channel ops are %ssupported",
-			config->hca_attr.cross_channel ? "" : "not ");
+			hca_attr->cross_channel ? "" : "not ");
 		DRV_LOG(DEBUG, "WQE index ignore is %ssupported",
-			config->hca_attr.wqe_index_ignore ? "" : "not ");
+			hca_attr->wqe_index_ignore ? "" : "not ");
 		DRV_LOG(DEBUG, "Non-wire SQ feature is %ssupported",
-			config->hca_attr.non_wire_sq ? "" : "not ");
+			hca_attr->non_wire_sq ? "" : "not ");
 		DRV_LOG(DEBUG, "Static WQE SQ feature is %ssupported (%d)",
-			config->hca_attr.log_max_static_sq_wq ? "" : "not ",
-			config->hca_attr.log_max_static_sq_wq);
+			hca_attr->log_max_static_sq_wq ? "" : "not ",
+			hca_attr->log_max_static_sq_wq);
 		DRV_LOG(DEBUG, "WQE rate PP mode is %ssupported",
-			config->hca_attr.qos.wqe_rate_pp ? "" : "not ");
+			hca_attr->qos.wqe_rate_pp ? "" : "not ");
 		if (!sh->devx) {
 			DRV_LOG(ERR, "DevX is required for packet pacing");
 			err = ENODEV;
 			goto error;
 		}
-		if (!config->hca_attr.qos.packet_pacing) {
+		if (!hca_attr->qos.packet_pacing) {
 			DRV_LOG(ERR, "Packet pacing is not supported");
 			err = ENODEV;
 			goto error;
 		}
-		if (!config->hca_attr.cross_channel) {
+		if (!hca_attr->cross_channel) {
 			DRV_LOG(ERR, "Cross channel operations are"
 				     " required for packet pacing");
 			err = ENODEV;
 			goto error;
 		}
-		if (!config->hca_attr.wqe_index_ignore) {
+		if (!hca_attr->wqe_index_ignore) {
 			DRV_LOG(ERR, "WQE index ignore feature is"
 				     " required for packet pacing");
 			err = ENODEV;
 			goto error;
 		}
-		if (!config->hca_attr.non_wire_sq) {
+		if (!hca_attr->non_wire_sq) {
 			DRV_LOG(ERR, "Non-wire SQ feature is"
 				     " required for packet pacing");
 			err = ENODEV;
 			goto error;
 		}
-		if (!config->hca_attr.log_max_static_sq_wq) {
+		if (!hca_attr->log_max_static_sq_wq) {
 			DRV_LOG(ERR, "Static WQE SQ feature is"
 				     " required for packet pacing");
 			err = ENODEV;
 			goto error;
 		}
-		if (!config->hca_attr.qos.wqe_rate_pp) {
+		if (!hca_attr->qos.wqe_rate_pp) {
 			DRV_LOG(ERR, "WQE rate mode is required"
 				     " for packet pacing");
 			err = ENODEV;
@@ -1541,7 +1536,7 @@ err_secondary:
 #endif
 	}
 	if (config->std_delay_drop || config->hp_delay_drop) {
-		if (!config->hca_attr.rq_delay_drop) {
+		if (!hca_attr->rq_delay_drop) {
 			config->std_delay_drop = 0;
 			config->hp_delay_drop = 0;
 			DRV_LOG(WARNING,
@@ -1552,7 +1547,7 @@ err_secondary:
 	if (sh->devx) {
 		uint32_t reg[MLX5_ST_SZ_DW(register_mtutc)];
 
-		err = config->hca_attr.access_register_user ?
+		err = hca_attr->access_register_user ?
 			mlx5_devx_cmd_register_read
 				(sh->cdev->ctx, MLX5_REGISTER_ID_MTUTC, 0,
 				reg, MLX5_ST_SZ_DW(register_mtutc)) : ENOTSUP;
@@ -1566,8 +1561,7 @@ err_secondary:
 				config->rt_timestamp = 1;
 		} else {
 			/* Kernel does not support register reading. */
-			if (config->hca_attr.dev_freq_khz ==
-						 (NS_PER_S / MS_PER_S))
+			if (hca_attr->dev_freq_khz == (NS_PER_S / MS_PER_S))
 				config->rt_timestamp = 1;
 		}
 	}
@@ -1576,7 +1570,7 @@ err_secondary:
 	 * scatter FCS, and decapsulation is needed, clear the hw_fcs_strip
 	 * bit. Then DEV_RX_OFFLOAD_KEEP_CRC bit will not be set anymore.
 	 */
-	if (config->hca_attr.scatter_fcs_w_decap_disable && config->decap_en)
+	if (hca_attr->scatter_fcs_w_decap_disable && config->decap_en)
 		config->hw_fcs_strip = 0;
 	DRV_LOG(DEBUG, "FCS stripping configuration is %ssupported",
 		(config->hw_fcs_strip ? "" : "not "));

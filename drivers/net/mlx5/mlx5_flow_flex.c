@@ -1149,7 +1149,7 @@ mlx5_flex_translate_conf(struct rte_eth_dev *dev,
 			 struct rte_flow_error *error)
 {
 	struct mlx5_priv *priv = dev->data->dev_private;
-	struct mlx5_hca_flex_attr *attr = &priv->config.hca_attr.flex;
+	struct mlx5_hca_flex_attr *attr = &priv->sh->cdev->config.hca_attr.flex;
 	int ret;
 
 	ret = mlx5_flex_translate_length(attr, conf, devx, error);
