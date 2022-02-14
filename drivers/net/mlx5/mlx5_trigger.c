@@ -1106,7 +1106,7 @@ mlx5_dev_start(struct rte_eth_dev *dev)
 		goto error;
 	}
 	if (priv->sh->cdev->config.devx && priv->config.dv_flow_en &&
-	    priv->config.dest_tir) {
+	    priv->sh->dev_cap.dest_tir) {
 		ret = mlx5_rxq_ibv_obj_dummy_lb_create(dev);
 		if (ret)
 			goto error;
@@ -1118,7 +1118,7 @@ mlx5_dev_start(struct rte_eth_dev *dev)
 		goto error;
 	}
 	if (priv->config.std_delay_drop || priv->config.hp_delay_drop) {
-		if (!priv->config.vf && !priv->config.sf &&
+		if (!priv->sh->dev_cap.vf && !priv->sh->dev_cap.sf &&
 		    !priv->representor) {
 			ret = mlx5_get_flag_dropless_rq(dev);
 			if (ret < 0)
