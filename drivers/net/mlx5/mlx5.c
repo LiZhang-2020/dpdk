@@ -1316,6 +1316,8 @@ mlx5_free_shared_dev_ctx(struct mlx5_dev_ctx_shared *sh)
 	 *  Only primary process handles async device events.
 	 **/
 	mlx5_flow_counters_mng_close(sh);
+	if (sh->ct_mng)
+		mlx5_flow_aso_ct_mng_close(sh);
 	if (sh->aso_age_mng) {
 		mlx5_flow_aso_age_mng_close(sh);
 		sh->aso_age_mng = NULL;
