@@ -84,13 +84,8 @@ class Mlx5drTrafficTest(PydiruTrafficTestCase):
                                    length=OUT_SMAC_47_16_FIELD_LENGTH, data=smac_47_16)
         self.action2 = SetActionIn(action_type=SET_ACTION, field=OUT_SMAC_15_0_FIELD_ID,
                                    length=OUT_SMAC_15_0_FIELD_LENGTH, data=smac_15_0)
-        self.modify_action = Mlx5drActionModify(self.server.dr_ctx, pattern_sz=2 * 8,
-                                                actions=[self.action1, self.action2],
-                                                log_bulk_size=12,
-                                                flags=me.MLX5DR_ACTION_FLAG_HWS_RX)
-        self.modify_ra = Mlx5drRuleAction(self.modify_action)
-        self.modify_ra.modify_data =  [self.action1, self.action2]
-        self.modify_ra.modify_offset = 0
+        _, self.modify_ra = self.server.create_rule_action('modify', log_bulk_size=12, offset=0,
+                                                           actions=[self.action1, self.action2])
         _, tir_ra = self.server.create_rule_action('tir')
         self.modify_rule = Mlx5drRule(matcher=self.server.matcher, mt_idx=0, rte_items=rte_items,
                                       rule_actions=[self.modify_ra, tir_ra], num_of_actions=2,

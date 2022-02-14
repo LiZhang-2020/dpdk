@@ -19,7 +19,7 @@ from pyverbs.mr import MR
 from pydiru.providers.mlx5.steering.mlx5dr_matcher import Mlx5drMacherTemplate, Mlx5drMatcherAttr, Mlx5drMatcher
 from pydiru.providers.mlx5.steering.mlx5dr_action import Mlx5drRuleAction, \
     Mlx5drActionDestTable, Mlx5drActionDestTir, Mlx5drActionTag, Mlx5drActionDefaultMiss, \
-    Mlx5drActionReformat, Mlx5drActionCounter, Mlx5drActionDrop
+    Mlx5drActionReformat, Mlx5drActionCounter, Mlx5drActionDrop, Mlx5drActionModify
 from pydiru.providers.mlx5.steering.mlx5dr_context import Mlx5drContextAttr, Mlx5drContext
 from pydiru.providers.mlx5.steering.mlx5dr_table import Mlx5drTableAttr, Mlx5drTable
 from pydiru.providers.mlx5.steering.mlx5dr_rule import Mlx5drRuleAttr, Mlx5drRule
@@ -33,6 +33,7 @@ from args_parser import parser
 NUM_OF_QUEUES = 16
 QUEUE_SIZE = 256
 MATCHER_ROW = 5
+MODIFY_ACTION_SIZE = 8
 
 
 class PydiruAPITestCase(unittest.TestCase):
@@ -259,6 +260,14 @@ class BaseDrResources(object):
             log_bulk_size = kwargs.get('log_bulk_size', 0)
             action = Mlx5drActionReformat(self.dr_ctx, ref_type, data_sz, data, log_bulk_size, flags)
             return action, Mlx5drRuleAction(action, data=data)
+        elif action_str == 'modify':
+            log_bulk_size = kwargs.get('log_bulk_size')
+            actions = kwargs.get('actions')
+            offset = kwargs.get('offset')
+            action = Mlx5drActionModify(self.dr_ctx, pattern_sz=len(actions) * MODIFY_ACTION_SIZE,
+                                        actions=actions, log_bulk_size=log_bulk_size, flags=flags)
+            modify_ra = Mlx5drRuleAction(action, data=actions, offset=offset)
+            return action, modify_ra
         elif action_str == 'counter':
             mlx5_dr_counter = kwargs.get('dr_counter')
             action = Mlx5drActionCounter(self.dr_ctx, mlx5_dr_counter, flags)
