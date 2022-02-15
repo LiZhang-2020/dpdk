@@ -119,6 +119,12 @@ static int mlx5dr_context_uninit_pd(struct mlx5dr_context *ctx)
 	return 0;
 }
 
+int mlx5dr_context_get_default_miss_vport(struct mlx5dr_context *ctx)
+{
+	(void)ctx;
+	return 0; /* TBD: when we will have it in a caps */
+}
+
 static void mlx5dr_context_check_hws_supp(struct mlx5dr_context *ctx)
 {
 	struct mlx5dr_cmd_query_caps *caps = ctx->caps;

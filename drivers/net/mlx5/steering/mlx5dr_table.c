@@ -4,9 +4,135 @@
 
 #include "mlx5dr_internal.h"
 
-static int mlx5dr_table_init(struct mlx5dr_table *tbl)
+static void mlx5dr_table_init_next_ft_attr(struct mlx5dr_table *tbl,
+					   struct mlx5dr_cmd_ft_create_attr *ft_attr)
+{
+	ft_attr->type = tbl->fw_ft_type;
+	ft_attr->level = tbl->ctx->caps->nic_ft.max_level - 1;
+	ft_attr->rtc_valid = true;
+}
+
+/* call this under ctx->ctrl_lock */
+static int
+mlx5dr_table_up_default_fdb_miss_tbl(struct mlx5dr_table *tbl)
 {
 	struct mlx5dr_cmd_ft_create_attr ft_attr = {0};
+	struct mlx5dr_cmd_forward_tbl *default_miss;
+	struct mlx5dr_context *ctx = tbl->ctx;
+	uint8_t tbl_type = tbl->type;
+	uint32_t vport;
+
+	if (tbl->type != MLX5DR_TABLE_TYPE_FDB)
+		return 0;
+
+	if (ctx->common_res[tbl_type].default_miss) {
+		ctx->common_res[tbl_type].default_miss->refcount++;
+		return 0;
+	}
+
+	ft_attr.type = tbl->fw_ft_type;
+	ft_attr.level = tbl->ctx->caps->nic_ft.max_level; /* The last level */
+	ft_attr.rtc_valid = false;
+
+	vport = mlx5dr_context_get_default_miss_vport(ctx);
+
+	default_miss = mlx5dr_cmd_miss_ft_create(ctx->ibv_ctx, &ft_attr, vport);
+	if (!default_miss) {
+		DR_LOG(ERR, "Failed to default miss table type: 0x%x", tbl_type);
+		return rte_errno;
+	}
+
+	ctx->common_res[tbl_type].default_miss = default_miss;
+	ctx->common_res[tbl_type].default_miss->refcount++;
+	return 0;
+}
+
+/* called under pthread_spin_lock(&ctx->ctrl_lock) */
+static void mlx5dr_table_down_default_fdb_miss_tbl(struct mlx5dr_table *tbl)
+{
+	struct mlx5dr_cmd_forward_tbl *default_miss;
+	struct mlx5dr_context *ctx = tbl->ctx;
+	uint8_t tbl_type = tbl->type;
+
+	if (tbl->type != MLX5DR_TABLE_TYPE_FDB)
+		return;
+
+	default_miss = ctx->common_res[tbl_type].default_miss;
+	if (--default_miss->refcount)
+		return;
+
+	mlx5dr_cmd_miss_ft_destroy(default_miss);
+
+	simple_free(default_miss);
+	ctx->common_res[tbl_type].default_miss = NULL;
+}
+
+static int
+mlx5dr_table_connect_to_default_miss_tbl(struct mlx5dr_table *tbl,
+					 struct mlx5dr_devx_obj *ft)
+{
+	struct mlx5dr_cmd_ft_modify_attr ft_attr = {0};
+	int ret;
+
+	assert(tbl->type == MLX5DR_TABLE_TYPE_FDB);
+
+	mlx5dr_cmd_set_attr_connect_miss_tbl(tbl->ctx,
+					     tbl->fw_ft_type,
+					     tbl->type,
+					     &ft_attr);
+
+	/* Connect to next */
+	ret = mlx5dr_cmd_flow_table_modify(ft, &ft_attr);
+	if (ret) {
+		DR_LOG(ERR, "Failed to connect FT to default FDB FT");
+		return errno;
+	}
+
+	return 0;
+}
+
+struct mlx5dr_devx_obj *
+mlx5dr_table_create_default_ft(struct mlx5dr_table *tbl)
+{
+	struct mlx5dr_cmd_ft_create_attr ft_attr = {0};
+	struct mlx5dr_devx_obj *ft_obj;
+	int ret;
+
+	mlx5dr_table_init_next_ft_attr(tbl, &ft_attr);
+
+	ft_obj = mlx5dr_cmd_flow_table_create(tbl->ctx->ibv_ctx, &ft_attr);
+	if (ft_obj && tbl->type == MLX5DR_TABLE_TYPE_FDB) {
+		/* take/create ref over the default miss */
+		ret = mlx5dr_table_up_default_fdb_miss_tbl(tbl);
+		if (ret) {
+			DR_LOG(ERR, "Failed to get default fdb miss");
+			goto free_ft_obj;
+		}
+		ret = mlx5dr_table_connect_to_default_miss_tbl(tbl, ft_obj);
+		if (ret) {
+			DR_LOG(ERR, "Failed connecting to default miss tbl");
+			goto down_miss_tbl;
+		}
+	}
+
+	return ft_obj;
+
+down_miss_tbl:
+	mlx5dr_table_down_default_fdb_miss_tbl(tbl);
+free_ft_obj:
+	mlx5dr_cmd_destroy_obj(ft_obj);
+	return NULL;
+}
+
+void mlx5dr_table_destroy_default_ft(struct mlx5dr_table *tbl,
+				     struct mlx5dr_devx_obj *ft_obj)
+{
+	mlx5dr_table_down_default_fdb_miss_tbl(tbl);
+	mlx5dr_cmd_destroy_obj(ft_obj);
+}
+
+static int mlx5dr_table_init(struct mlx5dr_table *tbl)
+{
 	struct mlx5dr_context *ctx = tbl->ctx;
 	int ret;
 
@@ -21,38 +147,37 @@ static int mlx5dr_table_init(struct mlx5dr_table *tbl)
 
 	switch (tbl->type) {
 	case MLX5DR_TABLE_TYPE_NIC_RX:
-	        tbl->fw_ft_type = FS_FT_NIC_RX;
-	        break;
+		tbl->fw_ft_type = FS_FT_NIC_RX;
+		break;
 	case MLX5DR_TABLE_TYPE_NIC_TX:
-	        tbl->fw_ft_type = FS_FT_NIC_TX;
-	        break;
+		tbl->fw_ft_type = FS_FT_NIC_TX;
+		break;
 	case MLX5DR_TABLE_TYPE_FDB:
 		tbl->fw_ft_type = FS_FT_FDB;
 		break;
 	default:
-	        assert(0);
-	        break;
+		assert(0);
+		break;
 	}
 
-	ft_attr.type = tbl->fw_ft_type;
-	ft_attr.rtc_valid = true;
-	ft_attr.level = ctx->caps->nic_ft.max_level - 1;
-	// TODO Need to support default miss behaviour for FDB
-
-	tbl->ft = mlx5dr_cmd_flow_table_create(ctx->ibv_ctx, &ft_attr);
+	pthread_spin_lock(&ctx->ctrl_lock);
+	tbl->ft = mlx5dr_table_create_default_ft(tbl);
 	if (!tbl->ft) {
 		DR_LOG(ERR, "Failed to create flow table devx object");
+		pthread_spin_unlock(&ctx->ctrl_lock);
 		return rte_errno;
 	}
 
 	ret = mlx5dr_action_get_default_stc(ctx, tbl->type);
 	if (ret)
 		goto tbl_destroy;
+	pthread_spin_unlock(&ctx->ctrl_lock);
 
 	return 0;
 
 tbl_destroy:
-	mlx5dr_cmd_destroy_obj(tbl->ft);
+	mlx5dr_table_destroy_default_ft(tbl, tbl->ft);
+	pthread_spin_unlock(&ctx->ctrl_lock);
 	return rte_errno;
 }
 
@@ -60,9 +185,10 @@ static void mlx5dr_table_uninit(struct mlx5dr_table *tbl)
 {
 	if (mlx5dr_table_is_root(tbl))
 		return;
-
+	pthread_spin_lock(&tbl->ctx->ctrl_lock);
 	mlx5dr_action_put_default_stc(tbl->ctx, tbl->type);
-	mlx5dr_cmd_destroy_obj(tbl->ft);
+	mlx5dr_table_destroy_default_ft(tbl, tbl->ft);
+	pthread_spin_unlock(&tbl->ctx->ctrl_lock);
 }
 
 struct mlx5dr_table *mlx5dr_table_create(struct mlx5dr_context *ctx,

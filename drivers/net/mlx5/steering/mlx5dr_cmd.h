@@ -187,9 +187,15 @@ int mlx5dr_cmd_query_caps(struct ibv_context *ctx,
 			  struct mlx5dr_cmd_query_caps *caps);
 
 void mlx5dr_cmd_miss_ft_destroy(struct mlx5dr_cmd_forward_tbl *tbl);
+
 struct mlx5dr_cmd_forward_tbl *
 mlx5dr_cmd_miss_ft_create(struct ibv_context *ctx,
 			  struct mlx5dr_cmd_ft_create_attr *ft_attr,
 			  uint32_t vport);
+
+void mlx5dr_cmd_set_attr_connect_miss_tbl(struct mlx5dr_context *ctx,
+					  uint32_t fw_ft_type,
+					  enum mlx5dr_table_type type,
+					  struct mlx5dr_cmd_ft_modify_attr *ft_attr);
 #endif
 

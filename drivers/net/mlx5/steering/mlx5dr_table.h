@@ -37,4 +37,8 @@ static inline bool mlx5dr_table_is_root(struct mlx5dr_table *tbl)
 	return (tbl->level == MLX5DR_ROOT_LEVEL);
 }
 
+struct mlx5dr_devx_obj *mlx5dr_table_create_default_ft(struct mlx5dr_table *tbl);
+
+void mlx5dr_table_destroy_default_ft(struct mlx5dr_table *tbl,
+				     struct mlx5dr_devx_obj *ft_obj);
 #endif

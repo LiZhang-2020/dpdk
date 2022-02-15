@@ -13,6 +13,7 @@ enum mlx5dr_context_flags {
 struct mlx5dr_context_common_res {
 	struct mlx5dr_action_default_stc *default_stc;
 	struct mlx5dr_action_shared_stc *shared_stc;
+	struct mlx5dr_cmd_forward_tbl *default_miss;
 };
 
 struct mlx5dr_context {
@@ -31,4 +32,5 @@ struct mlx5dr_context {
 	LIST_HEAD(table_head, mlx5dr_table) head;
 };
 
+int mlx5dr_context_get_default_miss_vport(struct mlx5dr_context *ctx);
 #endif

@@ -21,15 +21,9 @@ static uint8_t mlx5dr_matcher_rules_to_tbl_depth(uint8_t log_num_of_rules)
 
 static int mlx5dr_matcher_create_end_ft(struct mlx5dr_matcher *matcher)
 {
-	struct mlx5dr_cmd_ft_create_attr ft_attr = {0};
 	struct mlx5dr_table *tbl = matcher->tbl;
 
-	ft_attr.type = tbl->fw_ft_type;
-	ft_attr.rtc_valid = true;
-	ft_attr.level = tbl->ctx->caps->nic_ft.max_level - 1;
-	// TODO Need to support default miss behaviour for FDB
-
-	matcher->end_ft = mlx5dr_cmd_flow_table_create(tbl->ctx->ibv_ctx, &ft_attr);
+	matcher->end_ft = mlx5dr_table_create_default_ft(tbl);
 	if (!matcher->end_ft) {
 		DR_LOG(ERR, "Failed to create matcher end flow table");
 		return rte_errno;
@@ -37,9 +31,9 @@ static int mlx5dr_matcher_create_end_ft(struct mlx5dr_matcher *matcher)
 	return 0;
 }
 
-static int mlx5dr_matcher_destroy_end_ft(struct mlx5dr_matcher *matcher)
+static void mlx5dr_matcher_destroy_end_ft(struct mlx5dr_matcher *matcher)
 {
-	return mlx5dr_cmd_destroy_obj(matcher->end_ft);
+	mlx5dr_table_destroy_default_ft(matcher->tbl, matcher->end_ft);
 }
 
 static int mlx5dr_matcher_connect(struct mlx5dr_matcher *matcher)
@@ -138,6 +132,11 @@ static int mlx5dr_matcher_disconnect(struct mlx5dr_matcher *matcher)
 			ft_attr.rtc_id_0 = next->rtc_0->id;
 		if (next->rtc_1)
 			ft_attr.rtc_id_1 = next->rtc_1->id;
+	} else { /* last matcher is removed, point prev to the default miss */
+		mlx5dr_cmd_set_attr_connect_miss_tbl(tbl->ctx,
+						     tbl->fw_ft_type,
+						     tbl->type,
+						     &ft_attr);
 	}
 
 	ret = mlx5dr_cmd_flow_table_modify(prev_ft, &ft_attr);

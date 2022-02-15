@@ -211,6 +211,27 @@ free_tbl:
 	return NULL;
 }
 
+void mlx5dr_cmd_set_attr_connect_miss_tbl(struct mlx5dr_context *ctx,
+					  uint32_t fw_ft_type,
+					  enum mlx5dr_table_type type,
+					  struct mlx5dr_cmd_ft_modify_attr *ft_attr)
+{
+	struct mlx5dr_devx_obj *default_miss_tbl;
+
+	if (type != MLX5DR_TABLE_TYPE_FDB)
+		return;
+
+	default_miss_tbl = ctx->common_res[type].default_miss->ft;
+	if (!default_miss_tbl) {
+		assert(false);
+		return;
+	}
+	ft_attr->modify_fs = MLX5_IFC_MODIFY_FLOW_TABLE_MISS_ACTION;
+	ft_attr->type = fw_ft_type;
+	ft_attr->table_miss_action = MLX5_IFC_MODIFY_FLOW_TABLE_MISS_ACTION_GOTO_TBL;
+	ft_attr->table_miss_id = default_miss_tbl->id;
+}
+
 struct mlx5dr_devx_obj *
 mlx5dr_cmd_rtc_create(struct ibv_context *ctx,
 		      struct mlx5dr_cmd_rtc_create_attr *rtc_attr)

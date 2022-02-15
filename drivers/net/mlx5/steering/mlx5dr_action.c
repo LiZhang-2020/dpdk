@@ -1311,6 +1311,7 @@ int mlx5dr_action_destroy(struct mlx5dr_action *action)
 	return 0;
 }
 
+/* called under pthread_spin_lock(&ctx->ctrl_lock) */
 int mlx5dr_action_get_default_stc(struct mlx5dr_context *ctx,
 				  uint8_t tbl_type)
 {
@@ -1318,11 +1319,8 @@ int mlx5dr_action_get_default_stc(struct mlx5dr_context *ctx,
 	struct mlx5dr_action_default_stc *default_stc;
 	int ret;
 
-	pthread_spin_lock(&ctx->ctrl_lock);
-
 	if (ctx->common_res[tbl_type].default_stc) {
 		ctx->common_res[tbl_type].default_stc->refcount++;
-		pthread_spin_unlock(&ctx->ctrl_lock);
 		return 0;
 	}
 
@@ -1330,7 +1328,7 @@ int mlx5dr_action_get_default_stc(struct mlx5dr_context *ctx,
 	if (!default_stc) {
 		DR_LOG(ERR, "Failed to allocate memory for default STCs");
 		rte_errno = ENOMEM;
-		goto unlock_err;
+		return rte_errno;
 	}
 
 	stc_attr.action_type = MLX5_IFC_STC_ACTION_TYPE_NOP;
@@ -1378,8 +1376,6 @@ int mlx5dr_action_get_default_stc(struct mlx5dr_context *ctx,
 	ctx->common_res[tbl_type].default_stc = default_stc;
 	ctx->common_res[tbl_type].default_stc->refcount++;
 
-	pthread_spin_unlock(&ctx->ctrl_lock);
-
 	return 0;
 
 free_nop_dw7:
@@ -1392,8 +1388,6 @@ free_nop_ctr:
 	mlx5dr_action_free_single_stc(ctx, tbl_type, &default_stc->nop_ctr);
 free_default_stc:
 	simple_free(default_stc);
-unlock_err:
-	pthread_spin_unlock(&ctx->ctrl_lock);
 	return rte_errno;
 }
 
@@ -1404,13 +1398,9 @@ void mlx5dr_action_put_default_stc(struct mlx5dr_context *ctx,
 
 	default_stc = ctx->common_res[tbl_type].default_stc;
 
-	pthread_spin_lock(&ctx->ctrl_lock);
-
 	default_stc = ctx->common_res[tbl_type].default_stc;
-	if (--default_stc->refcount) {
-		pthread_spin_unlock(&ctx->ctrl_lock);
+	if (--default_stc->refcount)
 		return;
-	}
 
 	mlx5dr_action_free_single_stc(ctx, tbl_type, &default_stc->default_hit);
 	mlx5dr_action_free_single_stc(ctx, tbl_type, &default_stc->nop_dw7);
@@ -1419,8 +1409,6 @@ void mlx5dr_action_put_default_stc(struct mlx5dr_context *ctx,
 	mlx5dr_action_free_single_stc(ctx, tbl_type, &default_stc->nop_ctr);
 	simple_free(default_stc);
 	ctx->common_res[tbl_type].default_stc = NULL;
-
-	pthread_spin_unlock(&ctx->ctrl_lock);
 }
 
 static void mlx5dr_action_modify_write(struct mlx5dr_send_engine *queue,
