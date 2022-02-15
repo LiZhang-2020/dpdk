@@ -66,6 +66,8 @@ mlx5dr_cmd_flow_table_modify(struct mlx5dr_devx_obj *devx_obj,
 
 	ft_ctx = MLX5_ADDR_OF(modify_flow_table_in, in, flow_table_context);
 
+	MLX5_SET(flow_table_context, ft_ctx, table_miss_action, ft_attr->table_miss_action);
+	MLX5_SET(flow_table_context, ft_ctx, table_miss_id, ft_attr->table_miss_id);
 	MLX5_SET(flow_table_context, ft_ctx, rtc_id_0, ft_attr->rtc_id_0);
 	MLX5_SET(flow_table_context, ft_ctx, rtc_id_1, ft_attr->rtc_id_1);
 

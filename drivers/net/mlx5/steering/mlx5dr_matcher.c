@@ -73,7 +73,6 @@ static int mlx5dr_matcher_connect(struct mlx5dr_matcher *matcher)
 
 connect:
 	ft_attr.modify_fs = MLX5_IFC_MODIFY_FLOW_TABLE_RTC_ID;
-	ft_attr.rtc_valid = true;
 	ft_attr.type = tbl->fw_ft_type;
 
 	/* Connect to next */
@@ -132,7 +131,6 @@ static int mlx5dr_matcher_disconnect(struct mlx5dr_matcher *matcher)
 
 	ft_attr.modify_fs = MLX5_IFC_MODIFY_FLOW_TABLE_RTC_ID;
 	ft_attr.type = matcher->tbl->fw_ft_type;
-	ft_attr.rtc_valid = true;
 
 	/* Connect previous end FT to next RTC if exists */
 	if (next) {

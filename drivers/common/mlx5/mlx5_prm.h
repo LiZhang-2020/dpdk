@@ -4522,6 +4522,11 @@ enum {
 	MLX5_IFC_MODIFY_FLOW_TABLE_RTC_ID = 1 << 1,
 };
 
+enum {
+	MLX5_IFC_MODIFY_FLOW_TABLE_MISS_ACTION_DEFAULT = 0,
+	MLX5_IFC_MODIFY_FLOW_TABLE_MISS_ACTION_GOTO_TBL = 1,
+};
+
 struct mlx5_ifc_modify_flow_table_in_bits {
 	u8 opcode[0x10];
 	u8 uid[0x10];
