@@ -409,7 +409,13 @@ flow_hw_actions_translate(struct rte_eth_dev *dev,
 	struct rte_flow_action *actions = at->actions;
 	struct rte_flow_action *masks = at->masks;
 	struct rte_flow_action *action_start = actions;
-	enum mlx5dr_action_reformat_type refmt_type;
+	/*
+	 * Set to valid enum value to prevent "variable may be uinitialized"
+	 * compilation errors triggering in this function, even though
+	 * refmt_type is used if and only if it is initialized.
+	 */
+	enum mlx5dr_action_reformat_type refmt_type =
+			MLX5DR_ACTION_REFORMAT_TYPE_TNL_L2_TO_L2;
 	const struct rte_flow_action_raw_encap *raw_encap_data;
 	const struct rte_flow_item *enc_item = NULL, *enc_item_m = NULL;
 	uint8_t *encap_data = NULL;
@@ -581,184 +587,6 @@ flow_hw_actions_translate(struct rte_eth_dev *dev,
 			reformat_pos = i++;
 			refmt_type = MLX5DR_ACTION_REFORMAT_TYPE_TNL_L2_TO_L2;
 			break;
-		case RTE_FLOW_ACTION_TYPE_SET_MAC_SRC:
-			if (mhdr_pos == UINT16_MAX)
-				mhdr_pos = i++;
-			if (__flow_hw_append_act_data_hdr_modify
-				(priv, acts, actions->type,
-				 actions - action_start,
-				 mhdr_pos, mhdr_act->actions_num) ||
-			    flow_convert_action_modify_mac
-				(mhdr_act, actions, error))
-				goto err;
-			MLX5_HW_INS_NOP_ACT(mhdr_act->actions_num);
-			break;
-		case RTE_FLOW_ACTION_TYPE_SET_MAC_DST:
-			if (mhdr_pos == UINT16_MAX)
-				mhdr_pos = i++;
-			if (__flow_hw_append_act_data_hdr_modify
-				(priv, acts, actions->type,
-				 actions - action_start,
-				 mhdr_pos, mhdr_act->actions_num) ||
-			    flow_convert_action_modify_mac
-				(mhdr_act, actions, error))
-				goto err;
-			MLX5_HW_INS_NOP_ACT(mhdr_act->actions_num);
-			break;
-		case RTE_FLOW_ACTION_TYPE_SET_IPV4_SRC:
-			if (mhdr_pos == UINT16_MAX)
-				mhdr_pos = i++;
-			if (__flow_hw_append_act_data_hdr_modify
-				(priv, acts, actions->type,
-				 actions - action_start,
-				 mhdr_pos, mhdr_act->actions_num) ||
-			    flow_convert_action_modify_ipv4
-				(mhdr_act, actions, error))
-				goto err;
-			MLX5_HW_INS_NOP_ACT(mhdr_act->actions_num);
-			break;
-		case RTE_FLOW_ACTION_TYPE_SET_IPV4_DST:
-			if (mhdr_pos == UINT16_MAX)
-				mhdr_pos = i++;
-			if (__flow_hw_append_act_data_hdr_modify
-				(priv, acts, actions->type,
-				 actions - action_start,
-				 mhdr_pos, mhdr_act->actions_num) ||
-			    flow_convert_action_modify_ipv4
-				(mhdr_act, actions, error))
-				goto err;
-			MLX5_HW_INS_NOP_ACT(mhdr_act->actions_num);
-			break;
-		case RTE_FLOW_ACTION_TYPE_SET_IPV6_SRC:
-			if (mhdr_pos == UINT16_MAX)
-				mhdr_pos = i++;
-			if (__flow_hw_append_act_data_hdr_modify
-				(priv, acts, actions->type,
-				 actions - action_start,
-				 mhdr_pos, mhdr_act->actions_num) ||
-			    flow_convert_action_modify_ipv6
-				(mhdr_act, actions, error))
-				goto err;
-			MLX5_HW_INS_NOP_ACT(mhdr_act->actions_num);
-			break;
-		case RTE_FLOW_ACTION_TYPE_SET_IPV6_DST:
-			if (mhdr_pos == UINT16_MAX)
-				mhdr_pos = i++;
-			if (__flow_hw_append_act_data_hdr_modify
-				(priv, acts, actions->type,
-				 actions - action_start,
-				 mhdr_pos, mhdr_act->actions_num) ||
-			    flow_convert_action_modify_ipv6
-				(mhdr_act, actions, error))
-				goto err;
-			MLX5_HW_INS_NOP_ACT(mhdr_act->actions_num);
-			break;
-		case RTE_FLOW_ACTION_TYPE_SET_UDP_TP_SRC:
-			if (mhdr_pos == UINT16_MAX)
-				mhdr_pos = i++;
-			if (__flow_hw_append_act_data_hdr_modify
-				(priv, acts, actions->type,
-				 actions - action_start,
-				 mhdr_pos, mhdr_act->actions_num) ||
-			    flow_convert_action_modify_tp
-				(mhdr_act, actions, true, true, error))
-				goto err;
-			MLX5_HW_INS_NOP_ACT(mhdr_act->actions_num);
-			break;
-		case RTE_FLOW_ACTION_TYPE_SET_UDP_TP_DST:
-			if (mhdr_pos == UINT16_MAX)
-				mhdr_pos = i++;
-			if (__flow_hw_append_act_data_hdr_modify
-				(priv, acts, actions->type,
-				 actions - action_start,
-				 mhdr_pos, mhdr_act->actions_num) ||
-			    flow_convert_action_modify_tp
-				(mhdr_act, actions, true, false, error))
-				goto err;
-			MLX5_HW_INS_NOP_ACT(mhdr_act->actions_num);
-			break;
-		case RTE_FLOW_ACTION_TYPE_SET_TCP_TP_SRC:
-			if (mhdr_pos == UINT16_MAX)
-				mhdr_pos = i++;
-			if (__flow_hw_append_act_data_hdr_modify
-				(priv, acts, actions->type,
-				 actions - action_start,
-				 mhdr_pos, mhdr_act->actions_num) ||
-			    flow_convert_action_modify_tp
-				(mhdr_act, actions, false, true, error))
-				goto err;
-			MLX5_HW_INS_NOP_ACT(mhdr_act->actions_num);
-			break;
-		case RTE_FLOW_ACTION_TYPE_SET_TCP_TP_DST:
-			if (mhdr_pos == UINT16_MAX)
-				mhdr_pos = i++;
-			if (__flow_hw_append_act_data_hdr_modify
-				(priv, acts, actions->type,
-				 actions - action_start,
-				 mhdr_pos, mhdr_act->actions_num) ||
-			    flow_convert_action_modify_tp
-				(mhdr_act, actions, false, false, error))
-				goto err;
-			MLX5_HW_INS_NOP_ACT(mhdr_act->actions_num);
-			break;
-		case RTE_FLOW_ACTION_TYPE_SET_IPV4_TTL:
-			if (mhdr_pos == UINT16_MAX)
-				mhdr_pos = i++;
-			if (__flow_hw_append_act_data_hdr_modify
-				(priv, acts, actions->type,
-				 actions - action_start,
-				 mhdr_pos, mhdr_act->actions_num) ||
-			    flow_convert_action_modify_ttl
-				(mhdr_act, actions, true, error))
-				goto err;
-			MLX5_HW_INS_NOP_ACT(mhdr_act->actions_num);
-			break;
-		case RTE_FLOW_ACTION_TYPE_SET_IPV6_HOP:
-			if (mhdr_pos == UINT16_MAX)
-				mhdr_pos = i++;
-			if (__flow_hw_append_act_data_hdr_modify
-				(priv, acts, actions->type,
-				 actions - action_start,
-				 mhdr_pos, mhdr_act->actions_num) ||
-			    flow_convert_action_modify_ttl
-				(mhdr_act, actions, false, error))
-				goto err;
-			MLX5_HW_INS_NOP_ACT(mhdr_act->actions_num);
-			break;
-		case RTE_FLOW_ACTION_TYPE_DEC_IPV4_TTL:
-			if (mhdr_pos == UINT16_MAX)
-				mhdr_pos = i++;
-			if (flow_convert_action_modify_ttl
-				(mhdr_act, NULL, true, error))
-				goto err;
-			MLX5_HW_INS_NOP_ACT(mhdr_act->actions_num);
-			break;
-		case RTE_FLOW_ACTION_TYPE_DEC_IPV6_HOP:
-			if (mhdr_pos == UINT16_MAX)
-				mhdr_pos = i++;
-			if (flow_convert_action_modify_ttl
-				(mhdr_act, NULL, false, error))
-				goto err;
-			MLX5_HW_INS_NOP_ACT(mhdr_act->actions_num);
-			break;
-		case RTE_FLOW_ACTION_TYPE_INC_TCP_SEQ:
-		case RTE_FLOW_ACTION_TYPE_DEC_TCP_SEQ:
-			if (mhdr_pos == UINT16_MAX)
-				mhdr_pos = i++;
-			if (flow_convert_action_modify_tcp_seq
-					(mhdr_act, actions, error))
-				goto err;
-			MLX5_HW_INS_NOP_ACT(mhdr_act->actions_num);
-			break;
-		case RTE_FLOW_ACTION_TYPE_INC_TCP_ACK:
-		case RTE_FLOW_ACTION_TYPE_DEC_TCP_ACK:
-			if (mhdr_pos == UINT16_MAX)
-				mhdr_pos = i++;
-			if (flow_convert_action_modify_tcp_ack
-					(mhdr_act, actions, error))
-				goto err;
-			MLX5_HW_INS_NOP_ACT(mhdr_act->actions_num);
-			break;
 		case RTE_FLOW_ACTION_TYPE_MODIFY_FIELD:
 			if (mhdr_pos == UINT16_MAX)
 				mhdr_pos = i++;
@@ -772,11 +600,6 @@ flow_hw_actions_translate(struct rte_eth_dev *dev,
 				goto err;
 			MLX5_HW_INS_NOP_ACT(mhdr_act->actions_num);
 			break;
-		case RTE_FLOW_ACTION_TYPE_DEC_TTL:
-		case RTE_FLOW_ACTION_TYPE_SET_TTL:
-			/* Not supported now. */
-			DRV_LOG(ERR, "Please use IPV4_TTL action.");
-			goto err;
 		case RTE_FLOW_ACTION_TYPE_END:
 			actions_end = true;
 			break;
@@ -1055,78 +878,6 @@ flow_hw_actions_construct(struct rte_eth_dev *dev,
 				   raw_encap_data->data, act_data->encap.len);
 			MLX5_ASSERT(raw_encap_data->size ==
 				    act_data->encap.len);
-			break;
-		case RTE_FLOW_ACTION_TYPE_SET_MAC_SRC:
-			mhdr_act->actions_num =
-				act_data->modify_header.sub_action_dst;
-			flow_convert_action_modify_mac
-				(mhdr_act, action, NULL);
-			break;
-		case RTE_FLOW_ACTION_TYPE_SET_MAC_DST:
-			mhdr_act->actions_num =
-				act_data->modify_header.sub_action_dst;
-			flow_convert_action_modify_mac
-				(mhdr_act, action, NULL);
-			break;
-		case RTE_FLOW_ACTION_TYPE_SET_IPV4_SRC:
-			mhdr_act->actions_num =
-				act_data->modify_header.sub_action_dst;
-			flow_convert_action_modify_ipv4
-				(mhdr_act, action, NULL);
-			break;
-		case RTE_FLOW_ACTION_TYPE_SET_IPV4_DST:
-			mhdr_act->actions_num =
-				act_data->modify_header.sub_action_dst;
-			flow_convert_action_modify_ipv4
-				(mhdr_act, action, NULL);
-			break;
-		case RTE_FLOW_ACTION_TYPE_SET_IPV6_SRC:
-			mhdr_act->actions_num =
-				act_data->modify_header.sub_action_dst;
-			flow_convert_action_modify_ipv6
-				(mhdr_act, action, NULL);
-			break;
-		case RTE_FLOW_ACTION_TYPE_SET_IPV6_DST:
-			mhdr_act->actions_num =
-				act_data->modify_header.sub_action_dst;
-			flow_convert_action_modify_ipv6
-				(mhdr_act, action, NULL);
-			break;
-		case RTE_FLOW_ACTION_TYPE_SET_UDP_TP_SRC:
-			mhdr_act->actions_num =
-				act_data->modify_header.sub_action_dst;
-			flow_convert_action_modify_tp
-				(mhdr_act, action, true, true, NULL);
-			break;
-		case RTE_FLOW_ACTION_TYPE_SET_UDP_TP_DST:
-			mhdr_act->actions_num =
-				act_data->modify_header.sub_action_dst;
-			flow_convert_action_modify_tp
-				(mhdr_act, action, true, false, NULL);
-			break;
-		case RTE_FLOW_ACTION_TYPE_SET_TCP_TP_SRC:
-			mhdr_act->actions_num =
-				act_data->modify_header.sub_action_dst;
-			flow_convert_action_modify_tp
-				(mhdr_act, action, false, true, NULL);
-			break;
-		case RTE_FLOW_ACTION_TYPE_SET_TCP_TP_DST:
-			mhdr_act->actions_num =
-				act_data->modify_header.sub_action_dst;
-			flow_convert_action_modify_tp
-				(mhdr_act, action, false, false, NULL);
-			break;
-		case RTE_FLOW_ACTION_TYPE_SET_IPV4_TTL:
-			mhdr_act->actions_num =
-				act_data->modify_header.sub_action_dst;
-			flow_convert_action_modify_ttl
-				(mhdr_act, action, true, NULL);
-			break;
-		case RTE_FLOW_ACTION_TYPE_SET_IPV6_HOP:
-			mhdr_act->actions_num =
-				act_data->modify_header.sub_action_dst;
-			flow_convert_action_modify_ttl
-				(mhdr_act, action, false, NULL);
 			break;
 		case RTE_FLOW_ACTION_TYPE_MODIFY_FIELD:
 			mhdr_act->actions_num =
