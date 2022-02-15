@@ -6,11 +6,8 @@ import socket
 import struct
 import time
 
-from pydiru.providers.mlx5.steering.mlx5dr_action import Mlx5drRuleAction, Mlx5drActionDestTable
 from pydiru.rte_flow import RteFlowItem, RteFlowItemEth, RteFlowItemIpv4, \
-    RteFlowItemUdp, RteFlowItemTcp, RteFlowItemGtp, RteFlowItemGtpPsc, RteFlowItemEnd
-from pydiru.providers.mlx5.steering.mlx5dr_rule import Mlx5drRuleAttr, Mlx5drRule
-from pydiru.providers.mlx5.steering.mlx5dr_matcher import Mlx5drMacherTemplate
+    RteFlowItemUdp, RteFlowItemTcp, RteFlowItemGtp, RteFlowItemGtpPsc, RteFlowItemEnd, RteFlowItemTag
 from pydiru.providers.mlx5.steering.mlx5dr_devx_objects import Mlx5drDevxObj
 from pyverbs.pyverbs_error import PyverbsError, PyverbsRDMAError
 import pydiru.providers.mlx5.steering.mlx5dr_enums as me
@@ -20,16 +17,17 @@ import pydiru.pydiru_enums as p
 from pyverbs import enums as v
 
 from .prm_structs import AllocFlowCounterIn, AllocFlowCounterOut, QueryFlowCounterIn, \
-    QueryFlowCounterOut, TrafficCounter, QueryHcaCapIn, QueryQosCapOut, HcaCapOpMod
+    QueryFlowCounterOut, TrafficCounter, QueryHcaCapIn, QueryQosCapOut, HcaCapOpMod, \
+    GeneralObjInCmdHdr, CreateGeneralObjIn, CreateGeneralObjOut, de
 
 MAX_DIFF_PACKETS = 5
 BULK_COUNTER_SIZE = 512
 BULK_512 = 0b100
-
 MELLANOX_VENDOR_ID = 0x02c9
 
 SET_ACTION = 0x1
 NEW_MAC_STR = '88:88:88:88:88:88'
+POLLING_TIMEOUT = 5
 
 
 class VendorPartID:
@@ -314,9 +312,8 @@ def wc_status_to_str(status):
 
 
 def poll_cq(cq, count=1, tag_value=None):
-    polling_timeout = 5
     start_poll_t = time.perf_counter()
-    while count > 0 and (time.perf_counter() - start_poll_t) < polling_timeout:
+    while count > 0 and (time.perf_counter() - start_poll_t) < POLLING_TIMEOUT :
         nc, tmp_wcs = cq.poll(count)
         for wc in tmp_wcs:
             if tag_value:
@@ -348,6 +345,26 @@ def send_packets(agr_obj, packets, tag_value=None, iters=1):
             send_wr = SendWR(num_sge=1, sg=[send_sg])
             agr_obj.qp.post_send(send_wr)
             poll_cq(agr_obj.cq, tag_value=tag_value)
+
+
+def high_rate_send(agr_obj, packet, rate_limit):
+    """
+    Sends packet at high rate for 3 seconds.
+    :param rate_limit: Minimal rate limit in MBps
+    """
+    send_sg = SGE(agr_obj.mr.buf, len(packet), agr_obj.mr.lkey)
+    agr_obj.mr.write(packet, len(packet))
+    send_wr = SendWR(num_sge=1, sg=[send_sg])
+    iterations = 0
+    timeout = 3
+    start_send_t = time.perf_counter()
+    while (time.perf_counter() - start_send_t) < timeout:
+        agr_obj.qp.post_send(send_wr)
+        poll_cq(agr_obj.cq)
+        iterations += 1
+    # Calculate the rate
+    rate = agr_obj.msg_size * iterations / timeout / 1000000
+    assert(rate > rate_limit)
 
 
 def validate_raw(msg_received, msg_expected, skip_idxs=None):
@@ -611,3 +628,51 @@ def get_qos_caps(dv_ctx):
         raise PyverbsError(f'QUERY_HCA_CAP has failed with status ({query_cap_out.status}) and'
                            f'syndrome ({query_cap_out.syndrome})')
     return query_cap_out
+
+
+def create_devx_general_object(devx_c, obj_type, obj_context, log_obj_range=0):
+    """
+    Create a general object
+    :param devx_c: Devx context
+    :param obj_type: Object type
+    :param obj_context: Object context
+    :param log_obj_range: Log (base 2) of the range of objects referenced by the
+                          command
+    :return: General devx object and its object ID
+    """
+    general_obj_hdr = GeneralObjInCmdHdr(
+        opcode=de.MLX5_CMD_OP_CREATE_GENERAL_OBJECT, obj_type=obj_type,
+        log_obj_range=log_obj_range)
+    general_obj_in = CreateGeneralObjIn(
+        general_obj_in_cmd_hdr=general_obj_hdr, obj_context=obj_context)
+    general_obj = Mlx5DevxObj(devx_c, general_obj_in, len(CreateGeneralObjOut()))
+    general_obj_out = CreateGeneralObjOut(general_obj.out_view)
+    status = general_obj_out.general_obj_out_cmd_hdr.status
+    if status :
+        raise PyverbsError(f'Failed to create general devx object with status {status} '
+                           f'and syndrome {general_obj_out.general_obj_out_cmd_hdr.syndrome}.')
+    return general_obj, general_obj_out.general_obj_out_cmd_hdr.obj_id
+
+
+def create_reg_c_rte_items(reg_c_val, reg_c_idx):
+    mask = RteFlowItemTag(0xffffffff, reg_c_idx)
+    val = RteFlowItemTag(reg_c_val, reg_c_idx)
+    return [RteFlowItem(me.MLX5_RTE_FLOW_ITEM_TYPE_TAG, val, mask), RteFlowItemEnd()]
+
+
+def create_counter_action(test, agr_obj, flags=me.MLX5DR_ACTION_FLAG_HWS_RX, bulk=0, offset=0):
+    """
+    Creates devx counter object, counter action and counter rule action.
+    :param test: Test instance
+    :param agr_obj :Aggregation object
+    :param flags: Action flags
+    :param bulk: Counter bulk size
+    :param offset: Counter offset
+    :return: Devx counter object, counter ID and counter rule action
+    """
+    devx_counter, counter_id = create_devx_counter(agr_obj.dv_ctx, bulk=bulk)
+    test.devx_objects.append(devx_counter)
+    dr_counter = Mlx5drDevxObj(devx_counter, counter_id)
+    _, counter_ra = agr_obj.create_rule_action('counter', flags=flags, dr_counter=dr_counter)
+    counter_ra.counter_offset = offset
+    return devx_counter, counter_id, counter_ra

@@ -4,16 +4,20 @@
 
 import unittest
 import logging
+import socket
+import time
 
-from pyverbs.providers.mlx5.mlx5dv import Mlx5Context, Mlx5DVContextAttr
+from pyverbs.providers.mlx5.mlx5dv import Mlx5Context, Mlx5DVContextAttr, Mlx5DVQPInitAttr, Mlx5QP,\
+     WqeCtrlSeg, Wqe
+from pyverbs.qp import QPInitAttr, QPAttr, QP, QPCap, QPInitAttrEx
+from pyverbs.cq import CQ, PollCqAttr, CqInitAttrEx, CQEX
 from pyverbs.providers.mlx5.mlx5dv import Mlx5DevxObj
-from pyverbs.qp import QPInitAttr, QPAttr, QP, QPCap
 from pyverbs.providers.mlx5 import mlx5_enums as dv
+from pyverbs.pyverbs_error import PyverbsError
 from pyverbs.wq import WQ, WQInitAttr, WQAttr
 from pyverbs import enums as v
 import pyverbs.device as d
 from pyverbs.pd import PD
-from pyverbs.cq import CQ
 from pyverbs.mr import MR
 
 from pydiru.providers.mlx5.steering.mlx5dr_matcher import Mlx5drMacherTemplate, Mlx5drMatcherAttr, Mlx5drMatcher
@@ -26,14 +30,16 @@ from pydiru.providers.mlx5.steering.mlx5dr_rule import Mlx5drRuleAttr, Mlx5drRul
 from pydiru.providers.mlx5.steering.mlx5dr_devx_objects import Mlx5drDevxObj
 import pydiru.providers.mlx5.steering.mlx5dr_enums as me
 
-from .prm_structs import Tirc, CreateTirIn
-from .utils import MAX_DIFF_PACKETS
+from .prm_structs import Tirc, CreateTirIn, AsoCtrl, AsoData
+from .utils import MAX_DIFF_PACKETS, POLLING_TIMEOUT
 from args_parser import parser
 
 NUM_OF_QUEUES = 16
 QUEUE_SIZE = 256
 MATCHER_ROW = 5
 MODIFY_ACTION_SIZE = 8
+ACCESS_ASO = 0x2d
+OPC_MOD_ADD_FP = 2
 
 
 class PydiruAPITestCase(unittest.TestCase):
@@ -158,11 +164,20 @@ class BaseDrResources(object):
     def create_mr(self):
         self.mr = MR(self.pd, self.msg_size * MAX_DIFF_PACKETS, v.IBV_ACCESS_LOCAL_WRITE)
 
+    def create_qp_cap(self):
+        return QPCap(max_recv_wr=self.num_msgs * MAX_DIFF_PACKETS,
+                     max_send_wr=self.num_msgs * MAX_DIFF_PACKETS)
+
+    def cteate_qp_init_attr(self):
+        return QPInitAttr(qp_type=v.IBV_QPT_RAW_PACKET, scq=self.cq, rcq=self.cq,
+                          cap=self.create_qp_cap())
+
+    def cteate_qp_attr(self):
+        return QPAttr(port_num=self.ib_port)
+
     def create_qp(self):
-        qp_init_attr = QPInitAttr(qp_type=v.IBV_QPT_RAW_PACKET, scq=self.cq, rcq=self.cq,
-                                  cap=QPCap(max_recv_wr=self.num_msgs * MAX_DIFF_PACKETS,
-                                            max_send_wr=self.num_msgs * MAX_DIFF_PACKETS))
-        qp_attr = QPAttr(port_num=self.ib_port)
+        qp_init_attr = self.cteate_qp_init_attr()
+        qp_attr = self.cteate_qp_attr()
         self.qp = QP(self.pd, qp_init_attr, qp_attr)
 
     def create_wq(self):
@@ -277,3 +292,83 @@ class BaseDrResources(object):
         else:
             raise unittest.SkipTest(f'Unsupported action {action_str}')
         return action, Mlx5drRuleAction(action)
+
+
+class AsoResources(BaseDrResources):
+    def __init__(self, dv_ctx, pd, ib_port):
+        """
+        Initializes a AsoResources object with the given values.
+        :param dv_ctx: DV context
+        :param ib_port: IB port of the device.
+        :param pd: PD
+        """
+        self.ib_port = ib_port
+        self.dv_ctx = dv_ctx
+        self.pd = pd
+        self.num_msgs = 4
+        self.create_cq()
+        self.create_qp()
+
+    def create_cq(self):
+        cq_attr = CqInitAttrEx(wc_flags=v.IBV_WC_EX_WITH_FLOW_TAG, cqe=1)
+        self.cq = CQEX(self.dv_ctx, cq_attr)
+
+    def cteate_qp_init_attr(self):
+        dv_comp_mask = v.IBV_QP_INIT_ATTR_PD | \
+                       v.IBV_QP_INIT_ATTR_SEND_OPS_FLAGS
+        send_ops_flags = v.IBV_QP_EX_WITH_SEND
+        cap=self.create_qp_cap()
+        return QPInitAttrEx(cap=cap, qp_type=v.IBV_QPT_RAW_PACKET, scq=self.cq,
+                           rcq=self.cq, pd=self.pd, send_ops_flags=send_ops_flags,
+                           comp_mask=dv_comp_mask)
+
+    def cteate_qp_attr(self):
+        dv_send_ops_flags = dv.MLX5DV_QP_EX_WITH_RAW_WQE
+        dv_comp_mask = dv.MLX5DV_QP_INIT_ATTR_MASK_QP_CREATE_FLAGS | \
+                       dv.MLX5DV_QP_INIT_ATTR_MASK_SEND_OPS_FLAGS
+        return Mlx5DVQPInitAttr(comp_mask=dv_comp_mask, send_ops_flags=dv_send_ops_flags)
+
+    def create_qp(self):
+        qp_init_attr = self.cteate_qp_init_attr()
+        qp_attr = self.cteate_qp_attr()
+        self.qp = Mlx5QP(self.dv_ctx, qp_init_attr, qp_attr)
+        self.qp.to_rts(super().cteate_qp_attr())
+
+    def send_raw_wqe(self, raw_wqe):
+        """
+        Send the Wqe and poll the CQ.
+        """
+        self.qp.wr_start()
+        self.qp.wr_raw_wqe(raw_wqe)
+        self.qp.wr_complete()
+        cq_attr = PollCqAttr()
+        ret = 2
+        start_poll_t = time.perf_counter()
+        while (ret == 2) and (time.perf_counter() - start_poll_t) < POLLING_TIMEOUT :
+            ret = self.cq.start_poll(cq_attr)
+        if ret ==2:
+            raise PyverbsError(f'Got timeout on polling.')
+        if ret != 0:
+            raise PyverbsError('Polling CQ ex failed with {ret}.')
+        self.cq.end_poll()
+
+    @staticmethod
+    def create_aso_wqe(flow_meter_param, obj_id, qp_num):
+        """
+        Create and return the aso WQE.
+        """
+        ctrl_seg = WqeCtrlSeg(opcode=ACCESS_ASO, opmod=OPC_MOD_ADD_FP, qp_num=qp_num, ds=8,
+                              fm_ce_se=dv.MLX5_WQE_CTRL_CQ_UPDATE, imm=socket.htonl(obj_id))
+        aso_ctrl = AsoCtrl(data_mask=0xffffffffffffffff, data_mask_mode=1,
+                           condition_0_operand=1, condition_1_operand=1, condition_operand=1)
+        aso_data = AsoData(bytewise_data=flow_meter_param)
+        return Wqe([ctrl_seg, aso_ctrl, aso_data])
+
+    def configure_aso_object(self, params, obj_id):
+        """
+        Post send raw ACCESS_ASO WQE in order to configure ASO object.
+        :param params: ASO object parameters
+        :param obj_id: ASO object ID
+        """
+        raw_send_wqe = self.create_aso_wqe(params, obj_id, self.qp.qp_num)
+        self.send_raw_wqe(raw_send_wqe)

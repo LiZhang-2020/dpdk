@@ -4,7 +4,7 @@
 
 from scapy.fields import BitField, ByteField, IntField, \
      ShortField, LongField, StrFixedLenField, PacketField, \
-     FieldListField
+     FieldListField, ConditionalField, PadField, PacketListField
 from scapy.packet import Packet
 
 
@@ -16,6 +16,7 @@ class DevxOps:
     MLX5_CMD_OP_QUERY_TIR                     = 0x903
     MLX5_CMD_OP_ALLOC_FLOW_COUNTER            = 0x939
     MLX5_CMD_OP_QUERY_FLOW_COUNTER            = 0x93b
+    MLX5_CMD_OP_CREATE_GENERAL_OBJECT         = 0xa00
 
 
 de = DevxOps()
@@ -326,4 +327,109 @@ class QueryQosCapOut(Packet):
         IntField('syndrome', 0),
         StrFixedLenField('reserved2', None, length=8),
         PadField(PacketField('capability', QosCaps(), QosCaps), 4096, padwith=b"\x00"),
+    ]
+
+
+class GeneralObjInCmdHdr(Packet):
+    fields_desc = [
+        ShortField('opcode', 0),
+        ShortField('uid', 0),
+        ShortField('vhca_tunnel_id', 0),
+        ShortField('obj_type', 0),
+        IntField('obj_id', 0),
+        BitField('reserved1', 0, 3),
+        BitField('log_obj_range', 0, 5),
+        StrFixedLenField('reserved2', None, length=3),
+    ]
+
+
+class FlowMeterParams(Packet):
+    fields_desc = [
+        BitField('valid', 0, 1),
+        BitField('bucket_overflow', 0, 1),
+        BitField('start_color', 0, 2),
+        BitField('both_buckets_on_green', 0, 1),
+        BitField('reserved1', 0, 1),
+        BitField('meter_mode', 0, 2),
+        BitField('reserved2', 0, 24),
+        StrFixedLenField('reserved3', None, length=4),
+        ByteField('cbs_exponent', 0),
+        ByteField('cbs_mantissa', 0),
+        BitField('reserved4', 0, 3),
+        BitField('cir_exponent', 0, 5),
+        ByteField('cir_mantissa', 0),
+        StrFixedLenField('reserved5', None, length=4),
+        ByteField('ebs_exponent', 0),
+        ByteField('ebs_mantissa', 0),
+        BitField('reserved6', 0, 3),
+        BitField('eir_exponent', 0, 5),
+        ByteField('eir_mantissa', 0),
+        StrFixedLenField('reserved7', None, length=12),
+    ]
+
+
+class FlowMeterAsoObj(Packet):
+    fields_desc = [
+        LongField('modify_field_select', 0),
+        StrFixedLenField('reserved1', None, length=8),
+        ByteField('reserved2', 0),
+        BitField('flow_hit_aso_access_pd', 0, 24),
+        StrFixedLenField('reserved3', None, length=44),
+        PacketListField('flow_meter_parameters', [FlowMeterParams() for x in range(2)], FlowMeterParams, count_from=lambda pkt:2),
+    ]
+
+
+class CreateGeneralObjIn(Packet):
+    fields_desc = [
+        PacketField('general_obj_in_cmd_hdr', GeneralObjInCmdHdr(), GeneralObjInCmdHdr),
+        ConditionalField(PadField(PacketField('obj_context', FlowMeterAsoObj(), FlowMeterAsoObj()),
+                                  len(FlowMeterAsoObj()), padwith=b"\x00"),
+                         lambda pkt: pkt.general_obj_in_cmd_hdr.obj_type == 0x24),
+    ]
+
+
+class GeneralObjOutCmdHdr(Packet):
+    fields_desc = [
+        ByteField('status', 0),
+        BitField('reserved1', 0, 24),
+        IntField('syndrome', 0),
+        IntField('obj_id', 0),
+        StrFixedLenField('reserved2', None, length=4),
+    ]
+
+
+class CreateGeneralObjOut(Packet):
+    fields_desc = [
+        PacketField('general_obj_out_cmd_hdr', GeneralObjOutCmdHdr(), GeneralObjOutCmdHdr),
+    ]
+
+
+class AsoCtrl(Packet):
+    fields_desc = [
+        IntField('va_h', 0),
+        BitField('va_l', 0, 26),
+        BitField('reserved1', 0, 5),
+        BitField('read_enable', 0, 1),
+        IntField('l_key', 0),
+        BitField('data_mask_mode', 0, 2),
+        BitField('reserved2', 0, 6),
+        BitField('condition_0_operand', 0, 4),
+        BitField('condition_1_operand', 0, 4),
+        BitField('condition_0_offset', 0, 4),
+        BitField('condition_1_offset', 0, 4),
+        BitField('condition_operand', 0, 2),
+        BitField('reserved3', 0, 3),
+        BitField('data_offset', 0, 3),
+        IntField('condition_0_data', 0),
+        IntField('condition_0_mask', 0),
+        IntField('condition_1_data', 0),
+        IntField('condition_1_mask', 0),
+        BitField('bitwise_data', 0, 64),
+        BitField('data_mask', 0, 64)
+    ]
+
+
+class AsoData(Packet):
+    fields_desc = [
+        PacketField('bytewise_data', FlowMeterParams(), FlowMeterParams)
     ]
