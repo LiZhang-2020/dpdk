@@ -89,6 +89,7 @@ Features
 - 21844 flow priorities for ingress or egress flow groups greater than 0 and for any transfer
   flow group.
 - Rx queue delay drop.
+- Rx queue LWM (Limit WaterMark) configuration.
 
 Limitations
 -----------
@@ -473,6 +474,12 @@ Limitations
   - Sequence
 
   Matching on checksum and sequence needs OFED 5.6+.
+
+- The NIC egress flow rules on representor port are not supported.
+
+
+- LWM:
+  - Doesn't support shared Rx queue and Hairpin Rx queue.
 
 Statistics
 ----------

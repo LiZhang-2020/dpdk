@@ -12,4 +12,5 @@ EXPERIMENTAL {
 	# added in 22.03
 	rte_pmd_mlx5_external_rx_queue_id_map;
 	rte_pmd_mlx5_external_rx_queue_id_unmap;
+	rte_pmd_mlx5_config_rxq_lwm;
 };

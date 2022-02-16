@@ -182,6 +182,7 @@ struct mlx5_rxq_priv {
 	struct rte_eth_hairpin_conf hairpin_conf; /* Hairpin configuration. */
 	uint32_t hairpin_status; /* Hairpin binding status. */
 	uint32_t lwm:16;
+	uint32_t lwm_devx_subscribed:1;
 	void (*lwm_event_rxq_limit_reached)(uint16_t port_id, uint16_t rxq_id);
 };
 

@@ -18,14 +18,15 @@
 
 #include <mlx5_prm.h>
 #include <mlx5_common.h>
+#include <rte_pmd_mlx5.h>
 
 #include "mlx5_autoconf.h"
 #include "mlx5_defs.h"
 #include "mlx5.h"
 #include "mlx5_utils.h"
 #include "mlx5_rxtx.h"
+#include "mlx5_devx.h"
 #include "mlx5_rx.h"
-
 
 static __rte_always_inline uint32_t
 rxq_cq_to_pkt_type(struct mlx5_rxq_data *rxq, volatile struct mlx5_cqe *cqe,
@@ -1196,4 +1197,80 @@ mlx5_dev_interrupt_handler_lwm(void *args)
 	rxq = mlx5_rxq_get(dev, rxq_idx);
 	if (rxq && rxq->lwm_event_rxq_limit_reached)
 		rxq->lwm_event_rxq_limit_reached(port_id, rxq_idx);
+}
+
+int
+rte_pmd_mlx5_config_rxq_lwm(uint16_t port_id, uint16_t rx_queue_id,
+			    uint8_t lwm,
+			    lwm_event_rxq_limit_reached_t cb)
+{
+	struct rte_eth_dev *dev = &rte_eth_devices[port_id];
+	struct mlx5_rxq_priv *rxq = mlx5_rxq_get(dev, rx_queue_id);
+	uint16_t event_nums[1] = {MLX5_EVENT_TYPE_SRQ_LIMIT_REACHED};
+	struct mlx5_rxq_data *rxq_data;
+	struct mlx5_priv *priv;
+	uint32_t cqe_cnt;
+	uint64_t cookie;
+	int ret = 0;
+
+	if (!rxq) {
+		rte_errno = EINVAL;
+		return -rte_errno;
+	}
+	rxq_data = &rxq->ctrl->rxq;
+	priv = rxq->priv;
+	/* Ensure the Rq is created by devx. */
+	if (priv->obj_ops.rxq_res_new != devx_obj_ops.rxq_res_new) {
+		rte_errno = EINVAL;
+		return -rte_errno;
+	}
+	if (lwm > 99) {
+		DRV_LOG(WARNING, "Too big LWM configuration.");
+		rte_errno = E2BIG;
+		return -rte_errno;
+	}
+	/* Start config LWM. */
+	pthread_mutex_lock(&priv->sh->lwm_config_lock);
+	if (rxq->lwm == 0 && lwm == 0) {
+		/* Both old/new values are 0, do nothing. */
+		ret = 0;
+		goto end;
+	}
+	cqe_cnt = (1 << rxq_data->cqe_n) - 1;
+	if (lwm) {
+		if (!priv->sh->devx_channel_lwm) {
+			ret = mlx5_lwm_setup(priv);
+			if (ret) {
+				DRV_LOG(WARNING,
+					"Failed to create shared_lwm.");
+				rte_errno = ENOMEM;
+				ret = -rte_errno;
+				goto end;
+			}
+		}
+		if (!rxq->lwm_devx_subscribed) {
+			cookie = ((uint32_t)
+				  (port_id << LWM_COOKIE_PORTID_OFFSET)) |
+				(rx_queue_id << LWM_COOKIE_RXQID_OFFSET);
+			ret = mlx5_glue->devx_subscribe_devx_event
+				(priv->sh->devx_channel_lwm,
+				 rxq->devx_rq->obj,
+				 sizeof(event_nums),
+				 event_nums,
+				 cookie);
+			if (ret) {
+				rte_errno = rte_errno ? rte_errno : EINVAL;
+				ret = -rte_errno;
+				goto end;
+			}
+			rxq->lwm_devx_subscribed = 1;
+		}
+	}
+	/* Save LWM to rxq and send modfiy_rq devx command. */
+	rxq->lwm = lwm * cqe_cnt / 100;
+	rxq->lwm_event_rxq_limit_reached = lwm ? cb : NULL;
+	ret = mlx5_devx_modify_rq(rxq, MLX5_RXQ_MOD_RDY2RDY);
+end:
+	pthread_mutex_unlock(&priv->sh->lwm_config_lock);
+	return ret;
 }
