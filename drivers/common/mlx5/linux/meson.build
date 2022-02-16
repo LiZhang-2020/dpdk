@@ -16,8 +16,9 @@ if dlopen_ibverbs
 	]
 endif
 
-libnames = [ 'mlx5', 'ibverbs' ]
+libnames = [ 'mlx5', 'ibverbs', 'mtcr_ul' ]
 libs = []
+libmtcr_ul_found = false
 foreach libname:libnames
 	lib = dependency('lib' + libname, static:static_ibverbs,
 			required:false, method: 'pkg-config')
@@ -29,10 +30,16 @@ foreach libname:libnames
 		if not static_ibverbs and not dlopen_ibverbs
 			ext_deps += lib
 		endif
+        	if libname == 'mtcr_ul'
+            		libmtcr_ul_found = true
+            		ext_deps += lib
+        	endif
 	else
-		build = false
-		reason = 'missing dependency, "' + libname + '"'
-		subdir_done()
+        	if libname != 'mtcr_ul'
+			build = false
+			reason = 'missing dependency, "' + libname + '"'
+			subdir_done()
+		endif
 	endif
 endforeach
 if static_ibverbs or dlopen_ibverbs
@@ -206,6 +213,12 @@ has_sym_args = [
 	[ 'HAVE_MLX5_IBV_IMPORT_CTX_PD_AND_MR', 'infiniband/verbs.h',
 	'ibv_import_device' ],
 ]
+if  libmtcr_ul_found
+    has_sym_args += [
+        [  'HAVE_MLX5_MSTFLINT', 'mstflint/mtcr.h',
+            'mopen'],
+    ]
+endif
 config = configuration_data()
 foreach arg:has_sym_args
 	config.set(arg[0], cc.has_header_symbol(arg[1], arg[2],

@@ -90,6 +90,7 @@ Features
   flow group.
 - Rx queue delay drop.
 - Rx queue LWM (Limit WaterMark) configuration.
+- Host shaper support.
 
 Limitations
 -----------
@@ -480,6 +481,11 @@ Limitations
 
 - LWM:
   - Doesn't support shared Rx queue and Hairpin Rx queue.
+
+- Host shaper:
+  - Support BlueField series NIC from BlueField 2.
+  - When configure host shaper with MLX5_HOST_SHAPER_FLAG_LWM_TRIGGERED flag set,
+    only rate 0 and 100Mbps are supported.
 
 Statistics
 ----------
