@@ -470,7 +470,7 @@ flow_hw_actions_translate(struct rte_eth_dev *dev,
 				actions->type, actions - action_start, i))
 				goto err;
 			acts->rule_acts[i++].action =
-				priv->hw_tag[!!attr->group][type];
+				priv->hw_tag[!!attr->group];
 			flow_hw_rxq_flag_set(dev);
 			break;
 		case RTE_FLOW_ACTION_TYPE_DROP:
@@ -1886,9 +1886,10 @@ flow_hw_configure(struct rte_eth_dev *dev,
 				(priv->dr_ctx, mlx5_hw_dr_ft_flag[i][j]);
 			if (!priv->hw_drop[i][j])
 				goto err;
-			priv->hw_tag[i][j] = mlx5dr_action_create_tag
-				(priv->dr_ctx, mlx5_hw_dr_ft_flag[i][j]);
 		}
+		priv->hw_tag[i] = mlx5dr_action_create_tag
+			(priv->dr_ctx, mlx5_hw_dr_ft_flag[i][0]);
+
 	}
 	return 0;
 err:
@@ -1896,9 +1897,10 @@ err:
 		for (j = 0; j < MLX5DR_TABLE_TYPE_MAX; j++) {
 			if (priv->hw_drop[i][j])
 				mlx5dr_action_destroy(priv->hw_drop[i][j]);
-			if (priv->hw_tag[i][j])
-				mlx5dr_action_destroy(priv->hw_tag[i][j]);
 		}
+		if (priv->hw_tag[i])
+			mlx5dr_action_destroy(priv->hw_tag[i]);
+
 	}
 	if (priv->acts_ipool)
 		mlx5_ipool_destroy(priv->acts_ipool);
