@@ -60,6 +60,9 @@
 #ifdef RTE_LIB_LATENCYSTATS
 #include <rte_latencystats.h>
 #endif
+#ifdef RTE_NET_MLX5
+#include <rte_pmd_mlx5.h>
+#endif
 
 #include "testpmd.h"
 

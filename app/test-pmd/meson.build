@@ -66,3 +66,6 @@ if jansson_dep.found()
     dpdk_conf.set('RTE_HAS_JANSSON', 1)
     ext_deps += jansson_dep
 endif
+if dpdk_conf.has('RTE_NET_MLX5')
+    deps += 'net_mlx5'
+endif

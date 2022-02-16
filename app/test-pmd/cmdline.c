@@ -16901,6 +16901,151 @@ cmdline_parse_inst_t cmd_show_port_flow_transfer_proxy = {
 	}
 };
 
+#ifdef RTE_NET_MLX5
+
+/* *** SET LIMIT WARTER MARK FOR A RXQ OF A PORT *** */
+struct cmd_rxq_lwm_result {
+	cmdline_fixed_string_t set;
+	cmdline_fixed_string_t port;
+	uint16_t port_num;
+	cmdline_fixed_string_t rxq;
+	uint16_t rxq_num;
+	cmdline_fixed_string_t lwm;
+	uint16_t lwm_num;
+};
+
+static void cmd_rxq_lwm_parsed(void *parsed_result,
+		__rte_unused struct cmdline *cl,
+		__rte_unused void *data)
+{
+	struct cmd_rxq_lwm_result *res = parsed_result;
+	int ret = 0;
+
+	if ((strcmp(res->set, "set") == 0) && (strcmp(res->port, "port") == 0)
+	    && (strcmp(res->rxq, "rxq") == 0)
+	    && (strcmp(res->lwm, "lwm") == 0))
+		ret = set_rxq_lwm(res->port_num, res->rxq_num,
+				  res->lwm_num);
+	if (ret < 0)
+		printf("rxq_lwm_cmd error: (%s)\n", strerror(-ret));
+
+}
+
+cmdline_parse_token_string_t cmd_rxq_lwm_set =
+	TOKEN_STRING_INITIALIZER(struct cmd_rxq_lwm_result,
+				set, "set");
+cmdline_parse_token_string_t cmd_rxq_lwm_port =
+	TOKEN_STRING_INITIALIZER(struct cmd_rxq_lwm_result,
+				port, "port");
+cmdline_parse_token_num_t cmd_rxq_lwm_portnum =
+	TOKEN_NUM_INITIALIZER(struct cmd_rxq_lwm_result,
+				port_num, RTE_UINT16);
+cmdline_parse_token_string_t cmd_rxq_lwm_rxq =
+	TOKEN_STRING_INITIALIZER(struct cmd_rxq_lwm_result,
+				rxq, "rxq");
+cmdline_parse_token_num_t cmd_rxq_lwm_rxqnum =
+	TOKEN_NUM_INITIALIZER(struct cmd_rxq_lwm_result,
+				rxq_num, RTE_UINT8);
+cmdline_parse_token_string_t cmd_rxq_lwm_lwm =
+	TOKEN_STRING_INITIALIZER(struct cmd_rxq_lwm_result,
+				lwm, "lwm");
+cmdline_parse_token_num_t cmd_rxq_lwm_lwmnum =
+	TOKEN_NUM_INITIALIZER(struct cmd_rxq_lwm_result,
+				lwm_num, RTE_UINT16);
+
+cmdline_parse_inst_t cmd_rxq_lwm = {
+	.f = cmd_rxq_lwm_parsed,
+	.data = (void *)0,
+	.help_str = "set port <port_id> rxq <rxq_id> lwm <lwm_num>"
+		"Set lwm for rxq on port_id",
+	.tokens = {
+		(void *)&cmd_rxq_lwm_set,
+		(void *)&cmd_rxq_lwm_port,
+		(void *)&cmd_rxq_lwm_portnum,
+		(void *)&cmd_rxq_lwm_rxq,
+		(void *)&cmd_rxq_lwm_rxqnum,
+		(void *)&cmd_rxq_lwm_lwm,
+		(void *)&cmd_rxq_lwm_lwmnum,
+		NULL,
+	},
+};
+
+/* *** SET HOST_SHAPER LWM TRIGGERED FOR A PORT *** */
+struct cmd_port_host_shaper_result {
+	cmdline_fixed_string_t set;
+	cmdline_fixed_string_t port;
+	uint16_t port_num;
+	cmdline_fixed_string_t host_shaper;
+	cmdline_fixed_string_t lwm_triggered;
+	uint16_t fr;
+	cmdline_fixed_string_t rate;
+	uint8_t rate_num;
+};
+
+static void cmd_port_host_shaper_parsed(void *parsed_result,
+		__rte_unused struct cmdline *cl,
+		__rte_unused void *data)
+{
+	struct cmd_port_host_shaper_result *res = parsed_result;
+	int ret = 0;
+
+	if ((strcmp(res->set, "set") == 0) && (strcmp(res->port, "port") == 0)
+	    && (strcmp(res->host_shaper, "host_shaper") == 0)
+	    && (strcmp(res->lwm_triggered, "lwm_triggered") == 0)
+	    && (strcmp(res->rate, "rate") == 0))
+		ret = set_port_host_shaper(res->port_num, res->fr,
+					   res->rate_num);
+	if (ret < 0)
+		printf("cmd_port_host_shaper error: (%s)\n", strerror(-ret));
+
+}
+
+cmdline_parse_token_string_t cmd_port_host_shaper_set =
+	TOKEN_STRING_INITIALIZER(struct cmd_port_host_shaper_result,
+				set, "set");
+cmdline_parse_token_string_t cmd_port_host_shaper_port =
+	TOKEN_STRING_INITIALIZER(struct cmd_port_host_shaper_result,
+				port, "port");
+cmdline_parse_token_num_t cmd_port_host_shaper_portnum =
+	TOKEN_NUM_INITIALIZER(struct cmd_port_host_shaper_result,
+				port_num, RTE_UINT16);
+cmdline_parse_token_string_t cmd_port_host_shaper_host_shaper =
+	TOKEN_STRING_INITIALIZER(struct cmd_port_host_shaper_result,
+				 host_shaper, "host_shaper");
+cmdline_parse_token_string_t cmd_port_host_shaper_lwm_triggered =
+	TOKEN_STRING_INITIALIZER(struct cmd_port_host_shaper_result,
+				 lwm_triggered, "lwm_triggered");
+cmdline_parse_token_num_t cmd_port_host_shaper_fr =
+	TOKEN_NUM_INITIALIZER(struct cmd_port_host_shaper_result,
+			      fr, RTE_UINT16);
+cmdline_parse_token_string_t cmd_port_host_shaper_rate =
+	TOKEN_STRING_INITIALIZER(struct cmd_port_host_shaper_result,
+				 rate, "rate");
+cmdline_parse_token_num_t cmd_port_host_shaper_rate_num =
+	TOKEN_NUM_INITIALIZER(struct cmd_port_host_shaper_result,
+			      rate_num, RTE_UINT8);
+
+
+cmdline_parse_inst_t cmd_port_host_shaper = {
+	.f = cmd_port_host_shaper_parsed,
+	.data = (void *)0,
+	.help_str = "set port <port_id> host_shaper lwm_triggered <0|1> "
+	"rate <rate_num>: Set HOST_SHAPER lwm_triggered and rate with port_id",
+	.tokens = {
+		(void *)&cmd_port_host_shaper_set,
+		(void *)&cmd_port_host_shaper_port,
+		(void *)&cmd_port_host_shaper_portnum,
+		(void *)&cmd_port_host_shaper_host_shaper,
+		(void *)&cmd_port_host_shaper_lwm_triggered,
+		(void *)&cmd_port_host_shaper_fr,
+		(void *)&cmd_port_host_shaper_rate,
+		(void *)&cmd_port_host_shaper_rate_num,
+		NULL,
+	},
+};
+
+#endif
+
 /* ******************************************************************************** */
 
 /* list of instructions */
@@ -17178,6 +17323,10 @@ cmdline_parse_ctx_t main_ctx[] = {
 	(cmdline_parse_inst_t *)&cmd_show_capability,
 	(cmdline_parse_inst_t *)&cmd_set_flex_is_pattern,
 	(cmdline_parse_inst_t *)&cmd_set_flex_spec_pattern,
+#ifdef RTE_NET_MLX5
+	(cmdline_parse_inst_t *)&cmd_rxq_lwm,
+	(cmdline_parse_inst_t *)&cmd_port_host_shaper,
+#endif
 	NULL,
 };
 

@@ -483,6 +483,7 @@ Limitations
   - Doesn't support shared Rx queue and Hairpin Rx queue.
 
 - Host shaper:
+
   - Support BlueField series NIC from BlueField 2.
   - When configure host shaper with MLX5_HOST_SHAPER_FLAG_LWM_TRIGGERED flag set,
     only rate 0 and 100Mbps are supported.
@@ -1563,3 +1564,79 @@ This section demonstrates how to use the shared meter. A meter M can be created
 on port X and to be shared with a port Y on the same switch domain by the next way:
 
         flow create X ingress transfer pattern eth / port_id id is Y / end actions meter mtr_id M / end
+
+How to use LWM and Host Shaper
+------------------------------
+
+LWM introduction
+~~~~~~~~~~~~~~~~
+
+LWM (Limit WaterMark) is a per Rx queue attribute, it should be configured as
+a percentage of the Rx queue size.
+When Rx queue's available WQE count is below LWM, an event is sent to PMD.
+
+Host shaper introduction
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+Host shaper register is per host port register which sets a shaper
+on the host port.
+All VF/hostPF representors belonging to one host port share one host shaper.
+For example, if representor 0 and representor 1 belong to same host port,
+and a host shaper rate of 1Gbps is configured, the shaper throttles both
+representors' traffic from host.
+Host shaper has two modes for setting the shaper, immediate and deferred to
+LWM event trigger. In immediate mode, the rate limit is configured immediately
+to host shaper. When deferring to LWM trigger, the shaper is not set until an
+LWM event is received by any Rx queue in a VF representor belonging to the host
+port. The only rate supported for deferred mode is 100Mbps (there is no limit
+on the supported rates for immediate mode). In deferred mode, the shaper is set
+on the host port by the firmware upon receiving the LMW event, which allows
+throttling host traffic on LWM events at minimum latency, preventing excess
+drops in the Rx queue.
+
+Testpmd CLI examples
+~~~~~~~~~~~~~~~~~~~~
+
+There are sample command lines to configure LWM in testpmd.
+Testpmd also contains sample logic to handle LWM event.
+The typical workflow is: testpmd configure LWM for Rx queues, enable
+lwm_triggered in host shaper and register a callback, when traffic from host is
+too high and available WQE count runs below LWM, PMD receives an event and
+firmware configures a 100Mbps shaper on host port automatically, then PMD call
+the callback registered previously, which will delay a while to let Rx queue
+empty, then disable host shaper.
+
+Let's assume we have a simple Blue Field 2 setup: port 0 is uplink, port 1
+is VF representor. Each port has 2 Rx queues.
+In order to control traffic from host to ARM, we can enable LWM in testpmd by:
+
+.. code-block:: console
+
+   testpmd> set port 1 host_shaper lwm_triggered 1 rate 0
+   testpmd> set port 1 rxq 0 lwm 30
+   testpmd> set port 1 rxq 1 lwm 30
+
+The first command disables current host shaper, and enables LWM triggered mode.
+The left commands configure LWM to 30% of Rx queue size for both Rx queues,
+When traffic from host is too high, you can see testpmd console prints log
+about LWM event receiving, then host shaper is disabled.
+The traffic rate from host is controlled and less drop happens in Rx queues.
+
+When disable LWM and lwm_triggered, we can invoke below commands in testpmd:
+
+.. code-block:: console
+
+   testpmd> set port 1 host_shaper lwm_triggered 0 rate 0
+   testpmd> set port 1 rxq 0 lwm 0
+   testpmd> set port 1 rxq 1 lwm 0
+
+It's recommended an application disables LWM and lwm_triggered before exit,
+if it enables them before.
+
+We can also configure the shaper with a value, the rate unit is 100Mbps, below
+command sets current shaper to 5Gbps and disables lwm_triggered.
+
+.. code-block:: console
+
+   testpmd> set port 1 host_shaper lwm_triggered 0 rate 50
+
