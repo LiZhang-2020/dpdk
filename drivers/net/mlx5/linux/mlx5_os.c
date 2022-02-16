@@ -2533,6 +2533,38 @@ mlx5_os_net_cleanup(void)
 	mlx5_pmd_socket_uninit();
 }
 
+static int
+mlx5_os_dev_shared_handler_lsc_setup(struct mlx5_dev_ctx_shared *sh)
+{
+	int nlsk_fd, ret;
+
+	sh->intr_handle_nl.fd = -1;
+	nlsk_fd = mlx5_nl_init(NETLINK_ROUTE, RTMGRP_LINK);
+	if (nlsk_fd < 0) {
+		DRV_LOG(INFO, "Failed to create a socket for Netlink events: %s",
+			rte_strerror(rte_errno));
+		return -1;
+	}
+	ret = mlx5_os_interrupt_handler_setup
+					(&sh->intr_handle_nl, true, nlsk_fd,
+					 mlx5_dev_interrupt_handler_nl, sh);
+	if (ret < 0)
+		close(nlsk_fd);
+	return ret;
+}
+
+static void
+mlx5_os_dev_shared_handler_lsc_unset(struct mlx5_dev_ctx_shared *sh)
+{
+	int nlsk_fd;
+
+	nlsk_fd = sh->intr_handle_nl.fd;
+	mlx5_os_interrupt_handler_unset(&sh->intr_handle_nl,
+					mlx5_dev_interrupt_handler_nl, sh);
+	if (nlsk_fd >= 0)
+		close(nlsk_fd);
+}
+
 /**
  * Install shared asynchronous device events handler.
  * This function is implemented to support event sharing
@@ -2552,6 +2584,8 @@ mlx5_os_dev_shared_handler_install(struct mlx5_dev_ctx_shared *sh)
 		 ctx->async_fd, mlx5_dev_interrupt_handler, sh);
 	if (ret)
 		DRV_LOG(INFO, "Failed to initialize intr_handle.");
+	if (mlx5_os_dev_shared_handler_lsc_setup(sh) < 0)
+		DRV_LOG(INFO, "Fail to install the shared Netlink event handler.");
 	if (sh->cdev->config.devx) {
 #ifdef HAVE_IBV_DEVX_ASYNC
 		struct mlx5dv_devx_cmd_comp *devx_comp;
@@ -2586,6 +2620,7 @@ mlx5_os_dev_shared_handler_uninstall(struct mlx5_dev_ctx_shared *sh)
 {
 	mlx5_os_interrupt_handler_unset(&sh->intr_handle,
 					mlx5_dev_interrupt_handler, sh);
+	mlx5_os_dev_shared_handler_lsc_unset(sh);
 #ifdef HAVE_IBV_DEVX_ASYNC
 	mlx5_os_interrupt_handler_unset(&sh->intr_handle_devx,
 					mlx5_dev_interrupt_handler_devx, sh);
