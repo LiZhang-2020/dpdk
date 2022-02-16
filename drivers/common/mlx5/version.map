@@ -119,9 +119,11 @@ INTERNAL {
 	mlx5_nl_mac_addr_flush;
 	mlx5_nl_mac_addr_remove;
 	mlx5_nl_mac_addr_sync;
+	mlx5_nl_parse_link_status_update;
 	mlx5_nl_portnum;
 	mlx5_nl_port_state;
 	mlx5_nl_promisc;
+	mlx5_nl_read_events;
 	mlx5_nl_switch_info;
 	mlx5_nl_vf_mac_addr_modify;
 	mlx5_nl_vlan_vmwa_create;
