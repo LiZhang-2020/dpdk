@@ -1169,3 +1169,31 @@ mlx5_check_vec_rx_support(struct rte_eth_dev *dev __rte_unused)
 	return -ENOTSUP;
 }
 
+/**
+ * Rte interrupt handler for LWM event.
+ * It first checks if the event arrives, if so invokes the callback registered
+ * for LWM event in the rxq.
+ *
+ * @param args
+ *   Generic pointer to mlx5_priv.
+ */
+void
+mlx5_dev_interrupt_handler_lwm(void *args)
+{
+	struct mlx5_priv *priv = args;
+	struct mlx5_rxq_priv *rxq;
+	struct rte_eth_dev *dev;
+	int ret, rxq_idx = 0, port_id = 0;
+
+	ret = priv->obj_ops.rxq_event_get_lwm(priv, &rxq_idx, &port_id);
+	if (unlikely(ret < 0)) {
+		DRV_LOG(WARNING, "Cannot get LWM event context.");
+		return;
+	}
+	DRV_LOG(INFO, "%s get LWM event, port_id:%d rxq_id:%d.", __func__,
+		port_id, rxq_idx);
+	dev = &rte_eth_devices[port_id];
+	rxq = mlx5_rxq_get(dev, rxq_idx);
+	if (rxq && rxq->lwm_event_rxq_limit_reached)
+		rxq->lwm_event_rxq_limit_reached(port_id, rxq_idx);
+}
