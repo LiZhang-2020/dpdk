@@ -2384,8 +2384,13 @@ mlx5_ind_table_obj_new(struct rte_eth_dev *dev, const uint16_t *queues,
 	struct mlx5_ind_table_obj *ind_tbl;
 	int ret;
 
+	/*
+	 * Allocate maximum queues for shared action as shared action
+	 * queue number maybe modified later.
+	 */
 	ind_tbl = mlx5_malloc(MLX5_MEM_ZERO, sizeof(*ind_tbl) +
-			      queues_n * sizeof(uint16_t), 0, SOCKET_ID_ANY);
+			      (standalone ? priv->rxqs_n : queues_n) *
+			      sizeof(uint16_t), 0, SOCKET_ID_ANY);
 	if (!ind_tbl) {
 		rte_errno = ENOMEM;
 		return NULL;
