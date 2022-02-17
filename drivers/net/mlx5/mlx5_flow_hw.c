@@ -1296,7 +1296,7 @@ __flow_hw_drain_comp(struct rte_eth_dev *dev,
 
 	flow_hw_q_drain(dev, queue, error);
 	while (pending_rules) {
-		ret = flow_hw_q_dequeue(dev, 0, comp, BURST_THR, error);
+		ret = flow_hw_q_dequeue(dev, queue, comp, BURST_THR, error);
 		if (ret < 0)
 			return -1;
 		if (!ret) {
