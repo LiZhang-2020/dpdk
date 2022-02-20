@@ -717,6 +717,7 @@ int mlx5dr_cmd_query_caps(struct ibv_context *ctx,
 {
 	uint32_t out[DEVX_ST_SZ_DW(query_hca_cap_out)] = {0};
 	uint32_t in[DEVX_ST_SZ_DW(query_hca_cap_in)] = {0};
+	const struct flow_hw_port_info *port_info;
 	struct ibv_device_attr_ex attr_ex;
 	int ret;
 
@@ -853,6 +854,14 @@ int mlx5dr_cmd_query_caps(struct ibv_context *ctx,
 	}
 
 	strlcpy(caps->fw_ver, attr_ex.orig_attr.fw_ver, sizeof(caps->fw_ver));
+
+	port_info = flow_hw_get_wire_port(ctx);
+	if (port_info) {
+		caps->wire_regc = port_info->regc_value;
+		caps->wire_regc_mask = port_info->regc_mask;
+	} else {
+		DR_LOG(INFO, "Failed to query wire port regc value");
+	}
 
 	return ret;
 }

@@ -4,12 +4,42 @@
 
 #include "mlx5dr_internal.h"
 
+static void mlx5dr_rule_skip(struct mlx5dr_match_template *mt,
+			     const struct rte_flow_item *items,
+			     bool *skip_rx, bool *skip_tx)
+{
+	const struct rte_flow_item_port_id *v;
+	const struct flow_hw_port_info *vport;
+
+	/* By default FDB rules are added to both RX and TX */
+	*skip_rx = false;
+	*skip_tx = false;
+
+	if (mt->item_flags & MLX5_FLOW_ITEM_PORT_ID) {
+		v = items[mt->vport_item_id].spec;
+		vport = flow_hw_conv_port_id(v->id);
+		if (unlikely(!vport)) {
+			DR_LOG(ERR, "Fail to map port ID %d, ignoring", v->id);
+			return;
+		}
+
+		if (!vport->is_wire)
+			/* Match vport ID is not WIRE -> Skip RX */
+			*skip_rx = true;
+		else
+			/* Match vport ID is WIRE -> Skip TX */
+			*skip_tx = true;
+	}
+}
+
 static void mlx5dr_rule_init_dep_wqe(struct mlx5dr_send_ring_dep_wqe *dep_wqe,
 				     struct mlx5dr_rule *rule,
+				     const struct rte_flow_item *items,
 				     void *user_data)
 {
 	struct mlx5dr_matcher *matcher = rule->matcher;
 	struct mlx5dr_table *tbl = matcher->tbl;
+	bool skip_rx, skip_tx;
 
 	dep_wqe->rule = rule;
 	dep_wqe->user_data = user_data;
@@ -25,16 +55,20 @@ static void mlx5dr_rule_init_dep_wqe(struct mlx5dr_send_ring_dep_wqe *dep_wqe,
 		break;
 
 	case MLX5DR_TABLE_TYPE_FDB:
-		// TODO add SKIP FDB_RX / FDB_TX logic
-		dep_wqe->rtc_0 = matcher->rtc_0->id;
-		dep_wqe->rtc_1 = matcher->rtc_1->id;
-		if (matcher->col_matcher) {
-			dep_wqe->retry_rtc_0 = matcher->col_matcher->rtc_0->id;
-			dep_wqe->retry_rtc_1 = matcher->col_matcher->rtc_1->id;
-		} else {
-			dep_wqe->retry_rtc_0 = 0;
-			dep_wqe->retry_rtc_1 = 0;
+		mlx5dr_rule_skip(matcher->mt[0], items, &skip_rx, &skip_tx);
+
+		if (!skip_rx) {
+			dep_wqe->rtc_0 = matcher->rtc_0->id;
+			dep_wqe->retry_rtc_0 = matcher->col_matcher ?
+					       matcher->col_matcher->rtc_0->id : 0;
 		}
+
+		if (!skip_tx) {
+			dep_wqe->rtc_1 = matcher->rtc_1->id;
+			dep_wqe->retry_rtc_1 = matcher->col_matcher ?
+					       matcher->col_matcher->rtc_1->id : 0;
+		}
+
 		break;
 
 	default:
@@ -85,6 +119,7 @@ static int mlx5dr_rule_create_hws(struct mlx5dr_rule *rule,
 	mlx5dr_send_engine_inc_rule(queue);
 
 	/* Initialise rule */
+	rule->rtc_0 = 0;
 	rule->rtc_1 = 0;
 	rule->pending_wqes = 0;
 	rule->status = MLX5DR_RULE_STATUS_CREATING;
@@ -93,7 +128,7 @@ static int mlx5dr_rule_create_hws(struct mlx5dr_rule *rule,
 	 * This is inefficient and should be optimised.
 	 */
 	dep_wqe = mlx5dr_send_add_new_dep_wqe(queue);
-	mlx5dr_rule_init_dep_wqe(dep_wqe, rule, attr->user_data);
+	mlx5dr_rule_init_dep_wqe(dep_wqe, rule, items, attr->user_data);
 
 	/* Apply action on */
 	mlx5dr_actions_quick_apply(queue,

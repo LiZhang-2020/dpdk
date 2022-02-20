@@ -10,6 +10,7 @@
 #define STE_TCP		0x1
 #define STE_UDP		0x2
 #define GTP_PDU_SC	0x85
+#define BAD_PORT	0xBAD
 
 #define DR_CALC_FNAME(field, inner) \
 	((inner) ? MLX5DR_DEFINER_FNAME_##field##_I : \
@@ -43,17 +44,20 @@
 		*((rte_be16_t *)(p) + (byte_off / 2)) = (v); \
 	} while (0)
 
+#define DR_CALC_SET_HDR(fc, hdr, field) \
+	do { \
+		(fc)->bit_mask = __mlx5_mask(definer_hl, hdr.field); \
+		(fc)->bit_off = __mlx5_dw_bit_off(definer_hl, hdr.field); \
+		(fc)->byte_off = MLX5_BYTE_OFF(definer_hl, hdr.field); \
+	} while (0)
+
 /* Helper to calculate data used by DR_SET */
 #define DR_CALC_SET(fc, hdr, field, is_inner) \
 	do { \
 		if (is_inner) { \
-			fc->bit_mask = __mlx5_mask(definer_hl, hdr##_inner.field); \
-			fc->bit_off = __mlx5_dw_bit_off(definer_hl, hdr##_inner.field); \
-			fc->byte_off = MLX5_BYTE_OFF(definer_hl, hdr##_inner.field); \
+			DR_CALC_SET_HDR(fc, hdr##_inner, field); \
 		} else { \
-			fc->bit_mask = __mlx5_mask(definer_hl, hdr##_outer.field); \
-			fc->bit_off = __mlx5_dw_bit_off(definer_hl, hdr##_outer.field); \
-			fc->byte_off = MLX5_BYTE_OFF(definer_hl, hdr##_outer.field); \
+			DR_CALC_SET_HDR(fc, hdr##_outer, field); \
 		} \
 	} while (0)
 
@@ -129,6 +133,7 @@ enum mlx5dr_definer_fname {
 	MLX5DR_DEFINER_FNAME_FLEX_PARSER_5,
 	MLX5DR_DEFINER_FNAME_FLEX_PARSER_6,
 	MLX5DR_DEFINER_FNAME_FLEX_PARSER_7,
+	MLX5DR_DEFINER_FNAME_VPORT_REG_C_0,
 	MLX5DR_DEFINER_FNAME_MAX,
 };
 
@@ -263,8 +268,8 @@ mlx5dr_definer_eth_smac_47_16_set(struct mlx5dr_definer_fc *fc,
 
 static void
 mlx5dr_definer_eth_smac_15_0_set(struct mlx5dr_definer_fc *fc,
-				  const void *item_spec,
-				  uint8_t *tag)
+				 const void *item_spec,
+				 uint8_t *tag)
 {
 	const struct rte_flow_item_eth *v = item_spec;
 
@@ -283,12 +288,31 @@ mlx5dr_definer_eth_dmac_47_16_set(struct mlx5dr_definer_fc *fc,
 
 static void
 mlx5dr_definer_eth_dmac_15_0_set(struct mlx5dr_definer_fc *fc,
-				  const void *item_spec,
-				  uint8_t *tag)
+				 const void *item_spec,
+				 uint8_t *tag)
 {
 	const struct rte_flow_item_eth *v = item_spec;
 
 	memcpy(tag + fc->byte_off, v->dst.addr_bytes + 4, 2);
+}
+
+static void
+mlx5dr_definer_vport_set(struct mlx5dr_definer_fc *fc,
+			 const void *item_spec,
+			 uint8_t *tag)
+{
+	const struct rte_flow_item_port_id *v = item_spec;
+	const struct flow_hw_port_info *port_info;
+	uint32_t regc_value;
+
+	port_info = flow_hw_conv_port_id(v->id);
+	if (unlikely(!port_info))
+		regc_value = BAD_PORT;
+	else
+		regc_value = port_info->regc_value >> fc->bit_off;
+
+	/* Bit offset is set to 0 to since regc value is 32bit */
+	DR_SET(tag, regc_value, fc->byte_off, fc->bit_off, fc->bit_mask);
 }
 
 static uint32_t mlx5dr_definer_get_flex_parser_off(uint8_t flex_parser_id)
@@ -801,6 +825,41 @@ mlx5dr_definer_conv_item_gtp_psc(struct mlx5dr_definer_conv_data *cd,
 }
 
 static int
+mlx5dr_definer_conv_item_port(struct mlx5dr_definer_conv_data *cd,
+			      struct rte_flow_item *item,
+			      int item_idx)
+{
+	const struct rte_flow_item_port_id *m = item->mask;
+	struct mlx5dr_definer_fc *fc;
+	uint8_t bit_offset = 0;
+
+	if (m->id) {
+		if (!cd->caps->wire_regc_mask) {
+			DR_LOG(ERR, "Port ID item not supported, missing wire REGC mask");
+			rte_errno = ENOTSUP;
+			return rte_errno;
+		}
+
+		while (!(cd->caps->wire_regc_mask & (1 << bit_offset)))
+			bit_offset++;
+
+		fc = &cd->fc[MLX5DR_DEFINER_FNAME_VPORT_REG_C_0];
+		fc->item_idx = item_idx;
+		fc->tag_set = &mlx5dr_definer_vport_set;
+		fc->tag_mask_set = &mlx5dr_definer_ones_set;
+		DR_CALC_SET_HDR(fc, registers, register_c_0);
+		fc->bit_off = bit_offset;
+		fc->bit_mask = cd->caps->wire_regc_mask >> bit_offset;
+	} else {
+		DR_LOG(ERR, "Pord ID item mask must specify ID mask");
+		rte_errno = EINVAL;
+		return rte_errno;
+	}
+
+	return 0;
+}
+
+static int
 mlx5dr_definer_conv_items_to_hl(struct mlx5dr_context *ctx,
 				struct mlx5dr_match_template *mt,
 				uint8_t *hl)
@@ -856,6 +915,11 @@ mlx5dr_definer_conv_items_to_hl(struct mlx5dr_context *ctx,
 			ret = mlx5dr_definer_conv_item_gtp_psc(&cd, items, i);
 			item_flags |= MLX5_FLOW_LAYER_GTP_PSC;
 			break;
+		case RTE_FLOW_ITEM_TYPE_PORT_ID:
+			ret = mlx5dr_definer_conv_item_port(&cd, items, i);
+			item_flags |= MLX5_FLOW_ITEM_PORT_ID;
+			mt->vport_item_id = i;
+			break;
 		default:
 			rte_errno = ENOTSUP;
 			return rte_errno;
@@ -866,6 +930,8 @@ mlx5dr_definer_conv_items_to_hl(struct mlx5dr_context *ctx,
 			return ret;
 		}
 	}
+
+	mt->item_flags = item_flags;
 
 	/* Fill in headers layout and calculate total number of fields  */
 	for (i = 0; i < MLX5DR_DEFINER_FNAME_MAX; i++) {

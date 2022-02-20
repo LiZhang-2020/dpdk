@@ -230,6 +230,17 @@ struct mlx5_ifc_definer_hl_flex_parser_bits {
 	u8 flex_parser_0[0x20];
 };
 
+struct mlx5_ifc_definer_hl_registers_bits {
+	u8 register_c_6[0x20];
+	u8 register_c_7[0x20];
+	u8 register_c_4[0x20];
+	u8 register_c_5[0x20];
+	u8 register_c_2[0x20];
+	u8 register_c_3[0x20];
+	u8 register_c_0[0x20];
+	u8 register_c_1[0x20];
+};
+
 struct mlx5_ifc_definer_hl_bits {
 	struct mlx5_ifc_definer_hl_eth_l2_bits eth_l2_outer;
 	struct mlx5_ifc_definer_hl_eth_l2_bits eth_l2_inner;
@@ -271,7 +282,7 @@ struct mlx5_ifc_definer_hl_bits {
 	//	struct x utc_timestamp;
 	//	struct x free_running_timestamp;
 	struct mlx5_ifc_definer_hl_flex_parser_bits flex_parser;
-	//	struct x registers;
+	struct mlx5_ifc_definer_hl_registers_bits registers;
 	//	struct x ib_l3_extended;
 	//	struct x rwh;
 	//	struct x dcceth;

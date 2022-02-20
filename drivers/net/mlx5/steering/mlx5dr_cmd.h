@@ -115,6 +115,8 @@ struct mlx5dr_cmd_query_ft_caps {
 };
 
 struct mlx5dr_cmd_query_caps {
+	uint32_t wire_regc;
+	uint32_t wire_regc_mask;
 	uint32_t flex_protocols;
 	uint8_t wqe_based_update;
 	uint8_t rtc_reparse_mode;
