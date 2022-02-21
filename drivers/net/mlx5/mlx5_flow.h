@@ -1383,14 +1383,19 @@ flow_hw_conv_port_id(const uint16_t port_id)
 static __rte_always_inline const struct flow_hw_port_info *
 flow_hw_get_wire_port(struct ibv_context *ibctx)
 {
+	struct ibv_device *ibdev = ibctx->device;
 	uint16_t port_id;
 
 	MLX5_ETH_FOREACH_DEV(port_id, NULL) {
 		const struct mlx5_priv *priv =
 				rte_eth_devices[port_id].data->dev_private;
 
-		if (priv && priv->master && priv->sh->cdev->ctx == ibctx)
-			return flow_hw_conv_port_id(port_id);
+		if (priv && priv->master) {
+			struct ibv_context *port_ibctx = priv->sh->cdev->ctx;
+
+			if (port_ibctx->device == ibdev)
+				return flow_hw_conv_port_id(port_id);
+		}
 	}
 	return NULL;
 }
