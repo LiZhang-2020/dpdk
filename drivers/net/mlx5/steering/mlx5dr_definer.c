@@ -968,20 +968,21 @@ mlx5dr_definer_find_byte_in_tag(struct mlx5dr_definer *definer,
 	uint8_t byte_offset;;
 	int i;
 
-	/* Add offset to skip DWs in definer */
-	byte_offset = DW_SIZE * DW_SELECTORS;
-	for (i = 0; i < BYTE_SELECTORS; i++) {
-		if (definer->byte_selector[i] == hl_byte_off) {
-			*tag_byte_off = byte_offset + (BYTE_SELECTORS - i - 1);
-			return 0;
-		}
-	}
-
 	/* Add offset since each DW covers multiple BYTEs */
 	byte_offset = hl_byte_off % DW_SIZE;
 	for (i = 0; i < DW_SELECTORS; i++) {
 		if (definer->dw_selector[i] == hl_byte_off / DW_SIZE) {
 			*tag_byte_off = byte_offset + DW_SIZE * (DW_SELECTORS - i - 1);
+			return 0;
+		}
+	}
+
+	/* Add offset to skip DWs in definer */
+	byte_offset = DW_SIZE * DW_SELECTORS;
+	/* Iterate in reverse since the code uses bytes from 7 -> 0 */
+	for (i = BYTE_SELECTORS; i-- > 0 ;) {
+		if (definer->byte_selector[i] == hl_byte_off) {
+			*tag_byte_off = byte_offset + (BYTE_SELECTORS - i - 1);
 			return 0;
 		}
 	}
