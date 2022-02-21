@@ -1357,6 +1357,7 @@ struct mlx5_flow_split_info {
 struct flow_hw_port_info {
 	uint32_t regc_mask;
 	uint32_t regc_value;
+	uint32_t is_wire:1;
 };
 
 extern struct flow_hw_port_info mlx5_flow_hw_port_infos[RTE_MAX_ETHPORTS];

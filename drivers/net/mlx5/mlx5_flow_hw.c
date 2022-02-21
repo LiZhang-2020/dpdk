@@ -1840,6 +1840,7 @@ flow_hw_set_port_info(struct rte_eth_dev *dev)
 	info = &mlx5_flow_hw_port_infos[port_id];
 	info->regc_mask = priv->vport_meta_mask;
 	info->regc_value = priv->vport_meta_tag;
+	info->is_wire = priv->master;
 }
 
 /* Clears vport tag and mask used for HWS rules. */
@@ -1853,6 +1854,7 @@ flow_hw_clear_port_info(struct rte_eth_dev *dev)
 	info = &mlx5_flow_hw_port_infos[port_id];
 	info->regc_mask = 0;
 	info->regc_value = 0;
+	info->is_wire = 0;
 }
 
 static struct rte_flow_action_handle *
