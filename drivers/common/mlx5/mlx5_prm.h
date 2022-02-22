@@ -1271,6 +1271,7 @@ enum {
 	MLX5_GET_HCA_CAP_OP_MOD_QOS_CAP = 0xc << 1,
 	MLX5_GET_HCA_CAP_OP_MOD_ROCE = 0x4 << 1,
 	MLX5_GET_HCA_CAP_OP_MOD_NIC_FLOW_TABLE = 0x7 << 1,
+	MLX5_SET_HCA_CAP_OP_MOD_ESW = 0x9 << 1,
 	MLX5_GET_HCA_CAP_OP_MOD_VDPA_EMULATION = 0x13 << 1,
 	MLX5_GET_HCA_CAP_OP_MOD_WQE_BASED_FLOW_TABLE = 0x1B << 1,
 	MLX5_GET_HCA_CAP_OP_MOD_PARSE_GRAPH_NODE_CAP = 0x1C << 1,
@@ -2007,6 +2008,16 @@ struct mlx5_ifc_wqe_based_flow_table_cap_bits {
 	u8 trivial_match_definer[0x20];
 };
 
+struct mlx5_ifc_esw_cap_bits {
+	u8 reserved_at_0[0x60];
+
+	u8 esw_manager_vport_number_valid[0x1];
+	u8 reserved_at_61[0xf];
+	u8 esw_manager_vport_number[0x10];
+
+	u8 reserved_at_80[0x780];
+};
+
 union mlx5_ifc_hca_cap_union_bits {
 	struct mlx5_ifc_cmd_hca_cap_bits cmd_hca_cap;
 	struct mlx5_ifc_cmd_hca_cap_2_bits cmd_hca_cap_2;
@@ -2015,6 +2026,7 @@ union mlx5_ifc_hca_cap_union_bits {
 	struct mlx5_ifc_qos_cap_bits qos_cap;
 	struct mlx5_ifc_virtio_emulation_cap_bits vdpa_caps;
 	struct mlx5_ifc_flow_table_nic_cap_bits flow_table_nic_cap;
+	struct mlx5_ifc_esw_cap_bits esw_cap;
 	struct mlx5_ifc_roce_caps_bits roce_caps;
 	struct mlx5_ifc_wqe_based_flow_table_cap_bits wqe_based_flow_table_cap;
 	u8 reserved_at_0[0x8000];

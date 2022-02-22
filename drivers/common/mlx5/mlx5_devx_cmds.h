@@ -238,6 +238,8 @@ struct mlx5_hca_attr {
 	uint32_t log_max_mmo_compress:5;
 	uint32_t log_max_mmo_decompress:5;
 	uint32_t log_min_stride_wqe_sz:5;
+	uint32_t esw_mgr_vport_id_valid:1; /* E-Switch Mgr vport ID is valid. */
+	uint16_t esw_mgr_vport_id; /* E-Switch Mgr vport ID . */
 	uint16_t max_wqe_sz_sq;
 };
 
