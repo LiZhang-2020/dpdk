@@ -13,5 +13,6 @@ The following are platform specific guides and setup information.
     bluefield
     dpaa
     dpaa2
+    mlx5
     octeontx
     octeontx2
