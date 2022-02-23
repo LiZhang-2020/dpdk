@@ -35,6 +35,9 @@ cdef class RteFlowItemVxlan(PydiruCM):
 cdef class Mlx5RteFlowItemTxQueue(PydiruCM):
     cdef pdr.mlx5_rte_flow_item_tx_queue item
 
+cdef class RteFlowItemTag(PydiruCM):
+    cdef pdr.rte_flow_item_tag item
+
 cdef class RteFlowItem(PydiruCM):
     cdef pdr.rte_flow_item item
 

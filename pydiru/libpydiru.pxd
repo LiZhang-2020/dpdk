@@ -136,3 +136,7 @@ cdef extern  from '../../../../drivers/net/mlx5/mlx5_flow.h':
 
     cdef struct mlx5_rte_flow_item_tx_queue:
         uint32_t queue
+
+    cdef struct rte_flow_item_tag:
+        uint32_t data
+        uint8_t index

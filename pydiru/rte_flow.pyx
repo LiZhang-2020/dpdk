@@ -169,6 +169,17 @@ cdef class RteFlowItemVlan(PydiruCM):
         self.item.inner_type = htobe16(inner_type)
 
 
+cdef class RteFlowItemTag(PydiruCM):
+    def __init__(self, data, index):
+        """
+        Initializes a RteFlowItemTag object representing rte_flow_item_tag C struct.
+        :param data: Mask/value to match on
+        :param index: Reg C index
+        """
+        self.item.data = data
+        self.item.index = index
+
+
 cdef class RteFlowItem(PydiruCM):
     def __init__(self, flow_item_type, spec=None, mask=None, last=None):
         self.item.type = flow_item_type
@@ -199,6 +210,9 @@ cdef class RteFlowItem(PydiruCM):
             size = sizeof(pdr.mlx5_rte_flow_item_tx_queue)
         if flow_item_type == e.RTE_FLOW_ITEM_TYPE_VLAN:
             size = sizeof(pdr.rte_flow_item_vlan)
+        if flow_item_type in [e.RTE_FLOW_ITEM_TYPE_TAG,
+                              me.MLX5_RTE_FLOW_ITEM_TYPE_TAG]:
+            size = sizeof(pdr.rte_flow_item_tag)
         if spec:
             self.item.spec = calloc(1, size)
             memcpy(self.item.spec, <void *>&((<RteFlowItem>spec).item), size)
