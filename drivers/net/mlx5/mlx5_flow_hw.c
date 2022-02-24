@@ -1239,8 +1239,10 @@ flow_hw_table_create(struct rte_eth_dev *dev,
 		err = flow_hw_actions_translate(dev, attr,
 						&tbl->ats[i].acts,
 						action_templates[i], error);
-		if (err)
+		if (err) {
+			i++;
 			goto at_error;
+		}
 		tbl->ats[i].action_template = action_templates[i];
 	}
 	tbl->nb_action_templates = nb_action_templates;
