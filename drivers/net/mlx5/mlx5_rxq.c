@@ -1359,8 +1359,7 @@ mlx5_mprq_alloc_mp(struct rte_eth_dev *dev)
 		struct mlx5_rxq_ctrl *rxq_ctrl = mlx5_rxq_ctrl_get(dev, i);
 		struct mlx5_rxq_data *rxq;
 
-		if (rxq_ctrl == NULL ||
-		    rxq_ctrl->type != MLX5_RXQ_TYPE_STANDARD)
+		if (rxq_ctrl == NULL || rxq_ctrl->is_hairpin)
 			continue;
 		rxq = &rxq_ctrl->rxq;
 		n_ibv++;
@@ -1449,8 +1448,7 @@ exit:
 	for (i = 0; i != priv->rxqs_n; ++i) {
 		struct mlx5_rxq_ctrl *rxq_ctrl = mlx5_rxq_ctrl_get(dev, i);
 
-		if (rxq_ctrl == NULL ||
-		    rxq_ctrl->type != MLX5_RXQ_TYPE_STANDARD)
+		if (rxq_ctrl == NULL || rxq_ctrl->is_hairpin)
 			continue;
 		rxq_ctrl->rxq.mprq_mp = mp;
 	}
@@ -1770,7 +1768,7 @@ mlx5_rxq_new(struct rte_eth_dev *dev, struct mlx5_rxq_priv *rxq,
 		rte_errno = ENOSPC;
 		goto error;
 	}
-	tmpl->type = MLX5_RXQ_TYPE_STANDARD;
+	tmpl->is_hairpin = false;
 	if (mlx5_mr_ctrl_init(&tmpl->rxq.mr_ctrl,
 			      &priv->sh->cdev->mr_scache.dev_gen, socket)) {
 		/* rte_errno is already set. */
@@ -1941,7 +1939,7 @@ mlx5_rxq_hairpin_new(struct rte_eth_dev *dev, struct mlx5_rxq_priv *rxq,
 	LIST_INIT(&tmpl->owners);
 	rxq->ctrl = tmpl;
 	LIST_INSERT_HEAD(&tmpl->owners, rxq, owner_entry);
-	tmpl->type = MLX5_RXQ_TYPE_HAIRPIN;
+	tmpl->is_hairpin = true;
 	tmpl->socket = SOCKET_ID_ANY;
 	tmpl->rxq.rss_hash = 0;
 	tmpl->rxq.port_id = dev->data->port_id;
@@ -2092,7 +2090,7 @@ mlx5_rxq_release(struct rte_eth_dev *dev, uint16_t idx)
 			mlx5_free(rxq_ctrl->obj);
 			rxq_ctrl->obj = NULL;
 		}
-		if (rxq_ctrl->type == MLX5_RXQ_TYPE_STANDARD) {
+		if (!rxq_ctrl->is_hairpin) {
 			if (!rxq_ctrl->started)
 				rxq_free_elts(rxq_ctrl);
 			dev->data->rx_queue_state[idx] =
@@ -2101,7 +2099,7 @@ mlx5_rxq_release(struct rte_eth_dev *dev, uint16_t idx)
 	} else { /* Refcnt zero, closing device. */
 		LIST_REMOVE(rxq, owner_entry);
 		if (LIST_EMPTY(&rxq_ctrl->owners)) {
-			if (rxq_ctrl->type == MLX5_RXQ_TYPE_STANDARD)
+			if (!rxq_ctrl->is_hairpin)
 				mlx5_mr_btree_free
 					(&rxq_ctrl->rxq.mr_ctrl.cache_bh);
 			if (rxq_ctrl->rxq.shared)
@@ -2141,7 +2139,7 @@ mlx5_rxq_verify(struct rte_eth_dev *dev)
 }
 
 /**
- * Get a Rx queue type.
+ * Check whether RxQ type is Hairpin.
  *
  * @param dev
  *   Pointer to Ethernet device.
@@ -2149,17 +2147,15 @@ mlx5_rxq_verify(struct rte_eth_dev *dev)
  *   Rx queue index.
  *
  * @return
- *   The Rx queue type.
+ *   True if Rx queue type is Hairpin, otherwise False.
  */
-enum mlx5_rxq_type
-mlx5_rxq_get_type(struct rte_eth_dev *dev, uint16_t idx)
+bool
+mlx5_rxq_is_hairpin(struct rte_eth_dev *dev, uint16_t idx)
 {
 	struct mlx5_priv *priv = dev->data->dev_private;
 	struct mlx5_rxq_ctrl *rxq_ctrl = mlx5_rxq_ctrl_get(dev, idx);
 
-	if (idx < priv->rxqs_n && rxq_ctrl != NULL)
-		return rxq_ctrl->type;
-	return MLX5_RXQ_TYPE_UNDEFINED;
+	return (idx < priv->rxqs_n && rxq_ctrl != NULL && rxq_ctrl->is_hairpin);
 }
 
 /*
@@ -2180,7 +2176,7 @@ mlx5_rxq_get_hairpin_conf(struct rte_eth_dev *dev, uint16_t idx)
 	struct mlx5_rxq_priv *rxq = mlx5_rxq_get(dev, idx);
 
 	if (idx < priv->rxqs_n && rxq != NULL) {
-		if (rxq->ctrl->type == MLX5_RXQ_TYPE_HAIRPIN)
+		if (rxq->ctrl->is_hairpin)
 			return &rxq->hairpin_conf;
 	}
 	return NULL;

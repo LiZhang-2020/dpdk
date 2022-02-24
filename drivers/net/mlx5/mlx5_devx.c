@@ -208,7 +208,7 @@ mlx5_rxq_devx_res_release(struct mlx5_rxq_priv *rxq)
 	MLX5_ASSERT(rxq != NULL);
 	MLX5_ASSERT(rxq->devx_rq != NULL);
 	MLX5_ASSERT(rxq_ctrl != NULL);
-	if (rxq_ctrl->type == MLX5_RXQ_TYPE_HAIRPIN) {
+	if (rxq_ctrl->is_hairpin) {
 		if (rxq->devx_rq) {
 			mlx5_devx_modify_rq(rxq, MLX5_RXQ_MOD_RDY2RST);
 			claim_zero(mlx5_devx_cmd_destroy(rxq->devx_rq));
@@ -738,7 +738,7 @@ mlx5_rxq_devx_res_new(struct mlx5_rxq_priv *rxq)
 	int ret;
 
 	MLX5_ASSERT(rxq);
-	if (rxq->ctrl->type == MLX5_RXQ_TYPE_HAIRPIN)
+	if (rxq->ctrl->is_hairpin)
 		return mlx5_rxq_obj_hairpin_new(rxq);
 	/* Create shared resources. */
 	if (rxq->ctrl->obj->cq_obj.cq == NULL) {
@@ -940,16 +940,13 @@ mlx5_devx_tir_attr_set(struct rte_eth_dev *dev, const uint8_t *rss_key,
 		       int tunnel, struct mlx5_devx_tir_attr *tir_attr)
 {
 	struct mlx5_priv *priv = dev->data->dev_private;
-	enum mlx5_rxq_type rxq_obj_type;
+	bool is_hairpin;
 	bool lro = true;
 	uint32_t i;
 
 	/* NULL queues designate drop queue. */
 	if (ind_tbl->queues != NULL) {
-		struct mlx5_rxq_priv *rxq = mlx5_rxq_get(dev,
-							 ind_tbl->queues[0]);
-
-		rxq_obj_type = rxq->ctrl->type;
+		is_hairpin = mlx5_rxq_is_hairpin(dev, ind_tbl->queues[0]);
 		/* Enable TIR LRO only if all the queues were configured for. */
 		for (i = 0; i < ind_tbl->queues_n; ++i) {
 			struct mlx5_rxq_data *rxq_i =
@@ -961,7 +958,7 @@ mlx5_devx_tir_attr_set(struct rte_eth_dev *dev, const uint8_t *rss_key,
 			}
 		}
 	} else {
-		rxq_obj_type = priv->drop_queue.rxq->ctrl->type;
+		is_hairpin = priv->drop_queue.rxq->ctrl->is_hairpin;
 	}
 	memset(tir_attr, 0, sizeof(*tir_attr));
 	tir_attr->disp_type = MLX5_TIRC_DISP_TYPE_INDIRECT;
@@ -992,7 +989,7 @@ mlx5_devx_tir_attr_set(struct rte_eth_dev *dev, const uint8_t *rss_key,
 			(!!(hash_fields & MLX5_L4_DST_IBV_RX_HASH)) <<
 			 MLX5_RX_HASH_FIELD_SELECT_SELECTED_FIELDS_L4_DPORT;
 	}
-	if (rxq_obj_type == MLX5_RXQ_TYPE_HAIRPIN)
+	if (is_hairpin)
 		tir_attr->transport_domain = priv->sh->td->id;
 	else
 		tir_attr->transport_domain = priv->sh->tdn;
@@ -1174,7 +1171,7 @@ mlx5_rxq_devx_obj_drop_create(struct rte_eth_dev *dev)
 	rxq->ctrl = rxq_ctrl;
 	LIST_INSERT_HEAD(&rxq_ctrl->owners, rxq, owner_entry);
 	rxq_obj->rxq_ctrl = rxq_ctrl;
-	rxq_ctrl->type = MLX5_RXQ_TYPE_STANDARD;
+	rxq_ctrl->is_hairpin = false;
 	rxq_ctrl->sh = priv->sh;
 	rxq_ctrl->obj = rxq_obj;
 	/* Create CQ using DevX API. */
@@ -1492,7 +1489,7 @@ mlx5_txq_devx_obj_new(struct rte_eth_dev *dev, uint16_t idx)
 	struct mlx5_txq_ctrl *txq_ctrl =
 			container_of(txq_data, struct mlx5_txq_ctrl, txq);
 
-	if (txq_ctrl->type == MLX5_TXQ_TYPE_HAIRPIN)
+	if (txq_ctrl->is_hairpin)
 		return mlx5_txq_obj_hairpin_new(dev, idx);
 #ifndef HAVE_MLX5DV_DEVX_UAR_OFFSET
 	DRV_LOG(ERR, "Port %u Tx queue %u cannot create with DevX, no UAR.",
@@ -1626,7 +1623,7 @@ void
 mlx5_txq_devx_obj_release(struct mlx5_txq_obj *txq_obj)
 {
 	MLX5_ASSERT(txq_obj);
-	if (txq_obj->txq_ctrl->type == MLX5_TXQ_TYPE_HAIRPIN) {
+	if (txq_obj->txq_ctrl->is_hairpin) {
 		if (txq_obj->tis)
 			claim_zero(mlx5_devx_cmd_destroy(txq_obj->tis));
 #ifdef HAVE_MLX5DV_DEVX_UAR_OFFSET

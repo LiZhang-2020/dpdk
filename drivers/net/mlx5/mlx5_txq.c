@@ -533,7 +533,7 @@ txq_uar_init_secondary(struct mlx5_txq_ctrl *txq_ctrl, int fd)
 		return -rte_errno;
 	}
 
-	if (txq_ctrl->type != MLX5_TXQ_TYPE_STANDARD)
+	if (txq_ctrl->is_hairpin)
 		return 0;
 	MLX5_ASSERT(ppriv);
 	/*
@@ -576,7 +576,7 @@ txq_uar_uninit_secondary(struct mlx5_txq_ctrl *txq_ctrl)
 		rte_errno = ENOMEM;
 	}
 
-	if (txq_ctrl->type != MLX5_TXQ_TYPE_STANDARD)
+	if (txq_ctrl->is_hairpin)
 		return;
 	addr = ppriv->uar_table[txq_ctrl->txq.idx].db;
 	rte_mem_unmap(RTE_PTR_ALIGN_FLOOR(addr, page_size), page_size);
@@ -637,7 +637,7 @@ mlx5_tx_uar_init_secondary(struct rte_eth_dev *dev, int fd)
 			continue;
 		txq = (*priv->txqs)[i];
 		txq_ctrl = container_of(txq, struct mlx5_txq_ctrl, txq);
-		if (txq_ctrl->type != MLX5_TXQ_TYPE_STANDARD)
+		if (txq_ctrl->is_hairpin)
 			continue;
 		MLX5_ASSERT(txq->idx == (uint16_t)i);
 		ret = txq_uar_init_secondary(txq_ctrl, fd);
@@ -1113,7 +1113,7 @@ mlx5_txq_new(struct rte_eth_dev *dev, uint16_t idx, uint16_t desc,
 		goto error;
 	}
 	__atomic_fetch_add(&tmpl->refcnt, 1, __ATOMIC_RELAXED);
-	tmpl->type = MLX5_TXQ_TYPE_STANDARD;
+	tmpl->is_hairpin = false;
 	LIST_INSERT_HEAD(&priv->txqsctrl, tmpl, next);
 	return tmpl;
 error:
@@ -1156,7 +1156,7 @@ mlx5_txq_hairpin_new(struct rte_eth_dev *dev, uint16_t idx, uint16_t desc,
 	tmpl->txq.port_id = dev->data->port_id;
 	tmpl->txq.idx = idx;
 	tmpl->hairpin_conf = *hairpin_conf;
-	tmpl->type = MLX5_TXQ_TYPE_HAIRPIN;
+	tmpl->is_hairpin = true;
 	__atomic_fetch_add(&tmpl->refcnt, 1, __ATOMIC_RELAXED);
 	LIST_INSERT_HEAD(&priv->txqsctrl, tmpl, next);
 	return tmpl;
@@ -1215,7 +1215,7 @@ mlx5_txq_release(struct rte_eth_dev *dev, uint16_t idx)
 		mlx5_free(txq_ctrl->obj);
 		txq_ctrl->obj = NULL;
 	}
-	if (txq_ctrl->type == MLX5_TXQ_TYPE_STANDARD) {
+	if (!txq_ctrl->is_hairpin) {
 		if (txq_ctrl->txq.fcqs) {
 			mlx5_free(txq_ctrl->txq.fcqs);
 			txq_ctrl->txq.fcqs = NULL;
@@ -1224,7 +1224,7 @@ mlx5_txq_release(struct rte_eth_dev *dev, uint16_t idx)
 		dev->data->tx_queue_state[idx] = RTE_ETH_QUEUE_STATE_STOPPED;
 	}
 	if (!__atomic_load_n(&txq_ctrl->refcnt, __ATOMIC_RELAXED)) {
-		if (txq_ctrl->type == MLX5_TXQ_TYPE_STANDARD)
+		if (!txq_ctrl->is_hairpin)
 			mlx5_mr_btree_free(&txq_ctrl->txq.mr_ctrl.cache_bh);
 		LIST_REMOVE(txq_ctrl, next);
 		mlx5_free(txq_ctrl);
