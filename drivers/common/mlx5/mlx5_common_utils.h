@@ -154,6 +154,7 @@ struct mlx5_list {
  * @return
  *   List pointer on success, otherwise NULL.
  */
+__rte_internal
 struct mlx5_list *mlx5_list_create(const char *name, void *ctx,
 				   bool lcores_share,
 				   mlx5_list_create_cb cb_create,
@@ -176,6 +177,7 @@ struct mlx5_list *mlx5_list_create(const char *name, void *ctx,
  * @return
  *   Pointer of the list entry if found, NULL otherwise.
  */
+__rte_internal
 struct mlx5_list_entry *mlx5_list_lookup(struct mlx5_list *list,
 					   void *ctx);
 
@@ -190,6 +192,7 @@ struct mlx5_list_entry *mlx5_list_lookup(struct mlx5_list *list,
  * @return
  *   registered entry on success, NULL otherwise
  */
+__rte_internal
 struct mlx5_list_entry *mlx5_list_register(struct mlx5_list *list,
 					     void *ctx);
 
@@ -205,6 +208,7 @@ struct mlx5_list_entry *mlx5_list_register(struct mlx5_list *list,
  * @return
  *   0 on entry removed, 1 on entry still referenced.
  */
+__rte_internal
 int mlx5_list_unregister(struct mlx5_list *list,
 			  struct mlx5_list_entry *entry);
 
@@ -214,6 +218,7 @@ int mlx5_list_unregister(struct mlx5_list *list,
  * @param list
  *   Pointer to the mlx5 list.
  */
+__rte_internal
 void mlx5_list_destroy(struct mlx5_list *list);
 
 /**
@@ -224,6 +229,7 @@ void mlx5_list_destroy(struct mlx5_list *list);
  * @return
  *   mlx5 list entry number.
  */
+__rte_internal
 uint32_t
 mlx5_list_get_entry_num(struct mlx5_list *list);
 

@@ -74,9 +74,19 @@ INTERNAL {
 	mlx5_devx_sq_create;
 	mlx5_devx_sq_destroy;
 
+	mlx5_get_device_guid;
 	mlx5_get_ifname_sysfs;
 	mlx5_get_dbr;
 	mlx5_get_pci_addr;
+
+	mlx5_glue;
+
+	mlx5_list_create;
+	mlx5_list_register;
+	mlx5_list_unregister;
+	mlx5_list_lookup;
+	mlx5_list_get_entry_num;
+	mlx5_list_destroy;
 
 	mlx5_hlist_create;
 	mlx5_hlist_lookup;
@@ -133,4 +143,6 @@ INTERNAL {
 	mlx5_mp_req_mempool_reg;
 	mlx5_mr_mempool2mr_bh;
 	mlx5_mr_mempool_populate_cache;
+
+	local: *;
 };
