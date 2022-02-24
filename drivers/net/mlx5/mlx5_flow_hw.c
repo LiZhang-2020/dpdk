@@ -1175,8 +1175,13 @@ flow_hw_table_create(struct rte_eth_dev *dev,
 	if (!attr->flow_attr.group)
 		max_tpl = 1;
 	cfg.max_idx = nb_flows;
+	/*
+	 * No need for local cache if flow number is a small number. Since
+	 * flow insertion rate will be very limited in that case. Here let's
+	 * set the number to less than default trunk size 4K.
+	 */
 	if (nb_flows < cfg.trunk_size) {
-		cfg.per_core_cache = nb_flows >> 2;
+		cfg.per_core_cache = 0;
 		cfg.trunk_size = nb_flows;
 	}
 	if (nb_item_templates > max_tpl ||
