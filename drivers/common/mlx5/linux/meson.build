@@ -203,6 +203,8 @@ has_sym_args = [
 	'mlx5dv_dr_domain_allow_duplicate_rules' ],
 	[ 'HAVE_MLX5_DR_MATCHER_LAYOUT', 'infiniband/mlx5dv.h',
 	'mlx5dv_dr_matcher_set_layout'],
+	[ 'HAVE_MLX5_IBV_IMPORT_CTX_PD_AND_MR', 'infiniband/verbs.h',
+	'ibv_import_device' ],
 ]
 config = configuration_data()
 foreach arg:has_sym_args
