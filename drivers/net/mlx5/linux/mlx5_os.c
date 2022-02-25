@@ -2519,48 +2519,34 @@ mlx5_os_net_cleanup(void)
 void
 mlx5_os_dev_shared_handler_install(struct mlx5_dev_ctx_shared *sh)
 {
-	int ret;
-	int flags;
 	struct ibv_context *ctx = sh->cdev->ctx;
+	int ret;
 
-	sh->intr_handle.fd = -1;
-	flags = fcntl(ctx->async_fd, F_GETFL);
-	ret = fcntl(ctx->async_fd, F_SETFL, flags | O_NONBLOCK);
+	ret = mlx5_os_interrupt_handler_setup
+		(&sh->intr_handle, true,
+		 ctx->async_fd, mlx5_dev_interrupt_handler, sh);
 	if (ret) {
-		DRV_LOG(INFO, "failed to change file descriptor async event"
-			" queue");
-	} else {
-		sh->intr_handle.fd = ctx->async_fd;
-		sh->intr_handle.type = RTE_INTR_HANDLE_EXT;
-		if (rte_intr_callback_register(&sh->intr_handle,
-					mlx5_dev_interrupt_handler, sh)) {
-			DRV_LOG(INFO, "Fail to install the shared interrupt.");
-			sh->intr_handle.fd = -1;
-		}
+		DRV_LOG(ERR, "Failed to initialize intr_handle.");
+		return;
 	}
 	if (sh->cdev->config.devx) {
 #ifdef HAVE_IBV_DEVX_ASYNC
-		sh->intr_handle_devx.fd = -1;
+		struct mlx5dv_devx_cmd_comp *devx_comp;
+
 		sh->devx_comp = (void *)mlx5_glue->devx_create_cmd_comp(ctx);
-		struct mlx5dv_devx_cmd_comp *devx_comp = sh->devx_comp;
+		devx_comp = sh->devx_comp;
 		if (!devx_comp) {
 			DRV_LOG(INFO, "failed to allocate devx_comp.");
 			return;
 		}
-		flags = fcntl(devx_comp->fd, F_GETFL);
-		ret = fcntl(devx_comp->fd, F_SETFL, flags | O_NONBLOCK);
+		ret = mlx5_os_interrupt_handler_setup
+			(&sh->intr_handle_devx,
+			 true, devx_comp->fd,
+			 mlx5_dev_interrupt_handler_devx, sh);
 		if (ret) {
-			DRV_LOG(INFO, "failed to change file descriptor"
-				" devx comp");
-			return;
-		}
-		sh->intr_handle_devx.fd = devx_comp->fd;
-		sh->intr_handle_devx.type = RTE_INTR_HANDLE_EXT;
-		if (rte_intr_callback_register(&sh->intr_handle_devx,
-					mlx5_dev_interrupt_handler_devx, sh)) {
-			DRV_LOG(INFO, "Fail to install the devx shared"
+			DRV_LOG(ERR, "Failed to install the devx shared"
 				" interrupt.");
-			sh->intr_handle_devx.fd = -1;
+			return;
 		}
 #endif /* HAVE_IBV_DEVX_ASYNC */
 	}
@@ -2577,13 +2563,11 @@ mlx5_os_dev_shared_handler_install(struct mlx5_dev_ctx_shared *sh)
 void
 mlx5_os_dev_shared_handler_uninstall(struct mlx5_dev_ctx_shared *sh)
 {
-	if (sh->intr_handle.fd >= 0)
-		mlx5_intr_callback_unregister(&sh->intr_handle,
-					      mlx5_dev_interrupt_handler, sh);
+	mlx5_os_interrupt_handler_unset(&sh->intr_handle,
+					mlx5_dev_interrupt_handler, sh);
 #ifdef HAVE_IBV_DEVX_ASYNC
-	if (sh->intr_handle_devx.fd >= 0)
-		rte_intr_callback_unregister(&sh->intr_handle_devx,
-				  mlx5_dev_interrupt_handler_devx, sh);
+	mlx5_os_interrupt_handler_unset(&sh->intr_handle_devx,
+					mlx5_dev_interrupt_handler_devx, sh);
 	if (sh->devx_comp)
 		mlx5_glue->devx_destroy_cmd_comp(sh->devx_comp);
 #endif

@@ -130,39 +130,6 @@ error:
 }
 
 /**
- * Install interrupt handler.
- *
- * @param dev
- *   Pointer to Ethernet device.
- * @return
- *   0 on success, a negative errno value otherwise.
- */
-static int
-mlx5_pmd_interrupt_handler_install(void)
-{
-	MLX5_ASSERT(server_socket != -1);
-	server_intr_handle.fd = server_socket;
-	server_intr_handle.type = RTE_INTR_HANDLE_EXT;
-	return rte_intr_callback_register(&server_intr_handle,
-					  mlx5_pmd_socket_handle, NULL);
-}
-
-/**
- * Uninstall interrupt handler.
- */
-static void
-mlx5_pmd_interrupt_handler_uninstall(void)
-{
-	if (server_socket != -1) {
-		mlx5_intr_callback_unregister(&server_intr_handle,
-					      mlx5_pmd_socket_handle,
-					      NULL);
-	}
-	server_intr_handle.fd = 0;
-	server_intr_handle.type = RTE_INTR_HANDLE_UNKNOWN;
-}
-
-/**
  * Initialise the socket to communicate with external tools.
  *
  * @return
@@ -208,8 +175,12 @@ mlx5_pmd_socket_init(void)
 			strerror(errno));
 		goto remove;
 	}
-	if (mlx5_pmd_interrupt_handler_install()) {
-		DRV_LOG(WARNING, "cannot register interrupt handler for mlx5 socket: %s",
+	ret = mlx5_os_interrupt_handler_setup
+		(&server_intr_handle, false,
+		 server_socket, mlx5_pmd_socket_handle, NULL);
+	if (ret) {
+		DRV_LOG(WARNING, "cannot register interrupt handler for "
+			"mlx5 socket: %s",
 			strerror(errno));
 		goto remove;
 	}
@@ -232,7 +203,8 @@ mlx5_pmd_socket_uninit(void)
 {
 	if (server_socket == -1)
 		return;
-	mlx5_pmd_interrupt_handler_uninstall();
+	mlx5_os_interrupt_handler_unset(&server_intr_handle,
+					mlx5_pmd_socket_handle, NULL);
 	claim_zero(close(server_socket));
 	server_socket = -1;
 	MKSTR(path, MLX5_SOCKET_PATH, getpid());
