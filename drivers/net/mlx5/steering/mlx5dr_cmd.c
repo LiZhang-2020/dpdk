@@ -769,6 +769,11 @@ int mlx5dr_cmd_query_caps(struct ibv_context *ctx,
 			 out,
 			 capability.cmd_hca_cap.log_header_modify_argument_granularity);
 
+	caps->log_header_modify_argument_granularity -=
+			MLX5_GET(query_hca_cap_out,
+				 out,
+				 capability.cmd_hca_cap.log_header_modify_argument_granularity_offset);
+
 	caps->log_header_modify_argument_max_alloc =
 		MLX5_GET(query_hca_cap_out,
 			 out,

@@ -1709,7 +1709,7 @@ struct mlx5_ifc_cmd_hca_cap_bits {
 	u8 reserved_at_74c[0x14];
 	u8 reserved_at_760[0x3];
 	u8 log_max_num_header_modify_argument[0x5];
-	u8 reserved_at_768[0x4];
+	u8 log_header_modify_argument_granularity_offset[0x4];
 	u8 log_header_modify_argument_granularity[0x4];
 	u8 reserved_at_770[0x3];
 	u8 log_header_modify_argument_max_alloc[0x5];
