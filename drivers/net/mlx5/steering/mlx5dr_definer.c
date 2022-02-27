@@ -44,6 +44,10 @@
 		*((rte_be16_t *)(p) + (byte_off / 2)) = (v); \
 	} while (0)
 
+/* Setter function based on byte offset to directly set BE16 value from ptr  */
+#define DR_SET_BE16P(p, v_ptr, byte_off, bit_off, mask) \
+	memcpy(((rte_be16_t *)(p) + (byte_off / 2)), v_ptr, 2);
+
 #define DR_CALC_SET_HDR(fc, hdr, field) \
 	do { \
 		(fc)->bit_mask = __mlx5_mask(definer_hl, hdr.field); \
@@ -173,6 +177,10 @@ struct mlx5dr_definer_conv_data {
 /* Xmacro used to create generic item setter from items */
 #define LIST_OF_FIELDS_INFO \
 	X(SET,		eth_type,		v->type,		rte_flow_item_eth) \
+	X(SET_BE32P,	eth_smac_47_16,		&v->src.addr_bytes[0],	rte_flow_item_eth) \
+	X(SET_BE16P,	eth_smac_15_0,		&v->src.addr_bytes[4],	rte_flow_item_eth) \
+	X(SET_BE32P,	eth_dmac_47_16,		&v->dst.addr_bytes[0],	rte_flow_item_eth) \
+	X(SET_BE16P,	eth_dmac_15_0,		&v->dst.addr_bytes[4],	rte_flow_item_eth) \
 	X(SET,		ipv4_ihl,		v->ihl,			rte_ipv4_hdr) \
 	X(SET,		ipv4_time_to_live,	v->time_to_live,	rte_ipv4_hdr) \
 	X(SET_BE32,	ipv4_dst_addr,		v->dst_addr,		rte_ipv4_hdr) \
@@ -258,46 +266,6 @@ mlx5dr_definer_ipv6_flow_label_set(struct mlx5dr_definer_fc *fc,
 	uint32_t flow_label = DR_GET(header_ipv6, &v->hdr, flow_label);
 
 	DR_SET(tag, flow_label, fc->byte_off, fc->bit_off, fc->bit_mask);
-}
-
-static void
-mlx5dr_definer_eth_smac_47_16_set(struct mlx5dr_definer_fc *fc,
-				  const void *item_spec,
-				  uint8_t *tag)
-{
-	const struct rte_flow_item_eth *v = item_spec;
-
-	memcpy(tag + fc->byte_off, v->src.addr_bytes, 4);
-}
-
-static void
-mlx5dr_definer_eth_smac_15_0_set(struct mlx5dr_definer_fc *fc,
-				 const void *item_spec,
-				 uint8_t *tag)
-{
-	const struct rte_flow_item_eth *v = item_spec;
-
-	memcpy(tag + fc->byte_off, v->src.addr_bytes + 4, 2);
-}
-
-static void
-mlx5dr_definer_eth_dmac_47_16_set(struct mlx5dr_definer_fc *fc,
-				  const void *item_spec,
-				  uint8_t *tag)
-{
-	const struct rte_flow_item_eth *v = item_spec;
-
-	memcpy(tag + fc->byte_off, v->dst.addr_bytes, 4);
-}
-
-static void
-mlx5dr_definer_eth_dmac_15_0_set(struct mlx5dr_definer_fc *fc,
-				 const void *item_spec,
-				 uint8_t *tag)
-{
-	const struct rte_flow_item_eth *v = item_spec;
-
-	memcpy(tag + fc->byte_off, v->dst.addr_bytes + 4, 2);
 }
 
 static void
