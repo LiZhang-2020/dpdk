@@ -5825,6 +5825,7 @@ flow_dv_validate(struct rte_eth_dev *dev, const struct rte_flow_attr *attr,
 	bool def_policy = false;
 	const struct rte_flow_action *count = NULL;
 	const struct rte_flow_action_age *non_indirect_age = NULL;
+	bool shared_count = false;
 	uint16_t udp_dport = 0;
 	uint32_t tag_id = 0;
 
@@ -6233,7 +6234,6 @@ flow_dv_validate(struct rte_eth_dev *dev, const struct rte_flow_attr *attr,
 	}
 	for (; actions->type != RTE_FLOW_ACTION_TYPE_END; actions++) {
 		int type = actions->type;
-		bool shared_count = false;
 
 		if (!mlx5_flow_os_action_supported(type))
 			return rte_flow_error_set(error, ENOTSUP,
