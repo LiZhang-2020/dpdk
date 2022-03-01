@@ -138,11 +138,15 @@ enum mlx5dr_definer_fname {
 };
 
 struct mlx5dr_definer_sel_ctrl {
-	uint8_t allowed_dw;
-	uint8_t allowed_bytes;
-	uint8_t used_dw;
+	uint8_t allowed_full_dw; /* Full DW selectors cover all offsets */
+	uint8_t allowed_lim_dw;  /* Limited DW selectors cover offset < 64 */
+	uint8_t allowed_bytes;   /* Bytes selectors, up to offset 255 */
+	uint8_t used_full_dw;
+	uint8_t used_lim_dw;
 	uint8_t used_bytes;
-	struct mlx5dr_definer *definer;
+	uint8_t full_dw_selector[DW_SELECTORS];
+	uint8_t lim_dw_selector[DW_SELECTORS_LIMITED];
+	uint8_t byte_selector[BYTE_SELECTORS];
 };
 
 struct mlx5dr_definer_fc {
@@ -921,6 +925,7 @@ mlx5dr_definer_conv_items_to_hl(struct mlx5dr_context *ctx,
 			mt->vport_item_id = i;
 			break;
 		default:
+			DR_LOG(ERR, "Unsupported item type %d", items->type);
 			rte_errno = ENOTSUP;
 			return rte_errno;
 		}
@@ -965,7 +970,7 @@ mlx5dr_definer_find_byte_in_tag(struct mlx5dr_definer *definer,
 				uint32_t hl_byte_off,
 				uint32_t *tag_byte_off)
 {
-	uint8_t byte_offset;;
+	uint8_t byte_offset;
 	int i;
 
 	/* Add offset since each DW covers multiple BYTEs */
@@ -1045,22 +1050,34 @@ mlx5dr_definer_best_hl_fit_recu(struct mlx5dr_definer_sel_ctrl *ctrl,
 	}
 
 	/* Used all DW selectors and Byte selectors, no possible solution */
-	if (ctrl->allowed_dw == ctrl->used_dw &&
+	if (ctrl->allowed_full_dw == ctrl->used_full_dw &&
+	    ctrl->allowed_lim_dw == ctrl->used_lim_dw &&
 	    ctrl->allowed_bytes == ctrl->used_bytes)
 		return false;
 
-	/* Try to use DW selectors first */
-	if (ctrl->allowed_dw > ctrl->used_dw) {
-		ctrl->definer->dw_selector[ctrl->used_dw++] = cur_dw;
+	/* Try to use limited DW selectors */
+	if (ctrl->allowed_lim_dw > ctrl->used_lim_dw && cur_dw < 64) {
+		ctrl->lim_dw_selector[ctrl->used_lim_dw++] = cur_dw;
 
 		ret = mlx5dr_definer_best_hl_fit_recu(ctrl, cur_dw + 1, data + 1);
 		if (ret)
 			return ret;
 
-		ctrl->definer->dw_selector[--ctrl->used_dw] = 0;
+		ctrl->lim_dw_selector[--ctrl->used_lim_dw] = 0;
 	}
 
-	/* No byte selector for offset bigger than 255*/
+	/* Try to use DW selectors */
+	if (ctrl->allowed_full_dw > ctrl->used_full_dw) {
+		ctrl->full_dw_selector[ctrl->used_full_dw++] = cur_dw;
+
+		ret = mlx5dr_definer_best_hl_fit_recu(ctrl, cur_dw + 1, data + 1);
+		if (ret)
+			return ret;
+
+		ctrl->full_dw_selector[--ctrl->used_full_dw] = 0;
+	}
+
+	/* No byte selector for offset bigger than 255 */
 	if (cur_dw * DW_SIZE > 255)
 		return false;
 
@@ -1078,7 +1095,7 @@ mlx5dr_definer_best_hl_fit_recu(struct mlx5dr_definer_sel_ctrl *ctrl,
 		if ((0xff000000 >> (i * BITS_IN_BYTE)) & rte_be_to_cpu_32(*data)) {
 			/* Use byte selectors high to low */
 			byte_idx = ctrl->allowed_bytes - ctrl->used_bytes - 1;
-			ctrl->definer->byte_selector[byte_idx] = cur_dw * DW_SIZE + i;
+			ctrl->byte_selector[byte_idx] = cur_dw * DW_SIZE + i;
 			ctrl->used_bytes++;
 		}
 
@@ -1090,31 +1107,56 @@ mlx5dr_definer_best_hl_fit_recu(struct mlx5dr_definer_sel_ctrl *ctrl,
 		if ((0xff << (i * BITS_IN_BYTE)) & rte_be_to_cpu_32(*data)) {
 			ctrl->used_bytes--;
 			byte_idx = ctrl->allowed_bytes - ctrl->used_bytes - 1;
-			ctrl->definer->byte_selector[byte_idx] = 0;
+			ctrl->byte_selector[byte_idx] = 0;
 		}
 
 	return false;
 }
 
+static void
+mlx5dr_definer_apply_sel_ctrl(struct mlx5dr_definer_sel_ctrl *ctrl,
+			      struct mlx5dr_definer *definer)
+{
+	memcpy(definer->byte_selector, ctrl->byte_selector, ctrl->allowed_bytes);
+	memcpy(definer->dw_selector, ctrl->full_dw_selector, ctrl->allowed_full_dw);
+	memcpy(definer->dw_selector + ctrl->allowed_full_dw,
+	       ctrl->lim_dw_selector,
+	       ctrl->allowed_lim_dw);
+}
+
 static int
-mlx5dr_definer_find_best_hl_fit(struct mlx5dr_match_template *mt,
-				uint8_t *hl)
+mlx5dr_definer_find_best_hl_fit(struct mlx5dr_match_template *mt, uint8_t *hl)
 {
 	struct mlx5dr_definer_sel_ctrl ctrl = {0};
 	bool found;
 
-	ctrl.definer = mt->definer;
-	ctrl.allowed_dw = DW_SELECTORS;
+	/* Try to create a match definer */
+	ctrl.allowed_full_dw = DW_SELECTORS_MATCH;
+	ctrl.allowed_lim_dw = 0;
 	ctrl.allowed_bytes = BYTE_SELECTORS;
 
 	found = mlx5dr_definer_best_hl_fit_recu(&ctrl, 0, (uint32_t *)hl);
-	if (!found) {
-		DR_LOG(ERR, "Unable to find supporting match definer");
-		rte_errno = ENOTSUP;
-		return rte_errno;
+	if (found) {
+		mlx5dr_definer_apply_sel_ctrl(&ctrl, mt->definer);
+		mt->definer->type = MLX5DR_DEFINER_TYPE_MATCH;
+		return 0;
 	}
 
-	return 0;
+	/* Try to create a limited jumbo definer */
+	ctrl.allowed_full_dw = DW_SELECTORS_MATCH;
+	ctrl.allowed_lim_dw = DW_SELECTORS_LIMITED;
+	ctrl.allowed_bytes = BYTE_SELECTORS;
+
+	found = mlx5dr_definer_best_hl_fit_recu(&ctrl, 0, (uint32_t *)hl);
+	if (found) {
+		mlx5dr_definer_apply_sel_ctrl(&ctrl, mt->definer);
+		mt->definer->type = MLX5DR_DEFINER_TYPE_JUMBO;
+		return 0;
+	}
+
+	DR_LOG(ERR, "Unable to find supporting match/jumbo definer combination");
+	rte_errno = ENOTSUP;
+	return rte_errno;
 }
 
 static void
@@ -1157,6 +1199,9 @@ int mlx5dr_definer_compare(struct mlx5dr_definer *definer_a,
 {
 	int i;
 
+	if (definer_a->type != definer_b->type)
+		return 1;
+
 	for (i = 0; i < BYTE_SELECTORS; i++)
 		if (definer_a->byte_selector[i] != definer_b->byte_selector[i])
 			return 1;
@@ -1165,8 +1210,8 @@ int mlx5dr_definer_compare(struct mlx5dr_definer *definer_a,
 		if (definer_a->dw_selector[i] != definer_b->dw_selector[i])
 			return 1;
 
-	for (i = 0; i < MLX5DR_MATCH_TAG_SZ; i++)
-		if (definer_a->mask_tag[i] != definer_b->mask_tag[i])
+	for (i = 0; i < MLX5DR_JUMBO_TAG_SZ; i++)
+		if (definer_a->mask.jumbo[i] != definer_b->mask.jumbo[i])
 			return 1;
 
 	return 0;
@@ -1225,10 +1270,10 @@ int mlx5dr_definer_get(struct mlx5dr_context *ctx,
 	mlx5dr_definer_create_tag_mask(mt->items,
 				       mt->fc,
 				       mt->fc_sz,
-				       mt->definer->mask_tag);
+				       mt->definer->mask.jumbo);
 
 	/* Create definer based on the bitmask tag */
-	def_attr.match_mask = mt->definer->mask_tag;
+	def_attr.match_mask = mt->definer->mask.jumbo;
 	def_attr.dw_selector = mt->definer->dw_selector;
 	def_attr.byte_selector = mt->definer->byte_selector;
 	mt->definer->obj = mlx5dr_cmd_definer_create(ibv_ctx, &def_attr);

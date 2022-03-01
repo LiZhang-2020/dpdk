@@ -6,8 +6,15 @@
 #define MLX5DR_DEFINER_H_
 
 /* Selectors based on match TAG */
-#define DW_SELECTORS    6
-#define BYTE_SELECTORS  8
+#define DW_SELECTORS_MATCH 6
+#define DW_SELECTORS_LIMITED 3
+#define DW_SELECTORS 9
+#define BYTE_SELECTORS 8
+
+enum mlx5dr_definer_type {
+	MLX5DR_DEFINER_TYPE_MATCH,
+	MLX5DR_DEFINER_TYPE_JUMBO,
+};
 
 struct mlx5_ifc_definer_hl_eth_l2_bits {
 	u8 dmac_47_16[0x20];
@@ -334,11 +341,18 @@ struct mlx5_ifc_header_ipv6_bits {
 };
 
 struct mlx5dr_definer {
+	enum mlx5dr_definer_type type;
 	uint8_t dw_selector[DW_SELECTORS];
 	uint8_t byte_selector[BYTE_SELECTORS];
-	uint8_t mask_tag[MLX5DR_MATCH_TAG_SZ];
+	struct mlx5dr_rule_match_tag mask;
 	struct mlx5dr_devx_obj *obj;
 };
+
+static inline bool
+mlx5dr_definer_is_jumbo(struct mlx5dr_definer *definer)
+{
+	return (definer->type == MLX5DR_DEFINER_TYPE_JUMBO);
+}
 
 void mlx5dr_definer_create_tag(const struct rte_flow_item *items,
 			       struct mlx5dr_definer_fc *fc,
