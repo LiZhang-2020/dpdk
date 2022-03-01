@@ -7,7 +7,8 @@
 
 enum {
 	MLX5DR_MATCH_TAG_SZ = 32,
-	MLX5DR_JAMBO_TAG_SZ = 44,
+	MLX5DR_JUMBO_TAG_SZ = 44,
+	MLX5DR_ACTIONS_SZ = 12,
 };
 
 enum mlx5dr_rule_status {
@@ -20,10 +21,20 @@ enum mlx5dr_rule_status {
 	MLX5DR_RULE_STATUS_FAILED,
 };
 
+struct mlx5dr_rule_match_tag {
+	union {
+		uint8_t jumbo[MLX5DR_JUMBO_TAG_SZ];
+		struct {
+			uint8_t reserved[MLX5DR_ACTIONS_SZ];
+			uint8_t match[MLX5DR_MATCH_TAG_SZ];
+		};
+	};
+};
+
 struct mlx5dr_rule {
 	struct mlx5dr_matcher *matcher;
 	union {
-		uint8_t match_tag[MLX5DR_MATCH_TAG_SZ];
+		struct mlx5dr_rule_match_tag tag;
 		struct ibv_flow *flow;
 	};
 	uint32_t rtc_0; /* The RTC into which the STE was inserted */

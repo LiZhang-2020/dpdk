@@ -88,6 +88,17 @@ static void mlx5dr_send_engine_post_ring(struct mlx5dr_send_ring_sq *sq,
 	rte_wmb();
 }
 
+static void
+mlx5dr_send_wqe_set_tag(struct mlx5dr_wqe_gta_data_seg_ste *wqe_data,
+			struct mlx5dr_rule_match_tag *tag,
+			bool is_jumbo)
+{
+	if (is_jumbo)
+		memcpy(wqe_data->action, tag->jumbo, MLX5DR_JUMBO_TAG_SZ);
+	else
+		memcpy(wqe_data->tag, tag->match, MLX5DR_MATCH_TAG_SZ);
+}
+
 #define MLX5_WQE_CTRL_SMALL_FENCE (1 << 5)
 void mlx5dr_send_engine_post_end(struct mlx5dr_send_engine_post_ctrl *ctrl,
 				 struct mlx5dr_send_engine_post_attr *attr)
@@ -162,8 +173,8 @@ void mlx5dr_send_rule(struct mlx5dr_rule *rule, struct mlx5dr_send_rule_attr *at
 		memcpy(wqe_ctrl, attr->wqe_ctrl, sizeof(*wqe_ctrl));
 		if (attr->wqe_data)
 			memcpy(wqe_data, attr->wqe_data, sizeof(*wqe_data));
-		else if (attr->wqe_tag)
-			memcpy(wqe_data->tag, attr->wqe_tag, MLX5DR_MATCH_TAG_SZ);
+		else
+			mlx5dr_send_wqe_set_tag(wqe_data, attr->wqe_tag, attr->is_jumbo);
 
 		mlx5dr_send_engine_post_end(&ctrl, &send_attr);
 	}
@@ -182,8 +193,8 @@ void mlx5dr_send_rule(struct mlx5dr_rule *rule, struct mlx5dr_send_rule_attr *at
 		memcpy(wqe_ctrl, attr->wqe_ctrl, sizeof(*wqe_ctrl));
 		if (attr->wqe_data)
 			memcpy(wqe_data, attr->wqe_data, sizeof(*wqe_data));
-		else if (attr->wqe_tag)
-			memcpy(wqe_data->tag, attr->wqe_tag, MLX5DR_MATCH_TAG_SZ);
+		else
+			mlx5dr_send_wqe_set_tag(wqe_data, attr->wqe_tag, attr->is_jumbo);
 
 		mlx5dr_send_engine_post_end(&ctrl, &send_attr);
 	}

@@ -109,6 +109,7 @@ static int mlx5dr_rule_create_hws(struct mlx5dr_rule *rule,
 	struct mlx5dr_table *tbl = matcher->tbl;
 	struct mlx5dr_context *ctx = tbl->ctx;
 	struct mlx5dr_send_engine *queue;
+	bool is_jumbo;
 
 	queue = &ctx->send_queue[attr->queue_id];
 	if (unlikely(mlx5dr_send_engine_err(queue))) {
@@ -129,6 +130,7 @@ static int mlx5dr_rule_create_hws(struct mlx5dr_rule *rule,
 	 */
 	dep_wqe = mlx5dr_send_add_new_dep_wqe(queue);
 	mlx5dr_rule_init_dep_wqe(dep_wqe, rule, items, attr->user_data);
+	is_jumbo = mlx5dr_definer_is_jumbo(matcher->mt[mt_idx]->definer);
 
 	/* Apply action on */
 	mlx5dr_actions_quick_apply(queue,
@@ -136,15 +138,19 @@ static int mlx5dr_rule_create_hws(struct mlx5dr_rule *rule,
 				   &dep_wqe->wqe_ctrl,
 				   &dep_wqe->wqe_data,
 				   rule_actions, num_actions,
-				   tbl->type);
+				   tbl->type,
+				   is_jumbo);
 
 	/* Create tag directly on WQE and backup it on the rule for deletion */
 	mlx5dr_definer_create_tag(items,
 				  matcher->mt[mt_idx]->fc,
 				  matcher->mt[mt_idx]->fc_sz,
-				  (uint8_t *)dep_wqe->wqe_data.tag);
+				  (uint8_t *)dep_wqe->wqe_data.action);
 
-	memcpy(rule->match_tag, dep_wqe->wqe_data.tag, MLX5DR_MATCH_TAG_SZ);
+	if (is_jumbo)
+		memcpy(rule->tag.jumbo, dep_wqe->wqe_data.action, MLX5DR_JUMBO_TAG_SZ);
+	else
+		memcpy(rule->tag.match, dep_wqe->wqe_data.tag, MLX5DR_MATCH_TAG_SZ);
 
 	/* Send dependent WQE */
 	if (!attr->burst)
@@ -178,6 +184,7 @@ static int mlx5dr_rule_destroy_hws(struct mlx5dr_rule *rule,
 				   struct mlx5dr_rule_attr *attr)
 {
 	struct mlx5dr_context *ctx = rule->matcher->tbl->ctx;
+	struct mlx5dr_matcher *matcher = rule->matcher;
 	struct mlx5dr_wqe_gta_ctrl_seg wqe_ctrl = {0};
 	struct mlx5dr_send_rule_attr send_attr = {0};
 	struct mlx5dr_send_engine *queue;
@@ -211,13 +218,14 @@ static int mlx5dr_rule_destroy_hws(struct mlx5dr_rule *rule,
 
 	wqe_ctrl.op_dirix = htobe32(MLX5DR_WQE_GTA_OP_DEACTIVATE << 28);
 
+	send_attr.queue = queue;
 	send_attr.notify_hw = !attr->burst;
 	send_attr.user_data = attr->user_data;
 	send_attr.rtc_0 = rule->rtc_0;
 	send_attr.rtc_1 = rule->rtc_1;
 	send_attr.wqe_ctrl = &wqe_ctrl;
-	send_attr.wqe_tag = rule->match_tag;
-	send_attr.queue = queue;
+	send_attr.wqe_tag = &rule->tag;
+	send_attr.is_jumbo = mlx5dr_definer_is_jumbo(matcher->mt[0]->definer);
 
 	mlx5dr_send_rule(rule, &send_attr);
 

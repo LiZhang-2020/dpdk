@@ -174,7 +174,8 @@ struct mlx5dr_send_rule_attr {
 	struct mlx5dr_send_engine *queue;
 	struct mlx5dr_wqe_gta_ctrl_seg *wqe_ctrl;
 	struct mlx5dr_wqe_gta_data_seg_ste *wqe_data;
-	uint8_t *wqe_tag;
+	struct mlx5dr_rule_match_tag *wqe_tag;
+	bool is_jumbo;
 };
 
 /**
