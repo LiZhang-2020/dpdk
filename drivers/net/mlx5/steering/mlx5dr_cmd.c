@@ -255,7 +255,9 @@ mlx5dr_cmd_rtc_create(struct ibv_context *ctx,
 		 attr, obj_type, MLX5_GENERAL_OBJ_TYPE_RTC);
 
 	attr = MLX5_ADDR_OF(create_rtc_in, in, rtc);
-	MLX5_SET(rtc, attr, ste_format, MLX5_IFC_RTC_STE_FORMAT_8DW);
+	MLX5_SET(rtc, attr, ste_format, rtc_attr->is_jumbo ?
+		MLX5_IFC_RTC_STE_FORMAT_11DW :
+		MLX5_IFC_RTC_STE_FORMAT_8DW);
 	MLX5_SET(rtc, attr, pd, rtc_attr->pd);
 	MLX5_SET(rtc, attr, update_index_mode, rtc_attr->update_index_mode);
 	MLX5_SET(rtc, attr, log_depth, rtc_attr->log_depth);

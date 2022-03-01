@@ -43,6 +43,7 @@ struct mlx5dr_cmd_rtc_create_attr {
 	uint8_t log_size;
 	uint8_t table_type;
 	uint8_t definer_id;
+	bool is_jumbo;
 };
 
 struct mlx5dr_cmd_stc_create_attr {

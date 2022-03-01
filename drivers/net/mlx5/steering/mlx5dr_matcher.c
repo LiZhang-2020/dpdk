@@ -185,6 +185,7 @@ static int mlx5dr_matcher_create_rtc(struct mlx5dr_matcher *matcher)
 	rtc_attr.pd = ctx->pd_num;
 	/* The first match template is used since all share the same definer */
 	rtc_attr.definer_id = mlx5dr_definer_get_id(matcher->mt[0]->definer);
+	rtc_attr.is_jumbo = mlx5dr_definer_is_jumbo(matcher->mt[0]->definer);
 
 	/* STC is a single resource (devx_obj), use any STC for the ID */
 	default_stc = ctx->common_res[tbl->type].default_stc;
