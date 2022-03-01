@@ -15,7 +15,7 @@ static int mlx5dr_debug_dump_matcher_template_definer(FILE *f,
 		      (uint64_t)(uintptr_t)definer,
 		      (uint64_t)(uintptr_t)mt,
 		      definer->obj->id,
-		      0); /*definer type: for now zero is for match */
+		      definer->type);
 	if (ret < 0) {
 		rte_errno = EINVAL;
 		return rte_errno;
@@ -39,8 +39,8 @@ static int mlx5dr_debug_dump_matcher_template_definer(FILE *f,
 		}
 	}
 
-	for (i = 0; i < MLX5DR_MATCH_TAG_SZ; i++) {
-		ret = fprintf(f, "%02x", definer->mask_tag[i]);
+	for (i = 0; i < MLX5DR_JUMBO_TAG_SZ; i++) {
+		ret = fprintf(f, "%02x", definer->mask.jumbo[i]);
 		if (ret < 0) {
 			rte_errno = EINVAL;
 			return rte_errno;
