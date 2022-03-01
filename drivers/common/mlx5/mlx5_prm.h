@@ -3144,8 +3144,7 @@ struct mlx5_ifc_definer_bits {
 	u8 format_select_byte4[0x8];
 	u8 reserved_at_180[0x40];
 	u8 ctrl[0xa0];
-	u8 match_mask_dw_11_8[0x60];
-	u8 match_mask_dw_7_0[0x100];
+	u8 match_mask[0x160];
 };
 
 struct mlx5_ifc_arg_bits {

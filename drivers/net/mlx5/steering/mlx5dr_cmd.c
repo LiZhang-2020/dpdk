@@ -623,6 +623,9 @@ mlx5dr_cmd_definer_create(struct ibv_context *ctx,
 	MLX5_SET(definer, ptr, format_select_dw3, def_attr->dw_selector[3]);
 	MLX5_SET(definer, ptr, format_select_dw4, def_attr->dw_selector[4]);
 	MLX5_SET(definer, ptr, format_select_dw5, def_attr->dw_selector[5]);
+	MLX5_SET(definer, ptr, format_select_dw6, def_attr->dw_selector[6]);
+	MLX5_SET(definer, ptr, format_select_dw7, def_attr->dw_selector[7]);
+	MLX5_SET(definer, ptr, format_select_dw8, def_attr->dw_selector[8]);
 
 	MLX5_SET(definer, ptr, format_select_byte0, def_attr->byte_selector[0]);
 	MLX5_SET(definer, ptr, format_select_byte1, def_attr->byte_selector[1]);
@@ -633,9 +636,8 @@ mlx5dr_cmd_definer_create(struct ibv_context *ctx,
 	MLX5_SET(definer, ptr, format_select_byte6, def_attr->byte_selector[6]);
 	MLX5_SET(definer, ptr, format_select_byte7, def_attr->byte_selector[7]);
 
-	/* Current support match and not jumbo */
-	ptr = MLX5_ADDR_OF(definer, ptr, match_mask_dw_7_0);
-	memcpy(ptr, def_attr->match_mask, MLX5_FLD_SZ_BYTES(definer, match_mask_dw_7_0));
+	ptr = MLX5_ADDR_OF(definer, ptr, match_mask);
+	memcpy(ptr, def_attr->match_mask, MLX5_FLD_SZ_BYTES(definer, match_mask));
 
 	devx_obj->obj = mlx5_glue->devx_obj_create(ctx, in, sizeof(in), out, sizeof(out));
 	if (!devx_obj->obj) {
