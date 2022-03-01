@@ -1462,7 +1462,8 @@ int mlx5dr_actions_quick_apply(struct mlx5dr_send_engine *queue,
 			       struct mlx5dr_wqe_gta_data_seg_ste *wqe_data,
 			       struct mlx5dr_rule_action rule_actions[],
 			       uint8_t num_actions,
-			       enum mlx5dr_table_type tbl_type)
+			       enum mlx5dr_table_type tbl_type,
+			       bool is_jumbo)
 {
 	struct mlx5dr_action_default_stc *default_stc = common_res->default_stc;
 	uint32_t stc_arr[MLX5DR_ACTION_STC_IDX_MAX] = {0};
@@ -1616,6 +1617,15 @@ int mlx5dr_actions_quick_apply(struct mlx5dr_send_engine *queue,
 	/* Set shared STC for combo1 and combo2 */
 	wqe_ctrl->stc_ix[MLX5DR_ACTION_STC_IDX_CTRL] = htobe32(stc_arr[MLX5DR_ACTION_STC_IDX_CTRL]);
 	wqe_ctrl->stc_ix[MLX5DR_ACTION_STC_IDX_HIT] = htobe32(stc_arr[MLX5DR_ACTION_STC_IDX_HIT]);
+
+	if (is_jumbo) {
+		/* With jumbo we temporarily support counter and HIT action */
+		wqe_ctrl->stc_ix[MLX5DR_ACTION_STC_IDX_DW5] = htobe32(default_stc->nop_dw5.offset);
+		wqe_ctrl->stc_ix[MLX5DR_ACTION_STC_IDX_DW6] = htobe32(default_stc->nop_dw6.offset);
+		wqe_ctrl->stc_ix[MLX5DR_ACTION_STC_IDX_DW7] = htobe32(default_stc->nop_dw7.offset);
+		wqe_ctrl->stc_ix[MLX5DR_ACTION_STC_IDX_CTRL] |= htobe32(MLX5DR_ACTION_STC_IDX_LAST_COMBO2 << 29);
+		return 0;
+	}
 
 	if (require_double) {
 		/* Combo1: Set 1 single (DW5) and 1 double (DW6-7) actions */

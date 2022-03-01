@@ -134,7 +134,8 @@ int mlx5dr_actions_quick_apply(struct mlx5dr_send_engine *queue,
 			       struct mlx5dr_wqe_gta_data_seg_ste *wqe_data,
 			       struct mlx5dr_rule_action rule_actions[],
 			       uint8_t num_actions,
-			       enum mlx5dr_table_type tbl_type);
+			       enum mlx5dr_table_type tbl_type,
+			       bool is_jumbo);
 
 void
 mlx5dr_action_prepare_decap_l3_data(uint8_t *src, uint8_t *dst,
