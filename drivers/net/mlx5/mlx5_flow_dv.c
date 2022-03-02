@@ -12568,12 +12568,14 @@ flow_dv_translate_items_sws(struct rte_eth_dev *dev,
 	/*
 	 * When E-Switch mode is enabled, we have two cases where we need to
 	 * set the source port manually.
-	 * The first one, is in case of Nic steering rule, and the second is
-	 * E-Switch rule where no port_id item was found. In both cases
-	 * the source port is set according the current port in use.
+	 * The first one, is in case of NIC ingress steering rule, and the
+	 * second is E-Switch rule where no port_id item was found.
+	 * In both cases the source port is set according the current port
+	 * in use.
 	 */
 	if (!(wks.item_flags & MLX5_FLOW_ITEM_PORT_ID) &&
-		(priv->representor || priv->master)) {
+	    (priv->representor || priv->master) &&
+	    !(attr->egress && !attr->transfer)) {
 		if (flow_dv_translate_item_port_id_all(dev, match_mask,
 						   match_value, NULL, attr))
 			return -rte_errno;

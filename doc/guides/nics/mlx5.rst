@@ -485,7 +485,7 @@ Limitations
     from the reference "Clock Queue" completions,
     the scheduled send timestamps should not be specified with non-zero MSB.
 
-- The NIC Egress flow on representor port is not supported.
+- The NIC egress flow rules on representor port are not supported.
 
 - Match on GRE header supports the following fields:
 
