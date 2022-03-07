@@ -1595,6 +1595,12 @@ struct rte_eth_dev_info {
 	void *reserved_ptrs[2];   /**< Reserved for future fields */
 };
 
+/**@{@name Rx/Tx queue states */
+#define RTE_ETH_QUEUE_STATE_STOPPED 0 /**< Queue stopped. */
+#define RTE_ETH_QUEUE_STATE_STARTED 1 /**< Queue started. */
+#define RTE_ETH_QUEUE_STATE_HAIRPIN 2 /**< Queue used for hairpin. */
+/**@}*/
+
 /**
  * Ethernet device RX queue information structure.
  * Used to retrieve information about configured queue.
