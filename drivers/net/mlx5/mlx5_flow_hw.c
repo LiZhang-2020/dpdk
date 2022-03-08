@@ -19,6 +19,15 @@
 #define MLX5_HW_INS_NOP_ACT(act_num) \
 	((act_num) += MLX5_HW_NOP_MODI_HDR_ACT)
 
+/*
+ * The default table ipool threshold value indicates which per_core_cache
+ * value to set.
+ */
+#define MLX5_HW_TABLE_SIZE_THRESHOLD (1 << 19)
+/* The default min local cache size. */
+#define MLX5_HW_TABLE_FLOW_CACHE_MIN (1 << 9)
+
+
 const struct mlx5_flow_driver_ops mlx5_flow_hw_drv_ops;
 
 static uint32_t mlx5_hw_dr_ft_flag[2][MLX5DR_TABLE_TYPE_MAX] = {
@@ -1180,9 +1189,11 @@ flow_hw_table_create(struct rte_eth_dev *dev,
 	 * flow insertion rate will be very limited in that case. Here let's
 	 * set the number to less than default trunk size 4K.
 	 */
-	if (nb_flows < cfg.trunk_size) {
+	if (nb_flows <= cfg.trunk_size) {
 		cfg.per_core_cache = 0;
 		cfg.trunk_size = nb_flows;
+	} else if (nb_flows <= MLX5_HW_TABLE_SIZE_THRESHOLD) {
+		cfg.per_core_cache = MLX5_HW_TABLE_FLOW_CACHE_MIN;
 	}
 	if (nb_item_templates > max_tpl ||
 	    nb_action_templates > MLX5_HW_TBL_MAX_ACTION_TEMPLATE) {
