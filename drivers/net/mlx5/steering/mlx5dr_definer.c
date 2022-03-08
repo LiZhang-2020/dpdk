@@ -311,18 +311,6 @@ mlx5dr_definer_vport_set(struct mlx5dr_definer_fc *fc,
 	DR_SET(tag, regc_value, fc->byte_off, fc->bit_off, fc->bit_mask);
 }
 
-static uint32_t mlx5dr_definer_get_flex_parser_off(uint8_t flex_parser_id)
-{
-	uint32_t byte_off;
-
-	/* Get the last flex parser */
-	byte_off = MLX5_BYTE_OFF(definer_hl, flex_parser.flex_parser_0);
-	/* Jump back based on needed flex parser id */
-	byte_off -= DW_SIZE * flex_parser_id;
-
-	return byte_off;
-}
-
 static int
 mlx5dr_definer_conv_item_eth(struct mlx5dr_definer_conv_data *cd,
 			     struct rte_flow_item *item,
@@ -690,7 +678,6 @@ mlx5dr_definer_conv_item_gtp(struct mlx5dr_definer_conv_data *cd,
 {
 	const struct rte_flow_item_gtp *m = item->mask;
 	struct mlx5dr_definer_fc *fc;
-	uint8_t flex_idx;
 
 	/* Overwrite GTPU dest port if not present */
 	fc = &cd->fc[DR_CALC_FNAME(L4_DPORT, false)];
@@ -714,12 +701,11 @@ mlx5dr_definer_conv_item_gtp(struct mlx5dr_definer_conv_data *cd,
 			rte_errno = ENOTSUP;
 			return rte_errno;
 		}
-		flex_idx = cd->caps->flex_parser_id_gtpu_teid;
 		fc = &cd->fc[MLX5DR_DEFINER_FNAME_GTP_TEID];
 		fc->item_idx = item_idx;
 		fc->tag_set = &mlx5dr_definer_gtp_teid_set;
 		fc->bit_mask = __mlx5_mask(header_gtp, teid);
-		fc->byte_off = mlx5dr_definer_get_flex_parser_off(flex_idx);
+		fc->byte_off = cd->caps->format_select_gtpu_dw_1 * DW_SIZE;
 	}
 
 	if (m->v_pt_rsv_flags) {
@@ -727,27 +713,26 @@ mlx5dr_definer_conv_item_gtp(struct mlx5dr_definer_conv_data *cd,
 			rte_errno = ENOTSUP;
 			return rte_errno;
 		}
-		flex_idx = cd->caps->flex_parser_id_gtpu_dw_0;
 		fc = &cd->fc[MLX5DR_DEFINER_FNAME_GTP_EXT_FLAG];
 		fc->item_idx = item_idx;
 		fc->tag_set = &mlx5dr_definer_gtp_ext_flag_set;
 		fc->bit_mask = __mlx5_mask(header_gtp, ext_hdr_flag);
 		fc->bit_off = __mlx5_dw_bit_off(header_gtp, ext_hdr_flag);
-		fc->byte_off = mlx5dr_definer_get_flex_parser_off(flex_idx);
+		fc->byte_off = cd->caps->format_select_gtpu_dw_0 * DW_SIZE;
 	}
+
 
 	if (m->msg_type) {
 		if (!(cd->caps->flex_protocols & MLX5_HCA_FLEX_GTPU_DW_0_ENABLED)) {
 			rte_errno = ENOTSUP;
 			return rte_errno;
 		}
-		flex_idx = cd->caps->flex_parser_id_gtpu_dw_0;
 		fc = &cd->fc[MLX5DR_DEFINER_FNAME_GTP_MSG_TYPE];
 		fc->item_idx = item_idx;
 		fc->tag_set = &mlx5dr_definer_gtp_msg_type_set;
 		fc->bit_mask = __mlx5_mask(header_gtp, msg_type);
 		fc->bit_off = __mlx5_dw_bit_off(header_gtp, msg_type);
-		fc->byte_off = mlx5dr_definer_get_flex_parser_off(flex_idx);
+		fc->byte_off = cd->caps->format_select_gtpu_dw_0 * DW_SIZE;
 	}
 
 	return 0;
@@ -760,7 +745,6 @@ mlx5dr_definer_conv_item_gtp_psc(struct mlx5dr_definer_conv_data *cd,
 {
 	const struct rte_flow_item_gtp_psc *m = item->mask;
 	struct mlx5dr_definer_fc *fc;
-	uint8_t flex_idx;
 
 	/* Overwrite GTP extension flag to be 1 */
 	if (!cd->relaxed) {
@@ -768,13 +752,12 @@ mlx5dr_definer_conv_item_gtp_psc(struct mlx5dr_definer_conv_data *cd,
 			rte_errno = ENOTSUP;
 			return rte_errno;
 		}
-		flex_idx = cd->caps->flex_parser_id_gtpu_dw_0;
 		fc = &cd->fc[MLX5DR_DEFINER_FNAME_GTP_EXT_FLAG];
 		fc->item_idx = item_idx;
 		fc->tag_set = &mlx5dr_definer_ones_set;
 		fc->bit_mask = __mlx5_mask(header_gtp, ext_hdr_flag);
 		fc->bit_off = __mlx5_dw_bit_off(header_gtp, ext_hdr_flag);
-		fc->byte_off = mlx5dr_definer_get_flex_parser_off(flex_idx);
+		fc->byte_off = cd->caps->format_select_gtpu_dw_0 * DW_SIZE;
 	}
 
 	/* Overwrite next extension header type */
@@ -783,14 +766,13 @@ mlx5dr_definer_conv_item_gtp_psc(struct mlx5dr_definer_conv_data *cd,
 			rte_errno = ENOTSUP;
 			return rte_errno;
 		}
-		flex_idx = cd->caps->flex_parser_id_gtpu_dw_2;
 		fc = &cd->fc[MLX5DR_DEFINER_FNAME_GTP_NEXT_EXT_HDR];
 		fc->item_idx = item_idx;
 		fc->tag_set = &mlx5dr_definer_gtp_next_ext_hdr_set;
 		fc->tag_mask_set = &mlx5dr_definer_ones_set;
 		fc->bit_mask = __mlx5_mask(header_opt_gtp, next_ext_hdr_type);
 		fc->bit_off = __mlx5_dw_bit_off(header_opt_gtp, next_ext_hdr_type);
-		fc->byte_off = mlx5dr_definer_get_flex_parser_off(flex_idx);
+		fc->byte_off = cd->caps->format_select_gtpu_dw_2 * DW_SIZE;
 	}
 
 	if (!m)
@@ -801,13 +783,12 @@ mlx5dr_definer_conv_item_gtp_psc(struct mlx5dr_definer_conv_data *cd,
 			rte_errno = ENOTSUP;
 			return rte_errno;
 		}
-		flex_idx = cd->caps->flex_parser_id_gtpu_first_ext_dw_0;
 		fc = &cd->fc[MLX5DR_DEFINER_FNAME_GTP_EXT_HDR_PDU];
 		fc->item_idx = item_idx;
 		fc->tag_set = &mlx5dr_definer_gtp_ext_hdr_pdu_set;
 		fc->bit_mask = __mlx5_mask(header_gtp_psc, pdu_type);
 		fc->bit_off = __mlx5_dw_bit_off(header_gtp_psc, pdu_type);
-		fc->byte_off = mlx5dr_definer_get_flex_parser_off(flex_idx);
+		fc->byte_off = cd->caps->format_select_gtpu_ext_dw_0 * DW_SIZE;
 	}
 
 	if (m->qfi) {
@@ -815,13 +796,12 @@ mlx5dr_definer_conv_item_gtp_psc(struct mlx5dr_definer_conv_data *cd,
 			rte_errno = ENOTSUP;
 			return rte_errno;
 		}
-		flex_idx = cd->caps->flex_parser_id_gtpu_first_ext_dw_0;
 		fc = &cd->fc[MLX5DR_DEFINER_FNAME_GTP_EXT_HDR_QFI];
 		fc->item_idx = item_idx;
 		fc->tag_set = &mlx5dr_definer_gtp_ext_hdr_qfi_set;
 		fc->bit_mask = __mlx5_mask(header_gtp_psc, qfi);
 		fc->bit_off = __mlx5_dw_bit_off(header_gtp_psc, qfi);
-		fc->byte_off = mlx5dr_definer_get_flex_parser_off(flex_idx);
+		fc->byte_off = cd->caps->format_select_gtpu_ext_dw_0 * DW_SIZE;
 	}
 
 	return 0;

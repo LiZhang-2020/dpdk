@@ -2067,7 +2067,13 @@ struct mlx5_ifc_cmd_hca_cap_2_bits {
 	u8 reserved_at_d8[0x3];
 	u8 log_max_conn_track_offload[0x5];
 	u8 reserved_at_e0[0x20]; /* End of DW7. */
-	u8 reserved_at_100[0x700];
+	u8 reserved_at_100[0x180];
+	u8 format_select_dw_gtpu_dw_0[0x8];
+	u8 format_select_dw_gtpu_dw_1[0x8];
+	u8 format_select_dw_gtpu_dw_2[0x8];
+	u8 format_select_dw_gtpu_first_ext_dw_0[0x8];
+	u8 reserved_at_2a0[0x560];
+
 };
 
 struct mlx5_ifc_wqe_based_flow_table_cap_bits {

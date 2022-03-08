@@ -141,10 +141,10 @@ struct mlx5dr_cmd_query_caps {
 	uint8_t stc_alloc_log_max;
 	uint8_t stc_alloc_log_gran;
 	uint8_t rtc_log_depth_max;
-	uint8_t flex_parser_id_gtpu_dw_0;
-	uint8_t flex_parser_id_gtpu_teid;
-	uint8_t flex_parser_id_gtpu_dw_2;
-	uint8_t flex_parser_id_gtpu_first_ext_dw_0;
+	uint8_t format_select_gtpu_dw_0;
+	uint8_t format_select_gtpu_dw_1;
+	uint8_t format_select_gtpu_dw_2;
+	uint8_t format_select_gtpu_ext_dw_0;
 	struct mlx5dr_cmd_query_ft_caps nic_ft;
 	struct mlx5dr_cmd_query_ft_caps fdb_ft;
 	bool eswitch_manager;

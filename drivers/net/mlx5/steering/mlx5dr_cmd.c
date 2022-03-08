@@ -754,30 +754,6 @@ int mlx5dr_cmd_query_caps(struct ibv_context *ctx,
 	caps->flex_protocols = MLX5_GET(query_hca_cap_out, out,
 					capability.cmd_hca_cap.flex_parser_protocols);
 
-	if (caps->flex_protocols & MLX5_HCA_FLEX_GTPU_DW_0_ENABLED)
-		caps->flex_parser_id_gtpu_dw_0 =
-			MLX5_GET(query_hca_cap_out,
-				 out,
-				 capability.cmd_hca_cap.flex_parser_id_gtpu_dw_0);
-
-	if (caps->flex_protocols & MLX5_HCA_FLEX_GTPU_TEID_ENABLED)
-		caps->flex_parser_id_gtpu_teid =
-			MLX5_GET(query_hca_cap_out,
-				 out,
-				 capability.cmd_hca_cap.flex_parser_id_gtpu_teid);
-
-	if (caps->flex_protocols & MLX5_HCA_FLEX_GTPU_DW_2_ENABLED)
-		caps->flex_parser_id_gtpu_dw_2 =
-			MLX5_GET(query_hca_cap_out,
-				 out,
-				 capability.cmd_hca_cap.flex_parser_id_gtpu_dw_2);
-
-	if (caps->flex_protocols & MLX5_HCA_FLEX_GTPU_FIRST_EXT_DW_0_ENABLED)
-		caps->flex_parser_id_gtpu_first_ext_dw_0 =
-			MLX5_GET(query_hca_cap_out,
-				 out,
-				 capability.cmd_hca_cap.flex_parser_id_gtpu_first_ext_dw_0);
-
 	caps->log_header_modify_argument_granularity =
 		MLX5_GET(query_hca_cap_out,
 			 out,
@@ -797,6 +773,33 @@ int mlx5dr_cmd_query_caps(struct ibv_context *ctx,
 		MLX5_GET64(query_hca_cap_out,
 			   out,
 			   capability.cmd_hca_cap.match_definer_format_supported);
+
+	MLX5_SET(query_hca_cap_in, in, op_mod,
+		 MLX5_GET_HCA_CAP_OP_MOD_GENERAL_DEVICE_2 |
+		 MLX5_HCA_CAP_OPMOD_GET_CUR);
+
+	ret = mlx5_glue->devx_general_cmd(ctx, in, sizeof(in), out, sizeof(out));
+	if (ret) {
+		DR_LOG(ERR, "Failed to query device caps");
+		rte_errno = errno;
+		return rte_errno;
+	}
+
+	caps->format_select_gtpu_dw_0 = MLX5_GET(query_hca_cap_out, out,
+						 capability.cmd_hca_cap_2.
+						 format_select_dw_gtpu_dw_0);
+
+	caps->format_select_gtpu_dw_1 = MLX5_GET(query_hca_cap_out, out,
+						 capability.cmd_hca_cap_2.
+						 format_select_dw_gtpu_dw_1);
+
+	caps->format_select_gtpu_dw_2 = MLX5_GET(query_hca_cap_out, out,
+						 capability.cmd_hca_cap_2.
+						 format_select_dw_gtpu_dw_2);
+
+	caps->format_select_gtpu_ext_dw_0 = MLX5_GET(query_hca_cap_out, out,
+						     capability.cmd_hca_cap_2.
+						     format_select_dw_gtpu_first_ext_dw_0);
 
 	MLX5_SET(query_hca_cap_in, in, op_mod,
 		 MLX5_GET_HCA_CAP_OP_MOD_NIC_FLOW_TABLE |
