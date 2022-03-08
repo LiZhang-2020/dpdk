@@ -83,6 +83,8 @@ enum mlx5dr_definer_fname {
 	MLX5DR_DEFINER_FNAME_IPV4_SRC_I,
 	MLX5DR_DEFINER_FNAME_IP_VERSION_O,
 	MLX5DR_DEFINER_FNAME_IP_VERSION_I,
+	MLX5DR_DEFINER_FNAME_IP_FRAG_O,
+	MLX5DR_DEFINER_FNAME_IP_FRAG_I,
 	MLX5DR_DEFINER_FNAME_IPV6_PAYLOAD_LEN_O,
 	MLX5DR_DEFINER_FNAME_IPV6_PAYLOAD_LEN_I,
 	MLX5DR_DEFINER_FNAME_IP_ECN_O,
@@ -180,6 +182,7 @@ struct mlx5dr_definer_conv_data {
 	X(SET_BE32P,	ipv6_dst_addr_63_32,	&v->hdr.dst_addr[8],	rte_flow_item_ipv6) \
 	X(SET_BE32P,	ipv6_dst_addr_31_0,	&v->hdr.dst_addr[12],	rte_flow_item_ipv6) \
 	X(SET,		ipv6_version,		STE_IPV6,		rte_flow_item_ipv6) \
+	X(SET,		ipv6_frag,		v->has_frag_ext,	rte_flow_item_ipv6) \
 	X(SET,		udp_protocol,		STE_UDP,		rte_flow_item_udp) \
 	X(SET_BE16,	udp_src_port,		v->hdr.src_port,	rte_flow_item_udp) \
 	X(SET_BE16,	udp_dst_port,		v->hdr.dst_port,	rte_flow_item_udp) \
@@ -450,11 +453,18 @@ mlx5dr_definer_conv_item_ipv6(struct mlx5dr_definer_conv_data *cd,
 	if (!m)
 		return 0;
 
-	if (m->has_hop_ext || m->has_route_ext || m->has_frag_ext ||
-	    m->has_auth_ext || m->has_esp_ext || m->has_dest_ext ||
-	    m->has_mobil_ext || m->has_hip_ext || m->has_shim6_ext) {
+	if (m->has_hop_ext || m->has_route_ext || m->has_auth_ext ||
+	    m->has_esp_ext || m->has_dest_ext || m->has_mobil_ext ||
+	    m->has_hip_ext || m->has_shim6_ext) {
 		rte_errno = ENOTSUP;
 		return rte_errno;
+	}
+
+	if (m->has_frag_ext) {
+		fc = &cd->fc[DR_CALC_FNAME(IP_FRAG, inner)];
+		fc->item_idx = item_idx;
+		fc->tag_set = &mlx5dr_definer_ipv6_frag_set;
+		DR_CALC_SET(fc, eth_l4, ip_fragmented, inner);
 	}
 
 	if (DR_GET(header_ipv6, &m->hdr, dscp)) {
