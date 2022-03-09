@@ -10,11 +10,12 @@ static int mlx5d_run_test_modify_header_action(struct mlx5dr_context *ctx)
 	struct mlx5dr_action *action1;
 	struct mlx5dr_action *action2;
 	size_t action_sz;
-	__be64 modify_action_data[256] = { 0 };
+	__be64 modify_action_data[256];
 	uint32_t bulk_size;
 	uint32_t flags;
 	uint8_t *action_ptr;
 
+	memset(modify_action_data, 0, sizeof(modify_action_data));
 	action_ptr = (uint8_t *) modify_action_data;
 	MLX5_SET(add_action_in, action_ptr, action_type, MLX5_MODIFICATION_TYPE_ADD);
 	MLX5_SET(add_action_in, action_ptr, field, 0xa);
