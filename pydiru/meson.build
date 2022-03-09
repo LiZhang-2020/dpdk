@@ -31,6 +31,14 @@ endif
 
 
 includes += global_inc
+includes += include_directories(
+'../lib/librte_ethdev/', '../../lib/librte_ethdev/',
+'../lib/librte_net/', '../../lib/librte_net/',
+'../lib/librte_mbuf/', '../../lib/librte_mbuf/',
+'../lib/librte_mempool/', '../../lib/librte_mempool/',
+'../lib/librte_meter/', '../../lib/librte_meter/',
+'../lib/librte_ring', '../../lib/librte_ring')
+
 
 pydiru_cython_modules = [
 	'base.pyx',
