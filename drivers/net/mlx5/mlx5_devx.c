@@ -1240,6 +1240,8 @@ mlx5_rxq_devx_obj_drop_create(struct rte_eth_dev *dev)
 	rxq->priv = priv;
 	rxq->ctrl = rxq_ctrl;
 	LIST_INSERT_HEAD(&rxq_ctrl->owners, rxq, owner_entry);
+	/* set the CPU socket ID where the rxq_ctrl was allocated */
+	rxq_ctrl->socket = socket_id;
 	rxq_obj->rxq_ctrl = rxq_ctrl;
 	rxq_ctrl->is_hairpin = false;
 	rxq_ctrl->sh = priv->sh;
