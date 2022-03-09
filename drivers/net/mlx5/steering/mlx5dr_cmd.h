@@ -5,6 +5,8 @@
 #ifndef MLX5DR_CMD_H_
 #define MLX5DR_CMD_H_
 
+#define WIRE_PORT 0xFFFF
+
 struct mlx5dr_cmd_ft_create_attr {
 	uint8_t type;
 	uint8_t level;
@@ -84,6 +86,10 @@ struct mlx5dr_cmd_stc_modify_attr {
 			uint32_t devx_obj_id;
 			uint8_t return_reg_id;
 		} aso;
+		struct {
+			uint16_t vport_num;
+			uint16_t esw_owner_vhca_id;
+		} vport;
 
 		uint32_t dest_table_id;
 		uint32_t dest_tir_num;
@@ -113,6 +119,13 @@ struct mlx5dr_cmd_sq_create_attr {
 struct mlx5dr_cmd_query_ft_caps {
 	uint8_t max_level;
 	uint8_t reparse;
+};
+
+struct mlx5dr_cmd_query_vport_caps {
+	uint16_t vport_num;
+	uint16_t esw_owner_vhca_id;
+	uint32_t metadata_c;
+	uint32_t metadata_c_mask;
 };
 
 struct mlx5dr_cmd_query_caps {
@@ -186,6 +199,9 @@ mlx5dr_cmd_header_modify_pattern_create(struct ibv_context *ctx,
 
 int mlx5dr_cmd_sq_modify_rdy(struct mlx5dr_devx_obj *devx_obj);
 
+int mlx5dr_cmd_query_ib_port(struct ibv_context *ctx,
+			     struct mlx5dr_cmd_query_vport_caps *vport_caps,
+			     uint32_t port_num);
 int mlx5dr_cmd_query_caps(struct ibv_context *ctx,
 			  struct mlx5dr_cmd_query_caps *caps);
 

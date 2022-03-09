@@ -315,6 +315,21 @@ mlx5dr_action_create_dest_table(struct mlx5dr_context *ctx,
 				struct mlx5dr_table *tbl,
 				uint32_t flags);
 
+/* Create direct rule goto vport action.
+ *
+ * @param[in] ctx
+ *	The context in which the new action will be created.
+ * @param[in] ib_port_num
+ *	Destination ib_port number.
+ * @param[in] flags
+ *	Action creation flags. (enum mlx5dr_action_flags)
+ * @return pointer to mlx5dr_action on success NULL otherwise.
+ */
+struct mlx5dr_action *
+mlx5dr_action_create_dest_vport(struct mlx5dr_context *ctx,
+				uint32_t ib_port_num,
+				uint32_t flags);
+
 /*  Create direct rule goto TIR action.
  *
  * @param[in] ctx

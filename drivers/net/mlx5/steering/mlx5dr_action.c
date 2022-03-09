@@ -67,6 +67,31 @@ int mlx5dr_action_root_build_attr(struct mlx5dr_rule_action rule_actions[],
 	return 0;
 }
 
+static bool mlx5dr_action_fixup_stc_attr(struct mlx5dr_cmd_stc_modify_attr *stc_attr,
+					 struct mlx5dr_cmd_stc_modify_attr *fixup_stc_attr,
+					 uint32_t table_type,
+					 bool is_mirror)
+{
+	uint32_t fw_tbl_type;
+
+	if (table_type != MLX5DR_TABLE_TYPE_FDB)
+		return false;
+
+	fw_tbl_type = mlx5dr_table_get_res_fw_ft_type(table_type, is_mirror);
+	if (fw_tbl_type == FS_FT_FDB_RX &&
+	    stc_attr->action_type == MLX5_IFC_STC_ACTION_TYPE_JUMP_TO_VPORT &&
+	    stc_attr->vport.vport_num == WIRE_PORT) {
+		/*The FW doesn't allow to go back to wire in the RX side, so change it to DROP*/
+			fixup_stc_attr->action_type = MLX5_IFC_STC_ACTION_TYPE_DROP;
+			fixup_stc_attr->action_offset = MLX5DR_ACTION_OFFSET_HIT;
+			fixup_stc_attr->stc_offset = stc_attr->stc_offset;
+
+			return true;
+	}
+
+	return false;
+}
+
 static int
 mlx5dr_action_alloc_single_stc(struct mlx5dr_context *ctx,
 			       struct mlx5dr_cmd_stc_modify_attr *stc_attr,
@@ -75,7 +100,9 @@ mlx5dr_action_alloc_single_stc(struct mlx5dr_context *ctx,
 {
 	struct mlx5dr_cmd_stc_modify_attr cleanup_stc_attr = {0};
 	struct mlx5dr_pool *stc_pool = ctx->stc_pool[table_type];
+	struct mlx5dr_cmd_stc_modify_attr fixup_stc_attr = {0};
 	struct mlx5dr_devx_obj *devx_obj_0;
+	bool use_fixup;
 	int ret;
 
 	ret = mlx5dr_pool_chunk_alloc(stc_pool, stc);
@@ -85,9 +112,11 @@ mlx5dr_action_alloc_single_stc(struct mlx5dr_context *ctx,
 	}
 
 	stc_attr->stc_offset = stc->offset;
-
 	devx_obj_0 = mlx5dr_pool_chunk_get_base_devx_obj(stc_pool, stc);
-	ret = mlx5dr_cmd_stc_modify(devx_obj_0, stc_attr);
+
+	/* according to table/action limitation change the stc_attr */
+	use_fixup = mlx5dr_action_fixup_stc_attr(stc_attr, &fixup_stc_attr, table_type, false);
+	ret = mlx5dr_cmd_stc_modify(devx_obj_0, use_fixup ? &fixup_stc_attr : stc_attr);
 	if (ret) {
 		DR_LOG(ERR, "Failed to modify STC action_type %d tbl_type %d",
 		       stc_attr->action_type, table_type);
@@ -99,7 +128,10 @@ mlx5dr_action_alloc_single_stc(struct mlx5dr_context *ctx,
 		struct mlx5dr_devx_obj *devx_obj_1;
 
 		devx_obj_1 = mlx5dr_pool_chunk_get_base_devx_obj_mirror(stc_pool, stc);
-		ret = mlx5dr_cmd_stc_modify(devx_obj_1, stc_attr);
+
+		use_fixup = mlx5dr_action_fixup_stc_attr(stc_attr, &fixup_stc_attr,
+							 table_type, true);
+		ret = mlx5dr_cmd_stc_modify(devx_obj_1, use_fixup ? &fixup_stc_attr : stc_attr);
 		if (ret) {
 			DR_LOG(ERR, "Failed to modify peer STC action_type %d tbl_type %d",
 			       stc_attr->action_type, table_type);
@@ -241,6 +273,12 @@ static void mlx5dr_action_fill_stc_attr(struct mlx5dr_action *action,
 		attr->action_type = MLX5_IFC_STC_ACTION_TYPE_ASO;
 		attr->aso.devx_obj_id = obj->id;
 		attr->aso.return_reg_id = action->aso.return_reg_id;
+		break;
+	case MLX5DR_ACTION_TYP_VPORT:
+		attr->action_offset = MLX5DR_ACTION_OFFSET_HIT;
+		attr->action_type = MLX5_IFC_STC_ACTION_TYPE_JUMP_TO_VPORT;
+		attr->vport.vport_num = action->vport.vport_num;
+		attr->vport.esw_owner_vhca_id =	action->vport.esw_owner_vhca_id;
 		break;
 	default:
 		DR_LOG(ERR, "Invalid action type %d", action->type);
@@ -577,6 +615,61 @@ mlx5dr_action_create_counter(struct mlx5dr_context *ctx,
 		ret = mlx5dr_action_create_stcs(action, obj);
 		if (ret)
 			goto free_action;
+	}
+
+	return action;
+
+free_action:
+	simple_free(action);
+	return NULL;
+}
+
+static int mlx5dr_action_create_dest_vport_hws(struct mlx5dr_context *ctx,
+					       struct mlx5dr_action *action,
+					       uint32_t ib_port_num)
+{
+	struct mlx5dr_cmd_query_vport_caps vport_caps = {0};
+	int ret;
+
+	ret = mlx5dr_cmd_query_ib_port(ctx->ibv_ctx, &vport_caps, ib_port_num);
+	if (ret) {
+		DR_LOG(ERR, "Failed quering port %d\n", ib_port_num);
+		return ret;
+	}
+	action->vport.vport_num = vport_caps.vport_num;
+	action->vport.esw_owner_vhca_id = vport_caps.esw_owner_vhca_id;
+
+	ret = mlx5dr_action_create_stcs(action, NULL);
+		if (ret){
+		DR_LOG(ERR, "Failed creating stc for port %d\n", ib_port_num);
+		return ret;
+	}
+
+	return 0;
+}
+
+struct mlx5dr_action *
+mlx5dr_action_create_dest_vport(struct mlx5dr_context *ctx,
+				uint32_t ib_port_num,
+				uint32_t flags)
+{
+	struct mlx5dr_action *action;
+	int ret;
+
+	if (!(flags & MLX5DR_ACTION_FLAG_HWS_FDB)) {
+		DR_LOG(ERR, "Vport action is supported for FDB only\n");
+		rte_errno = EINVAL;
+		return NULL;
+	}
+
+	action = mlx5dr_action_create_generic(ctx, flags, MLX5DR_ACTION_TYP_VPORT);
+	if (!action)
+		return NULL;
+
+	ret = mlx5dr_action_create_dest_vport_hws(ctx, action, ib_port_num);
+	if (ret) {
+		DR_LOG(ERR, "Failed to create vport action HWS\n");
+		goto free_action;
 	}
 
 	return action;
@@ -1605,6 +1698,7 @@ int mlx5dr_actions_quick_apply(struct mlx5dr_send_engine *queue,
 		case MLX5DR_ACTION_TYP_FT:
 		case MLX5DR_ACTION_TYP_TIR:
 		case MLX5DR_ACTION_TYP_MISS:
+		case MLX5DR_ACTION_TYP_VPORT:
 			stc_arr[MLX5DR_ACTION_STC_IDX_HIT] = stc_idx;
 			break;
 		default:

@@ -398,6 +398,13 @@ mlx5dr_cmd_stc_modify_set_stc_param(struct mlx5dr_cmd_stc_modify_attr *stc_attr,
 		MLX5_SET(set_action_in, stc_parm, field,
 			 stc_attr->modify_action.src_field);
 		break;
+	case MLX5_IFC_STC_ACTION_TYPE_JUMP_TO_VPORT:
+		MLX5_SET(stc_ste_param_vport, stc_parm, vport_number,
+			 stc_attr->vport.vport_num);
+		MLX5_SET(stc_ste_param_vport, stc_parm, eswitch_owner_vhca_id,
+			 stc_attr->vport.esw_owner_vhca_id);
+		MLX5_SET(stc_ste_param_vport, stc_parm, eswitch_owner_vhca_id_valid, 1);
+		break;
 	case MLX5_IFC_STC_ACTION_TYPE_DROP:
 	case MLX5_IFC_STC_ACTION_TYPE_NOP:
 	case MLX5_IFC_STC_ACTION_TYPE_TAG:
@@ -873,4 +880,30 @@ int mlx5dr_cmd_query_caps(struct ibv_context *ctx,
 	}
 
 	return ret;
+}
+
+int mlx5dr_cmd_query_ib_port(struct ibv_context *ctx,
+			     struct mlx5dr_cmd_query_vport_caps *vport_caps,
+			     uint32_t port_num)
+{
+	struct mlx5_port_info port_info = {0};
+	int ret;
+
+	ret = mlx5_glue->devx_port_query(ctx, port_num, &port_info);
+	/* Check if query succeed and vport is enabled */
+	if (ret || !(port_info.query_flags &
+		     (MLX5_PORT_QUERY_VPORT | MLX5_PORT_QUERY_VHCA_ID))) {
+		rte_errno = ENOTSUP;
+		return rte_errno;
+	}
+
+	vport_caps->vport_num = port_info.vport_id;
+	vport_caps->esw_owner_vhca_id = port_info.esw_owner_vhca_id;
+
+	if (port_info.query_flags & MLX5_PORT_QUERY_REG_C0) {
+		vport_caps->metadata_c = port_info.vport_meta_tag;
+		vport_caps->metadata_c_mask = port_info.vport_meta_mask;
+	}
+
+	return 0;
 }

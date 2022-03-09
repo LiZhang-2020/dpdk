@@ -2998,6 +2998,7 @@ enum mlx5_ifc_stc_action_type {
 	MLX5_IFC_STC_ACTION_TYPE_JUMP_TO_FT = 0x82,
 	MLX5_IFC_STC_ACTION_TYPE_DROP = 0x83,
 	MLX5_IFC_STC_ACTION_TYPE_ALLOW = 0x84,
+	MLX5_IFC_STC_ACTION_TYPE_JUMP_TO_VPORT = 0x85,
 };
 
 struct mlx5_ifc_stc_ste_param_ste_table_bits {
@@ -3077,6 +3078,13 @@ struct mlx5_ifc_stc_ste_param_insert_bits {
 	u8 insert_argument[0x20];
 };
 
+struct mlx5_ifc_stc_ste_param_vport_bits {
+	u8 eswitch_owner_vhca_id[0x10];
+	u8 vport_number[0x10];
+	u8 eswitch_owner_vhca_id_valid[0x1];
+	u8 reserved_at_21[0x59];
+};
+
 union mlx5_ifc_stc_param_bits {
 	struct mlx5_ifc_stc_ste_param_ste_table_bits ste_table;
 	struct mlx5_ifc_stc_ste_param_tir_bits tir;
@@ -3089,6 +3097,7 @@ union mlx5_ifc_stc_param_bits {
 	struct mlx5_ifc_set_action_in_bits add;
 	struct mlx5_ifc_set_action_in_bits set;
 	struct mlx5_ifc_copy_action_in_bits copy;
+	struct mlx5_ifc_stc_ste_param_vport_bits vport;
 	u8 reserved_at_0[0x80];
 };
 

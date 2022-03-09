@@ -109,6 +109,10 @@ struct mlx5dr_action {
 					struct mlx5dr_devx_obj *devx_obj;
 					uint8_t return_reg_id;
 				} aso;
+				struct {
+					uint16_t vport_num;
+					uint16_t esw_owner_vhca_id;
+				} vport;
 			};
 		};
 
