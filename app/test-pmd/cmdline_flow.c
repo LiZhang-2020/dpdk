@@ -213,7 +213,6 @@ enum index {
 	CONFIG_COUNTERS_NUMBER,
 	CONFIG_AGING_COUNTERS_NUMBER,
 	CONFIG_METERS_NUMBER,
-	CONFIG_FIXED_RESOURCE_SIZE,
 	CONFIG_QUEUES_SIZE,
 
 	/* Indirect action arguments */
@@ -953,6 +952,7 @@ struct buffer {
 	union {
 		struct {
 			struct rte_flow_port_attr port_attr;
+			uint32_t nb_queue;
 			struct rte_flow_queue_attr queue_attr;
 		} configure; /**< Configuration arguments. */
 		struct {
@@ -961,7 +961,7 @@ struct buffer {
 		} templ_destroy; /**< Template destroy arguments. */
 		struct {
 			uint32_t id;
-			struct rte_flow_table_attr attr;
+			struct rte_flow_template_table_attr attr;
 			uint32_t *item_id;
 			uint32_t item_id_n;
 			uint32_t *action_id;
@@ -1062,7 +1062,6 @@ static const enum index next_config_attr[] = {
 	CONFIG_COUNTERS_NUMBER,
 	CONFIG_AGING_COUNTERS_NUMBER,
 	CONFIG_METERS_NUMBER,
-	CONFIG_FIXED_RESOURCE_SIZE,
 	END,
 	ZERO,
 };
@@ -2569,7 +2568,7 @@ static const struct token token_list[] = {
 		.next = NEXT(next_config_attr,
 			     NEXT_ENTRY(UNSIGNED)),
 		.args = ARGS(ARGS_ENTRY(struct buffer,
-					args.configure.port_attr.nb_queues)),
+					args.configure.nb_queue)),
 	},
 	[CONFIG_COUNTERS_NUMBER] = {
 		.name = "counters_number",
@@ -2585,7 +2584,7 @@ static const struct token token_list[] = {
 		.next = NEXT(next_config_attr,
 			     NEXT_ENTRY(UNSIGNED)),
 		.args = ARGS(ARGS_ENTRY(struct buffer,
-					args.configure.port_attr.nb_aging)),
+				args.configure.port_attr.nb_aging_objects)),
 	},
 	[CONFIG_METERS_NUMBER] = {
 		.name = "meters_number",
@@ -2594,14 +2593,6 @@ static const struct token token_list[] = {
 			     NEXT_ENTRY(UNSIGNED)),
 		.args = ARGS(ARGS_ENTRY(struct buffer,
 					args.configure.port_attr.nb_meters)),
-	},
-	[CONFIG_FIXED_RESOURCE_SIZE] = {
-		.name = "fixed_resource_size",
-		.help = "is resource size fixed",
-		.next = NEXT(next_config_attr,
-			     NEXT_ENTRY(BOOLEAN)),
-		.args = ARGS(ARGS_ENTRY_BF(struct buffer,
-			args.configure.port_attr.fixed_resource_size, 1)),
 	},
 	[CONFIG_QUEUES_SIZE] = {
 		.name = "queues_size",
@@ -9992,6 +9983,7 @@ cmd_flow_parsed(const struct buffer *in)
 	switch (in->command) {
 	case CONFIGURE:
 		port_flow_configure(in->port, &in->args.configure.port_attr,
+			       in->args.configure.nb_queue,
 			       &in->args.configure.queue_attr);
 		break;
 	case ITEM_TEMPLATE_CREATE:

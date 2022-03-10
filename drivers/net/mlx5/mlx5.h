@@ -110,6 +110,13 @@ enum mlx5_delay_drop_mode {
 	MLX5_DELAY_DROP_HAIRPIN = RTE_BIT32(1), /* Hairpin queues enable. */
 };
 
+/* The HWS action type root/non-root. */
+enum mlx5_hw_action_flag_type {
+	MLX5_HW_ACTION_FLAG_ROOT, /* Root action. */
+	MLX5_HW_ACTION_FLAG_NONE_ROOT, /* Non-root ation. */
+	MLX5_HW_ACTION_FLAG_MAX, /* Maximum action flag. */
+};
+
 /* Hlist and list callback context. */
 struct mlx5_flow_cb_ctx {
 	struct rte_eth_dev *dev;
@@ -1551,14 +1558,14 @@ struct mlx5_priv {
 	/* Flex items have been created on the port. */
 	uint32_t flex_item_map; /* Map of allocated flex item elements. */
 	/* Item template list. */
-	LIST_HEAD(flow_hw_itt, rte_flow_item_template) flow_hw_itt;
+	LIST_HEAD(flow_hw_itt, rte_flow_pattern_template) flow_hw_itt;
 	/* Action template list. */
-	LIST_HEAD(flow_hw_at, rte_flow_action_template) flow_hw_at;
+	LIST_HEAD(flow_hw_at, rte_flow_actions_template) flow_hw_at;
 	struct mlx5dr_context *dr_ctx; /**< HW steering DR context. */
-	uint32_t nb_queues; /* HW steering queue number. */
+	uint32_t nb_queue; /* HW steering queue number. */
 	struct mlx5_hw_q *hw_q;
 	/**< HW steering queue polling mechanism job descriptor LIFO. */
-	LIST_HEAD(flow_hw_tbl, rte_flow_table) flow_hw_tbl;
+	LIST_HEAD(flow_hw_tbl, rte_flow_template_table) flow_hw_tbl;
 	/**< HW steering rte flow table list header. */
 	struct mlx5_indexed_pool *acts_ipool; /* Action data indexed pool. */
 };

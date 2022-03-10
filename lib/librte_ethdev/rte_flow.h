@@ -4840,57 +4840,110 @@ rte_flow_flex_item_release(uint16_t port_id,
  * @warning
  * @b EXPERIMENTAL: this API may change without prior notice.
  *
- * Flow engine configuration.
+ * Information about flow engine resources.
+ * The zero value means a resource is not supported.
+ *
  */
-__extension__
+struct rte_flow_port_info {
+	/**
+	 * Maximum number of queues for asynchronous operations.
+	 */
+	uint32_t max_nb_queues;
+	/**
+	 * Maximum number of counters.
+	 * @see RTE_FLOW_ACTION_TYPE_COUNT
+	 */
+	uint32_t max_nb_counters;
+	/**
+	 * Maximum number of aging objects.
+	 * @see RTE_FLOW_ACTION_TYPE_AGE
+	 */
+	uint32_t max_nb_aging_objects;
+	/**
+	 * Maximum number traffic meters.
+	 * @see RTE_FLOW_ACTION_TYPE_METER
+	 */
+	uint32_t max_nb_meters;
+};
+
+/**
+ * @warning
+ * @b EXPERIMENTAL: this API may change without prior notice.
+ *
+ * Information about flow engine asynchronous queues.
+ * The value only valid if @p port_attr.max_nb_queues is not zero.
+ *
+ */
+struct rte_flow_queue_info {
+	/**
+	 * Maximum number of operations a queue can hold.
+	 */
+	uint32_t max_size;
+};
+
+/**
+ * @warning
+ * @b EXPERIMENTAL: this API may change without prior notice.
+ *
+ * Get information about flow engine resources.
+ *
+ * @param port_id
+ *   Port identifier of Ethernet device.
+ * @param[out] port_info
+ *   A pointer to a structure of type *rte_flow_port_info*
+ *   to be filled with the resources information of the port.
+ * @param[out] queue_info
+ *   A pointer to a structure of type *rte_flow_queue_info*
+ *   to be filled with the asynchronous queues information.
+ * @param[out] error
+ *   Perform verbose error reporting if not NULL.
+ *   PMDs initialize this structure in case of error only.
+ *
+ * @return
+ *   0 on success, a negative errno value otherwise and rte_errno is set.
+ */
+__rte_experimental
+int
+rte_flow_info_get(uint16_t port_id,
+		  struct rte_flow_port_info *port_info,
+		  struct rte_flow_queue_info *queue_info,
+		  struct rte_flow_error *error);
+
+/**
+ * @warning
+ * @b EXPERIMENTAL: this API may change without prior notice.
+ *
+ * Flow engine resources settings.
+ * The zero value means on demand resource allocations only.
+ *
+ */
 struct rte_flow_port_attr {
 	/**
-	 * Version of the struct layout, should be 0.
-	 */
-	uint32_t version;
-	/**
-	 * Number of flow queues to be configured.
-	 * Flow queues are used for asynchronous flow rule creation/destruction.
-	 * The order of operations is not guaranteed inside a queue.
-	 * Flow queues are not thread-safe.
-	 */
-	uint16_t nb_queues;
-	/**
-	 * Number of counter actions pre-configured.
-	 * If set to 0, PMD will allocate counters dynamically.
+	 * Number of counters to configure.
 	 * @see RTE_FLOW_ACTION_TYPE_COUNT
 	 */
 	uint32_t nb_counters;
 	/**
-	 * Number of aging actions pre-configured.
-	 * If set to 0, PMD will allocate aging dynamically.
+	 * Number of aging objects to configure.
 	 * @see RTE_FLOW_ACTION_TYPE_AGE
 	 */
-	uint32_t nb_aging;
+	uint32_t nb_aging_objects;
 	/**
-	 * Number of traffic metering actions pre-configured.
-	 * If set to 0, PMD will allocate meters dynamically.
+	 * Number of traffic meters to configure.
 	 * @see RTE_FLOW_ACTION_TYPE_METER
 	 */
 	uint32_t nb_meters;
-	/**
-	 * Resources reallocation strategy.
-	 * If set to 1, PMD is not allowed to allocate more resources on demand.
-	 * An application can only allocate more resources by calling the
-	 * configure API again with new values (may not be supported by PMD).
-	 */
-	uint32_t fixed_resource_size:1;
 };
 
 /**
- * Flow engine queue configuration.
+ * @warning
+ * @b EXPERIMENTAL: this API may change without prior notice.
+ *
+ * Flow engine asynchronous queues settings.
+ * The value means default value picked by PMD.
+ *
  */
-__extension__
 struct rte_flow_queue_attr {
-	/**
-	 * Version of the struct layout, should be 0.
-	 */
-	uint32_t version;
 	/**
 	 * Number of flow rule operations a queue can hold.
 	 */
@@ -4901,18 +4954,23 @@ struct rte_flow_queue_attr {
  * @warning
  * @b EXPERIMENTAL: this API may change without prior notice.
  *
- * Configure flow rules module.
- * To pre-allocate resources as per the flow port attributes,
- * this configuration function must be called before any flow rule is created.
- * No other rte_flow function should be called while this function is invoked.
- * This function can be called again to change the configuration.
- * Some PMDs may not support re-configuration at all,
- * or may only allow increasing the number of resources allocated.
+ * Configure the port's flow API engine.
+ *
+ * This API can only be invoked before the application
+ * starts using the rest of the flow library functions.
+ *
+ * The API can be invoked multiple times to change the settings.
+ * The port, however, may reject changes and keep the old config.
+ *
+ * Parameters in configuration attributes must not exceed
+ * numbers of resources returned by the rte_flow_info_get API.
  *
  * @param port_id
  *   Port identifier of Ethernet device.
  * @param[in] port_attr
  *   Port configuration attributes.
+ * @param[in] nb_queue
+ *   Number of flow queues to be configured.
  * @param[in] queue_attr
  *   Array that holds attributes for each flow queue.
  *   Number of elements is set in @p port_attr.nb_queues.
@@ -4927,54 +4985,63 @@ __rte_experimental
 int
 rte_flow_configure(uint16_t port_id,
 		   const struct rte_flow_port_attr *port_attr,
+		   uint16_t nb_queue,
 		   const struct rte_flow_queue_attr *queue_attr[],
 		   struct rte_flow_error *error);
 
 /**
- * Opaque type returned after successful creation of item template.
- * This handle can be used to manage the created item template.
+ * Opaque type returned after successful creation of pattern template.
+ * This handle can be used to manage the created pattern template.
  */
-struct rte_flow_item_template;
+struct rte_flow_pattern_template;
 
 /**
  * @warning
  * @b EXPERIMENTAL: this API may change without prior notice.
  *
- * Flow item template attributes.
+ * Flow pattern template attributes.
  */
 __extension__
-struct rte_flow_item_template_attr {
+struct rte_flow_pattern_template_attr {
 	/**
-	 * Version of the struct layout, should be 0.
-	 */
-	uint32_t version;
-	/**
-	 * Relaxed matching policy, matching patterns may omit any
-	 * protocol layers and only apply to the specified items.
-	 * If not set, matching patterns for protocol headers
-	 * and packet data must be stacked in the same order as the
-	 * protocol layers to match inside packets,
-	 * starting from the lowest.
+	 * Relaxed matching policy.
+	 * - If 1, matching is performed only on items with the mask member
+	 * set and matching on protocol layers specified without any masks
+	 * is skipped.
+	 * - If 0, matching on protocol layers specified without any masks
+	 * is don as well. This is the standard behaviour of Flow API now.
 	 */
 	uint32_t relaxed_matching:1;
+	/**
+	 * Flow direction for the pattern template.
+	 * At least one direction must be specified.
+	 */
+	/** Pattern valid for rules applied to ingress traffic. */
+	uint32_t ingress:1;
+	/** Pattern valid for rules applied to egress traffic. */
+	uint32_t egress:1;
+	/** Pattern valid for rules applied to transfer traffic. */
+	uint32_t transfer:1;
 };
 
 /**
  * @warning
  * @b EXPERIMENTAL: this API may change without prior notice.
  *
- * Create item template.
- * The item template defines common matching fields (item mask) without values.
+ * Create flow pattern template.
+ *
+ * The pattern template defines common matching fields without values.
  * For example, matching on 5 tuple TCP flow, the template will be
  * eth(null) + IPv4(source + dest) + TCP(s_port + d_port),
  * while values for each rule will be set during the flow rule creation.
- * The order of items in the template must be the same at rule insertion.
+ * The number and order of items in the template must be the same
+ * at the rule creation.
  *
  * @param port_id
  *   Port identifier of Ethernet device.
- * @param[in] it_attr
- *   Item template attributes.
- * @param[in] items
+ * @param[in] template_attr
+ *   Pattern template attributes.
+ * @param[in] pattern
  *   Pattern specification (list terminated by the END pattern item).
  *   The spec member of an item is not used unless the end member is used.
  * @param[out] error
@@ -4985,23 +5052,24 @@ struct rte_flow_item_template_attr {
  *   Handle on success, NULL otherwise and rte_errno is set.
  */
 __rte_experimental
-struct rte_flow_item_template *
-rte_flow_item_template_create(uint16_t port_id,
-			const struct rte_flow_item_template_attr *it_attr,
-			const struct rte_flow_item items[],
-			struct rte_flow_error *error);
+struct rte_flow_pattern_template *
+rte_flow_pattern_template_create(uint16_t port_id,
+		const struct rte_flow_pattern_template_attr *template_attr,
+		const struct rte_flow_item pattern[],
+		struct rte_flow_error *error);
 
 /**
  * @warning
  * @b EXPERIMENTAL: this API may change without prior notice.
  *
- * Destroy item template.
+ * Destroy flow pattern template.
+ *
  * This function may be called only when
  * there are no more tables referencing this template.
  *
  * @param port_id
  *   Port identifier of Ethernet device.
- * @param[in] it
+ * @param[in] pattern_template
  *   Handle of the template to be destroyed.
  * @param[out] error
  *   Perform verbose error reporting if not NULL.
@@ -5012,48 +5080,55 @@ rte_flow_item_template_create(uint16_t port_id,
  */
 __rte_experimental
 int
-rte_flow_item_template_destroy(uint16_t port_id,
-			struct rte_flow_item_template *it,
-			struct rte_flow_error *error);
+rte_flow_pattern_template_destroy(uint16_t port_id,
+		struct rte_flow_pattern_template *pattern_template,
+		struct rte_flow_error *error);
 
 /**
- * Opaque type returned after successful creation of action template.
- * This handle can be used to manage the created action template.
+ * Opaque type returned after successful creation of actions template.
+ * This handle can be used to manage the created actions template.
  */
-struct rte_flow_action_template;
+struct rte_flow_actions_template;
 
 /**
  * @warning
  * @b EXPERIMENTAL: this API may change without prior notice.
  *
- * Flow action template attributes.
+ * Flow actions template attributes.
  */
-struct rte_flow_action_template_attr {
+__extension__
+struct rte_flow_actions_template_attr {
 	/**
-	 * Version of the struct layout, should be 0.
+	 * Flow direction for the actions template.
+	 * At least one direction must be specified.
 	 */
-	uint32_t version;
-	/* No attributes so far. */
+	/** Action valid for rules applied to ingress traffic. */
+	uint32_t ingress:1;
+	/** Action valid for rules applied to egress traffic. */
+	uint32_t egress:1;
+	/** Action valid for rules applied to transfer traffic. */
+	uint32_t transfer:1;
 };
 
 /**
  * @warning
  * @b EXPERIMENTAL: this API may change without prior notice.
  *
- * Create action template.
- * The action template holds a list of action types without values.
+ * Create flow actions template.
+ *
+ * The actions template holds a list of action types without values.
  * For example, the template to change TCP ports is TCP(s_port + d_port),
  * while values for each rule will be set during the flow rule creation.
- *
- * The order of the action in the template must be kept when inserting rules.
+ * The number and order of actions in the template must be the same
+ * at the rule creation.
  *
  * @param port_id
  *   Port identifier of Ethernet device.
- * @param[in] at_attr
+ * @param[in] template_attr
  *   Template attributes.
  * @param[in] actions
  *   Associated actions (list terminated by the END action).
- *   The spec member is only used if the mask spec is non-zero.
+ *   The spec member is only used if @p masks spec is non-zero.
  * @param[in] masks
  *   List of actions that marks which of the action's member is constant.
  *   A mask has the same format as the corresponding action.
@@ -5071,24 +5146,25 @@ struct rte_flow_action_template_attr {
  *   Handle on success, NULL otherwise and rte_errno is set.
  */
 __rte_experimental
-struct rte_flow_action_template *
-rte_flow_action_template_create(uint16_t port_id,
-			const struct rte_flow_action_template_attr *at_attr,
-			const struct rte_flow_action actions[],
-			const struct rte_flow_action masks[],
-			struct rte_flow_error *error);
+struct rte_flow_actions_template *
+rte_flow_actions_template_create(uint16_t port_id,
+		const struct rte_flow_actions_template_attr *template_attr,
+		const struct rte_flow_action actions[],
+		const struct rte_flow_action masks[],
+		struct rte_flow_error *error);
 
 /**
  * @warning
  * @b EXPERIMENTAL: this API may change without prior notice.
  *
- * Destroy action template.
+ * Destroy flow actions template.
+ *
  * This function may be called only when
  * there are no more tables referencing this template.
  *
  * @param port_id
  *   Port identifier of Ethernet device.
- * @param[in] at
+ * @param[in] actions_template
  *   Handle to the template to be destroyed.
  * @param[out] error
  *   Perform verbose error reporting if not NULL.
@@ -5099,16 +5175,15 @@ rte_flow_action_template_create(uint16_t port_id,
  */
 __rte_experimental
 int
-rte_flow_action_template_destroy(uint16_t port_id,
-			struct rte_flow_action_template *at,
-			struct rte_flow_error *error);
-
+rte_flow_actions_template_destroy(uint16_t port_id,
+		struct rte_flow_actions_template *actions_template,
+		struct rte_flow_error *error);
 
 /**
- * Opaque type returned after successful creation of table.
- * This handle can be used to manage the created table.
+ * Opaque type returned after successful creation of a template table.
+ * This handle can be used to manage the created template table.
  */
-struct rte_flow_table;
+struct rte_flow_template_table;
 
 /**
  * @warning
@@ -5116,13 +5191,9 @@ struct rte_flow_table;
  *
  * Table attributes.
  */
-struct rte_flow_table_attr {
+struct rte_flow_template_table_attr {
 	/**
-	 * Version of the struct layout, should be 0.
-	 */
-	uint32_t version;
-	/**
-	 * Flow attributes that will be used in the table.
+	 * Flow attributes to be used in each rule generated from this table.
 	 */
 	struct rte_flow_attr flow_attr;
 	/**
@@ -5135,25 +5206,27 @@ struct rte_flow_table_attr {
  * @warning
  * @b EXPERIMENTAL: this API may change without prior notice.
  *
- * Create table.
- * Table is a group of flow rules with the same flow attributes
- * (group ID, priority and traffic direction) defined for it.
- * The table holds multiple item and action templates to build a flow rule.
- * Each rule is free to use any combination of item and action templates
+ * Create flow template table.
+ *
+ * A template table consists of multiple pattern templates and actions
+ * templates associated with a single set of rule attributes (group ID,
+ * priority and traffic direction).
+ *
+ * Each rule is free to use any combination of pattern and actions templates
  * and specify particular values for items and actions it would like to change.
  *
  * @param port_id
  *   Port identifier of Ethernet device.
  * @param[in] table_attr
- *   Table attributes.
- * @param[in] item_templates
- *   Array of item templates to be used in this table.
- * @param[in] nb_item_templates
- *   The number of item templates in the item_templates array.
- * @param[in] action_templates
- *   Array of action templates to be used in this table.
- * @param[in] nb_action_templates
- *   The number of action templates in the action_templates array.
+ *   Template table attributes.
+ * @param[in] pattern_templates
+ *   Array of pattern templates to be used in this table.
+ * @param[in] nb_pattern_templates
+ *   The number of pattern templates in the pattern_templates array.
+ * @param[in] actions_templates
+ *   Array of actions templates to be used in this table.
+ * @param[in] nb_actions_templates
+ *   The number of actions templates in the actions_templates array.
  * @param[out] error
  *   Perform verbose error reporting if not NULL.
  *   PMDs initialize this structure in case of error only.
@@ -5162,26 +5235,27 @@ struct rte_flow_table_attr {
  *   Handle on success, NULL otherwise and rte_errno is set.
  */
 __rte_experimental
-struct rte_flow_table *
-rte_flow_table_create(uint16_t port_id,
-		      const struct rte_flow_table_attr *table_attr,
-		      struct rte_flow_item_template *item_templates[],
-		      uint8_t nb_item_templates,
-		      struct rte_flow_action_template *action_templates[],
-		      uint8_t nb_action_templates,
-		      struct rte_flow_error *error);
+struct rte_flow_template_table *
+rte_flow_template_table_create(uint16_t port_id,
+		const struct rte_flow_template_table_attr *table_attr,
+		struct rte_flow_pattern_template *pattern_templates[],
+		uint8_t nb_pattern_templates,
+		struct rte_flow_actions_template *actions_templates[],
+		uint8_t nb_actions_templates,
+		struct rte_flow_error *error);
 
 /**
  * @warning
  * @b EXPERIMENTAL: this API may change without prior notice.
  *
- * Destroy table.
+ * Destroy flow template table.
+ *
  * This function may be called only when
  * there are no more flow rules referencing this table.
  *
  * @param port_id
  *   Port identifier of Ethernet device.
- * @param[in] table
+ * @param[in] template_table
  *   Handle to the table to be destroyed.
  * @param[out] error
  *   Perform verbose error reporting if not NULL.
@@ -5192,26 +5266,24 @@ rte_flow_table_create(uint16_t port_id,
  */
 __rte_experimental
 int
-rte_flow_table_destroy(uint16_t port_id,
-		       struct rte_flow_table *table,
-		       struct rte_flow_error *error);
+rte_flow_template_table_destroy(uint16_t port_id,
+		struct rte_flow_template_table *template_table,
+		struct rte_flow_error *error);
 
-struct rte_flow_q_ops_attr {
-	/**
-	 * Version of the struct layout, should be 0.
-	 */
-	uint32_t version;
-	/**
-	 * The user data that will be returned on the completion events.
-	 */
-	void *user_data;
+/**
+ * @warning
+ * @b EXPERIMENTAL: this API may change without prior notice.
+ *
+ * Asynchronous operation attributes.
+ */
+__extension__
+struct rte_flow_op_attr {
 	 /**
-	  * When set, the requested action must be sent to the HW without
-	  * any delay. Any prior requests must be also sent to the HW.
-	  * If this bit is cleared, the application must call the
-	  * rte_flow_queue_drain API to actually send the request to the HW.
+	  * When set, the requested action will not be sent to the HW
+	  * immediately. The application must call the rte_flow_queue_push
+	  * to actually send it.
 	  */
-	uint32_t drain:1;
+	uint32_t postpone:1;
 };
 
 /**
@@ -5224,41 +5296,44 @@ struct rte_flow_q_ops_attr {
  *   Port identifier of Ethernet device.
  * @param queue_id
  *   Flow queue used to insert the rule.
- * @param[in] q_ops_attr
+ * @param[in] op_attr
  *   Rule creation operation attributes.
- * @param[in] table
- *   Table to select templates from.
- * @param[in] items
+ * @param[in] template_table
+ *   Template table to select templates from.
+ * @param[in] pattern
  *   List of pattern items to be used.
- *   The list order should match the order in the item template.
+ *   The list order should match the order in the pattern template.
  *   The spec is the only relevant member of the item that is being used.
- * @param[in] item_template_index
- *   Item template index in the table.
+ * @param[in] pattern_template_index
+ *   Pattern template index in the table.
  * @param[in] actions
  *   List of actions to be used.
- *   The list order should match the order in the action template.
- * @param[in] action_template_index
- *   Action template index in the table.
+ *   The list order should match the order in the actions template.
+ * @param[in] actions_template_index
+ *   Actions template index in the table.
+ * @param[in] user_data
+ *   The user data that will be returned on the completion events.
  * @param[out] error
  *   Perform verbose error reporting if not NULL.
  *   PMDs initialize this structure in case of error only.
  *
  * @return
  *   Handle on success, NULL otherwise and rte_errno is set.
- *   The rule handle doesn't mean that the rule was offloaded.
- *   Only completion result indicates that the rule was offloaded.
+ *   The rule handle doesn't mean that the rule has been populated.
+ *   Only completion result indicates that if there was success or failure.
  */
 __rte_experimental
 struct rte_flow *
-rte_flow_q_flow_create(uint16_t port_id,
-		       uint32_t queue_id,
-		       const struct rte_flow_q_ops_attr *q_ops_attr,
-		       struct rte_flow_table *table,
-		       const struct rte_flow_item items[],
-		       uint8_t item_template_index,
-		       const struct rte_flow_action actions[],
-		       uint8_t action_template_index,
-		       struct rte_flow_error *error);
+rte_flow_async_create(uint16_t port_id,
+		      uint32_t queue_id,
+		      const struct rte_flow_op_attr *op_attr,
+		      struct rte_flow_template_table *template_table,
+		      const struct rte_flow_item pattern[],
+		      uint8_t pattern_template_index,
+		      const struct rte_flow_action actions[],
+		      uint8_t actions_template_index,
+		      void *user_data,
+		      struct rte_flow_error *error);
 
 /**
  * @warning
@@ -5276,10 +5351,12 @@ rte_flow_q_flow_create(uint16_t port_id,
  * @param queue_id
  *   Flow queue which is used to destroy the rule.
  *   This must match the queue on which the rule was created.
- * @param[in] q_ops_attr
- *   Rule destroy operation attributes.
+ * @param[in] op_attr
+ *   Rule destruction operation attributes.
  * @param[in] flow
  *   Flow handle to be destroyed.
+ * @param[in] user_data
+ *   The user data that will be returned on the completion events.
  * @param[out] error
  *   Perform verbose error reporting if not NULL.
  *   PMDs initialize this structure in case of error only.
@@ -5289,11 +5366,106 @@ rte_flow_q_flow_create(uint16_t port_id,
  */
 __rte_experimental
 int
-rte_flow_q_flow_destroy(uint16_t port_id,
-			uint32_t queue_id,
-			const struct rte_flow_q_ops_attr *q_ops_attr,
-			struct rte_flow *flow,
-			struct rte_flow_error *error);
+rte_flow_async_destroy(uint16_t port_id,
+		       uint32_t queue_id,
+		       const struct rte_flow_op_attr *op_attr,
+		       struct rte_flow *flow,
+		       void *user_data,
+		       struct rte_flow_error *error);
+
+/**
+ * @warning
+ * @b EXPERIMENTAL: this API may change without prior notice.
+ *
+ * Push all internally stored rules to the HW.
+ * Postponed rules are rules that were inserted with the postpone flag set.
+ * Can be used to notify the HW about batch of rules prepared by the SW to
+ * reduce the number of communications between the HW and SW.
+ *
+ * @param port_id
+ *   Port identifier of Ethernet device.
+ * @param queue_id
+ *   Flow queue to be pushed.
+ * @param[out] error
+ *   Perform verbose error reporting if not NULL.
+ *   PMDs initialize this structure in case of error only.
+ *
+ * @return
+ *   0 on success, a negative errno value otherwise and rte_errno is set.
+ */
+__rte_experimental
+int
+rte_flow_push(uint16_t port_id,
+	      uint32_t queue_id,
+	      struct rte_flow_error *error);
+
+/**
+ * @warning
+ * @b EXPERIMENTAL: this API may change without prior notice.
+ *
+ * Asynchronous operation status.
+ */
+enum rte_flow_op_status {
+	/**
+	 * The operation was completed successfully.
+	 */
+	RTE_FLOW_OP_SUCCESS,
+	/**
+	 * The operation was not completed successfully.
+	 */
+	RTE_FLOW_OP_ERROR,
+};
+
+/**
+ * @warning
+ * @b EXPERIMENTAL: this API may change without prior notice.
+ *
+ * Asynchronous operation result.
+ */
+__extension__
+struct rte_flow_op_result {
+	/**
+	 * Returns the status of the operation that this completion signals.
+	 */
+	enum rte_flow_op_status status;
+	/**
+	 * The user data that will be returned on the completion events.
+	 */
+	void *user_data;
+};
+
+/**
+ * @warning
+ * @b EXPERIMENTAL: this API may change without prior notice.
+ *
+ * Pull a rte flow operation.
+ * The application must invoke this function in order to complete
+ * the flow rule offloading and to retrieve the flow rule operation status.
+ *
+ * @param port_id
+ *   Port identifier of Ethernet device.
+ * @param queue_id
+ *   Flow queue which is used to pull the operation.
+ * @param[out] res
+ *   Array of results that will be set.
+ * @param[in] n_res
+ *   Maximum number of results that can be returned.
+ *   This value is equal to the size of the res array.
+ * @param[out] error
+ *   Perform verbose error reporting if not NULL.
+ *   PMDs initialize this structure in case of error only.
+ *
+ * @return
+ *   Number of results that were pulled,
+ *   a negative errno value otherwise and rte_errno is set.
+ */
+__rte_experimental
+int
+rte_flow_pull(uint16_t port_id,
+	      uint32_t queue_id,
+	      struct rte_flow_op_result res[],
+	      uint16_t n_res,
+	      struct rte_flow_error *error);
 
 /**
  * @warning
@@ -5306,32 +5478,29 @@ rte_flow_q_flow_destroy(uint16_t port_id,
  *   Port identifier of Ethernet device.
  * @param[in] queue_id
  *   Flow queue which is used to create the rule.
- * @param[in] q_ops_attr
- *   Queue operation attributes.
+ * @param[in] op_attr
+ *   Indirect action creation operation attributes.
  * @param[in] indir_action_conf
  *   Action configuration for the indirect action object creation.
  * @param[in] action
  *   Specific configuration of the indirect action object.
+ * @param[in] user_data
+ *   The user data that will be returned on the completion events.
  * @param[out] error
  *   Perform verbose error reporting if not NULL.
  *   PMDs initialize this structure in case of error only.
  *
  * @return
- *   - (0) if success.
- *   - (-ENODEV) if *port_id* invalid.
- *   - (-ENOSYS) if underlying device does not support this functionality.
- *   - (-EIO) if underlying device is removed.
- *   - (-ENOENT) if action pointed by *action* handle was not found.
- *   - (-EBUSY) if action pointed by *action* handle still used by some rules
- *   rte_errno is also set.
+ *   A valid handle in case of success, NULL otherwise and rte_errno is set.
  */
 __rte_experimental
 struct rte_flow_action_handle *
-rte_flow_q_action_handle_create(uint16_t port_id,
+rte_flow_async_action_handle_create(uint16_t port_id,
 		uint32_t queue_id,
-		const struct rte_flow_q_ops_attr *q_ops_attr,
+		const struct rte_flow_op_attr *op_attr,
 		const struct rte_flow_indir_action_conf *indir_action_conf,
 		const struct rte_flow_action *action,
+		void *user_data,
 		struct rte_flow_error *error);
 
 /**
@@ -5346,29 +5515,26 @@ rte_flow_q_action_handle_create(uint16_t port_id,
  *   Port identifier of Ethernet device.
  * @param[in] queue_id
  *   Flow queue which is used to destroy the rule.
- * @param[in] q_ops_attr
- *   Queue operation attributes.
+ * @param[in] op_attr
+ *   Indirect action destruction operation attributes.
  * @param[in] action_handle
  *   Handle for the indirect action object to be destroyed.
+ * @param[in] user_data
+ *   The user data that will be returned on the completion events.
  * @param[out] error
  *   Perform verbose error reporting if not NULL.
  *   PMDs initialize this structure in case of error only.
  *
  * @return
- *   - (0) if success.
- *   - (-ENODEV) if *port_id* invalid.
- *   - (-ENOSYS) if underlying device does not support this functionality.
- *   - (-EIO) if underlying device is removed.
- *   - (-ENOENT) if action pointed by *action* handle was not found.
- *   - (-EBUSY) if action pointed by *action* handle still used by some rules
- *   rte_errno is also set.
+ *   0 on success, a negative errno value otherwise and rte_errno is set.
  */
 __rte_experimental
 int
-rte_flow_q_action_handle_destroy(uint16_t port_id,
+rte_flow_async_action_handle_destroy(uint16_t port_id,
 		uint32_t queue_id,
-		const struct rte_flow_q_ops_attr *q_ops_attr,
+		const struct rte_flow_op_attr *op_attr,
 		struct rte_flow_action_handle *action_handle,
+		void *user_data,
 		struct rte_flow_error *error);
 
 /**
@@ -5382,8 +5548,8 @@ rte_flow_q_action_handle_destroy(uint16_t port_id,
  *   Port identifier of Ethernet device.
  * @param[in] queue_id
  *   Flow queue which is used to update the rule.
- * @param[in] q_ops_attr
- *   Queue operation attributes.
+ * @param[in] op_attr
+ *   Indirect action update operation attributes.
  * @param[in] action_handle
  *   Handle for the indirect action object to be updated.
  * @param[in] update
@@ -5392,126 +5558,24 @@ rte_flow_q_action_handle_destroy(uint16_t port_id,
  *   to the *handle* argument when creating, or a wrapper structure includes
  *   action configuration to be updated and bit fields to indicate the member
  *   of fields inside the action to update.
+ * @param[in] user_data
+ *   The user data that will be returned on the completion events.
  * @param[out] error
  *   Perform verbose error reporting if not NULL.
  *   PMDs initialize this structure in case of error only.
  *
  * @return
- *   - (0) if success.
- *   - (-ENODEV) if *port_id* invalid.
- *   - (-ENOSYS) if underlying device does not support this functionality.
- *   - (-EIO) if underlying device is removed.
- *   - (-ENOENT) if action pointed by *action* handle was not found.
- *   - (-EBUSY) if action pointed by *action* handle still used by some rules
- *   rte_errno is also set.
+ *   0 on success, a negative errno value otherwise and rte_errno is set.
  */
 __rte_experimental
 int
-rte_flow_q_action_handle_update(uint16_t port_id,
+rte_flow_async_action_handle_update(uint16_t port_id,
 		uint32_t queue_id,
-		const struct rte_flow_q_ops_attr *q_ops_attr,
+		const struct rte_flow_op_attr *op_attr,
 		struct rte_flow_action_handle *action_handle,
 		const void *update,
+		void *user_data,
 		struct rte_flow_error *error);
-
-/**
- * @warning
- * @b EXPERIMENTAL: this API may change without prior notice.
- *
- * Drain the queue and push all internally stored rules to the HW.
- * Non-drained rules are rules that were inserted without the drain flag set.
- * Can be used to notify the HW about batch of rules prepared by the SW to
- * reduce the number of communications between the HW and SW.
- *
- * @param port_id
- *   Port identifier of Ethernet device.
- * @param queue_id
- *   Flow queue to be drained.
- * @param[out] error
- *   Perform verbose error reporting if not NULL.
- *   PMDs initialize this structure in case of error only.
- *
- * @return
- *    0 on success, a negative errno value otherwise and rte_errno is set.
- */
-__rte_experimental
-int
-rte_flow_q_drain(uint16_t port_id,
-		 uint32_t queue_id,
-		 struct rte_flow_error *error);
-
-/**
- * @warning
- * @b EXPERIMENTAL: this API may change without prior notice.
- *
- * Dequeue operation status.
- */
-enum rte_flow_q_op_status {
-	/**
-	 * The operation was completed successfully.
-	 */
-	RTE_FLOW_Q_OP_SUCCESS,
-	/**
-	 * The operation was not completed successfully.
-	 */
-	RTE_FLOW_Q_OP_ERROR,
-};
-
-/**
- * @warning
- * @b EXPERIMENTAL: this API may change without prior notice.
- *
- * Queue operation attributes
- */
-__extension__
-struct rte_flow_q_op_res {
-	/**
-	 * Version of the struct layout, should be 0.
-	 */
-	uint32_t version;
-	/**
-	 * Returns the status of the operation that this completion signals.
-	 */
-	enum rte_flow_q_op_status status;
-	/**
-	 * The user data that will be returned on the completion events.
-	 */
-	void *user_data;
-};
-
-/**
- * @warning
- * @b EXPERIMENTAL: this API may change without prior notice.
- *
- * Dequeue a rte flow operation.
- * The application must invoke this function in order to complete
- * the flow rule offloading and to receive the flow rule operation status.
- *
- * @param port_id
- *   Port identifier of Ethernet device.
- * @param queue_id
- *   Flow queue which is used to dequeue the operation.
- * @param[out] res
- *   Array of results that will be set.
- * @param[in] n_res
- *   Maximum number of results that can be returned.
- *   This value is equal to the size of the res array.
- * @param[out] error
- *   Perform verbose error reporting if not NULL.
- *   PMDs initialize this structure in case of error only.
- *
- * @return
- *   Number of results that were dequeued,
- *   a negative errno value otherwise and rte_errno is set.
- */
-__rte_experimental
-int
-rte_flow_q_dequeue(uint16_t port_id,
-		   uint32_t queue_id,
-		   struct rte_flow_q_op_res res[],
-		   uint16_t n_res,
-		   struct rte_flow_error *error);
-
 #ifdef __cplusplus
 }
 #endif

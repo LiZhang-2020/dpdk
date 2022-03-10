@@ -1124,20 +1124,24 @@ struct rte_flow {
 	uint32_t geneve_tlv_option; /**< Holds Geneve TLV option id. > */
 } __rte_packed;
 
+/* HWS flow struct. */
 struct rte_flow_hw {
-	uint32_t idx;
-	uint32_t fate_type;
+	uint32_t idx; /* Flow index from indexed pool. */
+	uint32_t fate_type; /* Fate action type. */
 	union {
-		struct mlx5_hrxq *hrxq;
+		/* Jump action. */
 		struct mlx5_hw_jump_action *jump;
+		struct mlx5_hrxq *hrxq; /* TIR action. */
 	};
-	struct rte_flow_table *table;
-	struct mlx5dr_rule rule;
+	/* The table flow allcated from. */
+	struct rte_flow_template_table *table;
+	struct mlx5dr_rule rule; /* HWS layer data struct. */
 } __rte_packed;
 
+/* rte flow action translate to DR action struct. */
 struct mlx5_action_construct_data {
 	LIST_ENTRY(mlx5_action_construct_data) next;
-	/* Ensure the action types are same. */
+	/* Ensure the action types are matched. */
 	int type;
 	uint32_t idx;  /* Data index. */
 	uint16_t action_src; /* rte_flow_action src offset. */
@@ -1182,24 +1186,27 @@ struct mlx5_action_construct_data {
 	};
 };
 
-struct rte_flow_item_template {
-	LIST_ENTRY(rte_flow_item_template) next;
+/* Flow item template struct. */
+struct rte_flow_pattern_template {
+	LIST_ENTRY(rte_flow_pattern_template) next;
 	/* Template attributes. */
-	struct rte_flow_item_template_attr attr;
+	struct rte_flow_pattern_template_attr attr;
 	struct mlx5dr_match_template *mt; /* mlx5 match template. */
 	uint64_t item_flags; /* Item layer flags. */
 	uint32_t refcnt;  /* Reference counter. */
 };
 
-struct rte_flow_action_template {
-	LIST_ENTRY(rte_flow_action_template) next;
+/* Flow action template struct. */
+struct rte_flow_actions_template {
+	LIST_ENTRY(rte_flow_actions_template) next;
 	/* Template attributes. */
-	struct rte_flow_action_template_attr attr;
+	struct rte_flow_actions_template_attr attr;
 	struct rte_flow_action *actions; /* Cached flow actions. */
 	struct rte_flow_action *masks; /* Cached action masks.*/
 	uint32_t refcnt; /* Reference counter. */
 };
 
+/* Jump action struct. */
 struct mlx5_hw_jump_action {
 	/* Action jump from root. */
 	struct mlx5dr_action *root_action;
@@ -1207,12 +1214,11 @@ struct mlx5_hw_jump_action {
 	struct mlx5dr_action *hws_action;
 };
 
+/* Encap decap action struct. */
 struct mlx5_hw_encap_decap_action {
-	struct mlx5dr_action *action;
-	/**< Action object. */
-	size_t data_size;
-	/**< Action metadata size. */
-	uint8_t data[];
+	struct mlx5dr_action *action; /* Action object. */
+	size_t data_size; /* Action metadata size. */
+	uint8_t data[]; /* Action data. */
 };
 
 struct mlx5_hw_modify_header_action {
@@ -1231,7 +1237,9 @@ struct mlx5_hw_modify_header_action {
 /* The maximum actions support in the flow. */
 #define MLX5_HW_MAX_ACTS 16
 
+/* DR action set struct. */
 struct mlx5_hw_actions {
+	/* Dynamic action list. */
 	LIST_HEAD(act_list, mlx5_action_construct_data) act_list;
 	struct mlx5_hw_jump_action *jump; /* Jump action. */
 	struct mlx5_hrxq *tir; /* TIR action. */
@@ -1241,16 +1249,18 @@ struct mlx5_hw_actions {
 	uint16_t encap_decap_pos; /* Encap/Decap action position. */
 	uint32_t acts_num:4; /* Total action number. */
 	uint32_t mark:1; /* Indicate the mark action. */
-	/* Rule DR action array. */
+	/* Translated DR action array from action template. */
 	struct mlx5dr_rule_action rule_acts[MLX5_HW_MAX_ACTS];
 };
 
+/* mlx5 action template struct. */
 struct mlx5_hw_action_template {
 	/* Action template pointer. */
-	struct rte_flow_action_template *action_template;
+	struct rte_flow_actions_template *action_template;
 	struct mlx5_hw_actions acts; /* Template actions. */
 };
 
+/* mlx5 flow group struct. */
 struct mlx5_flow_group {
 	struct mlx5_list_entry entry;
 	struct mlx5dr_table *tbl; /* HWS table object. */
@@ -1260,15 +1270,17 @@ struct mlx5_flow_group {
 	uint32_t idx; /* Group memory index. */
 };
 
+
 #define MLX5_HW_TBL_MAX_ITEM_TEMPLATE 2
 #define MLX5_HW_TBL_MAX_ACTION_TEMPLATE 32
 
-struct rte_flow_table {
-	LIST_ENTRY(rte_flow_table) next;
-	struct mlx5_flow_group *grp; /* The group rte_flow_table uses. */
+struct rte_flow_template_table {
+	LIST_ENTRY(rte_flow_template_table) next;
+	/* The group rte_flow_template_table uses. */
+	struct mlx5_flow_group *grp;
 	struct mlx5dr_matcher *matcher; /* Template matcher. */
 	/* Item templates bind to the table. */
-	struct rte_flow_item_template *its[MLX5_HW_TBL_MAX_ITEM_TEMPLATE];
+	struct rte_flow_pattern_template *its[MLX5_HW_TBL_MAX_ITEM_TEMPLATE];
 	/* Action templates bind to the table. */
 	struct mlx5_hw_action_template ats[MLX5_HW_TBL_MAX_ACTION_TEMPLATE];
 	struct mlx5_indexed_pool *flow; /* The table's flow ipool. */
@@ -1575,91 +1587,98 @@ typedef int (*mlx5_flow_item_update_t)
 			 const struct rte_flow_item_flex_handle *handle,
 			 const struct rte_flow_item_flex_conf *conf,
 			 struct rte_flow_error *error);
+typedef int (*mlx5_flow_info_get_t)
+			(struct rte_eth_dev *dev,
+			 struct rte_flow_port_info *port_info,
+			 struct rte_flow_queue_info *queue_info,
+			 struct rte_flow_error *error);
 typedef int (*mlx5_flow_port_configure_t)
 			(struct rte_eth_dev *dev,
 			 const struct rte_flow_port_attr *port_attr,
+			 uint16_t nb_queue,
 			 const struct rte_flow_queue_attr *queue_attr[],
 			 struct rte_flow_error *err);
-typedef struct rte_flow_item_template *(*mlx5_flow_item_template_create_t)
+typedef struct rte_flow_pattern_template *(*mlx5_flow_pattern_template_create_t)
 			(struct rte_eth_dev *dev,
-			 const struct rte_flow_item_template_attr *attr,
+			 const struct rte_flow_pattern_template_attr *attr,
 			 const struct rte_flow_item items[],
 			 struct rte_flow_error *error);
-typedef int (*mlx5_flow_item_template_destroy_t)
+typedef int (*mlx5_flow_pattern_template_destroy_t)
 			(struct rte_eth_dev *dev,
-			 struct rte_flow_item_template *template,
+			 struct rte_flow_pattern_template *template,
 			 struct rte_flow_error *error);
-typedef struct rte_flow_action_template *(*mlx5_flow_action_template_create_t)
+typedef struct rte_flow_actions_template *(*mlx5_flow_actions_template_create_t)
 			(struct rte_eth_dev *dev,
-			 const struct rte_flow_action_template_attr *attr,
+			 const struct rte_flow_actions_template_attr *attr,
 			 const struct rte_flow_action actions[],
 			 const struct rte_flow_action masks[],
 			 struct rte_flow_error *error);
-typedef int (*mlx5_flow_action_template_destroy_t)
+typedef int (*mlx5_flow_actions_template_destroy_t)
 			(struct rte_eth_dev *dev,
-			 struct rte_flow_action_template *template,
+			 struct rte_flow_actions_template *template,
 			 struct rte_flow_error *error);
-typedef struct rte_flow_table *(*mlx5_flow_table_create_t)
+typedef struct rte_flow_template_table *(*mlx5_flow_table_create_t)
 		(struct rte_eth_dev *dev,
-		 const struct rte_flow_table_attr *attr,
-		 struct rte_flow_item_template *item_templates[],
+		 const struct rte_flow_template_table_attr *attr,
+		 struct rte_flow_pattern_template *item_templates[],
 		 uint8_t nb_item_templates,
-		 struct rte_flow_action_template *action_templates[],
+		 struct rte_flow_actions_template *action_templates[],
 		 uint8_t nb_action_templates,
 		 struct rte_flow_error *error);
 typedef int (*mlx5_flow_table_destroy_t)
 			(struct rte_eth_dev *dev,
-			 struct rte_flow_table *table,
+			 struct rte_flow_template_table *table,
 			 struct rte_flow_error *error);
-typedef struct rte_flow *(*mlx5_flow_q_flow_create_t)
+typedef struct rte_flow *(*mlx5_flow_async_flow_create_t)
 			(struct rte_eth_dev *dev,
 			 uint32_t queue,
-			 const struct rte_flow_q_ops_attr *attr,
-			 struct rte_flow_table *table,
+			 const struct rte_flow_op_attr *attr,
+			 struct rte_flow_template_table *table,
 			 const struct rte_flow_item items[],
-			 uint8_t item_template_index,
+			 uint8_t pattern_template_index,
 			 const struct rte_flow_action actions[],
 			 uint8_t action_template_index,
+			 void *user_data,
 			 struct rte_flow_error *error);
-typedef int (*mlx5_flow_q_flow_destroy_t)
+typedef int (*mlx5_flow_async_flow_destroy_t)
 			(struct rte_eth_dev *dev,
 			 uint32_t queue,
-			 const struct rte_flow_q_ops_attr *attr,
+			 const struct rte_flow_op_attr *attr,
 			 struct rte_flow *flow,
+			 void *user_data,
 			 struct rte_flow_error *error);
-typedef int (*mlx5_flow_q_dequeue_t)
+typedef int (*mlx5_flow_pull_t)
 			(struct rte_eth_dev *dev,
 			 uint32_t queue,
-			 struct rte_flow_q_op_res res[],
+			 struct rte_flow_op_result res[],
 			 uint16_t n_res,
 			 struct rte_flow_error *error);
-
-typedef int (*mlx5_flow_q_drain_t)
+typedef int (*mlx5_flow_push_t)
 			(struct rte_eth_dev *dev,
 			 uint32_t queue,
 			 struct rte_flow_error *error);
-
-typedef struct rte_flow_action_handle *(*mlx5_flow_q_action_handle_create_t)
+typedef struct rte_flow_action_handle *(*mlx5_flow_async_action_handle_create_t)
 			(struct rte_eth_dev *dev,
 			 uint32_t queue,
-			 const struct rte_flow_q_ops_attr *attr,
+			 const struct rte_flow_op_attr *attr,
 			 const struct rte_flow_indir_action_conf *conf,
 			 const struct rte_flow_action *action,
+			 void *user_data,
 			 struct rte_flow_error *error);
-
-typedef int (*mlx5_flow_q_action_handle_update_t)
+typedef int (*mlx5_flow_async_action_handle_update_t)
 			(struct rte_eth_dev *dev,
 			 uint32_t queue,
-			 const struct rte_flow_q_ops_attr *attr,
+			 const struct rte_flow_op_attr *attr,
 			 struct rte_flow_action_handle *handle,
 			 const void *update,
+			 void *user_data,
 			 struct rte_flow_error *error);
-
-typedef int (*mlx5_flow_q_action_handle_destroy_t)
+typedef int (*mlx5_flow_async_action_handle_destroy_t)
 			(struct rte_eth_dev *dev,
 			 uint32_t queue,
-			 const struct rte_flow_q_ops_attr *attr,
+			 const struct rte_flow_op_attr *attr,
 			 struct rte_flow_action_handle *handle,
+			 void *user_data,
 			 struct rte_flow_error *error);
 
 struct mlx5_flow_driver_ops {
@@ -1699,20 +1718,21 @@ struct mlx5_flow_driver_ops {
 	mlx5_flow_item_create_t item_create;
 	mlx5_flow_item_release_t item_release;
 	mlx5_flow_item_update_t item_update;
+	mlx5_flow_info_get_t info_get;
 	mlx5_flow_port_configure_t configure;
-	mlx5_flow_item_template_create_t item_template_create;
-	mlx5_flow_item_template_destroy_t item_template_destroy;
-	mlx5_flow_action_template_create_t action_template_create;
-	mlx5_flow_action_template_destroy_t action_template_destroy;
-	mlx5_flow_table_create_t table_create;
-	mlx5_flow_table_destroy_t table_destroy;
-	mlx5_flow_q_flow_create_t q_flow_create;
-	mlx5_flow_q_flow_destroy_t q_flow_destroy;
-	mlx5_flow_q_dequeue_t q_dequeue;
-	mlx5_flow_q_drain_t q_drain;
-	mlx5_flow_q_action_handle_create_t q_action_create;
-	mlx5_flow_q_action_handle_update_t q_action_update;
-	mlx5_flow_q_action_handle_destroy_t q_action_destroy;
+	mlx5_flow_pattern_template_create_t pattern_template_create;
+	mlx5_flow_pattern_template_destroy_t pattern_template_destroy;
+	mlx5_flow_actions_template_create_t actions_template_create;
+	mlx5_flow_actions_template_destroy_t actions_template_destroy;
+	mlx5_flow_table_create_t template_table_create;
+	mlx5_flow_table_destroy_t template_table_destroy;
+	mlx5_flow_async_flow_create_t async_flow_create;
+	mlx5_flow_async_flow_destroy_t async_flow_destroy;
+	mlx5_flow_pull_t pull;
+	mlx5_flow_push_t push;
+	mlx5_flow_async_action_handle_create_t async_action_create;
+	mlx5_flow_async_action_handle_update_t async_action_update;
+	mlx5_flow_async_action_handle_destroy_t async_action_destroy;
 };
 
 /* mlx5_flow.c */

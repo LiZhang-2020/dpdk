@@ -301,7 +301,7 @@ void mlx5dr_arg_decapl3_write(struct mlx5dr_send_engine *queue,
 static int
 mlx5dr_arg_poll_for_comp(struct mlx5dr_context *ctx, uint16_t queue_id)
 {
-	struct rte_flow_q_op_res comp[1];
+	struct rte_flow_op_result comp[1];
 	int ret;
 
 	while (true) {
@@ -309,7 +309,7 @@ mlx5dr_arg_poll_for_comp(struct mlx5dr_context *ctx, uint16_t queue_id)
 		if (ret) {
 			if (ret < 0) {
 				DR_LOG(ERR, "Failed mlx5dr_send_queue_poll");
-			} else if (comp[0].status == RTE_FLOW_Q_OP_ERROR) {
+			} else if (comp[0].status == RTE_FLOW_OP_ERROR) {
 				DR_LOG(ERR, "Got comp with error");
 				rte_errno = ENOENT;
 			}

@@ -83,13 +83,13 @@ static void mlx5dr_rule_gen_comp(struct mlx5dr_send_engine *queue,
 				 void *user_data,
 				 enum mlx5dr_rule_status rule_status_on_succ)
 {
-	enum rte_flow_q_op_status comp_status;
+	enum rte_flow_op_status comp_status;
 
 	if (!err){
-		comp_status = RTE_FLOW_Q_OP_SUCCESS;
+		comp_status = RTE_FLOW_OP_SUCCESS;
 		rule->status = rule_status_on_succ;
 	} else {
-		comp_status = RTE_FLOW_Q_OP_ERROR;
+		comp_status = RTE_FLOW_OP_ERROR;
 		rule->status = MLX5DR_RULE_STATUS_FAILED;
 	}
 

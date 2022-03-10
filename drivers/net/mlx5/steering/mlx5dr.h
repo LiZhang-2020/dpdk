@@ -457,7 +457,7 @@ int mlx5dr_action_destroy(struct mlx5dr_action *action);
  */
 int mlx5dr_send_queue_poll(struct mlx5dr_context *ctx,
 			   uint16_t queue_id,
-			   struct rte_flow_q_op_res res[],
+			   struct rte_flow_op_result res[],
 			   uint32_t res_nb);
 
 /* Perform an action on the queue

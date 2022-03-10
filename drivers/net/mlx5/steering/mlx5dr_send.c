@@ -259,11 +259,11 @@ void mlx5dr_send_engine_flush_queue(struct mlx5dr_send_engine *queue)
 static void mlx5dr_send_engine_update_rule(struct mlx5dr_send_engine *queue,
 					   struct mlx5dr_send_ring_priv *priv,
 					   uint16_t wqe_cnt,
-					   enum rte_flow_q_op_status *status)
+					   enum rte_flow_op_status *status)
 {
 	priv->rule->pending_wqes--;
 
-	if (*status == RTE_FLOW_Q_OP_ERROR) {
+	if (*status == RTE_FLOW_OP_ERROR) {
 		if (priv->retry_id) {
 			mlx5dr_send_engine_retry_post_send(queue, priv, wqe_cnt);
 			return;
@@ -282,13 +282,13 @@ static void mlx5dr_send_engine_update_rule(struct mlx5dr_send_engine *queue,
 			if (!priv->rule->rtc_0 && !priv->rule->rtc_1)
 				priv->rule->status = MLX5DR_RULE_STATUS_FAILED;
 
-			*status = RTE_FLOW_Q_OP_ERROR;
+			*status = RTE_FLOW_OP_ERROR;
 		} else {
 			/* Increase the status, this only works on good flow as the enum
 			 * is arrange it away creating -> created -> deleting -> deleted
 			 */
 			priv->rule->status++;
-			*status = RTE_FLOW_Q_OP_SUCCESS;
+			*status = RTE_FLOW_OP_SUCCESS;
 		}
 	}
 }
@@ -296,18 +296,18 @@ static void mlx5dr_send_engine_update_rule(struct mlx5dr_send_engine *queue,
 static void mlx5dr_send_engine_update(struct mlx5dr_send_engine *queue,
 				      struct mlx5_cqe64 *cqe,
 				      struct mlx5dr_send_ring_priv *priv,
-				      struct rte_flow_q_op_res res[],
+				      struct rte_flow_op_result res[],
 				      int64_t *i,
 				      uint32_t res_nb,
 				      uint16_t wqe_cnt)
 {
-	enum rte_flow_q_op_status status;
+	enum rte_flow_op_status status;
 
 	if (!cqe || (likely(rte_be_to_cpu_32(cqe->byte_cnt) >> 31 == 0) &&
 	    likely(mlx5dv_get_cqe_opcode(cqe) == MLX5_CQE_REQ))) {
-		status = RTE_FLOW_Q_OP_SUCCESS;
+		status = RTE_FLOW_OP_SUCCESS;
 	} else {
-		status = RTE_FLOW_Q_OP_ERROR;
+		status = RTE_FLOW_OP_ERROR;
 	}
 
 	if (priv->user_data) {
@@ -331,7 +331,7 @@ static void mlx5dr_send_engine_update(struct mlx5dr_send_engine *queue,
 
 static void mlx5dr_send_engine_poll_cq(struct mlx5dr_send_engine *queue,
 				       struct mlx5dr_send_ring *send_ring,
-				       struct rte_flow_q_op_res res[],
+				       struct rte_flow_op_result res[],
 				       int64_t *i,
 				       uint32_t res_nb)
 {
@@ -375,7 +375,7 @@ static void mlx5dr_send_engine_poll_cq(struct mlx5dr_send_engine *queue,
 }
 
 static void mlx5dr_send_engine_poll_cqs(struct mlx5dr_send_engine *queue,
-					struct rte_flow_q_op_res res[],
+					struct rte_flow_op_result res[],
 					int64_t *polled,
 					uint32_t res_nb)
 {
@@ -390,7 +390,7 @@ static void mlx5dr_send_engine_poll_cqs(struct mlx5dr_send_engine *queue,
 }
 
 static void mlx5dr_send_engine_poll_list(struct mlx5dr_send_engine *queue,
-					 struct rte_flow_q_op_res res[],
+					 struct rte_flow_op_result res[],
 					 int64_t *polled,
 					 uint32_t res_nb)
 {
@@ -412,7 +412,7 @@ static void mlx5dr_send_engine_poll_list(struct mlx5dr_send_engine *queue,
 }
 
 static int mlx5dr_send_engine_poll(struct mlx5dr_send_engine *queue,
-				   struct rte_flow_q_op_res res[],
+				   struct rte_flow_op_result res[],
 				   uint32_t res_nb)
 {
 	int64_t polled = 0;
@@ -429,7 +429,7 @@ static int mlx5dr_send_engine_poll(struct mlx5dr_send_engine *queue,
 
 int mlx5dr_send_queue_poll(struct mlx5dr_context *ctx,
 			   uint16_t queue_id,
-			   struct rte_flow_q_op_res res[],
+			   struct rte_flow_op_result res[],
 			   uint32_t res_nb)
 {
 	return mlx5dr_send_engine_poll(&ctx->send_queue[queue_id],

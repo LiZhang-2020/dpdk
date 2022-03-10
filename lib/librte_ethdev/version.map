@@ -274,20 +274,21 @@ EXPERIMENTAL {
 	rte_flow_pick_transfer_proxy;
 
 	# added in 22.02
+	rte_flow_info_get;
 	rte_flow_configure;
-	rte_flow_item_template_create;
-	rte_flow_item_template_destroy;
-	rte_flow_action_template_create;
-	rte_flow_action_template_destroy;
-	rte_flow_table_create;
-	rte_flow_table_destroy;
-	rte_flow_q_flow_create;
-	rte_flow_q_flow_destroy;
-	rte_flow_q_action_handle_create;
-	rte_flow_q_action_handle_destroy;
-	rte_flow_q_action_handle_update;
-	rte_flow_q_drain;
-	rte_flow_q_dequeue;
+	rte_flow_pattern_template_create;
+	rte_flow_pattern_template_destroy;
+	rte_flow_actions_template_create;
+	rte_flow_actions_template_destroy;
+	rte_flow_template_table_create;
+	rte_flow_template_table_destroy;
+	rte_flow_async_create;
+	rte_flow_async_destroy;
+	rte_flow_push;
+	rte_flow_pull;
+	rte_flow_async_action_handle_create;
+	rte_flow_async_action_handle_destroy;
+	rte_flow_async_action_handle_update;
 };
 
 INTERNAL {

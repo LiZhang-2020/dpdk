@@ -162,8 +162,8 @@ struct port_template {
 	struct port_template *tmp; /**< Temporary linking. */
 	uint32_t id; /**< Template ID. */
 	union {
-		struct rte_flow_item_template *itempl;
-		struct rte_flow_action_template *atempl;
+		struct rte_flow_pattern_template *itempl;
+		struct rte_flow_actions_template *atempl;
 	} template; /**< PMD opaque template object */
 };
 
@@ -174,7 +174,8 @@ struct port_table {
 	uint32_t id; /**< Table ID. */
 	uint32_t nb_item_templates; /**< Number of item templates. */
 	uint32_t nb_action_templates; /**< Number of action templates. */
-	struct rte_flow_table *table; /**< PMD opaque template object */
+	/**< PMD opaque template object */
+	struct rte_flow_template_table *table;
 };
 
 /** Descriptor for a single flow. */
@@ -868,6 +869,7 @@ int port_action_handle_update(portid_t port_id, uint32_t id,
 			      const struct rte_flow_action *action);
 int port_flow_configure(portid_t port_id,
 			const struct rte_flow_port_attr *port_attr,
+			uint16_t nb_queue,
 			const struct rte_flow_queue_attr *queue_attr);
 int port_flow_item_template_create(portid_t port_id, uint32_t id, bool relaxed,
 				   const struct rte_flow_item *pattern);
@@ -879,7 +881,7 @@ int port_flow_action_template_create(portid_t port_id, uint32_t id,
 int port_flow_action_template_destroy(portid_t port_id, uint32_t n,
 				      const uint32_t *template);
 int port_flow_table_create(portid_t port_id, uint32_t id,
-		   const struct rte_flow_table_attr *table_attr,
+		   const struct rte_flow_template_table_attr *table_attr,
 		   uint32_t nb_item_templates, uint32_t *item_templates,
 		   uint32_t nb_action_templates, uint32_t *action_templates);
 int port_flow_table_destroy(portid_t port_id,

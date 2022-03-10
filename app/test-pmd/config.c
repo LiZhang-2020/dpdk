@@ -1888,28 +1888,28 @@ table_alloc(uint32_t id, struct port_table **table,
 int
 port_flow_configure(portid_t port_id,
 	const struct rte_flow_port_attr *port_attr,
+	uint16_t nb_queue,
 	const struct rte_flow_queue_attr *queue_attr)
 {
 	struct rte_port *port;
 	struct rte_flow_error error;
-	const struct rte_flow_queue_attr *attr_list[port_attr->nb_queues];
+	const struct rte_flow_queue_attr *attr_list[nb_queue];
 	int std_queue;
 
 	if (port_id_is_invalid(port_id, ENABLED_WARN) ||
 	    port_id == (portid_t)RTE_PORT_ALL)
 		return -EINVAL;
 	port = &ports[port_id];
-	port->queue_nb = port_attr->nb_queues;
+	port->queue_nb = nb_queue;
 	port->queue_sz = queue_attr->size;
-	for (std_queue = 0; std_queue < port_attr->nb_queues; std_queue++)
+	for (std_queue = 0; std_queue < nb_queue; std_queue++)
 		attr_list[std_queue] = queue_attr;
 	/* Poisoning to make sure PMDs update it in case of error. */
 	memset(&error, 0x66, sizeof(error));
-	if (rte_flow_configure(port_id, port_attr, attr_list, &error))
+	if (rte_flow_configure(port_id, port_attr, nb_queue, attr_list, &error))
 		return port_flow_complain(&error);
 	printf("Configure flows on port %u: number of queues %d "
-	       "with %d elements\n", port_id,
-		   port_attr->nb_queues, queue_attr->size);
+	       "with %d elements\n", port_id, nb_queue, queue_attr->size);
 	return 0;
 }
 
@@ -2327,7 +2327,7 @@ port_flow_item_template_create(portid_t port_id, uint32_t id,
 	struct rte_port *port;
 	struct port_template *pit;
 	int ret;
-	struct rte_flow_item_template_attr attr = {
+	struct rte_flow_pattern_template_attr attr = {
 					.relaxed_matching = relaxed };
 	struct rte_flow_error error;
 
@@ -2340,7 +2340,7 @@ port_flow_item_template_create(portid_t port_id, uint32_t id,
 		return ret;
 	/* Poisoning to make sure PMDs update it in case of error. */
 	memset(&error, 0x22, sizeof(error));
-	pit->template.itempl = rte_flow_item_template_create(port_id,
+	pit->template.itempl = rte_flow_pattern_template_create(port_id,
 			      &attr, pattern, &error);
 
 	if (!pit->template.itempl) {
@@ -2383,7 +2383,7 @@ port_flow_item_template_destroy(portid_t port_id,
 			memset(&error, 0x33, sizeof(error));
 
 			if (pit->template.itempl &&
-			    rte_flow_item_template_destroy(port_id,
+			    rte_flow_pattern_template_destroy(port_id,
 							   pit->template.itempl,
 							   &error)) {
 				ret = port_flow_complain(&error);
@@ -2410,7 +2410,7 @@ port_flow_action_template_create(portid_t port_id, uint32_t id,
 	struct rte_port *port;
 	struct port_template *pat;
 	int ret;
-	struct rte_flow_action_template_attr attr = { 0 };
+	struct rte_flow_actions_template_attr attr = { 0 };
 	struct rte_flow_error error;
 
 	if (port_id_is_invalid(port_id, ENABLED_WARN) ||
@@ -2422,7 +2422,7 @@ port_flow_action_template_create(portid_t port_id, uint32_t id,
 		return ret;
 	/* Poisoning to make sure PMDs update it in case of error. */
 	memset(&error, 0x22, sizeof(error));
-	pat->template.atempl = rte_flow_action_template_create(port_id,
+	pat->template.atempl = rte_flow_actions_template_create(port_id,
 			      &attr, actions, masks, &error);
 
 	if (!pat->template.atempl) {
@@ -2465,7 +2465,7 @@ port_flow_action_template_destroy(portid_t port_id,
 			memset(&error, 0x33, sizeof(error));
 
 			if (pat->template.atempl &&
-			    rte_flow_action_template_destroy(port_id,
+			    rte_flow_actions_template_destroy(port_id,
 							   pat->template.atempl,
 							   &error)) {
 				ret = port_flow_complain(&error);
@@ -2486,7 +2486,7 @@ port_flow_action_template_destroy(portid_t port_id,
 /** Create table */
 int
 port_flow_table_create(portid_t port_id, uint32_t id,
-		const struct rte_flow_table_attr *table_attr,
+		const struct rte_flow_template_table_attr *table_attr,
 		uint32_t nb_item_templates, uint32_t *item_templates,
 		uint32_t nb_action_templates, uint32_t *action_templates)
 {
@@ -2496,9 +2496,9 @@ port_flow_table_create(portid_t port_id, uint32_t id,
 	int ret;
 	uint32_t i;
 	struct rte_flow_error error;
-	struct rte_flow_item_template
+	struct rte_flow_pattern_template
 			*flow_item_templates[nb_item_templates];
-	struct rte_flow_action_template
+	struct rte_flow_actions_template
 			*flow_action_templates[nb_action_templates];
 
 	if (port_id_is_invalid(port_id, ENABLED_WARN) ||
@@ -2545,7 +2545,7 @@ port_flow_table_create(portid_t port_id, uint32_t id,
 	}
 	/* Poisoning to make sure PMDs update it in case of error. */
 	memset(&error, 0x22, sizeof(error));
-	pt->table = rte_flow_table_create(port_id, table_attr,
+	pt->table = rte_flow_template_table_create(port_id, table_attr,
 		      flow_item_templates, nb_item_templates,
 		      flow_action_templates, nb_action_templates,
 		      &error);
@@ -2591,7 +2591,7 @@ port_flow_table_destroy(portid_t port_id,
 			memset(&error, 0x33, sizeof(error));
 
 			if (pt->table &&
-			    rte_flow_table_destroy(port_id,
+			    rte_flow_template_table_destroy(port_id,
 							   pt->table,
 							   &error)) {
 				ret = port_flow_complain(&error);
@@ -2612,12 +2612,12 @@ port_flow_table_destroy(portid_t port_id,
 /** Enqueue create flow rule operation. */
 int
 port_queue_flow_create(portid_t port_id, queueid_t queue_id,
-		       bool drain, uint32_t table_id,
+		       bool postpone, uint32_t table_id,
 		       uint32_t item_id, uint32_t action_id,
 		       const struct rte_flow_item *pattern,
 		       const struct rte_flow_action *actions)
 {
-	struct rte_flow_q_ops_attr ops_attr = { .drain = drain };
+	struct rte_flow_op_attr ops_attr = { .postpone = postpone };
 	struct rte_flow *flow;
 	struct rte_port *port;
 	struct port_flow *pf;
@@ -2678,8 +2678,8 @@ port_queue_flow_create(portid_t port_id, queueid_t queue_id,
 	}
 	/* Poisoning to make sure PMDs update it in case of error. */
 	memset(&error, 0x11, sizeof(error));
-	flow = rte_flow_q_flow_create(port_id, queue_id, &ops_attr,
-		pt->table, pattern, item_id, actions, action_id, &error);
+	flow = rte_flow_async_create(port_id, queue_id, &ops_attr,
+		pt->table, pattern, item_id, actions, action_id, NULL, &error);
 	if (!flow) {
 		free(pf);
 		return port_flow_complain(&error);
@@ -2696,9 +2696,9 @@ port_queue_flow_create(portid_t port_id, queueid_t queue_id,
 /** Enqueue number of destroy flow rules operations. */
 int
 port_queue_flow_destroy(portid_t port_id, queueid_t queue_id,
-			bool drain, uint32_t n, const uint32_t *rule)
+			bool postpone, uint32_t n, const uint32_t *rule)
 {
-	struct rte_flow_q_ops_attr op_attr = { .drain = drain };
+	struct rte_flow_op_attr op_attr = { .postpone = postpone };
 	struct rte_port *port;
 	struct port_flow **tmp;
 	uint32_t c = 0;
@@ -2729,8 +2729,8 @@ port_queue_flow_destroy(portid_t port_id, queueid_t queue_id,
 			 * update it in case of error.
 			 */
 			memset(&error, 0x33, sizeof(error));
-			if (rte_flow_q_flow_destroy(port_id, queue_id, &op_attr,
-						    pf->flow, &error)) {
+			if (rte_flow_async_destroy(port_id, queue_id, &op_attr,
+						    pf->flow, NULL, &error)) {
 				ret = port_flow_complain(&error);
 				continue;
 			}
@@ -2749,11 +2749,11 @@ port_queue_flow_destroy(portid_t port_id, queueid_t queue_id,
 /** Enqueue indirect action create operation*/
 int
 port_queue_action_handle_create(portid_t port_id, uint32_t queue_id,
-			      bool drain, uint32_t id,
+			      bool postpone, uint32_t id,
 			      const struct rte_flow_indir_action_conf *conf,
 			      const struct rte_flow_action *action)
 {
-	const struct rte_flow_q_ops_attr attr = { .drain = drain};
+	const struct rte_flow_op_attr attr = { .postpone = postpone};
 	struct rte_port *port;
 	struct port_indirect_action *pia;
 	int ret;
@@ -2778,12 +2778,12 @@ port_queue_action_handle_create(portid_t port_id, uint32_t queue_id,
 	}
 	/* Poisoning to make sure PMDs update it in case of error. */
 	memset(&error, 0x88, sizeof(error));
-	pia->handle = rte_flow_q_action_handle_create(port_id, queue_id, &attr,
-							conf, action, &error);
+	pia->handle = rte_flow_async_action_handle_create(port_id, queue_id,
+					&attr, conf, action, NULL, &error);
 	if (!pia->handle) {
 		uint32_t destroy_id = pia->id;
 		port_queue_action_handle_destroy(port_id, queue_id,
-						 drain, 1, &destroy_id);
+						 postpone, 1, &destroy_id);
 		return port_flow_complain(&error);
 	}
 	pia->type = action->type;
@@ -2794,10 +2794,10 @@ port_queue_action_handle_create(portid_t port_id, uint32_t queue_id,
 /** Enqueue indirect action destroy operation*/
 int
 port_queue_action_handle_destroy(portid_t port_id,
-			   uint32_t queue_id, bool drain,
+			   uint32_t queue_id, bool postpone,
 			   uint32_t n, const uint32_t *actions)
 {
-	const struct rte_flow_q_ops_attr attr = { .drain = drain};
+	const struct rte_flow_op_attr attr = { .postpone = postpone};
 	struct rte_port *port;
 	struct port_indirect_action **tmp;
 	uint32_t c = 0;
@@ -2830,8 +2830,8 @@ port_queue_action_handle_destroy(portid_t port_id,
 			memset(&error, 0x99, sizeof(error));
 
 			if (pia->handle &&
-			    rte_flow_q_action_handle_destroy(port_id, queue_id,
-						&attr, pia->handle, &error)) {
+			    rte_flow_async_action_handle_destroy(port_id,
+				queue_id, &attr, pia->handle, NULL, &error)) {
 				ret = port_flow_complain(&error);
 				continue;
 			}
@@ -2851,10 +2851,10 @@ port_queue_action_handle_destroy(portid_t port_id,
 /** Enqueue indirect action update operation*/
 int
 port_queue_action_handle_update(portid_t port_id,
-			  uint32_t queue_id, bool drain, uint32_t id,
+			  uint32_t queue_id, bool postpone, uint32_t id,
 			  const struct rte_flow_action *action)
 {
-	const struct rte_flow_q_ops_attr attr = { .drain = drain};
+	const struct rte_flow_op_attr attr = { .postpone = postpone};
 	struct rte_port *port;
 	struct rte_flow_error error;
 	struct rte_flow_action_handle *action_handle;
@@ -2869,8 +2869,8 @@ port_queue_action_handle_update(portid_t port_id,
 		return -EINVAL;
 	}
 
-	if (rte_flow_q_action_handle_update(port_id, queue_id, &attr,
-					  action_handle, action, &error)) {
+	if (rte_flow_async_action_handle_update(port_id, queue_id, &attr,
+					action_handle, action, NULL, &error)) {
 		return port_flow_complain(&error);
 	}
 	printf("Indirect action #%u update queued\n", id);
@@ -2896,12 +2896,12 @@ port_queue_flow_drain(portid_t port_id, queueid_t queue_id)
 	}
 
 	memset(&error, 0x55, sizeof(error));
-	ret = rte_flow_q_drain(port_id, queue_id, &error);
+	ret = rte_flow_push(port_id, queue_id, &error);
 	if (ret < 0) {
-		printf("Failed to drain queue: %s\n", strerror(-ret));
+		printf("Failed to postpone queue: %s\n", strerror(-ret));
 		return ret;
 	}
-	printf("Queue #%u drained\n", queue_id);
+	printf("Queue #%u postponeed\n", queue_id);
 	return ret;
 }
 
@@ -2910,7 +2910,7 @@ int
 port_queue_flow_dequeue(portid_t port_id, queueid_t queue_id)
 {
 	struct rte_port *port;
-	struct rte_flow_q_op_res *res;
+	struct rte_flow_op_result *res;
 	struct rte_flow_error error;
 	int ret = 0;
 	int success = 0;
@@ -2926,14 +2926,14 @@ port_queue_flow_dequeue(portid_t port_id, queueid_t queue_id)
 		return -EINVAL;
 	}
 
-	res = malloc(sizeof(struct rte_flow_q_op_res) * port->queue_sz);
+	res = malloc(sizeof(struct rte_flow_op_result) * port->queue_sz);
 	if (!res) {
 		printf("Failed to allocate memory for dequeue results\n");
 		return -ENOMEM;
 	}
 
 	memset(&error, 0x66, sizeof(error));
-	ret = rte_flow_q_dequeue(port_id, queue_id, res,
+	ret = rte_flow_pull(port_id, queue_id, res,
 				 port->queue_sz, &error);
 	if (ret < 0) {
 		printf("Failed to dequeue a queue: %s\n", strerror(-ret));
@@ -2942,7 +2942,7 @@ port_queue_flow_dequeue(portid_t port_id, queueid_t queue_id)
 	}
 
 	for (i = 0; i < ret; i++) {
-		if (res[i].status == RTE_FLOW_Q_OP_SUCCESS)
+		if (res[i].status == RTE_FLOW_OP_SUCCESS)
 			success++;
 	}
 	printf("Queue #%u dequeued %u operations (%u failed, %u succeeded)\n",

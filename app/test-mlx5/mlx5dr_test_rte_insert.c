@@ -35,7 +35,7 @@ static int poll_for_comp(uint32_t port,
 {
 	bool queue_full = *pending_rules == QUEUE_SIZE;
 	bool got_comp = *pending_rules >= expected_comp;
-	struct rte_flow_q_op_res comp[BURST_TH];
+	struct rte_flow_op_result comp[BURST_TH];
 	int ret;
 	int j;
 
@@ -44,7 +44,7 @@ static int poll_for_comp(uint32_t port,
 		return 0;
 
 	while (queue_full || ((got_comp || drain) && *pending_rules)) {
-		ret = rte_flow_q_dequeue(port, queue_id, comp,
+		ret = rte_flow_pull(port, queue_id, comp,
 					 expected_comp, NULL);
 		if (ret < 0) {
 			printf("Failed during poll queue\n");
@@ -54,7 +54,7 @@ static int poll_for_comp(uint32_t port,
 		if (ret) {
 			(*pending_rules) -= ret;
 			for (j = 0; j < ret; j++) {
-				if (comp[j].status == RTE_FLOW_Q_OP_ERROR)
+				if (comp[j].status == RTE_FLOW_OP_ERROR)
 					(*miss_count)++;
 			}
 			queue_full = false;
@@ -312,7 +312,7 @@ int run_test_rte_insert(struct ibv_context *ibv_ctx __rte_unused)
 	int ret, i, j;
 
 	const struct rte_flow_port_attr port_attr = {
-		.nb_queues = 2,
+		.nb_counters = 0,
 	};
 	struct rte_flow_queue_attr queue_attr = {
 		.size = QUEUE_SIZE,
@@ -338,14 +338,14 @@ int run_test_rte_insert(struct ibv_context *ibv_ctx __rte_unused)
 	struct rte_ipv4_hdr ipv_value;
 	struct rte_flow_item_udp udp_mask;
 	struct rte_flow_item_udp udp_value;
-	struct rte_flow_item_template *it, *hit;
-	struct rte_flow_action_template *at, *hat;
+	struct rte_flow_pattern_template *it, *hit;
+	struct rte_flow_actions_template *at, *hat;
 #define MAX_AT 16
 #define MAX_IT 16
-	struct rte_flow_item_template *it_array[MAX_IT], *hit_array[MAX_IT];
-	struct rte_flow_action_template *at_array[MAX_AT], *hat_array[MAX_AT];
-	struct rte_flow_item_template_attr itr = {0};
-	struct rte_flow_action_template_attr atr = {0};
+	struct rte_flow_pattern_template *it_array[MAX_IT], *hit_array[MAX_IT];
+	struct rte_flow_actions_template *at_array[MAX_AT], *hat_array[MAX_AT];
+	struct rte_flow_pattern_template_attr itr = {0};
+	struct rte_flow_actions_template_attr atr = {0};
 	struct action_rss_data {
 			struct rte_flow_action_rss conf;
 			uint8_t key[40];
@@ -399,23 +399,21 @@ int run_test_rte_insert(struct ibv_context *ibv_ctx __rte_unused)
 			.type = RTE_FLOW_ACTION_TYPE_END,
 		},
 	};
-	struct rte_flow_table_attr tatr = {
+	struct rte_flow_template_table_attr tatr = {
 		.flow_attr = {
 			.group = 0,
 			.ingress = 1,
 		},
 		.nb_flows = 1 << 21,
 	};
-	struct rte_flow_table *tbl, *htbl;
+	struct rte_flow_template_table *tbl, *htbl;
 	struct rte_flow *flow;
 	struct rte_flow **bflow;
-	struct rte_flow_q_ops_attr qatr = {
-		.user_data = (void *)0x5a5a,
-		.drain = 0,
+	struct rte_flow_op_attr qatr = {
+		.postpone = 0,
 	};
-	struct rte_flow_q_ops_attr hqatr = {
-		.user_data = (void *)0x5a5a,
-		.drain = 0,
+	struct rte_flow_op_attr hqatr = {
+		.postpone = 0,
 	};
 	uint8_t *header = raw_encap.data;
 
@@ -435,7 +433,7 @@ int run_test_rte_insert(struct ibv_context *ibv_ctx __rte_unused)
 		printf("Failed to allocate memory for hws_rule\n");
 		return -1;
 	}
-	ret = rte_flow_configure(0, &port_attr, pqa, &error);
+	ret = rte_flow_configure(0, &port_attr, 2, pqa, &error);
 	if (ret)
 		return -1;
 	set_match_mavneir(&eth_mask, &eth_value,
@@ -446,23 +444,23 @@ int run_test_rte_insert(struct ibv_context *ibv_ctx __rte_unused)
 			  NULL, NULL,
 			  items);
 	set_match_simple(&ipv_mask_conn, &ipv_value_conn, items_conn);
-	it = rte_flow_item_template_create(0, &itr, items_conn, &error);
+	it = rte_flow_pattern_template_create(0, &itr, items_conn, &error);
 	if (!it) {
 		printf("Create item template failed.\n");
 		return 0;
 	}
-	hit = rte_flow_item_template_create(0, &itr, items, &error);
+	hit = rte_flow_pattern_template_create(0, &itr, items, &error);
 	if (!hit) {
 		printf("Create hws item template failed.\n");
 		return 0;
 	}
-	at = rte_flow_action_template_create(0, &atr, root_actions,
+	at = rte_flow_actions_template_create(0, &atr, root_actions,
 					     root_actions, &error);
 	if (!at) {
 		printf("Create action template failed.\n");
 		return 0;
 	}
-	hat = rte_flow_action_template_create(0, &atr,
+	hat = rte_flow_actions_template_create(0, &atr,
 					      hws_actions, hws_actions, &error);
 	if (!hat) {
 		printf("Create hws action template failed.\n");
@@ -470,7 +468,7 @@ int run_test_rte_insert(struct ibv_context *ibv_ctx __rte_unused)
 	}
 	it_array[0] = it;
 	at_array[0] = at;
-	tbl = rte_flow_table_create(0, &tatr, it_array, 1,
+	tbl = rte_flow_template_table_create(0, &tatr, it_array, 1,
 				    at_array, 1, &error);
 	if (!tbl) {
 		printf("Create root table failed.\n");
@@ -479,14 +477,14 @@ int run_test_rte_insert(struct ibv_context *ibv_ctx __rte_unused)
 	tatr.flow_attr.group = 1;
 	hit_array[0] = hit;
 	hat_array[0] = hat;
-	htbl = rte_flow_table_create(0, &tatr, hit_array, 1,
+	htbl = rte_flow_template_table_create(0, &tatr, hit_array, 1,
 				     hat_array, 1, &error);
 	if (!htbl) {
 		printf("Create hws table failed.\n");
 		return 0;
 	}
-	flow = rte_flow_q_flow_create(0, 0, &qatr, tbl, items_conn, 0,
-				      root_actions, 0, &error);
+	flow = rte_flow_async_create(0, 0, &qatr, tbl, items_conn, 0,
+				      root_actions, 0, NULL, &error);
 	if (!flow) {
 		printf("Create root jump flow failed.\n");
 		return 0;
@@ -502,13 +500,13 @@ int run_test_rte_insert(struct ibv_context *ibv_ctx __rte_unused)
 		/* Create HWS rules */
 		for (i = 0; i < NUM_OF_RULES; i++) {
 			/* Ring doorbell */
-			hqatr.drain = ((i + 1) % BURST_TH == 0);
+			hqatr.postpone = !((i + 1) % BURST_TH == 0);
 
 			ipv_value.dst_addr = i;
 			mark.id = i;
-			bflow[i] = rte_flow_q_flow_create(0, 0, &hqatr, htbl,
+			bflow[i] = rte_flow_async_create(0, 0, &hqatr, htbl,
 							  items, 0, hws_actions,
-							  0, &error);
+							  0, NULL, &error);
 			if (!bflow[i]) {
 				printf("Fail create rule: %d, misscount:%u\n",
 				       i, miss_count);
@@ -534,9 +532,9 @@ int run_test_rte_insert(struct ibv_context *ibv_ctx __rte_unused)
 
 		/* Delete HWS rules */
 		for (i = 0; i < NUM_OF_RULES; i++) {
-			hqatr.drain = ((i + 1) % BURST_TH == 0);
-			ret = rte_flow_q_flow_destroy(0, 0, &hqatr,
-						      bflow[i], &error);
+			hqatr.postpone = !((i + 1) % BURST_TH == 0);
+			ret = rte_flow_async_destroy(0, 0, &hqatr,
+						      bflow[i], NULL, &error);
 			if (ret) {
 				printf("Fail destroy rule:%d, misscount:%u\n",
 				       i, miss_count);
@@ -558,16 +556,16 @@ int run_test_rte_insert(struct ibv_context *ibv_ctx __rte_unused)
 			      &miss_count, true);
 	}
 	free(bflow);
-	hqatr.drain = 1;
-	rte_flow_q_flow_destroy(0, 0, &hqatr, flow, NULL);
+	hqatr.postpone = 0;
+	rte_flow_async_destroy(0, 0, &hqatr, flow, NULL, NULL);
 	pending_rules = 1;
 	poll_for_comp(0, 0, &pending_rules, 1, &miss_count, true);
-	rte_flow_table_destroy(0, tbl, NULL);
-	rte_flow_table_destroy(0, htbl, NULL);
-	rte_flow_action_template_destroy(0, at, NULL);
-	rte_flow_action_template_destroy(0, hat, NULL);
-	rte_flow_item_template_destroy(0, it, NULL);
-	rte_flow_item_template_destroy(0, hit, NULL);
+	rte_flow_template_table_destroy(0, tbl, NULL);
+	rte_flow_template_table_destroy(0, htbl, NULL);
+	rte_flow_actions_template_destroy(0, at, NULL);
+	rte_flow_actions_template_destroy(0, hat, NULL);
+	rte_flow_pattern_template_destroy(0, it, NULL);
+	rte_flow_pattern_template_destroy(0, hit, NULL);
 	if (miss_count) {
 		printf("Test has miss_count:%d\n", miss_count);
 		return -1;

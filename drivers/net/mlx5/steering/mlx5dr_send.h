@@ -122,7 +122,7 @@ struct mlx5dr_send_ring {
 
 struct mlx5dr_completed_poll_entry {
 	void *user_data;
-	enum rte_flow_q_op_status status;
+	enum rte_flow_op_status status;
 };
 
 struct mlx5dr_completed_poll {

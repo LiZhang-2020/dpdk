@@ -829,90 +829,100 @@ mlx5_flow_flex_item_release(struct rte_eth_dev *dev,
 			    const struct rte_flow_item_flex_handle *handle,
 			    struct rte_flow_error *error);
 static int
+mlx5_flow_info_get(struct rte_eth_dev *dev,
+		   struct rte_flow_port_info *port_info,
+		   struct rte_flow_queue_info *queue_info,
+		   struct rte_flow_error *error);
+static int
 mlx5_flow_port_configure(struct rte_eth_dev *dev,
 			 const struct rte_flow_port_attr *port_attr,
+			 uint16_t nb_queue,
 			 const struct rte_flow_queue_attr *queue_attr[],
 			 struct rte_flow_error *err);
 
-static struct rte_flow_item_template *
-mlx5_flow_item_template_create(struct rte_eth_dev *dev,
-			       const struct rte_flow_item_template_attr *attr,
-			       const struct rte_flow_item items[],
-			       struct rte_flow_error *error);
+static struct rte_flow_pattern_template *
+mlx5_flow_pattern_template_create(struct rte_eth_dev *dev,
+		const struct rte_flow_pattern_template_attr *attr,
+		const struct rte_flow_item items[],
+		struct rte_flow_error *error);
 
 static int
-mlx5_flow_item_template_destroy(struct rte_eth_dev *dev,
-				struct rte_flow_item_template *template,
-				struct rte_flow_error *error);
-static struct rte_flow_action_template *
-mlx5_flow_action_template_create(struct rte_eth_dev *dev,
-			const struct rte_flow_action_template_attr *attr,
+mlx5_flow_pattern_template_destroy(struct rte_eth_dev *dev,
+				   struct rte_flow_pattern_template *template,
+				   struct rte_flow_error *error);
+static struct rte_flow_actions_template *
+mlx5_flow_actions_template_create(struct rte_eth_dev *dev,
+			const struct rte_flow_actions_template_attr *attr,
 			const struct rte_flow_action actions[],
 			const struct rte_flow_action masks[],
 			struct rte_flow_error *error);
 static int
-mlx5_flow_action_template_destroy(struct rte_eth_dev *dev,
-				  struct rte_flow_action_template *template,
-				  struct rte_flow_error *error);
+mlx5_flow_actions_template_destroy(struct rte_eth_dev *dev,
+				   struct rte_flow_actions_template *template,
+				   struct rte_flow_error *error);
 
-static struct rte_flow_table *
+static struct rte_flow_template_table *
 mlx5_flow_table_create(struct rte_eth_dev *dev,
-		       const struct rte_flow_table_attr *attr,
-		       struct rte_flow_item_template *item_templates[],
+		       const struct rte_flow_template_table_attr *attr,
+		       struct rte_flow_pattern_template *item_templates[],
 		       uint8_t nb_item_templates,
-		       struct rte_flow_action_template *action_templates[],
+		       struct rte_flow_actions_template *action_templates[],
 		       uint8_t nb_action_templates,
 		       struct rte_flow_error *error);
 static int
 mlx5_flow_table_destroy(struct rte_eth_dev *dev,
-			struct rte_flow_table *table,
+			struct rte_flow_template_table *table,
 			struct rte_flow_error *error);
 static struct rte_flow *
-mlx5_flow_q_flow_create(struct rte_eth_dev *dev,
-			uint32_t queue,
-			const struct rte_flow_q_ops_attr *attr,
-			struct rte_flow_table *table,
-			const struct rte_flow_item items[],
-			uint8_t item_template_index,
-			const struct rte_flow_action actions[],
-			uint8_t action_template_index,
-			struct rte_flow_error *error);
+mlx5_flow_async_flow_create(struct rte_eth_dev *dev,
+			    uint32_t queue,
+			    const struct rte_flow_op_attr *attr,
+			    struct rte_flow_template_table *table,
+			    const struct rte_flow_item items[],
+			    uint8_t pattern_template_index,
+			    const struct rte_flow_action actions[],
+			    uint8_t action_template_index,
+			    void *user_data,
+			    struct rte_flow_error *error);
 static int
-mlx5_flow_q_flow_destroy(struct rte_eth_dev *dev,
-			 uint32_t queue,
-			 const struct rte_flow_q_ops_attr *attr,
-			 struct rte_flow *flow,
-			 struct rte_flow_error *error);
+mlx5_flow_async_flow_destroy(struct rte_eth_dev *dev,
+			     uint32_t queue,
+			     const struct rte_flow_op_attr *attr,
+			     struct rte_flow *flow,
+			     void *user_data,
+			     struct rte_flow_error *error);
 static int
-mlx5_flow_q_dequeue(struct rte_eth_dev *dev,
-		    uint32_t queue,
-		    struct rte_flow_q_op_res res[],
-		    uint16_t n_res,
-		    struct rte_flow_error *error);
-
+mlx5_flow_pull(struct rte_eth_dev *dev,
+	       uint32_t queue,
+	       struct rte_flow_op_result res[],
+	       uint16_t n_res,
+	       struct rte_flow_error *error);
 static int
-mlx5_flow_q_drain(struct rte_eth_dev *dev,
-		  uint32_t queue,
-		  struct rte_flow_error *error);
+mlx5_flow_push(struct rte_eth_dev *dev,
+	       uint32_t queue,
+	       struct rte_flow_error *error);
 
 static struct rte_flow_action_handle *
-mlx5_flow_q_action_handle_create(struct rte_eth_dev *dev, uint32_t queue,
-				 const struct rte_flow_q_ops_attr *attr,
+mlx5_flow_async_action_handle_create(struct rte_eth_dev *dev, uint32_t queue,
+				 const struct rte_flow_op_attr *attr,
 				 const struct rte_flow_indir_action_conf *conf,
 				 const struct rte_flow_action *action,
+				 void *user_data,
 				 struct rte_flow_error *error);
 
 static int
-mlx5_flow_q_action_handle_update(struct rte_eth_dev *dev, uint32_t queue,
-				 const struct rte_flow_q_ops_attr *attr,
+mlx5_flow_async_action_handle_update(struct rte_eth_dev *dev, uint32_t queue,
+				 const struct rte_flow_op_attr *attr,
 				 struct rte_flow_action_handle *handle,
 				 const void *update,
+				 void *user_data,
 				 struct rte_flow_error *error);
 
 static int
-mlx5_flow_q_action_handle_destroy(struct rte_eth_dev *dev, uint32_t queue,
-				  const struct rte_flow_q_ops_attr *attr,
+mlx5_flow_async_action_handle_destroy(struct rte_eth_dev *dev, uint32_t queue,
+				  const struct rte_flow_op_attr *attr,
 				  struct rte_flow_action_handle *handle,
+				  void *user_data,
 				  struct rte_flow_error *error);
 
 static const struct rte_flow_ops mlx5_flow_ops = {
@@ -935,20 +945,21 @@ static const struct rte_flow_ops mlx5_flow_ops = {
 	.get_restore_info = mlx5_flow_tunnel_get_restore_info,
 	.flex_item_create = mlx5_flow_flex_item_create,
 	.flex_item_release = mlx5_flow_flex_item_release,
+	.info_get = mlx5_flow_info_get,
 	.configure = mlx5_flow_port_configure,
-	.item_template_create = mlx5_flow_item_template_create,
-	.item_template_destroy = mlx5_flow_item_template_destroy,
-	.action_template_create = mlx5_flow_action_template_create,
-	.action_template_destroy = mlx5_flow_action_template_destroy,
-	.table_create = mlx5_flow_table_create,
-	.table_destroy = mlx5_flow_table_destroy,
-	.q_flow_create = mlx5_flow_q_flow_create,
-	.q_flow_destroy = mlx5_flow_q_flow_destroy,
-	.q_dequeue = mlx5_flow_q_dequeue,
-	.q_drain = mlx5_flow_q_drain,
-	.q_action_handle_create = mlx5_flow_q_action_handle_create,
-	.q_action_handle_update = mlx5_flow_q_action_handle_update,
-	.q_action_handle_destroy = mlx5_flow_q_action_handle_destroy,
+	.pattern_template_create = mlx5_flow_pattern_template_create,
+	.pattern_template_destroy = mlx5_flow_pattern_template_destroy,
+	.actions_template_create = mlx5_flow_actions_template_create,
+	.actions_template_destroy = mlx5_flow_actions_template_destroy,
+	.template_table_create = mlx5_flow_table_create,
+	.template_table_destroy = mlx5_flow_table_destroy,
+	.async_create = mlx5_flow_async_flow_create,
+	.async_destroy = mlx5_flow_async_flow_destroy,
+	.pull = mlx5_flow_pull,
+	.push = mlx5_flow_push,
+	.async_action_handle_create = mlx5_flow_async_action_handle_create,
+	.async_action_handle_update = mlx5_flow_async_action_handle_update,
+	.async_action_handle_destroy = mlx5_flow_async_action_handle_destroy,
 };
 
 /* Tunnel information. */
@@ -3719,6 +3730,12 @@ flow_get_drv_type(struct rte_eth_dev *dev, const struct rte_flow_attr *attr)
 
 	if (type != MLX5_FLOW_TYPE_MAX)
 		return type;
+	/*
+	 * Currently when dv_flow_en == 2, only HW steering engine is
+	 * supported. New engines can also be chosen here if ready.
+	 */
+	if (priv->config.dv_flow_en == 2)
+		return MLX5_FLOW_TYPE_HW;
 	/* If no OS specific type - continue with DV/VERBS selection */
 	if (attr->transfer && priv->config.dv_esw_en)
 		type = MLX5_FLOW_TYPE_DV;
@@ -8427,187 +8444,539 @@ mlx5_counter_query(struct rte_eth_dev *dev, uint32_t cnt,
 	return -ENOTSUP;
 }
 
+/**
+ * Get information about HWS pre-configurable resources.
+ *
+ * @param[in] dev
+ *   Pointer to the rte_eth_dev structure.
+ * @param[out] port_info
+ *   Pointer to port information.
+ * @param[out] queue_info
+ *   Pointer to queue information.
+ * @param[out] error
+ *   Pointer to error structure.
+ *
+ * @return
+ *   0 on success, a negative errno value otherwise and rte_errno is set.
+ */
+static int
+mlx5_flow_info_get(struct rte_eth_dev *dev,
+		   struct rte_flow_port_info *port_info,
+		   struct rte_flow_queue_info *queue_info,
+		   struct rte_flow_error *error)
+{
+	const struct mlx5_flow_driver_ops *fops;
+
+	if (flow_get_drv_type(dev, NULL) != MLX5_FLOW_TYPE_HW)
+		return rte_flow_error_set(error, ENOTSUP,
+				RTE_FLOW_ERROR_TYPE_UNSPECIFIED,
+				NULL,
+				"info get with incorrect steering mode");
+	fops = flow_get_drv_ops(MLX5_FLOW_TYPE_HW);
+	return fops->info_get(dev, port_info, queue_info, error);
+}
+
+/**
+ * Configure port HWS resources.
+ *
+ * @param[in] dev
+ *   Pointer to the rte_eth_dev structure.
+ * @param[in] port_attr
+ *   Port configuration attributes.
+ * @param[in] nb_queue
+ *   Number of queue.
+ * @param[in] queue_attr
+ *   Array that holds attributes for each flow queue.
+ * @param[out] error
+ *   Pointer to error structure.
+ *
+ * @return
+ *   0 on success, a negative errno value otherwise and rte_errno is set.
+ */
 static int
 mlx5_flow_port_configure(struct rte_eth_dev *dev,
 			 const struct rte_flow_port_attr *port_attr,
+			 uint16_t nb_queue,
 			 const struct rte_flow_queue_attr *queue_attr[],
-			 struct rte_flow_error *err)
+			 struct rte_flow_error *error)
 {
-	const struct mlx5_flow_driver_ops *fops =
-			flow_get_drv_ops(MLX5_FLOW_TYPE_HW);
+	const struct mlx5_flow_driver_ops *fops;
 
-	return fops->configure(dev, port_attr, queue_attr, err);
+	if (flow_get_drv_type(dev, NULL) != MLX5_FLOW_TYPE_HW)
+		return rte_flow_error_set(error, ENOTSUP,
+				RTE_FLOW_ERROR_TYPE_UNSPECIFIED,
+				NULL,
+				"port configure with incorrect steering mode");
+	fops = flow_get_drv_ops(MLX5_FLOW_TYPE_HW);
+	return fops->configure(dev, port_attr, nb_queue, queue_attr, error);
 }
 
-static struct rte_flow_item_template *
-mlx5_flow_item_template_create(struct rte_eth_dev *dev,
-			       const struct rte_flow_item_template_attr *attr,
-			       const struct rte_flow_item items[],
-			       struct rte_flow_error *error)
+/**
+ * Create flow item template.
+ *
+ * @param[in] dev
+ *   Pointer to the rte_eth_dev structure.
+ * @param[in] attr
+ *   Pointer to the item template attributes.
+ * @param[in] items
+ *   The template item pattern.
+ * @param[out] error
+ *   Pointer to error structure.
+ *
+ * @return
+ *   0 on success, a negative errno value otherwise and rte_errno is set.
+ */
+static struct rte_flow_pattern_template *
+mlx5_flow_pattern_template_create(struct rte_eth_dev *dev,
+		const struct rte_flow_pattern_template_attr *attr,
+		const struct rte_flow_item items[],
+		struct rte_flow_error *error)
 {
-	const struct mlx5_flow_driver_ops *fops =
-			flow_get_drv_ops(MLX5_FLOW_TYPE_HW);
+	const struct mlx5_flow_driver_ops *fops;
 
-	return fops->item_template_create(dev, attr, items, error);
+	if (flow_get_drv_type(dev, NULL) != MLX5_FLOW_TYPE_HW) {
+		rte_flow_error_set(error, ENOTSUP,
+				RTE_FLOW_ERROR_TYPE_UNSPECIFIED,
+				NULL,
+				"pattern create with incorrect steering mode");
+		return NULL;
+	}
+	fops = flow_get_drv_ops(MLX5_FLOW_TYPE_HW);
+	return fops->pattern_template_create(dev, attr, items, error);
 }
 
+/**
+ * Destroy flow item template.
+ *
+ * @param[in] dev
+ *   Pointer to the rte_eth_dev structure.
+ * @param[in] template
+ *   Pointer to the item template to be destroyed.
+ * @param[out] error
+ *   Pointer to error structure.
+ *
+ * @return
+ *   0 on success, a negative errno value otherwise and rte_errno is set.
+ */
 static int
-mlx5_flow_item_template_destroy(struct rte_eth_dev *dev,
-				struct rte_flow_item_template *template,
-				struct rte_flow_error *error)
+mlx5_flow_pattern_template_destroy(struct rte_eth_dev *dev,
+				   struct rte_flow_pattern_template *template,
+				   struct rte_flow_error *error)
 {
-	const struct mlx5_flow_driver_ops *fops =
-			flow_get_drv_ops(MLX5_FLOW_TYPE_HW);
+	const struct mlx5_flow_driver_ops *fops;
 
-	return fops->item_template_destroy(dev, template, error);
+	if (flow_get_drv_type(dev, NULL) != MLX5_FLOW_TYPE_HW)
+		return rte_flow_error_set(error, ENOTSUP,
+				RTE_FLOW_ERROR_TYPE_UNSPECIFIED,
+				NULL,
+				"pattern destroy with incorrect steering mode");
+	fops = flow_get_drv_ops(MLX5_FLOW_TYPE_HW);
+	return fops->pattern_template_destroy(dev, template, error);
 }
 
-static struct rte_flow_action_template *
-mlx5_flow_action_template_create(struct rte_eth_dev *dev,
-			const struct rte_flow_action_template_attr *attr,
+/**
+ * Create flow item template.
+ *
+ * @param[in] dev
+ *   Pointer to the rte_eth_dev structure.
+ * @param[in] attr
+ *   Pointer to the action template attributes.
+ * @param[in] actions
+ *   Associated actions (list terminated by the END action).
+ * @param[in] masks
+ *   List of actions that marks which of the action's member is constant.
+ * @param[out] error
+ *   Pointer to error structure.
+ *
+ * @return
+ *   0 on success, a negative errno value otherwise and rte_errno is set.
+ */
+static struct rte_flow_actions_template *
+mlx5_flow_actions_template_create(struct rte_eth_dev *dev,
+			const struct rte_flow_actions_template_attr *attr,
 			const struct rte_flow_action actions[],
 			const struct rte_flow_action masks[],
 			struct rte_flow_error *error)
 {
-	const struct mlx5_flow_driver_ops *fops =
-			flow_get_drv_ops(MLX5_FLOW_TYPE_HW);
+	const struct mlx5_flow_driver_ops *fops;
 
-	return fops->action_template_create(dev, attr, actions, masks, error);
+	if (flow_get_drv_type(dev, NULL) != MLX5_FLOW_TYPE_HW) {
+		rte_flow_error_set(error, ENOTSUP,
+				RTE_FLOW_ERROR_TYPE_UNSPECIFIED,
+				NULL,
+				"action create with incorrect steering mode");
+		return NULL;
+	}
+	fops = flow_get_drv_ops(MLX5_FLOW_TYPE_HW);
+	return fops->actions_template_create(dev, attr, actions, masks, error);
 }
 
+/**
+ * Destroy flow action template.
+ *
+ * @param[in] dev
+ *   Pointer to the rte_eth_dev structure.
+ * @param[in] template
+ *   Pointer to the action template to be destroyed.
+ * @param[out] error
+ *   Pointer to error structure.
+ *
+ * @return
+ *   0 on success, a negative errno value otherwise and rte_errno is set.
+ */
 static int
-mlx5_flow_action_template_destroy(struct rte_eth_dev *dev,
-				  struct rte_flow_action_template *template,
-				  struct rte_flow_error *error)
+mlx5_flow_actions_template_destroy(struct rte_eth_dev *dev,
+				   struct rte_flow_actions_template *template,
+				   struct rte_flow_error *error)
 {
-	const struct mlx5_flow_driver_ops *fops =
-			flow_get_drv_ops(MLX5_FLOW_TYPE_HW);
+	const struct mlx5_flow_driver_ops *fops;
 
-	return fops->action_template_destroy(dev, template, error);
+	if (flow_get_drv_type(dev, NULL) != MLX5_FLOW_TYPE_HW)
+		return rte_flow_error_set(error, ENOTSUP,
+				RTE_FLOW_ERROR_TYPE_UNSPECIFIED,
+				NULL,
+				"action destroy with incorrect steering mode");
+	fops = flow_get_drv_ops(MLX5_FLOW_TYPE_HW);
+	return fops->actions_template_destroy(dev, template, error);
 }
 
-static struct rte_flow_table *
+/**
+ * Create flow table.
+ *
+ * @param[in] dev
+ *   Pointer to the rte_eth_dev structure.
+ * @param[in] attr
+ *   Pointer to the table attributes.
+ * @param[in] item_templates
+ *   Item template array to be binded to the table.
+ * @param[in] nb_item_templates
+ *   Number of item template.
+ * @param[in] action_templates
+ *   Action template array to be binded to the table.
+ * @param[in] nb_action_templates
+ *   Number of action template.
+ * @param[out] error
+ *   Pointer to error structure.
+ *
+ * @return
+ *    Table on success, NULL otherwise and rte_errno is set.
+ */
+static struct rte_flow_template_table *
 mlx5_flow_table_create(struct rte_eth_dev *dev,
-		       const struct rte_flow_table_attr *attr,
-		       struct rte_flow_item_template *item_templates[],
+		       const struct rte_flow_template_table_attr *attr,
+		       struct rte_flow_pattern_template *item_templates[],
 		       uint8_t nb_item_templates,
-		       struct rte_flow_action_template *action_templates[],
+		       struct rte_flow_actions_template *action_templates[],
 		       uint8_t nb_action_templates,
 		       struct rte_flow_error *error)
 {
-	const struct mlx5_flow_driver_ops *fops =
-			flow_get_drv_ops(MLX5_FLOW_TYPE_HW);
+	const struct mlx5_flow_driver_ops *fops;
 
-	return fops->table_create(dev, attr,
-				  item_templates, nb_item_templates,
-				  action_templates, nb_action_templates,
-				  error);
+	if (flow_get_drv_type(dev, NULL) != MLX5_FLOW_TYPE_HW) {
+		rte_flow_error_set(error, ENOTSUP,
+				RTE_FLOW_ERROR_TYPE_UNSPECIFIED,
+				NULL,
+				"table create with incorrect steering mode");
+		return NULL;
+	}
+	fops = flow_get_drv_ops(MLX5_FLOW_TYPE_HW);
+	return fops->template_table_create(dev,
+					   attr,
+					   item_templates,
+					   nb_item_templates,
+					   action_templates,
+					   nb_action_templates,
+					   error);
 }
 
+/**
+ * PMD destroy flow table.
+ *
+ * @param[in] dev
+ *   Pointer to the rte_eth_dev structure.
+ * @param[in] table
+ *   Pointer to the table to be destroyed.
+ * @param[out] error
+ *   Pointer to error structure.
+ *
+ * @return
+ *   0 on success, a negative errno value otherwise and rte_errno is set.
+ */
 static int
 mlx5_flow_table_destroy(struct rte_eth_dev *dev,
-			struct rte_flow_table *table,
+			struct rte_flow_template_table *table,
 			struct rte_flow_error *error)
 {
-	const struct mlx5_flow_driver_ops *fops =
-			flow_get_drv_ops(MLX5_FLOW_TYPE_HW);
+	const struct mlx5_flow_driver_ops *fops;
 
-	return fops->table_destroy(dev, table, error);
+	if (flow_get_drv_type(dev, NULL) != MLX5_FLOW_TYPE_HW)
+		return rte_flow_error_set(error, ENOTSUP,
+				RTE_FLOW_ERROR_TYPE_UNSPECIFIED,
+				NULL,
+				"table destroy with incorrect steering mode");
+	fops = flow_get_drv_ops(MLX5_FLOW_TYPE_HW);
+	return fops->template_table_destroy(dev, table, error);
 }
 
+/**
+ * Enqueue flow creation.
+ *
+ * @param[in] dev
+ *   Pointer to the rte_eth_dev structure.
+ * @param[in] queue_id
+ *   The queue to create the flow.
+ * @param[in] attr
+ *   Pointer to the flow operation attributes.
+ * @param[in] items
+ *   Items with flow spec value.
+ * @param[in] pattern_template_index
+ *   The item pattern flow follows from the table.
+ * @param[in] actions
+ *   Action with flow spec value.
+ * @param[in] action_template_index
+ *   The action pattern flow follows from the table.
+ * @param[in] user_data
+ *   Pointer to the user_data.
+ * @param[out] error
+ *   Pointer to error structure.
+ *
+ * @return
+ *    Flow pointer on success, NULL otherwise and rte_errno is set.
+ */
 static struct rte_flow *
-mlx5_flow_q_flow_create(struct rte_eth_dev *dev,
-			uint32_t queue,
-			const struct rte_flow_q_ops_attr *attr,
-			struct rte_flow_table *table,
-			const struct rte_flow_item items[],
-			uint8_t item_template_index,
-			const struct rte_flow_action actions[],
-			uint8_t action_template_index,
-			struct rte_flow_error *error)
+mlx5_flow_async_flow_create(struct rte_eth_dev *dev,
+			    uint32_t queue_id,
+			    const struct rte_flow_op_attr *attr,
+			    struct rte_flow_template_table *table,
+			    const struct rte_flow_item items[],
+			    uint8_t pattern_template_index,
+			    const struct rte_flow_action actions[],
+			    uint8_t action_template_index,
+			    void *user_data,
+			    struct rte_flow_error *error)
 {
-	const struct mlx5_flow_driver_ops *fops =
-			flow_get_drv_ops(MLX5_FLOW_TYPE_HW);
+	const struct mlx5_flow_driver_ops *fops;
 
-	return fops->q_flow_create(dev, queue, attr, table,
-				   items, item_template_index,
-				   actions, action_template_index,
-				   error);
+	if (flow_get_drv_type(dev, NULL) != MLX5_FLOW_TYPE_HW) {
+		rte_flow_error_set(error, ENOTSUP,
+				RTE_FLOW_ERROR_TYPE_UNSPECIFIED,
+				NULL,
+				"flow_q create with incorrect steering mode");
+		return NULL;
+	}
+	fops = flow_get_drv_ops(MLX5_FLOW_TYPE_HW);
+	return fops->async_flow_create(dev, queue_id, attr, table,
+				       items, pattern_template_index,
+				       actions, action_template_index,
+				       user_data, error);
 }
 
+/**
+ * Enqueue flow destruction.
+ *
+ * @param[in] dev
+ *   Pointer to the rte_eth_dev structure.
+ * @param[in] queue
+ *   The queue to destroy the flow.
+ * @param[in] attr
+ *   Pointer to the flow operation attributes.
+ * @param[in] flow
+ *   Pointer to the flow to be destroyed.
+ * @param[in] user_data
+ *   Pointer to the user_data.
+ * @param[out] error
+ *   Pointer to error structure.
+ *
+ * @return
+ *    0 on success, negative value otherwise and rte_errno is set.
+ */
 static int
-mlx5_flow_q_flow_destroy(struct rte_eth_dev *dev,
-			 uint32_t queue,
-			 const struct rte_flow_q_ops_attr *attr,
-			 struct rte_flow *flow,
-			 struct rte_flow_error *error)
+mlx5_flow_async_flow_destroy(struct rte_eth_dev *dev,
+			     uint32_t queue,
+			     const struct rte_flow_op_attr *attr,
+			     struct rte_flow *flow,
+			     void *user_data,
+			     struct rte_flow_error *error)
 {
-	const struct mlx5_flow_driver_ops *fops =
-			flow_get_drv_ops(MLX5_FLOW_TYPE_HW);
+	const struct mlx5_flow_driver_ops *fops;
 
-	return fops->q_flow_destroy(dev, queue, attr, flow, error);
+	if (flow_get_drv_type(dev, NULL) != MLX5_FLOW_TYPE_HW)
+		return rte_flow_error_set(error, ENOTSUP,
+				RTE_FLOW_ERROR_TYPE_UNSPECIFIED,
+				NULL,
+				"flow_q destroy with incorrect steering mode");
+	fops = flow_get_drv_ops(MLX5_FLOW_TYPE_HW);
+	return fops->async_flow_destroy(dev, queue, attr, flow,
+					user_data, error);
 }
 
+/**
+ * Pull the enqueued flows.
+ *
+ * @param[in] dev
+ *   Pointer to the rte_eth_dev structure.
+ * @param[in] queue
+ *   The queue to pull the result.
+ * @param[in/out] res
+ *   Array to save the results.
+ * @param[in] n_res
+ *   Available result with the array.
+ * @param[out] error
+ *   Pointer to error structure.
+ *
+ * @return
+ *    Result number on success, negative value otherwise and rte_errno is set.
+ */
 static int
-mlx5_flow_q_dequeue(struct rte_eth_dev *dev,
-		    uint32_t queue,
-		    struct rte_flow_q_op_res res[],
-		    uint16_t n_res,
-		    struct rte_flow_error *error)
+mlx5_flow_pull(struct rte_eth_dev *dev,
+	       uint32_t queue,
+	       struct rte_flow_op_result res[],
+	       uint16_t n_res,
+	       struct rte_flow_error *error)
 {
-	const struct mlx5_flow_driver_ops *fops =
-			flow_get_drv_ops(MLX5_FLOW_TYPE_HW);
+	const struct mlx5_flow_driver_ops *fops;
 
-	return fops->q_dequeue(dev, queue, res, n_res, error);
+	if (flow_get_drv_type(dev, NULL) != MLX5_FLOW_TYPE_HW)
+		return rte_flow_error_set(error, ENOTSUP,
+				RTE_FLOW_ERROR_TYPE_UNSPECIFIED,
+				NULL,
+				"flow_q pull with incorrect steering mode");
+	fops = flow_get_drv_ops(MLX5_FLOW_TYPE_HW);
+	return fops->pull(dev, queue, res, n_res, error);
 }
 
+/**
+ * Push the enqueued flows.
+ *
+ * @param[in] dev
+ *   Pointer to the rte_eth_dev structure.
+ * @param[in] queue
+ *   The queue to push the flows.
+ * @param[out] error
+ *   Pointer to error structure.
+ *
+ * @return
+ *    0 on success, negative value otherwise and rte_errno is set.
+ */
 static int
-mlx5_flow_q_drain(struct rte_eth_dev *dev,
-		  uint32_t queue,
-		  struct rte_flow_error *error)
+mlx5_flow_push(struct rte_eth_dev *dev,
+	       uint32_t queue,
+	       struct rte_flow_error *error)
 {
-	const struct mlx5_flow_driver_ops *fops =
-			flow_get_drv_ops(MLX5_FLOW_TYPE_HW);
+	const struct mlx5_flow_driver_ops *fops;
 
-	return fops->q_drain(dev, queue, error);
+	if (flow_get_drv_type(dev, NULL) != MLX5_FLOW_TYPE_HW)
+		return rte_flow_error_set(error, ENOTSUP,
+				RTE_FLOW_ERROR_TYPE_UNSPECIFIED,
+				NULL,
+				"flow_q push with incorrect steering mode");
+	fops = flow_get_drv_ops(MLX5_FLOW_TYPE_HW);
+	return fops->push(dev, queue, error);
 }
 
+/**
+ * Create shared action.
+ *
+ * @param[in] dev
+ *   Pointer to the rte_eth_dev structure.
+ * @param[in] queue
+ *   Which queue to be used..
+ * @param[in] attr
+ *   Operation attribute.
+ * @param[in] conf
+ *   Indirect action configuration.
+ * @param[in] action
+ *   rte_flow action detail.
+ * @param[in] user_data
+ *   Pointer to the user_data.
+ * @param[out] error
+ *   Pointer to error structure.
+ *
+ * @return
+ *   Action handle on success, NULL otherwise and rte_errno is set.
+ */
 static struct rte_flow_action_handle *
-mlx5_flow_q_action_handle_create(struct rte_eth_dev *dev, uint32_t queue,
-				 const struct rte_flow_q_ops_attr *attr,
+mlx5_flow_async_action_handle_create(struct rte_eth_dev *dev, uint32_t queue,
+				 const struct rte_flow_op_attr *attr,
 				 const struct rte_flow_indir_action_conf *conf,
 				 const struct rte_flow_action *action,
+				 void *user_data,
 				 struct rte_flow_error *error)
 {
 	const struct mlx5_flow_driver_ops *fops =
 			flow_get_drv_ops(MLX5_FLOW_TYPE_HW);
 
-	return fops->q_action_create(dev, queue, attr, conf, action, error);
+	return fops->async_action_create(dev, queue, attr, conf, action,
+					 user_data, error);
 }
 
+/**
+ * Update shared action.
+ *
+ * @param[in] dev
+ *   Pointer to the rte_eth_dev structure.
+ * @param[in] queue
+ *   Which queue to be used..
+ * @param[in] attr
+ *   Operation attribute.
+ * @param[in] handle
+ *   Action handle to be updated.
+ * @param[in] update
+ *   Update value.
+ * @param[in] user_data
+ *   Pointer to the user_data.
+ * @param[out] error
+ *   Pointer to error structure.
+ *
+ * @return
+ *   0 on success, negative value otherwise and rte_errno is set.
+ */
 static int
-mlx5_flow_q_action_handle_update(struct rte_eth_dev *dev, uint32_t queue,
-				 const struct rte_flow_q_ops_attr *attr,
-				 struct rte_flow_action_handle *handle,
-				 const void *update,
-				 struct rte_flow_error *error)
+mlx5_flow_async_action_handle_update(struct rte_eth_dev *dev, uint32_t queue,
+				     const struct rte_flow_op_attr *attr,
+				     struct rte_flow_action_handle *handle,
+				     const void *update,
+				     void *user_data,
+				     struct rte_flow_error *error)
 {
 	const struct mlx5_flow_driver_ops *fops =
 			flow_get_drv_ops(MLX5_FLOW_TYPE_HW);
 
-	return fops->q_action_update(dev, queue, attr, handle, update, error);
+	return fops->async_action_update(dev, queue, attr, handle,
+					 update, user_data, error);
 }
 
+/**
+ * Destroy shared action.
+ *
+ * @param[in] dev
+ *   Pointer to the rte_eth_dev structure.
+ * @param[in] queue
+ *   Which queue to be used..
+ * @param[in] attr
+ *   Operation attribute.
+ * @param[in] handle
+ *   Action handle to be destroyed.
+ * @param[in] user_data
+ *   Pointer to the user_data.
+ * @param[out] error
+ *   Pointer to error structure.
+ *
+ * @return
+ *   0 on success, negative value otherwise and rte_errno is set.
+ */
 static int
-mlx5_flow_q_action_handle_destroy(struct rte_eth_dev *dev, uint32_t queue,
-				  const struct rte_flow_q_ops_attr *attr,
-				  struct rte_flow_action_handle *handle,
-				  struct rte_flow_error *error)
+mlx5_flow_async_action_handle_destroy(struct rte_eth_dev *dev, uint32_t queue,
+				      const struct rte_flow_op_attr *attr,
+				      struct rte_flow_action_handle *handle,
+				      void *user_data,
+				      struct rte_flow_error *error)
 {
 	const struct mlx5_flow_driver_ops *fops =
 			flow_get_drv_ops(MLX5_FLOW_TYPE_HW);
 
-	return fops->q_action_destroy(dev, queue, attr, handle, error);
+	return fops->async_action_destroy(dev, queue, attr, handle,
+					  user_data, error);
 }
 
 /**

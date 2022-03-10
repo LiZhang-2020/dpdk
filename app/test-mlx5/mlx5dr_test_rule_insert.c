@@ -21,7 +21,7 @@ static int poll_for_comp(struct mlx5dr_context *ctx,
 {
 	bool queue_full = *pending_rules == QUEUE_SIZE;
 	bool got_comp = *pending_rules >= expected_comp;
-	struct rte_flow_q_op_res comp[BURST_TH];
+	struct rte_flow_op_result comp[BURST_TH];
 	int ret;
 	int j;
 
@@ -39,7 +39,7 @@ static int poll_for_comp(struct mlx5dr_context *ctx,
 		if (ret) {
 			(*pending_rules) -= ret;
 			for (j = 0; j < ret; j++) {
-				if (comp[j].status == RTE_FLOW_Q_OP_ERROR)
+				if (comp[j].status == RTE_FLOW_OP_ERROR)
 					(*miss_count)++;
 			}
 			queue_full = false;
