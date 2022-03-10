@@ -69,11 +69,7 @@ struct mlx5dr_cmd_stc_modify_attr {
 			uint32_t pattern_id;
 		} modify_header;
 		struct {
-			uint16_t src_field;
-			uint8_t src_offset;
-			uint8_t length;
-			uint16_t dst_field;
-			uint8_t dst_offset;
+			__be64 data;
 		} modify_action;
 		struct {
 			uint32_t arg_id;

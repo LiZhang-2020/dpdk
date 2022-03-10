@@ -369,34 +369,9 @@ mlx5dr_cmd_stc_modify_set_stc_param(struct mlx5dr_cmd_stc_modify_attr *stc_attr,
 			 stc_attr->reformat.arg_id);
 		break;
 	case MLX5_IFC_STC_ACTION_TYPE_COPY:
-		MLX5_SET(copy_action_in, stc_parm, action_type,
-			 MLX5_MODIFICATION_TYPE_COPY);
-		MLX5_SET(copy_action_in, stc_parm, src_field,
-			 stc_attr->modify_action.src_field);
-		MLX5_SET(copy_action_in, stc_parm, src_offset,
-			 stc_attr->modify_action.src_offset);
-		MLX5_SET(copy_action_in, stc_parm, length,
-			 stc_attr->modify_action.length);
-		MLX5_SET(copy_action_in, stc_parm, dst_field,
-			 stc_attr->modify_action.dst_field);
-		MLX5_SET(copy_action_in, stc_parm, dst_offset,
-			 stc_attr->modify_action.dst_offset);
-		break;
 	case MLX5_IFC_STC_ACTION_TYPE_SET:
-		MLX5_SET(set_action_in, stc_parm, action_type,
-			 MLX5_MODIFICATION_TYPE_SET);
-		MLX5_SET(set_action_in, stc_parm, field,
-			 stc_attr->modify_action.src_field);
-		MLX5_SET(set_action_in, stc_parm, offset,
-			 stc_attr->modify_action.src_offset);
-		MLX5_SET(set_action_in, stc_parm, length,
-			 stc_attr->modify_action.length);
-		break;
 	case MLX5_IFC_STC_ACTION_TYPE_ADD:
-		MLX5_SET(set_action_in, stc_parm, action_type,
-			 MLX5_MODIFICATION_TYPE_ADD);
-		MLX5_SET(set_action_in, stc_parm, field,
-			 stc_attr->modify_action.src_field);
+		*(__be64 *)stc_parm = stc_attr->modify_action.data;
 		break;
 	case MLX5_IFC_STC_ACTION_TYPE_JUMP_TO_VPORT:
 	case MLX5_IFC_STC_ACTION_TYPE_JUMP_TO_UPLINK:

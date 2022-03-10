@@ -27,34 +27,6 @@ enum mlx5dr_action_offset {
 	MLX5DR_ACTION_OFFSET_HIT = 3,
 };
 
-enum mlx5dr_action_type {
-	MLX5DR_ACTION_TYP_TNL_L2_TO_L2,
-	MLX5DR_ACTION_TYP_L2_TO_TNL_L2,
-	MLX5DR_ACTION_TYP_TNL_L3_TO_L2,
-	MLX5DR_ACTION_TYP_L2_TO_TNL_L3,
-	MLX5DR_ACTION_TYP_DROP,
-	MLX5DR_ACTION_TYP_QP,
-	MLX5DR_ACTION_TYP_TIR,
-	MLX5DR_ACTION_TYP_FT,
-	MLX5DR_ACTION_TYP_CTR,
-	MLX5DR_ACTION_TYP_TAG,
-	MLX5DR_ACTION_TYP_MODIFY_HDR,
-	MLX5DR_ACTION_TYP_VPORT,
-	MLX5DR_ACTION_TYP_METER,
-	MLX5DR_ACTION_TYP_MISS,
-	MLX5DR_ACTION_TYP_POP_VLAN,
-	MLX5DR_ACTION_TYP_PUSH_VLAN,
-	MLX5DR_ACTION_TYP_SAMPLER,
-	MLX5DR_ACTION_TYP_DEST_ARRAY,
-	MLX5DR_ACTION_TYP_ASO_FIRST_HIT,
-	MLX5DR_ACTION_TYP_ASO_METER,
-	MLX5DR_ACTION_TYP_ASO_CT,
-	MLX5DR_ACTION_TYP_MH_SET,
-	MLX5DR_ACTION_TYP_MH_ADD,
-	MLX5DR_ACTION_TYP_MH_COPY,
-	MLX5DR_ACTION_TYP_MAX,
-};
-
 enum {
 	MLX5DR_ACTION_DOUBLE_SIZE = 8,
 	MLX5DR_ACTION_INLINE_DATA_SIZE = 4,
@@ -93,16 +65,10 @@ struct mlx5dr_action {
 				struct {
 					struct mlx5dr_devx_obj *pattern_obj;
 					struct mlx5dr_devx_obj *arg_obj;
+					__be64 single_action;
+					uint8_t single_action_type;
 					uint16_t num_of_actions;
 				} modify_header;
-				struct {
-					uint16_t src_field;
-					uint8_t src_offset;
-					uint8_t length;
-					uint16_t dst_field;
-					uint8_t dst_offset;
-					__be32 data;
-				} modify_action;
 				struct {
 					struct mlx5dr_devx_obj *arg_obj;
 					uint32_t header_size;
