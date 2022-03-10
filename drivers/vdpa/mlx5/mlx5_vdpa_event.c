@@ -3,6 +3,7 @@
  */
 #include <unistd.h>
 #include <stdint.h>
+#include <sched.h>
 #include <fcntl.h>
 #include <sys/eventfd.h>
 
@@ -196,7 +197,7 @@ mlx5_vdpa_timer_sleep(struct mlx5_vdpa_priv *priv, uint32_t max)
 		usleep(priv->timer_delay_us);
 	else
 		/* Give-up CPU to improve polling threads scheduling. */
-		pthread_yield();
+		sched_yield();
 }
 
 /* Notify virtio device for specific virtq new traffic. */
@@ -475,17 +476,6 @@ mlx5_vdpa_cqe_event_setup(struct mlx5_vdpa_priv *priv)
 		/* All virtqs are in poll mode. */
 		return 0;
 	pthread_attr_init(&attr);
-	CPU_ZERO(&cpuset);
-	if (priv->event_core != -1)
-		CPU_SET(priv->event_core, &cpuset);
-	else
-		cpuset = rte_lcore_cpuset(rte_get_main_lcore());
-	ret = pthread_attr_setaffinity_np(&attr, sizeof(cpuset),
-					  &cpuset);
-	if (ret) {
-		DRV_LOG(ERR, "Failed to set thread affinity.");
-		return -1;
-	}
 	ret = pthread_attr_setschedpolicy(&attr, SCHED_RR);
 	if (ret) {
 		DRV_LOG(ERR, "Failed to set thread sched policy = RR.");
@@ -500,6 +490,16 @@ mlx5_vdpa_cqe_event_setup(struct mlx5_vdpa_priv *priv)
 			     mlx5_vdpa_event_handle, (void *)priv);
 	if (ret) {
 		DRV_LOG(ERR, "Failed to create timer thread.");
+		return -1;
+	}
+	CPU_ZERO(&cpuset);
+	if (priv->event_core != -1)
+		CPU_SET(priv->event_core, &cpuset);
+	else
+		cpuset = rte_lcore_cpuset(rte_get_main_lcore());
+	ret = pthread_setaffinity_np(priv->timer_tid, sizeof(cpuset), &cpuset);
+	if (ret) {
+		DRV_LOG(ERR, "Failed to set thread affinity.");
 		return -1;
 	}
 	snprintf(name, sizeof(name), "vDPA-mlx5-%d", priv->vid);
