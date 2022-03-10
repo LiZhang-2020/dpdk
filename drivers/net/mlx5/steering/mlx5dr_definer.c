@@ -145,6 +145,7 @@ enum mlx5dr_definer_fname {
 	MLX5DR_DEFINER_FNAME_VPORT_REG_C_0,
 	MLX5DR_DEFINER_FNAME_VXLAN_FLAGS,
 	MLX5DR_DEFINER_FNAME_VXLAN_VNI,
+	MLX5DR_DEFINER_FNAME_SOURCE_QP,
 	MLX5DR_DEFINER_FNAME_MAX,
 };
 
@@ -223,7 +224,8 @@ struct mlx5dr_definer_conv_data {
 	X(SET,		gtp_ext_hdr_pdu,	v->pdu_type,		rte_flow_item_gtp_psc) \
 	X(SET,		gtp_ext_hdr_qfi,	v->qfi,			rte_flow_item_gtp_psc) \
 	X(SET,		vxlan_flags,		v->flags,		rte_flow_item_vxlan) \
-	X(SET,		vxlan_udp_port,		ETH_VXLAN_DEFAULT_PORT,	rte_flow_item_vxlan)
+	X(SET,		vxlan_udp_port,		ETH_VXLAN_DEFAULT_PORT,	rte_flow_item_vxlan) \
+	X(SET,		source_qp,		v->queue,		mlx5_rte_flow_item_tx_queue)
 
 
 /* Item set function format */
@@ -929,6 +931,28 @@ mlx5dr_definer_conv_item_vxlan(struct mlx5dr_definer_conv_data *cd,
 }
 
 static int
+mlx5dr_definer_conv_item_tx_queue(struct mlx5dr_definer_conv_data *cd,
+				  struct rte_flow_item *item,
+				  int item_idx)
+{
+	const struct mlx5_rte_flow_item_tx_queue *m = item->mask;
+	struct mlx5dr_definer_fc *fc;
+
+	if (!m)
+		return 0;
+
+	if (m->queue) {
+		fc = &cd->fc[MLX5DR_DEFINER_FNAME_SOURCE_QP];
+		fc->item_idx = item_idx;
+		fc->tag_mask_set = &mlx5dr_definer_ones_set;
+		fc->tag_set = &mlx5dr_definer_source_qp_set;
+		DR_CALC_SET_HDR(fc, source_qp_gvmi, source_qp);
+	}
+
+	return 0;
+}
+
+static int
 mlx5dr_definer_conv_items_to_hl(struct mlx5dr_context *ctx,
 				struct mlx5dr_match_template *mt,
 				uint8_t *hl)
@@ -950,7 +974,7 @@ mlx5dr_definer_conv_items_to_hl(struct mlx5dr_context *ctx,
 	for (i = 0; items->type != RTE_FLOW_ITEM_TYPE_END; i++, items++) {
 		cd.tunnel = !!(item_flags & MLX5_FLOW_LAYER_TUNNEL);
 
-		switch (items->type) {
+		switch ((int)items->type) {
 		case RTE_FLOW_ITEM_TYPE_ETH:
 			ret = mlx5dr_definer_conv_item_eth(&cd, items, i);
 			item_flags |= cd.tunnel ? MLX5_FLOW_LAYER_INNER_L2 :
@@ -993,7 +1017,10 @@ mlx5dr_definer_conv_items_to_hl(struct mlx5dr_context *ctx,
 			ret = mlx5dr_definer_conv_item_vxlan(&cd, items, i);
 			item_flags |= MLX5_FLOW_LAYER_VXLAN;
 			break;
-
+		case MLX5_RTE_FLOW_ITEM_TYPE_TX_QUEUE:
+			ret = mlx5dr_definer_conv_item_tx_queue(&cd, items, i);
+			item_flags |= MLX5_FLOW_ITEM_TX_QUEUE;
+			break;
 		default:
 			DR_LOG(ERR, "Unsupported item type %d", items->type);
 			rte_errno = ENOTSUP;
