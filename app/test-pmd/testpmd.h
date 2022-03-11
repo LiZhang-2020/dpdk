@@ -162,8 +162,8 @@ struct port_template {
 	struct port_template *tmp; /**< Temporary linking. */
 	uint32_t id; /**< Template ID. */
 	union {
-		struct rte_flow_pattern_template *itempl;
-		struct rte_flow_actions_template *atempl;
+		struct rte_flow_pattern_template *pattern_template;
+		struct rte_flow_actions_template *actions_template;
 	} template; /**< PMD opaque template object */
 };
 
@@ -172,8 +172,8 @@ struct port_table {
 	struct port_table *next; /**< Next table in list. */
 	struct port_table *tmp; /**< Temporary linking. */
 	uint32_t id; /**< Table ID. */
-	uint32_t nb_item_templates; /**< Number of item templates. */
-	uint32_t nb_action_templates; /**< Number of action templates. */
+	uint32_t nb_pattern_templates; /**< Number of pattern templates. */
+	uint32_t nb_actions_templates; /**< Number of actions templates. */
 	/**< PMD opaque template object */
 	struct rte_flow_template_table *table;
 };
@@ -247,8 +247,8 @@ struct rte_port {
 	queueid_t               queue_nb; /**< nb. of queues for flow rules */
 	uint32_t                queue_sz; /**< size of a queue for flow rules */
 	uint8_t                 slave_flag; /**< bonding slave port */
-	struct port_template    *item_templ_list; /**< Item templates. */
-	struct port_template    *action_templ_list; /**< Action templates. */
+	struct port_template    *pattern_templ_list; /**< Pattern templates. */
+	struct port_template    *actions_templ_list; /**< Actions templates. */
 	struct port_table       *table_list; /**< Flow tables. */
 	struct port_flow        *flow_list; /**< Associated flows. */
 	struct port_indirect_action *actions_list;
@@ -867,44 +867,47 @@ struct rte_flow_action_handle *port_action_handle_get_by_id(portid_t port_id,
 							    uint32_t id);
 int port_action_handle_update(portid_t port_id, uint32_t id,
 			      const struct rte_flow_action *action);
+int port_flow_get_info(portid_t port_id);
 int port_flow_configure(portid_t port_id,
 			const struct rte_flow_port_attr *port_attr,
 			uint16_t nb_queue,
 			const struct rte_flow_queue_attr *queue_attr);
-int port_flow_item_template_create(portid_t port_id, uint32_t id, bool relaxed,
-				   const struct rte_flow_item *pattern);
-int port_flow_item_template_destroy(portid_t port_id, uint32_t n,
-				    const uint32_t *template);
-int port_flow_action_template_create(portid_t port_id, uint32_t id,
-				     const struct rte_flow_action *actions,
-				     const struct rte_flow_action *masks);
-int port_flow_action_template_destroy(portid_t port_id, uint32_t n,
-				      const uint32_t *template);
-int port_flow_table_create(portid_t port_id, uint32_t id,
+int port_flow_pattern_template_create(portid_t port_id, uint32_t id,
+			const struct rte_flow_pattern_template_attr *attr,
+			const struct rte_flow_item *pattern);
+int port_flow_pattern_template_destroy(portid_t port_id, uint32_t n,
+				       const uint32_t *template);
+int port_flow_actions_template_create(portid_t port_id, uint32_t id,
+			const struct rte_flow_actions_template_attr *attr,
+			const struct rte_flow_action *actions,
+			const struct rte_flow_action *masks);
+int port_flow_actions_template_destroy(portid_t port_id, uint32_t n,
+				       const uint32_t *template);
+int port_flow_template_table_create(portid_t port_id, uint32_t id,
 		   const struct rte_flow_template_table_attr *table_attr,
-		   uint32_t nb_item_templates, uint32_t *item_templates,
-		   uint32_t nb_action_templates, uint32_t *action_templates);
-int port_flow_table_destroy(portid_t port_id,
+		   uint32_t nb_pattern_templates, uint32_t *pattern_templates,
+		   uint32_t nb_actions_templates, uint32_t *actions_templates);
+int port_flow_template_table_destroy(portid_t port_id,
 			    uint32_t n, const uint32_t *table);
 int port_queue_flow_create(portid_t port_id, queueid_t queue_id,
-			   bool drain, uint32_t table_id,
-			   uint32_t item_id, uint32_t action_id,
+			   bool postpone, uint32_t table_id,
+			   uint32_t pattern_idx, uint32_t actions_idx,
 			   const struct rte_flow_item *pattern,
 			   const struct rte_flow_action *actions);
 int port_queue_flow_destroy(portid_t port_id, queueid_t queue_id,
-			    bool drain, uint32_t n, const uint32_t *rule);
+			    bool postpone, uint32_t n, const uint32_t *rule);
 int port_queue_action_handle_create(portid_t port_id, uint32_t queue_id,
-			      bool drain, uint32_t id,
-			      const struct rte_flow_indir_action_conf *conf,
-			      const struct rte_flow_action *action);
+			bool postpone, uint32_t id,
+			const struct rte_flow_indir_action_conf *conf,
+			const struct rte_flow_action *action);
 int port_queue_action_handle_destroy(portid_t port_id,
-			       uint32_t queue_id, bool drain,
-			       uint32_t n, const uint32_t *action);
+				     uint32_t queue_id, bool postpone,
+				     uint32_t n, const uint32_t *action);
 int port_queue_action_handle_update(portid_t port_id, uint32_t queue_id,
-			      bool drain, uint32_t id,
-			      const struct rte_flow_action *action);
-int port_queue_flow_drain(portid_t port_id, queueid_t queue_id);
-int port_queue_flow_dequeue(portid_t port_id, queueid_t queue_id);
+				    bool postpone, uint32_t id,
+				    const struct rte_flow_action *action);
+int port_queue_flow_push(portid_t port_id, queueid_t queue_id);
+int port_queue_flow_pull(portid_t port_id, queueid_t queue_id);
 int port_flow_validate(portid_t port_id,
 		       const struct rte_flow_attr *attr,
 		       const struct rte_flow_item *pattern,

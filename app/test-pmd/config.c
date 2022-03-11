@@ -1884,6 +1884,37 @@ table_alloc(uint32_t id, struct port_table **table,
 	return 0;
 }
 
+/** Get info about flow management resources. */
+int
+port_flow_get_info(portid_t port_id)
+{
+	struct rte_flow_port_info port_info;
+	struct rte_flow_queue_info queue_info;
+	struct rte_flow_error error;
+
+	if (port_id_is_invalid(port_id, ENABLED_WARN) ||
+	    port_id == (portid_t)RTE_PORT_ALL)
+		return -EINVAL;
+	/* Poisoning to make sure PMDs update it in case of error. */
+	memset(&error, 0x99, sizeof(error));
+	memset(&port_info, 0, sizeof(port_info));
+	memset(&queue_info, 0, sizeof(queue_info));
+	if (rte_flow_info_get(port_id, &port_info, &queue_info, &error))
+		return port_flow_complain(&error);
+	printf("Flow engine resources on port %u:\n"
+	       "Number of queues: %d\n"
+		   "Size of queues: %d\n"
+	       "Number of counters: %d\n"
+	       "Number of aging objects: %d\n"
+	       "Number of meter actions: %d\n",
+	       port_id, port_info.max_nb_queues,
+		   queue_info.max_size,
+	       port_info.max_nb_counters,
+	       port_info.max_nb_aging_objects,
+	       port_info.max_nb_meters);
+	return 0;
+}
+
 /** Configure flow management resources. */
 int
 port_flow_configure(portid_t port_id,
@@ -1908,8 +1939,9 @@ port_flow_configure(portid_t port_id,
 	memset(&error, 0x66, sizeof(error));
 	if (rte_flow_configure(port_id, port_attr, nb_queue, attr_list, &error))
 		return port_flow_complain(&error);
-	printf("Configure flows on port %u: number of queues %d "
-	       "with %d elements\n", port_id, nb_queue, queue_attr->size);
+	printf("Configure flows on port %u: "
+	       "number of queues %d with %d elements\n",
+	       port_id, nb_queue, queue_attr->size);
 	return 0;
 }
 
@@ -2319,43 +2351,41 @@ age_action_get(const struct rte_flow_action *actions)
 	return NULL;
 }
 
-/** Create item template */
+/** Create pattern template */
 int
-port_flow_item_template_create(portid_t port_id, uint32_t id,
-			  bool relaxed, const struct rte_flow_item *pattern)
+port_flow_pattern_template_create(portid_t port_id, uint32_t id,
+			const struct rte_flow_pattern_template_attr *attr,
+			const struct rte_flow_item *pattern)
 {
 	struct rte_port *port;
 	struct port_template *pit;
 	int ret;
-	struct rte_flow_pattern_template_attr attr = {
-					.relaxed_matching = relaxed };
 	struct rte_flow_error error;
 
 	if (port_id_is_invalid(port_id, ENABLED_WARN) ||
 	    port_id == (portid_t)RTE_PORT_ALL)
 		return -EINVAL;
 	port = &ports[port_id];
-	ret = template_alloc(id, &pit, &port->item_templ_list);
+	ret = template_alloc(id, &pit, &port->pattern_templ_list);
 	if (ret)
 		return ret;
 	/* Poisoning to make sure PMDs update it in case of error. */
 	memset(&error, 0x22, sizeof(error));
-	pit->template.itempl = rte_flow_pattern_template_create(port_id,
-			      &attr, pattern, &error);
-
-	if (!pit->template.itempl) {
+	pit->template.pattern_template = rte_flow_pattern_template_create
+					(port_id, attr, pattern, &error);
+	if (!pit->template.pattern_template) {
 		uint32_t destroy_id = pit->id;
-		port_flow_item_template_destroy(port_id, 1, &destroy_id);
+		port_flow_pattern_template_destroy(port_id, 1, &destroy_id);
 		return port_flow_complain(&error);
 	}
-	printf("Item template #%u created\n", pit->id);
+	printf("Pattern template #%u created\n", pit->id);
 	return 0;
 }
 
-/** Destroy item template */
+/** Destroy pattern template */
 int
-port_flow_item_template_destroy(portid_t port_id,
-			   uint32_t n, const uint32_t *template)
+port_flow_pattern_template_destroy(portid_t port_id, uint32_t n,
+				   const uint32_t *template)
 {
 	struct rte_port *port;
 	struct port_template **tmp;
@@ -2366,7 +2396,7 @@ port_flow_item_template_destroy(portid_t port_id,
 	    port_id == (portid_t)RTE_PORT_ALL)
 		return -EINVAL;
 	port = &ports[port_id];
-	tmp = &port->item_templ_list;
+	tmp = &port->pattern_templ_list;
 	while (*tmp) {
 		uint32_t i;
 
@@ -2382,15 +2412,14 @@ port_flow_item_template_destroy(portid_t port_id,
 			 */
 			memset(&error, 0x33, sizeof(error));
 
-			if (pit->template.itempl &&
+			if (pit->template.pattern_template &&
 			    rte_flow_pattern_template_destroy(port_id,
-							   pit->template.itempl,
-							   &error)) {
+				pit->template.pattern_template, &error)) {
 				ret = port_flow_complain(&error);
 				continue;
 			}
 			*tmp = pit->next;
-			printf("Item template #%u destroyed\n", pit->id);
+			printf("Pattern template #%u destroyed\n", pit->id);
 			free(pit);
 			break;
 		}
@@ -2401,43 +2430,42 @@ port_flow_item_template_destroy(portid_t port_id,
 	return ret;
 }
 
-/** Create action template */
+/** Create actions template */
 int
-port_flow_action_template_create(portid_t port_id, uint32_t id,
-			  const struct rte_flow_action *actions,
-			  const struct rte_flow_action *masks)
+port_flow_actions_template_create(portid_t port_id, uint32_t id,
+			const struct rte_flow_actions_template_attr *attr,
+			const struct rte_flow_action *actions,
+			const struct rte_flow_action *masks)
 {
 	struct rte_port *port;
 	struct port_template *pat;
 	int ret;
-	struct rte_flow_actions_template_attr attr = { 0 };
 	struct rte_flow_error error;
 
 	if (port_id_is_invalid(port_id, ENABLED_WARN) ||
 	    port_id == (portid_t)RTE_PORT_ALL)
 		return -EINVAL;
 	port = &ports[port_id];
-	ret = template_alloc(id, &pat, &port->action_templ_list);
+	ret = template_alloc(id, &pat, &port->actions_templ_list);
 	if (ret)
 		return ret;
 	/* Poisoning to make sure PMDs update it in case of error. */
 	memset(&error, 0x22, sizeof(error));
-	pat->template.atempl = rte_flow_actions_template_create(port_id,
-			      &attr, actions, masks, &error);
-
-	if (!pat->template.atempl) {
+	pat->template.actions_template = rte_flow_actions_template_create
+				(port_id, attr, actions, masks, &error);
+	if (!pat->template.actions_template) {
 		uint32_t destroy_id = pat->id;
-		port_flow_action_template_destroy(port_id, 1, &destroy_id);
+		port_flow_actions_template_destroy(port_id, 1, &destroy_id);
 		return port_flow_complain(&error);
 	}
-	printf("Action template #%u created\n", pat->id);
+	printf("Actions template #%u created\n", pat->id);
 	return 0;
 }
 
-/** Destroy action template */
+/** Destroy actions template */
 int
-port_flow_action_template_destroy(portid_t port_id,
-			   uint32_t n, const uint32_t *template)
+port_flow_actions_template_destroy(portid_t port_id, uint32_t n,
+				   const uint32_t *template)
 {
 	struct rte_port *port;
 	struct port_template **tmp;
@@ -2448,7 +2476,7 @@ port_flow_action_template_destroy(portid_t port_id,
 	    port_id == (portid_t)RTE_PORT_ALL)
 		return -EINVAL;
 	port = &ports[port_id];
-	tmp = &port->action_templ_list;
+	tmp = &port->actions_templ_list;
 	while (*tmp) {
 		uint32_t i;
 
@@ -2464,15 +2492,14 @@ port_flow_action_template_destroy(portid_t port_id,
 			 */
 			memset(&error, 0x33, sizeof(error));
 
-			if (pat->template.atempl &&
+			if (pat->template.actions_template &&
 			    rte_flow_actions_template_destroy(port_id,
-							   pat->template.atempl,
-							   &error)) {
+				pat->template.actions_template, &error)) {
 				ret = port_flow_complain(&error);
 				continue;
 			}
 			*tmp = pat->next;
-			printf("Action template #%u destroyed\n", pat->id);
+			printf("Actions template #%u destroyed\n", pat->id);
 			free(pat);
 			break;
 		}
@@ -2485,10 +2512,10 @@ port_flow_action_template_destroy(portid_t port_id,
 
 /** Create table */
 int
-port_flow_table_create(portid_t port_id, uint32_t id,
+port_flow_template_table_create(portid_t port_id, uint32_t id,
 		const struct rte_flow_template_table_attr *table_attr,
-		uint32_t nb_item_templates, uint32_t *item_templates,
-		uint32_t nb_action_templates, uint32_t *action_templates)
+		uint32_t nb_pattern_templates, uint32_t *pattern_templates,
+		uint32_t nb_actions_templates, uint32_t *actions_templates)
 {
 	struct rte_port *port;
 	struct port_table *pt;
@@ -2497,73 +2524,75 @@ port_flow_table_create(portid_t port_id, uint32_t id,
 	uint32_t i;
 	struct rte_flow_error error;
 	struct rte_flow_pattern_template
-			*flow_item_templates[nb_item_templates];
+			*flow_pattern_templates[nb_pattern_templates];
 	struct rte_flow_actions_template
-			*flow_action_templates[nb_action_templates];
+			*flow_actions_templates[nb_actions_templates];
 
 	if (port_id_is_invalid(port_id, ENABLED_WARN) ||
 	    port_id == (portid_t)RTE_PORT_ALL)
 		return -EINVAL;
 	port = &ports[port_id];
+	for (i = 0; i < nb_pattern_templates; ++i) {
+		bool found = false;
+		temp = port->pattern_templ_list;
+		while (temp) {
+			if (pattern_templates[i] == temp->id) {
+				flow_pattern_templates[i] =
+					temp->template.pattern_template;
+				found = true;
+				break;
+			}
+			temp = temp->next;
+		}
+		if (!found) {
+			printf("Pattern template #%u is invalid\n",
+			       pattern_templates[i]);
+			return -EINVAL;
+		}
+	}
+	for (i = 0; i < nb_actions_templates; ++i) {
+		bool found = false;
+		temp = port->actions_templ_list;
+		while (temp) {
+			if (actions_templates[i] == temp->id) {
+				flow_actions_templates[i] =
+					temp->template.actions_template;
+				found = true;
+				break;
+			}
+			temp = temp->next;
+		}
+		if (!found) {
+			printf("Actions template #%u is invalid\n",
+			       actions_templates[i]);
+			return -EINVAL;
+		}
+	}
 	ret = table_alloc(id, &pt, &port->table_list);
 	if (ret)
 		return ret;
-	for (i = 0; i < nb_item_templates; ++i) {
-		bool found = false;
-		temp = port->item_templ_list;
-		while (temp) {
-			if (item_templates[i] == temp->id) {
-				flow_item_templates[i] = temp->template.itempl;
-				found = true;
-				break;
-			}
-			temp = temp->next;
-		}
-		if (!found) {
-			printf("Item template #%u is invalid\n",
-			       item_templates[i]);
-			return -EINVAL;
-		}
-	}
-	for (i = 0; i < nb_action_templates; ++i) {
-		bool found = false;
-		temp = port->action_templ_list;
-		while (temp) {
-			if (action_templates[i] == temp->id) {
-				flow_action_templates[i] =
-					temp->template.atempl;
-				found = true;
-				break;
-			}
-			temp = temp->next;
-		}
-		if (!found) {
-			printf("Action template #%u is invalid\n",
-			       action_templates[i]);
-			return -EINVAL;
-		}
-	}
 	/* Poisoning to make sure PMDs update it in case of error. */
 	memset(&error, 0x22, sizeof(error));
 	pt->table = rte_flow_template_table_create(port_id, table_attr,
-		      flow_item_templates, nb_item_templates,
-		      flow_action_templates, nb_action_templates,
+		      flow_pattern_templates, nb_pattern_templates,
+		      flow_actions_templates, nb_actions_templates,
 		      &error);
+
 	if (!pt->table) {
 		uint32_t destroy_id = pt->id;
-		port_flow_table_destroy(port_id, 1, &destroy_id);
+		port_flow_template_table_destroy(port_id, 1, &destroy_id);
 		return port_flow_complain(&error);
 	}
-	pt->nb_item_templates = nb_item_templates;
-	pt->nb_action_templates = nb_action_templates;
-	printf("Table #%u created\n", pt->id);
+	pt->nb_pattern_templates = nb_pattern_templates;
+	pt->nb_actions_templates = nb_actions_templates;
+	printf("Template table #%u created\n", pt->id);
 	return 0;
 }
 
 /** Destroy table */
 int
-port_flow_table_destroy(portid_t port_id,
-			uint32_t n, const uint32_t *table)
+port_flow_template_table_destroy(portid_t port_id,
+				 uint32_t n, const uint32_t *table)
 {
 	struct rte_port *port;
 	struct port_table **tmp;
@@ -2598,7 +2627,7 @@ port_flow_table_destroy(portid_t port_id,
 				continue;
 			}
 			*tmp = pt->next;
-			printf("Table #%u destroyed\n", pt->id);
+			printf("Template table #%u destroyed\n", pt->id);
 			free(pt);
 			break;
 		}
@@ -2613,18 +2642,18 @@ port_flow_table_destroy(portid_t port_id,
 int
 port_queue_flow_create(portid_t port_id, queueid_t queue_id,
 		       bool postpone, uint32_t table_id,
-		       uint32_t item_id, uint32_t action_id,
+		       uint32_t pattern_idx, uint32_t actions_idx,
 		       const struct rte_flow_item *pattern,
 		       const struct rte_flow_action *actions)
 {
-	struct rte_flow_op_attr ops_attr = { .postpone = postpone };
+	struct rte_flow_op_attr op_attr = { .postpone = postpone };
 	struct rte_flow *flow;
 	struct rte_port *port;
 	struct port_flow *pf;
 	struct port_table *pt;
 	uint32_t id = 0;
 	bool found;
-	struct rte_flow_error error;
+	struct rte_flow_error error = { RTE_FLOW_ERROR_TYPE_NONE, NULL, NULL };
 	struct rte_flow_action_age *age = age_action_get(actions);
 
 	port = &ports[port_id];
@@ -2656,16 +2685,16 @@ port_queue_flow_create(portid_t port_id, queueid_t queue_id,
 		return -EINVAL;
 	}
 
-	if (item_id >= pt->nb_item_templates) {
-		printf("Item template index #%u is invalid,"
+	if (pattern_idx >= pt->nb_pattern_templates) {
+		printf("Pattern template index #%u is invalid,"
 		       " %u templates present in the table\n",
-		       item_id, pt->nb_item_templates);
+		       pattern_idx, pt->nb_pattern_templates);
 		return -EINVAL;
 	}
-	if (action_id >= pt->nb_action_templates) {
-		printf("Action template index #%u is invalid,"
+	if (actions_idx >= pt->nb_actions_templates) {
+		printf("Actions template index #%u is invalid,"
 		       " %u templates present in the table\n",
-		       action_id, pt->nb_action_templates);
+		       actions_idx, pt->nb_actions_templates);
 		return -EINVAL;
 	}
 
@@ -2678,10 +2707,11 @@ port_queue_flow_create(portid_t port_id, queueid_t queue_id,
 	}
 	/* Poisoning to make sure PMDs update it in case of error. */
 	memset(&error, 0x11, sizeof(error));
-	flow = rte_flow_async_create(port_id, queue_id, &ops_attr,
-		pt->table, pattern, item_id, actions, action_id, NULL, &error);
+	flow = rte_flow_async_create(port_id, queue_id, &op_attr, pt->table,
+		pattern, pattern_idx, actions, actions_idx, NULL, &error);
 	if (!flow) {
-		free(pf);
+		uint32_t flow_id = pf->id;
+		port_queue_flow_destroy(port_id, queue_id, true, 1, &flow_id);
 		return port_flow_complain(&error);
 	}
 
@@ -2877,9 +2907,9 @@ port_queue_action_handle_update(portid_t port_id,
 	return 0;
 }
 
-/** Drain all the queue operations down the queue. */
+/** Push all the queue operations in the queue to the NIC. */
 int
-port_queue_flow_drain(portid_t port_id, queueid_t queue_id)
+port_queue_flow_push(portid_t port_id, queueid_t queue_id)
 {
 	struct rte_port *port;
 	struct rte_flow_error error;
@@ -2898,16 +2928,17 @@ port_queue_flow_drain(portid_t port_id, queueid_t queue_id)
 	memset(&error, 0x55, sizeof(error));
 	ret = rte_flow_push(port_id, queue_id, &error);
 	if (ret < 0) {
-		printf("Failed to postpone queue: %s\n", strerror(-ret));
+		printf("Failed to push operations in the queue: %s\n",
+		       strerror(-ret));
 		return ret;
 	}
-	printf("Queue #%u postponeed\n", queue_id);
+	printf("Queue #%u operations pushed\n", queue_id);
 	return ret;
 }
 
-/** Dequeue a queue operation from the queue. */
+/** Pull queue operation results from the queue. */
 int
-port_queue_flow_dequeue(portid_t port_id, queueid_t queue_id)
+port_queue_flow_pull(portid_t port_id, queueid_t queue_id)
 {
 	struct rte_port *port;
 	struct rte_flow_op_result *res;
@@ -2926,9 +2957,9 @@ port_queue_flow_dequeue(portid_t port_id, queueid_t queue_id)
 		return -EINVAL;
 	}
 
-	res = malloc(sizeof(struct rte_flow_op_result) * port->queue_sz);
+	res = calloc(port->queue_sz, sizeof(struct rte_flow_op_result));
 	if (!res) {
-		printf("Failed to allocate memory for dequeue results\n");
+		printf("Failed to allocate memory for pulled results\n");
 		return -ENOMEM;
 	}
 
@@ -2936,7 +2967,8 @@ port_queue_flow_dequeue(portid_t port_id, queueid_t queue_id)
 	ret = rte_flow_pull(port_id, queue_id, res,
 				 port->queue_sz, &error);
 	if (ret < 0) {
-		printf("Failed to dequeue a queue: %s\n", strerror(-ret));
+		printf("Failed to pull a operation results: %s\n",
+		       strerror(-ret));
 		free(res);
 		return ret;
 	}
@@ -2945,8 +2977,8 @@ port_queue_flow_dequeue(portid_t port_id, queueid_t queue_id)
 		if (res[i].status == RTE_FLOW_OP_SUCCESS)
 			success++;
 	}
-	printf("Queue #%u dequeued %u operations (%u failed, %u succeeded)\n",
-		queue_id, ret, ret - success, success);
+	printf("Queue #%u pulled %u operations (%u failed, %u succeeded)\n",
+	       queue_id, ret, ret - success, success);
 	free(res);
 	return ret;
 }
