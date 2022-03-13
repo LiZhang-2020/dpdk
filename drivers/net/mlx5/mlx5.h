@@ -1293,12 +1293,13 @@ struct mlx5_dev_ctx_shared {
 	struct mlx5_lb_ctx self_lb; /* QP to enable self loopback for Devx. */
 	unsigned int flow_max_priority;
 	enum modify_reg flow_mreg_c[MLX5_MREG_C_NUM];
+	/* Availability of mreg_c's. */
 	void *devx_channel_lwm;
 	struct rte_intr_handle intr_handle_lwm;
 	pthread_mutex_t lwm_config_lock;
 	uint32_t host_shaper_rate:8;
 	uint32_t lwm_triggered:1;
-	/* Availability of mreg_c's. */
+	void *hws_tx;
 	struct mlx5_dev_shared_port port[]; /* per device port data array. */
 };
 

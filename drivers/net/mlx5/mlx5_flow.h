@@ -1307,6 +1307,14 @@ struct rte_flow_template_table {
 	uint32_t refcnt; /* Table reference counter. */
 };
 
+struct mlx5_hw_meta_tx_cpy_info {
+	struct rte_flow_pattern_template *pt;
+	struct rte_flow_actions_template *at;
+	struct rte_flow_template_table *tbl;
+	struct rte_flow *rule;
+	uint32_t cnt;
+};
+
 /*
  * Define list of valid combinations of RX Hash fields
  * (see enum ibv_rx_hash_fields).

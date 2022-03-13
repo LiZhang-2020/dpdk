@@ -83,6 +83,14 @@ flow_hw_rxq_flag_set(struct rte_eth_dev *dev, bool enable)
 	priv->mark_enabled = enable;
 }
 
+static int
+flow_hw_create_tx_default_mreg_copy(struct rte_eth_dev *dev,
+				    struct rte_flow_error *error);
+
+static void
+flow_hw_destroy_tx_default_mreg_copy(struct rte_eth_dev *dev,
+				     struct rte_flow_error *error);
+
 /**
  * Generate the pattern item flags.
  * Will be used for shared RSS action.
@@ -147,6 +155,13 @@ flow_hw_rss_item_flags_get(const struct rte_flow_item items[])
 		item_flags |= last_item;
 	}
 	return item_flags;
+}
+
+static inline uint32_t
+flow_hw_get_ctrl_queue(struct mlx5_priv *priv)
+{
+	MLX5_ASSERT(priv->nb_queue > 1);
+	return priv->nb_queue - 1;
 }
 
 /**
@@ -3451,7 +3466,7 @@ flow_hw_configure(struct rte_eth_dev *dev,
 	struct rte_flow_queue_attr **_queue_attr = NULL;
 	struct rte_flow_queue_attr ctrl_queue_attr = {0};
 	bool is_proxy = !!(priv->sh->config.dv_esw_en && priv->master);
-	int ret;
+	int ret = 0;
 
 	if (!port_attr || !nb_queue || !queue_attr) {
 		rte_errno = EINVAL;
@@ -3581,6 +3596,17 @@ flow_hw_configure(struct rte_eth_dev *dev,
 			goto err;
 		}
 	}
+	/*
+	 * The default flow to copy Tx metadata will only be created
+	 * in the switchdev mode.
+	 * "dv_flow_en" is checked in the previous code.
+	 */
+	if (priv->sh->config.dv_esw_en &&
+	    priv->sh->config.dv_xmeta_en == MLX5_XMETA_MODE_META32_HWS) {
+		ret = flow_hw_create_tx_default_mreg_copy(dev, error);
+		if (ret)
+			goto err;
+	}
 	if (_queue_attr)
 		mlx5_free(_queue_attr);
 	return 0;
@@ -3602,6 +3628,9 @@ err:
 	}
 	if (_queue_attr)
 		mlx5_free(_queue_attr);
+	/* Do not overwrite the internal errno information. */
+	if (ret)
+		return ret;
 	return rte_flow_error_set(error, rte_errno,
 				  RTE_FLOW_ERROR_TYPE_UNSPECIFIED, NULL,
 				  "fail to configure port");
@@ -3625,6 +3654,10 @@ flow_hw_resource_release(struct rte_eth_dev *dev)
 	if (!priv->dr_ctx)
 		return;
 	flow_hw_flush_all_ctrl_flows(dev);
+	if (priv->sh->config.dv_esw_en &&
+	    priv->sh->config.dv_xmeta_en == MLX5_XMETA_MODE_META32_HWS) {
+		flow_hw_destroy_tx_default_mreg_copy(dev, NULL);
+	}
 	while (!LIST_EMPTY(&priv->flow_hw_tbl)) {
 		tbl = LIST_FIRST(&priv->flow_hw_tbl);
 		flow_hw_table_destroy(dev, tbl, NULL);
@@ -3862,6 +3895,156 @@ flow_hw_action_handle_destroy(struct rte_eth_dev *dev, uint32_t queue,
 	return flow_dv_action_destroy(dev, handle, error);
 }
 
+static int
+flow_hw_create_tx_default_mreg_copy(struct rte_eth_dev *dev,
+				    struct rte_flow_error *error)
+{
+	struct mlx5_priv *priv = dev->data->dev_private;
+	struct mlx5_hw_meta_tx_cpy_info *tx_info =
+		(struct mlx5_hw_meta_tx_cpy_info *)priv->sh->hws_tx;
+	struct rte_flow_pattern_template_attr tx_pa_attr = {
+		.relaxed_matching = 0,
+		.egress = 1,
+	};
+	struct rte_flow_actions_template_attr tx_act_attr = {
+		.egress = 1,
+	};
+	struct rte_flow_item_eth promisc = {
+		.dst.addr_bytes = "\x00\x00\x00\x00\x00\x00",
+		.src.addr_bytes = "\x00\x00\x00\x00\x00\x00",
+		.type = 0,
+	};
+	struct rte_flow_item eth_all[] = {
+		[0] = {
+			.type = RTE_FLOW_ITEM_TYPE_ETH,
+			.spec = &promisc,
+			.mask = &promisc,
+		},
+		[1] = {
+			.type = RTE_FLOW_ITEM_TYPE_END,
+		},
+	};
+	struct rte_flow_pattern_template *pt;
+	struct rte_flow_action_modify_field mreg = {
+		.operation = RTE_FLOW_MODIFY_SET,
+		.dst = {
+			.field = (enum rte_flow_field_id)MLX5_RTE_FLOW_FIELD_META_REG,
+			.level = REG_C_1,
+		},
+		.src = {
+			.field = (enum rte_flow_field_id)MLX5_RTE_FLOW_FIELD_META_REG,
+			.level = REG_A,
+		},
+		.width = 32,
+	};
+	struct rte_flow_action copy_reg[] = {
+		[0] = {
+			.type = RTE_FLOW_ACTION_TYPE_MODIFY_FIELD,
+			.conf = &mreg,
+		},
+		[1] = {
+			.type = RTE_FLOW_ACTION_TYPE_END,
+		},
+	};
+	struct rte_flow_actions_template *at = NULL;
+	struct rte_flow_template_table_attr tx_tbl_attr = {
+		.flow_attr = {
+			.group = 0,
+			.priority = (UINT16_MAX - 1), /* Lowest priority is UINT32_MAX */
+			.egress = 1,
+		},
+		.nb_flows = 1,
+	};
+	struct rte_flow_template_table *tx_tbl = NULL;
+	struct rte_flow_op_attr q_ops = {
+		.postpone = 1,
+	};
+	struct rte_flow *tx_cpy_flow = NULL;
+	uint32_t ctrl_q = flow_hw_get_ctrl_queue(priv);
+
+	/* All representors share the same NIC Tx rule. */
+	if (tx_info) {
+		tx_info->cnt++;
+		return 0;
+	}
+	tx_info = mlx5_malloc(MLX5_MEM_ZERO,
+			      sizeof(struct mlx5_hw_meta_tx_cpy_info),
+			      RTE_CACHE_LINE_SIZE, SOCKET_ID_ANY);
+	if (!tx_info)
+		return rte_flow_error_set(error, ENOMEM,
+					  RTE_FLOW_ERROR_TYPE_UNSPECIFIED,
+					  NULL,
+					  "cannot allocate tx copy info");
+	pt = flow_hw_pattern_template_create(dev, &tx_pa_attr, eth_all, error);
+	if (!pt)
+		goto err_exit;
+	at = flow_hw_actions_template_create(dev, &tx_act_attr, copy_reg,
+					     copy_reg, error);
+	if (!at)
+		goto err_exit;
+	tx_tbl = flow_hw_table_create(dev, &tx_tbl_attr, &pt, 1, &at, 1, error);
+	if (!tx_tbl)
+		goto err_exit;
+	tx_cpy_flow = flow_hw_async_flow_create(dev, ctrl_q, &q_ops,
+						tx_tbl, eth_all, 0, copy_reg,
+						0, NULL, error);
+	if (!tx_cpy_flow)
+		goto err_exit;
+	if (__flow_hw_pull_comp(dev, ctrl_q, 1, error))
+		goto err_exit;
+	tx_info->pt = pt;
+	tx_info->at = at;
+	tx_info->tbl = tx_tbl;
+	tx_info->rule = tx_cpy_flow;
+	tx_info->cnt = 1;
+	priv->sh->hws_tx = tx_info;
+	return 0;
+err_exit:
+	if (tx_cpy_flow) {
+		struct rte_flow_error drop_error;
+		int ret;
+
+		ret = flow_hw_async_flow_destroy(dev, ctrl_q, &q_ops, tx_cpy_flow,
+						 NULL, &drop_error);
+		MLX5_ASSERT(!ret);
+		if (!ret)
+			(void)__flow_hw_pull_comp(dev, ctrl_q, 1, &drop_error);
+	}
+	if (tx_tbl)
+		claim_zero(flow_hw_table_destroy(dev, tx_tbl, error));
+	if (at)
+		claim_zero(flow_hw_actions_template_destroy(dev, at, error));
+	if (pt)
+		claim_zero(flow_hw_pattern_template_destroy(dev, pt, error));
+	if (tx_info)
+		mlx5_free(tx_info);
+	return -rte_errno;
+}
+
+static void
+flow_hw_destroy_tx_default_mreg_copy(struct rte_eth_dev *dev,
+				     struct rte_flow_error *error)
+{
+	struct mlx5_priv *priv = dev->data->dev_private;
+	struct mlx5_hw_meta_tx_cpy_info *tx_info =
+		(struct mlx5_hw_meta_tx_cpy_info *)priv->sh->hws_tx;
+	struct rte_flow_op_attr q_ops = {
+		.postpone = 1,
+	};
+	uint32_t ctrl_q = flow_hw_get_ctrl_queue(priv);
+
+	if (!tx_info || --tx_info->cnt)
+		return;
+	if (!flow_hw_async_flow_destroy(dev, ctrl_q, &q_ops,
+					tx_info->rule, NULL, error))
+		(void)__flow_hw_pull_comp(dev, ctrl_q, 1, error);
+	claim_zero(flow_hw_table_destroy(dev, tx_info->tbl, error));
+	claim_zero(flow_hw_actions_template_destroy(dev, tx_info->at, error));
+	claim_zero(flow_hw_pattern_template_destroy(dev, tx_info->pt, error));
+	mlx5_free(tx_info);
+	priv->sh->hws_tx = NULL;
+}
+
 const struct mlx5_flow_driver_ops mlx5_flow_hw_drv_ops = {
 	.info_get = flow_hw_info_get,
 	.configure = flow_hw_configure,
@@ -3884,13 +4067,6 @@ const struct mlx5_flow_driver_ops mlx5_flow_hw_drv_ops = {
 	.action_update = flow_dv_action_update,
 	.action_query = flow_dv_action_query,
 };
-
-static uint32_t
-flow_hw_get_ctrl_queue(struct mlx5_priv *priv)
-{
-	MLX5_ASSERT(priv->nb_queue > 0);
-	return priv->nb_queue - 1;
-}
 
 /**
  * Creates a control flow using flow template API on @p proxy_dev device,
