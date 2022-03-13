@@ -1227,12 +1227,17 @@ mlx5_glue_devx_port_query(struct ibv_context *ctx,
 		info->vport_id = devx_port.vport;
 		info->query_flags |= MLX5_PORT_QUERY_VPORT;
 	}
+	if (devx_port.flags & MLX5DV_QUERY_PORT_VPORT_VHCA_ID) {
+		info->esw_owner_vhca_id = devx_port.esw_owner_vhca_id;
+		info->query_flags |= MLX5_PORT_QUERY_VHCA_ID;
+	}
 #else
 #ifdef HAVE_MLX5DV_DR_DEVX_PORT
 	/* The legacy DevX port query API is implemented (prior v35). */
 	struct mlx5dv_devx_port devx_port = {
 		.comp_mask = MLX5DV_DEVX_PORT_VPORT |
-			     MLX5DV_DEVX_PORT_MATCH_REG_C_0
+			     MLX5DV_DEVX_PORT_MATCH_REG_C_0 |
+			     MLX5DV_DEVX_PORT_VPORT_VHCA_ID
 	};
 
 	err = mlx5dv_query_devx_port(ctx, port_num, &devx_port);
@@ -1247,6 +1252,11 @@ mlx5_glue_devx_port_query(struct ibv_context *ctx,
 		info->vport_id = devx_port.vport_num;
 		info->query_flags |= MLX5_PORT_QUERY_VPORT;
 	}
+	if (devx_port.comp_mask & MLX5DV_DEVX_PORT_VPORT_VHCA_ID) {
+		info->esw_owner_vhca_id = devx_port.esw_owner_vhca_id;
+		info->query_flags |= MLX5_PORT_QUERY_VHCA_ID;
+	}
+
 #else
 	RTE_SET_USED(ctx);
 	RTE_SET_USED(port_num);
