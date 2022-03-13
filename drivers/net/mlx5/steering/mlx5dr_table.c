@@ -34,7 +34,8 @@ mlx5dr_table_up_default_fdb_miss_tbl(struct mlx5dr_table *tbl)
 	ft_attr.level = tbl->ctx->caps->nic_ft.max_level; /* The last level */
 	ft_attr.rtc_valid = false;
 
-	vport = mlx5dr_context_get_default_miss_vport(ctx);
+	assert(ctx->caps->eswitch_manager);
+	vport = ctx->caps->eswitch_manager_vport_number;
 
 	default_miss = mlx5dr_cmd_miss_ft_create(ctx->ibv_ctx, &ft_attr, vport);
 	if (!default_miss) {

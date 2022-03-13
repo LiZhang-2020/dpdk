@@ -147,6 +147,8 @@ struct mlx5dr_cmd_query_caps {
 	uint8_t flex_parser_id_gtpu_first_ext_dw_0;
 	struct mlx5dr_cmd_query_ft_caps nic_ft;
 	struct mlx5dr_cmd_query_ft_caps fdb_ft;
+	bool eswitch_manager;
+	uint32_t eswitch_manager_vport_number;
 	uint8_t log_header_modify_argument_granularity;
 	uint8_t log_header_modify_argument_max_alloc;
 	uint64_t definer_format_sup;

@@ -748,6 +748,9 @@ int mlx5dr_cmd_query_caps(struct ibv_context *ctx,
 		MLX5_GET(query_hca_cap_out, out,
 			 capability.cmd_hca_cap.wqe_based_flow_table_update_cap);
 
+	caps->eswitch_manager = MLX5_GET(query_hca_cap_out, out,
+					 capability.cmd_hca_cap.eswitch_manager);
+
 	caps->flex_protocols = MLX5_GET(query_hca_cap_out, out,
 					capability.cmd_hca_cap.flex_parser_protocols);
 
@@ -857,6 +860,24 @@ int mlx5dr_cmd_query_caps(struct ibv_context *ctx,
 		caps->stc_alloc_log_gran = MLX5_GET(query_hca_cap_out, out,
 						    capability.wqe_based_flow_table_cap.
 						    stc_alloc_log_granularity);
+	}
+
+	if (caps->eswitch_manager) {
+		MLX5_SET(query_hca_cap_in, in, op_mod,
+			 MLX5_SET_HCA_CAP_OP_MOD_ESW | MLX5_HCA_CAP_OPMOD_GET_CUR);
+
+		ret = mlx5_glue->devx_general_cmd(ctx, in, sizeof(in), out, sizeof(out));
+		if (ret) {
+			DR_LOG(ERR, "Query eswitch capabilities failed %d\n", ret);
+			rte_errno = errno;
+			return rte_errno;
+		}
+
+		if (MLX5_GET(query_hca_cap_out, out,
+			     capability.esw_cap.esw_manager_vport_number_valid))
+			caps->eswitch_manager_vport_number =
+			MLX5_GET(query_hca_cap_out, out,
+				 capability.esw_cap.esw_manager_vport_number);
 	}
 
 	// TODO Current FW don't set this bit (yet)

@@ -32,5 +32,4 @@ struct mlx5dr_context {
 	LIST_HEAD(table_head, mlx5dr_table) head;
 };
 
-int mlx5dr_context_get_default_miss_vport(struct mlx5dr_context *ctx);
 #endif
