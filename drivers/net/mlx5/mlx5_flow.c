@@ -5328,6 +5328,7 @@ flow_meter_split_prep(struct rte_eth_dev *dev,
 	uint32_t flow_id = 0;
 	uint32_t flow_id_reversed = 0;
 	uint8_t flow_id_bits = 0;
+	bool after_meter = false;
 	int shift;
 
 	/* Prepare the suffix subflow items. */
@@ -5394,6 +5395,7 @@ flow_meter_split_prep(struct rte_eth_dev *dev,
 				tag_action = actions_pre++;
 				action_cur = actions_pre++;
 			}
+			after_meter = true;
 			break;
 		case RTE_FLOW_ACTION_TYPE_VXLAN_DECAP:
 		case RTE_FLOW_ACTION_TYPE_NVGRE_DECAP:
@@ -5421,6 +5423,11 @@ flow_meter_split_prep(struct rte_eth_dev *dev,
 				vlan_item_dst->type = (enum rte_flow_item_type)
 						MLX5_RTE_FLOW_ITEM_TYPE_VLAN;
 			}
+			break;
+		case RTE_FLOW_ACTION_TYPE_COUNT:
+			if (fm->def_policy)
+				action_cur = after_meter ?
+						actions_sfx++ : actions_pre++;
 			break;
 		default:
 			break;
@@ -6447,8 +6454,10 @@ flow_create_split_meter(struct rte_eth_dev *dev,
 		if (!fm->def_policy && !is_mtr_hierarchy &&
 		    (!has_modify || !fm->drop_cnt))
 			set_mtr_reg = false;
-		/* Prefix actions: meter, decap, encap, tag, jump, end. */
-		act_size = sizeof(struct rte_flow_action) * (actions_n + 6) +
+		/* Prefix actions: meter, decap, encap, tag, jump, end, cnt. */
+#define METER_PREFIX_ACTION 7
+		act_size = (sizeof(struct rte_flow_action) *
+			    (actions_n + METER_PREFIX_ACTION)) +
 			   sizeof(struct mlx5_rte_flow_action_set_tag);
 		/* Suffix items: tag, vlan, port id, end. */
 #define METER_SUFFIX_ITEM 4
