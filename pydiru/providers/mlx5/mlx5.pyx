@@ -83,3 +83,6 @@ cdef _action_destroy(dr.mlx5dr_action *action):
 
 cdef int _rule_get_handle_size():
     return dr.mlx5dr_rule_get_handle_size()
+
+cdef dv.flow_hw_port_info *_flow_hw_conv_port_id(uint16_t port_id):
+    return dv.flow_hw_conv_port_id(port_id)

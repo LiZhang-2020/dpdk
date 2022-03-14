@@ -2,7 +2,8 @@
 # Copyright (c) 2022, Nvidia Inc. All rights reserved.
 
 cimport pydiru.providers.mlx5.steering.libmlx5dr as dr
-from libc.stdint cimport uint64_t
+cimport pydiru.providers.mlx5.libmlx5 as dv
+from libc.stdint cimport uint16_t, uint64_t
 cimport pydiru.libpydiru as pdr
 cimport pydiru.libibverbs as v
 cimport libc.stdio as s
@@ -39,3 +40,4 @@ cdef dr.mlx5dr_action *_action_create_default_miss(dr.mlx5dr_context *ctx, flags
 cdef dr.mlx5dr_action *_action_create_counter(dr.mlx5dr_context *ctx, dr.mlx5dr_devx_obj *obj, flags)
 cdef _action_destroy(dr.mlx5dr_action *action)
 cdef int _rule_get_handle_size()
+cdef dv.flow_hw_port_info *_flow_hw_conv_port_id(uint16_t port_id)

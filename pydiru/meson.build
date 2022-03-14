@@ -37,7 +37,13 @@ includes += include_directories(
 '../lib/librte_mbuf/', '../../lib/librte_mbuf/',
 '../lib/librte_mempool/', '../../lib/librte_mempool/',
 '../lib/librte_meter/', '../../lib/librte_meter/',
-'../lib/librte_ring', '../../lib/librte_ring')
+'../lib/librte_ring', '../../lib/librte_ring',
+'../lib/librte_pci/','../../lib/librte_pci/',
+'../lib/librte_kvargs/', '../../lib/librte_kvargs/',
+'../drivers/common/mlx5/','../../drivers/common/mlx5/',
+'../drivers/net/mlx5/linux','../../drivers/net/mlx5/linux',
+'../drivers/common/mlx5/linux/','../../drivers/common/mlx5/linux/',
+'../drivers/bus/pci', '../../drivers/bus/pci')
 
 
 pydiru_cython_modules = [

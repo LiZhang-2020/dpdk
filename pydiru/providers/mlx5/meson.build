@@ -4,7 +4,8 @@
 includes += global_inc
 
 pydiru_cython_modules = [
-	'mlx5.pyx'
+	'mlx5.pyx',
+	'mlx5_flow.pyx'
 ]
 
 pydiru_python_modules = [
