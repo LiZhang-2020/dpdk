@@ -19,7 +19,7 @@ from pyverbs.mr import MR
 from pydiru.providers.mlx5.steering.mlx5dr_matcher import Mlx5drMacherTemplate, Mlx5drMatcherAttr, Mlx5drMatcher
 from pydiru.providers.mlx5.steering.mlx5dr_action import Mlx5drRuleAction, \
     Mlx5drActionDestTable, Mlx5drActionDestTir, Mlx5drActionTag, Mlx5drActionDefaultMiss, \
-    Mlx5drActionReformat, Mlx5drActionCounter, Mlx5drActionDrop, Mlx5drActionModify
+    Mlx5drActionReformat, Mlx5drActionCounter, Mlx5drActionDrop, Mlx5drActionModify, Mlx5drActionDestVport
 from pydiru.providers.mlx5.steering.mlx5dr_context import Mlx5drContextAttr, Mlx5drContext
 from pydiru.providers.mlx5.steering.mlx5dr_table import Mlx5drTableAttr, Mlx5drTable
 from pydiru.providers.mlx5.steering.mlx5dr_rule import Mlx5drRuleAttr, Mlx5drRule
@@ -271,6 +271,9 @@ class BaseDrResources(object):
         elif action_str == 'counter':
             mlx5_dr_counter = kwargs.get('dr_counter')
             action = Mlx5drActionCounter(self.dr_ctx, mlx5_dr_counter, flags)
+        elif action_str == 'vport':
+            vport = kwargs.get('vport')
+            action = Mlx5drActionDestVport(self.dr_ctx, vport, flags)
         else:
             raise unittest.SkipTest(f'Unsupported action {action_str}')
         return action, Mlx5drRuleAction(action)

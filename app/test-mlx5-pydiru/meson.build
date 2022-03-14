@@ -20,6 +20,7 @@ pydiru_python_tests = [
     'run_tests.py',
     'test_mlx5dr_actions.py',
     'test_mlx5dr_control_path.py',
+    'test_mlx5dr_fdb.py',
     'test_mlx5dr_matchers.py',
     'test_mlx5dr_rules.py',
     'utils.py'
