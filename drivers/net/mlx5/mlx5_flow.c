@@ -12268,7 +12268,8 @@ flow_convert_action_modify_field(struct rte_eth_dev *dev,
 
 	if (conf->src.field == RTE_FLOW_FIELD_POINTER ||
 	    conf->src.field == RTE_FLOW_FIELD_VALUE) {
-		type = MLX5_MODIFICATION_TYPE_SET;
+		type = conf->operation == RTE_FLOW_MODIFY_SET ?
+			MLX5_MODIFICATION_TYPE_SET : MLX5_MODIFICATION_TYPE_ADD;
 		/** For SET fill the destination field (field) first. */
 		mlx5_flow_field_id_to_modify_info(&conf->dst, field, mask,
 						  conf->width, dev,
