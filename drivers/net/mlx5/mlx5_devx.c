@@ -64,7 +64,7 @@ mlx5_rxq_modify_rq_vlan_strip(struct mlx5_rxq_priv *rxq, int on)
  * @return
  *   0 on success, a negative errno value otherwise and rte_errno is set.
  */
-static int
+int
 mlx5_devx_modify_rq(struct mlx5_rxq_priv *rxq, uint8_t type)
 {
 	struct mlx5_devx_modify_rq_attr rq_attr;
@@ -80,6 +80,9 @@ mlx5_devx_modify_rq(struct mlx5_rxq_priv *rxq, uint8_t type)
 	case MLX5_RXQ_MOD_RST2RDY:
 		rq_attr.rq_state = MLX5_RQC_STATE_RST;
 		rq_attr.state = MLX5_RQC_STATE_RDY;
+		rq_attr.modify_bitmask |=
+			MLX5_MODIFY_RQ_IN_MODIFY_BITMASK_WQ_LWM;
+		rq_attr.lwm = rxq->lwm;
 		break;
 	case MLX5_RXQ_MOD_RDY2ERR:
 		rq_attr.rq_state = MLX5_RQC_STATE_RDY;
@@ -88,6 +91,13 @@ mlx5_devx_modify_rq(struct mlx5_rxq_priv *rxq, uint8_t type)
 	case MLX5_RXQ_MOD_RDY2RST:
 		rq_attr.rq_state = MLX5_RQC_STATE_RDY;
 		rq_attr.state = MLX5_RQC_STATE_RST;
+		break;
+	case MLX5_RXQ_MOD_RDY2RDY:
+		rq_attr.rq_state = MLX5_RQC_STATE_RDY;
+		rq_attr.state = MLX5_RQC_STATE_RDY;
+		rq_attr.modify_bitmask |=
+			MLX5_MODIFY_RQ_IN_MODIFY_BITMASK_WQ_LWM;
+		rq_attr.lwm = rxq->lwm;
 		break;
 	default:
 		break;

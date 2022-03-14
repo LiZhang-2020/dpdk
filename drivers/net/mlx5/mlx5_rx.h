@@ -181,6 +181,7 @@ struct mlx5_rxq_priv {
 	struct mlx5_devx_obj *devx_rq;
 	struct rte_eth_hairpin_conf hairpin_conf; /* Hairpin configuration. */
 	uint32_t hairpin_status; /* Hairpin binding status. */
+	uint32_t lwm:16;
 };
 
 /* External RX queue descriptor. */
