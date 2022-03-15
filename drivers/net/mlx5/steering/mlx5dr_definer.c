@@ -297,11 +297,11 @@ mlx5dr_definer_vport_set(struct mlx5dr_definer_fc *fc,
 			 const void *item_spec,
 			 uint8_t *tag)
 {
-	const struct rte_flow_item_port_id *v = item_spec;
+	const struct rte_flow_item_ethdev *v = item_spec;
 	const struct flow_hw_port_info *port_info;
 	uint32_t regc_value;
 
-	port_info = flow_hw_conv_port_id(v->id);
+	port_info = flow_hw_conv_port_id(v->port_id);
 	if (unlikely(!port_info))
 		regc_value = BAD_PORT;
 	else
@@ -832,11 +832,11 @@ mlx5dr_definer_conv_item_port(struct mlx5dr_definer_conv_data *cd,
 			      struct rte_flow_item *item,
 			      int item_idx)
 {
-	const struct rte_flow_item_port_id *m = item->mask;
+	const struct rte_flow_item_ethdev *m = item->mask;
 	struct mlx5dr_definer_fc *fc;
 	uint8_t bit_offset = 0;
 
-	if (m->id) {
+	if (m->port_id) {
 		if (!cd->caps->wire_regc_mask) {
 			DR_LOG(ERR, "Port ID item not supported, missing wire REGC mask");
 			rte_errno = ENOTSUP;
@@ -1008,9 +1008,9 @@ mlx5dr_definer_conv_items_to_hl(struct mlx5dr_context *ctx,
 			ret = mlx5dr_definer_conv_item_gtp_psc(&cd, items, i);
 			item_flags |= MLX5_FLOW_LAYER_GTP_PSC;
 			break;
-		case RTE_FLOW_ITEM_TYPE_PORT_ID:
+		case RTE_FLOW_ITEM_TYPE_REPRESENTED_PORT:
 			ret = mlx5dr_definer_conv_item_port(&cd, items, i);
-			item_flags |= MLX5_FLOW_ITEM_PORT_ID;
+			item_flags |= MLX5_FLOW_ITEM_REPRESENTED_PORT;
 			mt->vport_item_id = i;
 			break;
 		case RTE_FLOW_ITEM_TYPE_VXLAN:

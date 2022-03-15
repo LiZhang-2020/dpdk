@@ -8,18 +8,18 @@ static void mlx5dr_rule_skip(struct mlx5dr_match_template *mt,
 			     const struct rte_flow_item *items,
 			     bool *skip_rx, bool *skip_tx)
 {
-	const struct rte_flow_item_port_id *v;
+	const struct rte_flow_item_ethdev *v;
 	const struct flow_hw_port_info *vport;
 
 	/* By default FDB rules are added to both RX and TX */
 	*skip_rx = false;
 	*skip_tx = false;
 
-	if (mt->item_flags & MLX5_FLOW_ITEM_PORT_ID) {
+	if (mt->item_flags & MLX5_FLOW_ITEM_REPRESENTED_PORT) {
 		v = items[mt->vport_item_id].spec;
-		vport = flow_hw_conv_port_id(v->id);
+		vport = flow_hw_conv_port_id(v->port_id);
 		if (unlikely(!vport)) {
-			DR_LOG(ERR, "Fail to map port ID %d, ignoring", v->id);
+			DR_LOG(ERR, "Fail to map port ID %d, ignoring", v->port_id);
 			return;
 		}
 
