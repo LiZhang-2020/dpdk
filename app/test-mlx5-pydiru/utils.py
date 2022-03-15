@@ -25,6 +25,12 @@ MAX_DIFF_PACKETS = 5
 BULK_COUNTER_SIZE = 512
 BULK_512 = 0b100
 
+MELLANOX_VENDOR_ID = 0x02c9
+
+
+class VendorPartID:
+    CX6DX = 0x101d
+
 
 class TunnelType:
     GTP_U = 'GPT-U'
@@ -532,3 +538,8 @@ def create_tunneled_gtp_teid_rte_items(with_qfi=False, inner_l4=socket.IPPROTO_U
                                                   dst_port=PacketConsts.DST_PORT))
     rte_flow_items.append(RteFlowItemEnd())
     return rte_flow_items
+
+
+def is_cx6dx(dev_attrs):
+    return dev_attrs.vendor_id == MELLANOX_VENDOR_ID and \
+        dev_attrs.vendor_part_id == VendorPartID.CX6DX

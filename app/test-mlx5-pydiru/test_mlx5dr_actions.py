@@ -14,7 +14,7 @@ import pydiru.pydiru_enums as p
 from .utils import raw_traffic, gen_packet, PacketConsts, create_sipv4_rte_items, TunnelType, gen_outer_headers, \
     get_l2_header, create_dipv4_rte_items, create_devx_counter, query_counter, BULK_512, \
     create_eth_ipv4_l4_rte_items, create_tunneled_gtp_flags_rte_items, create_eth_ipv4_rte_items, \
-    create_tunneled_gtp_teid_rte_items
+    create_tunneled_gtp_teid_rte_items, is_cx6dx
 from .base import BaseDrResources, PydiruTrafficTestCase
 
 from .prm_structs import SetActionIn
@@ -379,7 +379,8 @@ class Mlx5drTrafficTest(PydiruTrafficTestCase):
         self.verify_counter(self.client, tx_devx_counter, tx_counter_id, tx_offset)
         # RX steering counters include FCS\VCRC in the byte count on cx6dx.
         # Add extra 4 bytes to each packet.
-        self.server.msg_size += 4
+        if is_cx6dx(self.attr):
+            self.server.msg_size += 4
         self.verify_counter(self.server, rx_devx_counter, rx_counter_id, rx_offset)
 
     @staticmethod
