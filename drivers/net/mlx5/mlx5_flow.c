@@ -974,6 +974,7 @@ static const struct rte_flow_ops mlx5_flow_ops = {
 	.flex_item_create = mlx5_flow_flex_item_create,
 	.flex_item_release = mlx5_flow_flex_item_release,
 	.info_get = mlx5_flow_info_get,
+	.pick_transfer_proxy = mlx5_flow_pick_transfer_proxy,
 	.configure = mlx5_flow_port_configure,
 	.pattern_template_create = mlx5_flow_pattern_template_create,
 	.pattern_template_destroy = mlx5_flow_pattern_template_destroy,
@@ -12772,4 +12773,44 @@ flow_convert_action_modify_field(struct rte_eth_dev *dev,
 	item.mask = &mask;
 	return flow_convert_modify_action(&item,
 			field, dcopy, resource, type, error);
+}
+
+int
+mlx5_flow_pick_transfer_proxy(struct rte_eth_dev *dev,
+			      uint16_t *proxy_port_id,
+			      struct rte_flow_error *error)
+{
+	const struct mlx5_priv *priv = dev->data->dev_private;
+	uint16_t port_id;
+
+	if (!priv->sh->config.dv_esw_en)
+		return rte_flow_error_set(error, EINVAL,
+					  RTE_FLOW_ERROR_TYPE_UNSPECIFIED,
+					  NULL,
+					  "unable to provide a proxy port"
+					  " without E-Switch configured");
+	if (!priv->master && !priv->representor)
+		return rte_flow_error_set(error, EINVAL,
+					  RTE_FLOW_ERROR_TYPE_UNSPECIFIED,
+					  NULL,
+					  "unable to provide a proxy port"
+					  " for port which is not a master"
+					  " or a representor port");
+	if (priv->master) {
+		*proxy_port_id = dev->data->port_id;
+		return 0;
+	}
+	MLX5_ETH_FOREACH_DEV(port_id, dev->device) {
+		const struct rte_eth_dev *port_dev = &rte_eth_devices[port_id];
+		const struct mlx5_priv *port_priv = port_dev->data->dev_private;
+
+		if (port_priv->master &&
+		    port_priv->domain_id == priv->domain_id) {
+			*proxy_port_id = port_id;
+			return 0;
+		}
+	}
+	return rte_flow_error_set(error, EINVAL,
+				  RTE_FLOW_ERROR_TYPE_UNSPECIFIED,
+				  NULL, "unable to find a proxy port");
 }
