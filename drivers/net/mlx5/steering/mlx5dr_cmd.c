@@ -832,6 +832,10 @@ int mlx5dr_cmd_query_caps(struct ibv_context *ctx,
 						    capability.wqe_based_flow_table_cap.
 						    ste_alloc_log_granularity);
 
+		caps->trivial_match_definer = MLX5_GET(query_hca_cap_out, out,
+						       capability.wqe_based_flow_table_cap.
+						       trivial_match_definer);
+
 		caps->stc_alloc_log_max = MLX5_GET(query_hca_cap_out, out,
 						   capability.wqe_based_flow_table_cap.
 						   stc_alloc_log_max);
