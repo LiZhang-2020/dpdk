@@ -5778,7 +5778,7 @@ flow_dv_validate(struct rte_eth_dev *dev, const struct rte_flow_attr *attr,
 		 bool external, int hairpin, struct rte_flow_error *error)
 {
 	int ret;
-	uint64_t action_flags = 0;
+	uint64_t aso_mask, action_flags = 0;
 	uint64_t item_flags = 0;
 	uint64_t last_item = 0;
 	uint8_t next_protocol = 0xff;
@@ -5845,11 +5845,11 @@ flow_dv_validate(struct rte_eth_dev *dev, const struct rte_flow_attr *attr,
 	const struct rte_flow_item *integrity_items[2] = {NULL, NULL};
 	const struct rte_flow_item *port_id_item = NULL;
 	bool def_policy = false;
-	const struct rte_flow_action *count = NULL;
-	const struct rte_flow_action_age *non_indirect_age = NULL;
 	bool shared_count = false;
 	uint16_t udp_dport = 0;
 	uint32_t tag_id = 0;
+	const struct rte_flow_action_age *non_shared_age = NULL;
+	const struct rte_flow_action_count *count = NULL;
 
 	if (items == NULL)
 		return -1;
@@ -6416,7 +6416,8 @@ flow_dv_validate(struct rte_eth_dev *dev, const struct rte_flow_attr *attr,
 							    attr, error);
 			if (ret < 0)
 				return ret;
-			count = actions;
+			if (type == RTE_FLOW_ACTION_TYPE_COUNT)
+				count = actions->conf;
 			action_flags |= MLX5_FLOW_ACTION_COUNT;
 			++actions_n;
 			break;
@@ -6743,6 +6744,7 @@ flow_dv_validate(struct rte_eth_dev *dev, const struct rte_flow_attr *attr,
 			++actions_n;
 			break;
 		case RTE_FLOW_ACTION_TYPE_AGE:
+			non_shared_age = actions->conf;
 			ret = flow_dv_validate_action_age(action_flags,
 							  actions, dev,
 							  error);
@@ -6766,7 +6768,6 @@ flow_dv_validate(struct rte_eth_dev *dev, const struct rte_flow_attr *attr,
 						NULL,
 						"old age action and count must be in the same sub flow");
 			}
-			non_indirect_age = actions->conf;
 			action_flags |= MLX5_FLOW_ACTION_AGE;
 			++actions_n;
 			break;
@@ -7064,6 +7065,24 @@ flow_dv_validate(struct rte_eth_dev *dev, const struct rte_flow_attr *attr,
 		}
 	}
 	/*
+	 * Only support one ASO action in a single flow rule.
+	 * non-shared AGE + counter will fallback to use HW counter,
+	 * no ASO hit object.
+	 * Group 0 uses HW counter for AGE even if no counter action.
+	 */
+	aso_mask = (action_flags & MLX5_FLOW_ACTION_METER &&
+		    priv->sh->meter_aso_en) << 2 |
+		   (action_flags & MLX5_FLOW_ACTION_CT &&
+		    priv->sh->ct_aso_en) << 1 |
+		   (action_flags & MLX5_FLOW_ACTION_AGE &&
+		    !(non_shared_age && count && !count->shared) &&
+		    (attr->group || (attr->transfer && priv->fdb_def_rule)) &&
+		    priv->sh->flow_hit_aso_en);
+	if (__builtin_popcountl(aso_mask) > 1)
+		return rte_flow_error_set(error, ENOTSUP,
+					  RTE_FLOW_ERROR_TYPE_ACTION,
+					  NULL, "unsupported combining AGE, METER, CT ASO actions in a single rule");
+	/*
 	 * Hairpin flow will add one more TAG action in TX implicit mode.
 	 * In TX explicit mode, there will be no hairpin flow ID.
 	 */
@@ -7086,30 +7105,6 @@ flow_dv_validate(struct rte_eth_dev *dev, const struct rte_flow_attr *attr,
 		return rte_flow_error_set(error, EINVAL,
 				RTE_FLOW_ERROR_TYPE_ACTION, NULL,
 				"sample before modify action is not supported");
-	/*
-	 * Allow action CT with action AGE only when:
-	 * 1. There is non shared (and non indirect) action COUNT;
-	 * 2. Action AGE is non shared (and non indirect);
-	 * Or:
-	 * 3. flow hit ASO is disabled;
-	 * Or:
-	 * 4. It's root table (Verbs engine)
-	 */
-	if ((action_flags & MLX5_FLOW_ACTION_CT) &&
-	    (action_flags & MLX5_FLOW_ACTION_AGE) &&
-	    priv->sh->flow_hit_aso_en == 1 &&
-	    (attr->group > 0 || attr->transfer == 1)) {
-		if (count == NULL ||
-		    count->type != RTE_FLOW_ACTION_TYPE_COUNT ||
-		    count->conf == NULL ||
-		    ((const struct rte_flow_action_count *)
-		     count->conf)->shared == 1 ||
-		    non_indirect_age == NULL) {
-			return rte_flow_error_set(error, EINVAL,
-					  RTE_FLOW_ERROR_TYPE_ACTION, NULL,
-					  "Only one ASO action is supported");
-		}
-	}
 	/*
 	 * Validation the NIC Egress flow on representor, except implicit
 	 * hairpin default egress flow with TX_QUEUE item, other flows not
