@@ -305,9 +305,9 @@ mlx5_vdpa_event_handle(void *arg)
 
 				if (first_tic == 0) {
 					first_tic = tic;
-					goto unlock;
+					goto timer_sleep;
 				} else if (tic - first_tic < max_tics) {
-					goto unlock;
+					goto timer_sleep;
 				}
 				DRV_LOG(DEBUG, "Device %s traffic was stopped.",
 					priv->vdev->device->name);
@@ -330,7 +330,7 @@ mlx5_vdpa_event_handle(void *arg)
 				priv->timer_delay_us = priv->event_us;
 			}
 			first_tic = 0;
-unlock:
+timer_sleep:
 			mlx5_vdpa_timer_sleep(priv, max);
 		}
 		return NULL;
@@ -380,7 +380,7 @@ mlx5_vdpa_err_interrupt_handler(void *cb_arg __rte_unused)
 			goto unlock;
 		if (rte_rdtsc() / rte_get_tsc_hz() < MLX5_VDPA_ERROR_TIME_SEC)
 			goto unlock;
-		virtq->stopped = true;
+		virtq->stopped = 1;
 		/* Query error info. */
 		if (mlx5_vdpa_virtq_query(priv, vq_index))
 			goto log;

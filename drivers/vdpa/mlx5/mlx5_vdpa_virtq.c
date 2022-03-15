@@ -108,8 +108,9 @@ mlx5_vdpa_virtqs_cleanup(struct mlx5_vdpa_priv *priv)
 	for (i = 0; i < priv->caps.max_num_virtio_queues * 2; i++) {
 		struct mlx5_vdpa_virtq *virtq = &priv->virtqs[i];
 
+		if (virtq->index != i)
+			continue;
 		pthread_mutex_lock(&virtq->virtq_lock);
-		virtq->configured = 0;
 		for (j = 0; j < RTE_DIM(virtq->umems); ++j) {
 			if (virtq->umems[j].obj) {
 				claim_zero(mlx5_glue->devx_umem_dereg
@@ -187,7 +188,7 @@ mlx5_vdpa_virtq_stop(struct mlx5_vdpa_priv *priv, int index)
 	ret = mlx5_vdpa_virtq_modify(virtq, 0);
 	if (ret)
 		return -1;
-	virtq->stopped = true;
+	virtq->stopped = 1;
 	DRV_LOG(DEBUG, "vid %u virtq %u was stopped.", priv->vid, index);
 	return mlx5_vdpa_virtq_query(priv, index);
 }
@@ -406,8 +407,8 @@ mlx5_vdpa_is_modify_virtq_supported(struct mlx5_vdpa_priv *priv)
 			priv->caps.virtio_q_index_modify) ? true : false;
 }
 
-static int
-mlx5_vdpa_virtq_setup(struct mlx5_vdpa_priv *priv, int index)
+int
+mlx5_vdpa_virtq_setup(struct mlx5_vdpa_priv *priv, int index, bool reg_kick)
 {
 	struct mlx5_vdpa_virtq *virtq = &priv->virtqs[index];
 	struct rte_vhost_vring vq;
@@ -451,13 +452,15 @@ mlx5_vdpa_virtq_setup(struct mlx5_vdpa_priv *priv, int index)
 	rte_write32(virtq->index, priv->virtq_db_addr);
 	rte_spinlock_unlock(&priv->db_lock);
 	/* Setup doorbell mapping. */
-	ret = mlx5_os_interrupt_handler_setup
-		(&virtq->intr_handle, false,
-		 vq.kickfd, mlx5_vdpa_virtq_kick_handler,
-		 virtq);
-	if (ret) {
-		DRV_LOG(ERR, "Fail to initialize virtrq intr_handle");
-		goto error;
+	if (reg_kick) {
+		ret = mlx5_os_interrupt_handler_setup
+			(&virtq->intr_handle, false,
+			 vq.kickfd, mlx5_vdpa_virtq_kick_handler,
+			 virtq);
+		if (ret) {
+			DRV_LOG(ERR, "Fail to initialize virtrq intr_handle");
+			goto error;
+		}
 	}
 	/* Subscribe virtq error event. */
 	virtq->version++;
@@ -472,7 +475,6 @@ mlx5_vdpa_virtq_setup(struct mlx5_vdpa_priv *priv, int index)
 		rte_errno = errno;
 		goto error;
 	}
-	virtq->stopped = false;
 	/* Initial notification to ask qemu handling completed buffers. */
 	if (virtq->eqp.cq.callfd != -1)
 		eventfd_write(virtq->eqp.cq.callfd, (eventfd_t)1);
@@ -542,10 +544,12 @@ mlx5_vdpa_features_validate(struct mlx5_vdpa_priv *priv)
 int
 mlx5_vdpa_virtqs_prepare(struct mlx5_vdpa_priv *priv)
 {
-	uint32_t i;
-	uint16_t nr_vring = rte_vhost_get_vring_num(priv->vid);
 	int ret = rte_vhost_get_negotiated_features(priv->vid, &priv->features);
+	uint16_t nr_vring = rte_vhost_get_vring_num(priv->vid);
+	uint32_t remaining_cnt = 0, err_cnt = 0, task_num = 0;
+	uint32_t i, thrd_idx, data[1];
 	struct mlx5_vdpa_virtq *virtq;
+	struct rte_vhost_vring vq;
 
 	if (ret || mlx5_vdpa_features_validate(priv)) {
 		DRV_LOG(ERR, "Failed to configure negotiated features.");
@@ -565,15 +569,83 @@ mlx5_vdpa_virtqs_prepare(struct mlx5_vdpa_priv *priv)
 		return -1;
 	}
 	priv->nr_virtqs = nr_vring;
-	for (i = 0; i < nr_vring; i++) {
-		virtq = &priv->virtqs[i];
-		if (virtq->enable) {
+	if (priv->use_c_thread) {
+		uint32_t main_task_idx[nr_vring];
+
+		for (i = 0; i < nr_vring; i++) {
+			virtq = &priv->virtqs[i];
+			if (!virtq->enable)
+				continue;
+			thrd_idx = i % (conf_thread_mng.max_thrds + 1);
+			if (!thrd_idx) {
+				main_task_idx[task_num] = i;
+				task_num++;
+				continue;
+			}
+			thrd_idx = priv->last_c_thrd_idx + 1;
+			if (thrd_idx >= conf_thread_mng.max_thrds)
+				thrd_idx = 0;
+			priv->last_c_thrd_idx = thrd_idx;
+			data[0] = i;
+			if (mlx5_vdpa_task_add(priv, thrd_idx,
+				MLX5_VDPA_TASK_SETUP_VIRTQ,
+				&remaining_cnt, &err_cnt,
+				(void **)&data, 1)) {
+				DRV_LOG(ERR, "Fail to add "
+						"task setup virtq (%d).", i);
+				main_task_idx[task_num] = i;
+				task_num++;
+			}
+		}
+		for (i = 0; i < task_num; i++) {
+			virtq = &priv->virtqs[main_task_idx[i]];
 			pthread_mutex_lock(&virtq->virtq_lock);
-			if (mlx5_vdpa_virtq_setup(priv, i)) {
+			if (mlx5_vdpa_virtq_setup(priv,
+				main_task_idx[i], false)) {
 				pthread_mutex_unlock(&virtq->virtq_lock);
 				goto error;
 			}
 			pthread_mutex_unlock(&virtq->virtq_lock);
+		}
+		if (mlx5_vdpa_c_thread_wait_bulk_tasks_done(&remaining_cnt,
+			&err_cnt, 2000)) {
+			DRV_LOG(ERR,
+			"Failed to wait virt-queue setup tasks ready.");
+			goto error;
+		}
+		for (i = 0; i < nr_vring; i++) {
+			/* Setup doorbell mapping in order for Qume. */
+			virtq = &priv->virtqs[i];
+			if (!virtq->enable || !virtq->configured) {
+				pthread_mutex_unlock(&virtq->virtq_lock);
+				continue;
+			}
+			if (rte_vhost_get_vhost_vring(priv->vid, i, &vq)) {
+				pthread_mutex_unlock(&virtq->virtq_lock);
+				goto error;
+			}
+			if (mlx5_os_interrupt_handler_setup(
+				&virtq->intr_handle, false,
+				vq.kickfd, mlx5_vdpa_virtq_kick_handler,
+				virtq)) {
+				pthread_mutex_unlock(&virtq->virtq_lock);
+				DRV_LOG(ERR,
+				"Fail to initialize virtrq %d intr_handle", i);
+				goto error;
+			}
+		}
+	} else {
+		for (i = 0; i < nr_vring; i++) {
+			virtq = &priv->virtqs[i];
+			if (virtq->enable) {
+				pthread_mutex_lock(&virtq->virtq_lock);
+				if (mlx5_vdpa_virtq_setup(priv, i, true)) {
+					pthread_mutex_unlock(
+						&virtq->virtq_lock);
+					goto error;
+				}
+				pthread_mutex_unlock(&virtq->virtq_lock);
+			}
 		}
 	}
 	return 0;
@@ -637,7 +709,7 @@ mlx5_vdpa_virtq_enable(struct mlx5_vdpa_priv *priv, int index, int enable)
 		mlx5_vdpa_virtq_unset(virtq);
 	}
 	if (enable) {
-		ret = mlx5_vdpa_virtq_setup(priv, index);
+		ret = mlx5_vdpa_virtq_setup(priv, index, true);
 		if (ret) {
 			DRV_LOG(ERR, "Failed to setup virtq %d.", index);
 			return ret;
