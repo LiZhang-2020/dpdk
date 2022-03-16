@@ -39,6 +39,7 @@ sources = files(
 	'mlx5_utils.c',
 	'mlx5_devx.c',
 	'mlx5_sft.c',
+	'mlx5_hws_cnt.c',
 )
 if (dpdk_conf.has('RTE_ARCH_X86_64')
 	or dpdk_conf.has('RTE_ARCH_ARM64')
