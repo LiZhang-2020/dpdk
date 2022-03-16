@@ -311,6 +311,10 @@ struct mlx5_sh_config {
 	uint32_t decap_en:1; /* Whether decap will be used or not. */
 	uint32_t hw_fcs_strip:1; /* FCS stripping is supported. */
 	uint32_t allow_duplicate_pattern:1;
+	struct {
+		uint16_t service_core;
+		uint32_t cycle_time; /* query cycle time in milli-second. */
+	} cnt_svc; /* configure for HW steering's counter's service. */
 	/* Allow/Prevent the duplicate rules pattern. */
 	uint32_t fdb_def_rule:1; /* Create FDB default jump rule */
 };
@@ -1232,6 +1236,20 @@ struct mlx5_flex_item {
 	struct mlx5_flex_pattern_field map[MLX5_FLEX_ITEM_MAPPING_NUM];
 };
 
+struct mlx5_hws_aso_mng {
+	uint16_t sq_num;
+	struct mlx5_aso_sq *sqs;
+};
+
+struct mlx5_hws_cnt_svc_mng {
+	uint32_t refcnt;
+	uint32_t service_core;
+	uint32_t query_interval;
+	pthread_t service_thread;
+	uint8_t svc_running;
+	struct mlx5_hws_aso_mng aso_mng __rte_cache_aligned;
+};
+
 /*
  * Shared Infiniband device context for Master/Representors
  * which belong to same IB device with multiple IB ports.
@@ -1339,6 +1357,7 @@ struct mlx5_dev_ctx_shared {
 	uint32_t host_shaper_rate:8;
 	uint32_t lwm_triggered:1;
 	void *hws_tx;
+	struct mlx5_hws_cnt_svc_mng *cnt_svc;
 	struct mlx5_dev_shared_port port[]; /* per device port data array. */
 };
 
@@ -1650,6 +1669,7 @@ struct mlx5_priv {
 	LIST_HEAD(flow_hw_tbl, rte_flow_template_table) flow_hw_tbl;
 	/**< HW steering rte flow table list header. */
 	struct mlx5_indexed_pool *acts_ipool; /* Action data indexed pool. */
+	struct mlx5_hws_cnt_pool *hws_cpool; /* HW steering's counter pool. */
 };
 
 #define PORT_ID(priv) ((priv)->dev_data->port_id)

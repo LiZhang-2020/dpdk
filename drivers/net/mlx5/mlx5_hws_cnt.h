@@ -26,11 +26,6 @@ typedef uint32_t cnt_id_t;
 
 #define MLX5_HWS_CNT_DCS_NUM 4
 
-struct mlx5_hws_aso_mng {
-	uint16_t sq_num;
-	struct mlx5_aso_sq *sqs;
-};
-
 struct mlx5_hws_cnt_dcs {
 	void *dr_action;
 	uint32_t batch_sz;
@@ -84,12 +79,6 @@ struct mlx5_hws_cnt_pool_caches {
 	uint32_t preload_sz;
 	uint32_t q_num;
 	struct rte_ring *qcache[];
-};
-
-struct mlx5_hws_cnt_svc {
-	uint32_t service_core;
-	uint32_t query_interval;
-	struct mlx5_hws_aso_mng aso_mng __rte_cache_aligned;
 };
 
 struct mlx5_hws_cnt_pool {
@@ -362,4 +351,15 @@ mlx5_hws_cnt_pool_init(const struct mlx5_hws_cnt_pool_cfg *pcfg,
 
 void
 mlx5_hws_cnt_pool_deinit(struct mlx5_hws_cnt_pool *cntp);
+
+int
+mlx5_hws_cnt_service_thread_create(struct mlx5_dev_ctx_shared *sh);
+
+void
+mlx5_hws_cnt_service_thread_destroy(struct mlx5_dev_ctx_shared *sh);
+
+int
+mlx5_hws_cnt_pool_aso_query(struct mlx5_dev_ctx_shared *sh,
+			    struct mlx5_hws_cnt_pool *cpool);
+
 #endif /* _MLX5_HWS_CNT_H_ */
