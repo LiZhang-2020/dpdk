@@ -1080,6 +1080,15 @@ for an additional list of options shared with other mlx5 drivers.
 
   By default, the PMD will set this value to 1.
 
+- ``fdb_def_rule_en`` parameter [int]
+
+  A non-zero value enables the PMD to create a dedicated rule on E-Switch root
+  table, this dedicated rule forwards all incoming packets into table 1, other
+  rules will be created in E-Switch table original table level plus one, to
+  improve the flow insertion rate due to skip root table managed by firmware.
+  If set to 0, all rules will be created on the original E-Switch table level.
+
+  By default, the PMD will set this value to 1.
 
 Supported NICs
 --------------

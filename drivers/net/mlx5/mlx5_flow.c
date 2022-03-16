@@ -1232,7 +1232,7 @@ mlx5_get_lowest_priority(struct rte_eth_dev *dev,
 {
 	struct mlx5_priv *priv = dev->data->dev_private;
 
-	if (!attr->group && !attr->transfer)
+	if (!attr->group && !(attr->transfer && priv->fdb_def_rule))
 		return priv->sh->flow_max_priority - 2;
 	return MLX5_NON_ROOT_FLOW_MAX_PRIO - 1;
 }
@@ -1259,11 +1259,14 @@ mlx5_get_matcher_priority(struct rte_eth_dev *dev,
 	uint16_t priority = (uint16_t)attr->priority;
 	struct mlx5_priv *priv = dev->data->dev_private;
 
+	/* NIC root rules */
 	if (!attr->group && !attr->transfer) {
 		if (attr->priority == MLX5_FLOW_LOWEST_PRIO_INDICATOR)
 			priority = priv->sh->flow_max_priority - 1;
 		return mlx5_flow_adjust_priority(dev, priority, subpriority);
-	} else if (!external && attr->transfer && attr->group == 0 &&
+	/* FDB root rules */
+	} else if (attr->transfer && (!external || !priv->fdb_def_rule) &&
+		   attr->group == 0 &&
 		   attr->priority == MLX5_FLOW_LOWEST_PRIO_INDICATOR) {
 		return 15;
 	}
@@ -2866,8 +2869,8 @@ mlx5_flow_validate_item_tcp(const struct rte_flow_item *item,
  *   Item specification.
  * @param[in] item_flags
  *   Bit-fields that holds the items detected until now.
- * @param[in] attr
- *   Flow rule attributes.
+ * @param root
+ *   Whether action is on root table.
  * @param[out] error
  *   Pointer to error structure.
  *
@@ -2879,7 +2882,7 @@ mlx5_flow_validate_item_vxlan(struct rte_eth_dev *dev,
 			      uint16_t udp_dport,
 			      const struct rte_flow_item *item,
 			      uint64_t item_flags,
-			      const struct rte_flow_attr *attr,
+			      bool root,
 			      struct rte_flow_error *error)
 {
 	const struct rte_flow_item_vxlan *spec = item->spec;
@@ -2915,8 +2918,8 @@ mlx5_flow_validate_item_vxlan(struct rte_eth_dev *dev,
 	if (priv->sh->steering_format_version !=
 	    MLX5_STEERING_LOGIC_FORMAT_CONNECTX_5 ||
 	    !udp_dport || udp_dport == MLX5_UDP_PORT_VXLAN) {
-		/* FDB domain & NIC domain non-zero group */
-		if ((attr->transfer || attr->group) && priv->sh->misc5_cap)
+		/* non-root table */
+		if (!root && priv->sh->misc5_cap)
 			valid_mask = &nic_mask;
 	}
 	ret = mlx5_flow_item_acceptable
@@ -3155,11 +3158,11 @@ mlx5_flow_validate_item_gre_option(struct rte_eth_dev *dev,
 	if (mask->checksum_rsvd.checksum || mask->sequence.sequence) {
 		if (priv->sh->steering_format_version ==
 		    MLX5_STEERING_LOGIC_FORMAT_CONNECTX_5 ||
-		    ((attr->group || attr->transfer) &&
+		    ((attr->group || (attr->transfer && priv->fdb_def_rule)) &&
 		     !priv->sh->misc5_cap) ||
 		    (!(priv->sh->tunnel_header_0_1 &&
 		       priv->sh->tunnel_header_2_3) &&
-		    !attr->group && !attr->transfer))
+		    !attr->group && (!attr->transfer || !priv->fdb_def_rule)))
 			return rte_flow_error_set(error, EINVAL,
 						  RTE_FLOW_ERROR_TYPE_ITEM,
 						  item,
@@ -6286,7 +6289,8 @@ flow_create_split_metadata(struct rte_eth_dev *dev,
 	}
 	if (qrss) {
 		/* Check if it is in meter suffix table. */
-		mtr_sfx = attr->group == (attr->transfer ?
+		mtr_sfx = attr->group ==
+			  ((attr->transfer && priv->fdb_def_rule) ?
 			  (MLX5_FLOW_TABLE_LEVEL_METER - 1) :
 			  MLX5_FLOW_TABLE_LEVEL_METER);
 		/*

@@ -1382,13 +1382,17 @@ mlx5_traffic_enable(struct rte_eth_dev *dev)
 		}
 		mlx5_txq_release(dev, i);
 	}
-	if (priv->sh->config.dv_esw_en) {
-		if (mlx5_flow_create_esw_table_zero_flow(dev))
-			priv->fdb_def_rule = 1;
-		else
-			DRV_LOG(INFO, "port %u FDB default rule cannot be"
-				" configured - only Eswitch group 0 flows are"
-				" supported.", dev->data->port_id);
+	if (priv->sh->config.fdb_def_rule) {
+		if (priv->sh->config.dv_esw_en) {
+			if (mlx5_flow_create_esw_table_zero_flow(dev))
+				priv->fdb_def_rule = 1;
+			else
+				DRV_LOG(INFO, "port %u FDB default rule cannot be configured - only Eswitch group 0 flows are supported.",
+					dev->data->port_id);
+		}
+	} else {
+		DRV_LOG(INFO, "port %u FDB default rule is disabled",
+			dev->data->port_id);
 	}
 	if (!priv->sh->config.lacp_by_user && priv->pf_bond >= 0) {
 		ret = mlx5_flow_lacp_miss(dev);

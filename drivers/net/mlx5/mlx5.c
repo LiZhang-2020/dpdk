@@ -188,6 +188,9 @@
 /* Device parameter to configure the delay drop when creating Rxqs. */
 #define MLX5_DELAY_DROP "delay_drop"
 
+/* Device parameter to create the fdb default rule in PMD */
+#define MLX5_FDB_DEFAULT_RULE_EN "fdb_def_rule_en"
+
 /* Shared memory between primary and secondary processes. */
 struct mlx5_shared_data *mlx5_shared_data;
 
@@ -1243,6 +1246,8 @@ mlx5_dev_args_check_handler(const char *key, const char *val, void *opaque)
 			"parameter is not needed anymore for meter feature.");
 	} else if (strcmp(MLX5_ALLOW_DUPLICATE_PATTERN, key) == 0) {
 		config->allow_duplicate_pattern = !!tmp;
+	} else if (strcmp(MLX5_FDB_DEFAULT_RULE_EN, key) == 0) {
+		config->fdb_def_rule = !!tmp;
 	}
 	return 0;
 }
@@ -1281,6 +1286,7 @@ mlx5_shared_dev_ctx_args_config(struct mlx5_dev_ctx_shared *sh,
 		MLX5_RECLAIM_MEM,
 		MLX5_DECAP_EN,
 		MLX5_ALLOW_DUPLICATE_PATTERN,
+		MLX5_FDB_DEFAULT_RULE_EN,
 		NULL,
 	};
 	int ret = 0;
@@ -1292,6 +1298,7 @@ mlx5_shared_dev_ctx_args_config(struct mlx5_dev_ctx_shared *sh,
 	config->dv_flow_en = 1;
 	config->decap_en = 1;
 	config->allow_duplicate_pattern = 1;
+	config->fdb_def_rule = 1;
 	if (mkvlist != NULL) {
 		/* Process parameters. */
 		ret = mlx5_kvargs_process(mkvlist, params,
@@ -1359,6 +1366,7 @@ mlx5_shared_dev_ctx_args_config(struct mlx5_dev_ctx_shared *sh,
 	DRV_LOG(DEBUG, "\"decap_en\" is %u.", config->decap_en);
 	DRV_LOG(DEBUG, "\"allow_duplicate_pattern\" is %u.",
 		config->allow_duplicate_pattern);
+	DRV_LOG(DEBUG, "\"fdb_def_rule_en\" is %u.", config->fdb_def_rule);
 	return 0;
 }
 
@@ -2668,6 +2676,11 @@ mlx5_probe_again_args_validate(struct mlx5_common_device *cdev,
 	    config->allow_duplicate_pattern) {
 		DRV_LOG(ERR, "\"allow_duplicate_pattern\" "
 			"configuration mismatch for shared %s context.",
+			sh->ibdev_name);
+		goto error;
+	}
+	if (sh->config.fdb_def_rule ^ config->fdb_def_rule) {
+		DRV_LOG(ERR, "\"fdb_def_rule_en\" configuration mismatch for shared %s context.",
 			sh->ibdev_name);
 		goto error;
 	}
