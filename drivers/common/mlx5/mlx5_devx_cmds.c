@@ -975,6 +975,11 @@ mlx5_devx_cmd_query_hca_attr(void *ctx,
 		}
 		attr->log_min_stride_wqe_sz = MLX5_GET(cmd_hca_cap_2, hcattr,
 						       log_min_stride_wqe_sz);
+		attr->flow_counter_bulk_log_max_alloc = MLX5_GET(cmd_hca_cap_2,
+				hcattr, flow_counter_bulk_log_max_alloc);
+		attr->flow_counter_bulk_log_granularity =
+			MLX5_GET(cmd_hca_cap_2, hcattr,
+				 flow_counter_bulk_log_granularity);
 	}
 	if (attr->log_min_stride_wqe_sz == 0)
 		attr->log_min_stride_wqe_sz = MLX5_MPRQ_LOG_MIN_STRIDE_WQE_SIZE;
