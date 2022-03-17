@@ -245,6 +245,13 @@ struct mlx5_hca_attr {
 	uint32_t set_reg_c:8;
 	uint32_t nic_flow_table:1;
 	uint32_t modify_outer_ip_ecn:1;
+	union {
+		uint32_t max_flow_counter;
+		struct {
+			uint16_t max_flow_counter_15_0;
+			uint16_t max_flow_counter_31_16;
+		};
+	};
 	uint32_t flow_counter_bulk_log_max_alloc:5;
 	uint32_t flow_counter_bulk_log_granularity:5;
 };
