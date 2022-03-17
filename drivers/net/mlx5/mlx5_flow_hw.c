@@ -2536,6 +2536,132 @@ flow_hw_grp_clone_free_cb(void *tool_ctx, struct mlx5_list_entry *entry)
 }
 
 /**
+ * Create and cache a vport action for given @p dev port. vport actions
+ * cache is used in HWS with FDB flows.
+ *
+ * This function does not create any function if proxy port for @p dev port
+ * was not configured for HW Steering.
+ *
+ * This function assumes that E-Switch is enabled and PMD is running with
+ * HW Steering configured.
+ *
+ * @param dev
+ *   Pointer to Ethernet device which will be the action destination.
+ *
+ * @return
+ *   0 on success, positive value otherwise.
+ */
+int
+flow_hw_create_vport_action(struct rte_eth_dev *dev)
+{
+	struct mlx5_priv *priv = dev->data->dev_private;
+	struct rte_eth_dev *proxy_dev;
+	struct mlx5_priv *proxy_priv;
+	uint16_t port_id = dev->data->port_id;
+	uint16_t proxy_port_id = port_id;
+	int ret;
+
+	ret = mlx5_flow_pick_transfer_proxy(dev, &proxy_port_id, NULL);
+	if (ret)
+		return ret;
+	proxy_dev = &rte_eth_devices[proxy_port_id];
+	proxy_priv = proxy_dev->data->dev_private;
+	if (!proxy_priv->hw_vport)
+		return 0;
+	if (proxy_priv->hw_vport[port_id]) {
+		DRV_LOG(ERR, "port %u HWS vport action already created",
+			port_id);
+		return -EINVAL;
+	}
+	proxy_priv->hw_vport[port_id] = mlx5dr_action_create_dest_vport
+			(proxy_priv->dr_ctx, priv->dev_port,
+			 MLX5DR_ACTION_FLAG_HWS_FDB);
+	if (!proxy_priv->hw_vport[port_id]) {
+		DRV_LOG(ERR, "port %u unable to create HWS vport action",
+			port_id);
+		return -EINVAL;
+	}
+	return 0;
+}
+
+/**
+ * Destroys the vport action associated with @p dev device
+ * from actions' cache.
+ *
+ * This function does not destroy any action if there is no action cached
+ * for @p dev or proxy port was not configured for HW Steering.
+ *
+ * This function assumes that E-Switch is enabled and PMD is running with
+ * HW Steering configured.
+ *
+ * @param dev
+ *   Pointer to Ethernet device which will be the action destination.
+ */
+void
+flow_hw_destroy_vport_action(struct rte_eth_dev *dev)
+{
+	struct rte_eth_dev *proxy_dev;
+	struct mlx5_priv *proxy_priv;
+	uint16_t port_id = dev->data->port_id;
+	uint16_t proxy_port_id = port_id;
+
+	if (mlx5_flow_pick_transfer_proxy(dev, &proxy_port_id, NULL))
+		return;
+	proxy_dev = &rte_eth_devices[proxy_port_id];
+	proxy_priv = proxy_dev->data->dev_private;
+	if (!proxy_priv->hw_vport || !proxy_priv->hw_vport[port_id])
+		return;
+	mlx5dr_action_destroy(proxy_priv->hw_vport[port_id]);
+	proxy_priv->hw_vport[port_id] = NULL;
+}
+
+static int
+flow_hw_create_vport_actions(struct mlx5_priv *priv)
+{
+	uint16_t port_id;
+
+	MLX5_ASSERT(!priv->hw_vport);
+	priv->hw_vport = mlx5_malloc(MLX5_MEM_ZERO,
+				     sizeof(*priv->hw_vport) * RTE_MAX_ETHPORTS,
+				     0, SOCKET_ID_ANY);
+	if (!priv->hw_vport)
+		return -ENOMEM;
+	DRV_LOG(DEBUG, "port %u :: creating vport actions", priv->dev_data->port_id);
+	DRV_LOG(DEBUG, "port %u ::    domain_id=%u", priv->dev_data->port_id, priv->domain_id);
+	MLX5_ETH_FOREACH_DEV(port_id, NULL) {
+		struct mlx5_priv *port_priv = rte_eth_devices[port_id].data->dev_private;
+
+		if (!port_priv ||
+		    port_priv->domain_id != priv->domain_id)
+			continue;
+		DRV_LOG(DEBUG, "port %u :: for port_id=%u, calling mlx5dr_action_create_dest_vport() with ibport=%u",
+			priv->dev_data->port_id, port_id, port_priv->dev_port);
+		priv->hw_vport[port_id] = mlx5dr_action_create_dest_vport
+				(priv->dr_ctx, port_priv->dev_port,
+				 MLX5DR_ACTION_FLAG_HWS_FDB);
+		DRV_LOG(DEBUG, "port %u :: priv->hw_vport[%u]=%p",
+			priv->dev_data->port_id, port_id, (void *)priv->hw_vport[port_id]);
+		if (!priv->hw_vport[port_id])
+			return -EINVAL;
+	}
+	return 0;
+}
+
+static void
+flow_hw_free_vport_actions(struct mlx5_priv *priv)
+{
+	uint16_t port_id;
+
+	if (!priv->hw_vport)
+		return;
+	for (port_id = 0; port_id < RTE_MAX_ETHPORTS; ++port_id)
+		if (priv->hw_vport[port_id])
+			mlx5dr_action_destroy(priv->hw_vport[port_id]);
+	mlx5_free(priv->hw_vport);
+	priv->hw_vport = NULL;
+}
+
+/**
  * Configure port HWS resources.
  *
  * @param[in] dev
@@ -2581,6 +2707,7 @@ flow_hw_configure(struct rte_eth_dev *dev,
 	uint16_t nb_q_updated;
 	struct rte_flow_queue_attr **_queue_attr = NULL;
 	struct rte_flow_queue_attr ctrl_queue_attr = {0};
+	int ret;
 
 	if (!port_attr || !nb_queue || !queue_attr) {
 		rte_errno = EINVAL;
@@ -2688,10 +2815,18 @@ flow_hw_configure(struct rte_eth_dev *dev,
 		if (!priv->hw_tag[i])
 			goto err;
 	}
+	if (priv->sh->config.dv_esw_en && priv->master) {
+		ret = flow_hw_create_vport_actions(priv);
+		if (ret) {
+			rte_errno = -ret;
+			goto err;
+		}
+	}
 	if (_queue_attr)
 		mlx5_free(_queue_attr);
 	return 0;
 err:
+	flow_hw_free_vport_actions(priv);
 	for (i = 0; i < MLX5_HW_ACTION_FLAG_MAX; i++) {
 		for (j = 0; j < MLX5DR_TABLE_TYPE_MAX; j++) {
 			if (priv->hw_drop[i][j])
@@ -2752,6 +2887,7 @@ flow_hw_resource_release(struct rte_eth_dev *dev)
 		if (priv->hw_tag[i])
 			mlx5dr_action_destroy(priv->hw_tag[i]);
 	}
+	flow_hw_free_vport_actions(priv);
 	if (priv->acts_ipool) {
 		mlx5_ipool_destroy(priv->acts_ipool);
 		priv->acts_ipool = NULL;

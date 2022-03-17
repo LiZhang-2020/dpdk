@@ -1572,6 +1572,14 @@ err_secondary:
 	}
 	if (priv->vport_meta_mask)
 		flow_hw_set_port_info(eth_dev);
+	if (priv->sh->config.dv_flow_en == 2 &&
+	    priv->sh->config.dv_esw_en &&
+	    flow_hw_create_vport_action(eth_dev)) {
+		DRV_LOG(ERR, "port %u failed to create vport action",
+			eth_dev->data->port_id);
+		err = EINVAL;
+		goto error;
+	}
 	if (priv->sh->config.dv_flow_en == 2)
 		return eth_dev;
 	/* Port representor shares the same max prioirity with master. */
@@ -1635,6 +1643,11 @@ err_secondary:
 	return eth_dev;
 error:
 	if (priv) {
+		if (eth_dev &&
+		    priv->sh &&
+		    priv->sh->config.dv_flow_en == 2 &&
+		    priv->sh->config.dv_esw_en)
+			flow_hw_destroy_vport_action(eth_dev);
 		if (priv->mreg_cp_tbl)
 			mlx5_hlist_destroy(priv->mreg_cp_tbl);
 		if (priv->sh)

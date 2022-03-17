@@ -1466,6 +1466,9 @@ flow_hw_get_wire_port(struct ibv_context *ibctx)
 void flow_hw_set_port_info(struct rte_eth_dev *dev);
 void flow_hw_clear_port_info(struct rte_eth_dev *dev);
 
+int flow_hw_create_vport_action(struct rte_eth_dev *dev);
+void flow_hw_destroy_vport_action(struct rte_eth_dev *dev);
+
 typedef int (*mlx5_flow_validate_t)(struct rte_eth_dev *dev,
 				    const struct rte_flow_attr *attr,
 				    const struct rte_flow_item items[],
