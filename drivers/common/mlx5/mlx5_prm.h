@@ -1398,7 +1398,13 @@ enum {
 #define MLX5_STEERING_LOGIC_FORMAT_CONNECTX_6DX 0x1
 
 struct mlx5_ifc_cmd_hca_cap_bits {
-	u8 reserved_at_0[0x20];
+	u8 access_other_hca_roce[0x1];
+	u8 alloc_flow_counter_pd[0x1];
+	u8 flow_counter_access_aso[0x1];
+	u8 reserved_at_3[0x5];
+	u8 flow_access_aso_opc_mod[0x8];
+	u8 reserved_at_10[0xf];
+	u8 vhca_resource_manager[0x1];
 	u8 hca_cap_2[0x1];
 	u8 reserved_at_21[0xf];
 	u8 vhca_id[0x10];

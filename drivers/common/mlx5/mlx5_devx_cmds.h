@@ -254,6 +254,9 @@ struct mlx5_hca_attr {
 	};
 	uint32_t flow_counter_bulk_log_max_alloc:5;
 	uint32_t flow_counter_bulk_log_granularity:5;
+	uint32_t alloc_flow_counter_pd:1;
+	uint32_t flow_counter_access_aso:1;
+	uint32_t flow_access_aso_opc_mod:8;
 };
 
 /* LAG Context. */

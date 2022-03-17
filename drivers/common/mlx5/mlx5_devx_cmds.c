@@ -966,6 +966,12 @@ mlx5_devx_cmd_query_hca_attr(void *ctx,
 			max_flow_counter_15_0);
 	attr->max_flow_counter_31_16 = MLX5_GET(cmd_hca_cap, hcattr,
 			max_flow_counter_31_16);
+	attr->alloc_flow_counter_pd = MLX5_GET(cmd_hca_cap, hcattr,
+			alloc_flow_counter_pd);
+	attr->flow_counter_access_aso = MLX5_GET(cmd_hca_cap, hcattr,
+			flow_counter_access_aso);
+	attr->flow_access_aso_opc_mod = MLX5_GET(cmd_hca_cap, hcattr,
+			flow_access_aso_opc_mod);
 	if (attr->crypto)
 		attr->aes_xts = MLX5_GET(cmd_hca_cap, hcattr, aes_xts);
 	if (hca_cap_2_sup) {
