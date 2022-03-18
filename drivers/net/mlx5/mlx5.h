@@ -898,6 +898,8 @@ struct mlx5_flow_meter_info {
 	uint32_t def_policy:1;
 	uint32_t initialized:1;
 	/* Meter points to default policy. */
+	uint32_t color_aware:1;
+	/* Meter is color aware mode. */
 	void *drop_rule[MLX5_MTR_DOMAIN_MAX];
 	/* Meter drop rule in drop table. */
 	uint32_t drop_cnt;
