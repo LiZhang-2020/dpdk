@@ -1301,6 +1301,10 @@ mlx5_traffic_enable_hws(struct rte_eth_dev *dev)
 		}
 		mlx5_txq_release(dev, i);
 	}
+	if ((priv->master || priv->representor) && priv->sh->config.dv_esw_en) {
+		if (mlx5_flow_hw_esw_create_default_jump_flow(dev))
+			goto error;
+	}
 	return 0;
 error:
 	ret = rte_errno;

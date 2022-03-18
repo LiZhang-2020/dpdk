@@ -3002,24 +3002,61 @@ flow_hw_create_ctrl_sq_pattern_template(struct rte_eth_dev *dev)
 }
 
 /**
+ * Creates a flow pattern template with unmasked represented port matching.
+ * This template is used to set up a table for default transfer flows
+ * directing packets to group 1.
+ *
+ * @param dev
+ *   Pointer to Ethernet device.
+ *
+ * @return
+ *   Pointer to flow pattern template on success, NULL otherwise.
+ */
+static struct rte_flow_pattern_template *
+flow_hw_create_ctrl_port_pattern_template(struct rte_eth_dev *dev)
+{
+	struct rte_flow_pattern_template_attr attr = {
+		.relaxed_matching = 0,
+		.transfer = 1,
+	};
+	struct rte_flow_item_ethdev port_mask = {
+		.port_id = UINT16_MAX,
+	};
+	struct rte_flow_item items[] = {
+		{
+			.type = RTE_FLOW_ITEM_TYPE_REPRESENTED_PORT,
+			.mask = &port_mask,
+		},
+		{
+			.type = RTE_FLOW_ITEM_TYPE_END,
+		},
+	};
+
+	return flow_hw_pattern_template_create(dev, &attr, items, NULL);
+}
+
+/**
  * Creates a flow actions template with an unmasked JUMP action. Flows
  * based on this template will perform a jump to some group. This template
  * is used to set up tables for control flows.
  *
  * @param dev
  *   Pointer to Ethernet device.
+ * @param group
+ *   Destination group for this action template.
  *
  * @return
  *   Pointer to flow actions template on success, NULL otherwise.
  */
 static struct rte_flow_actions_template *
-flow_hw_create_ctrl_jump_sq_actions_template(struct rte_eth_dev *dev)
+flow_hw_create_ctrl_jump_actions_template(struct rte_eth_dev *dev,
+					  uint32_t group)
 {
 	struct rte_flow_actions_template_attr attr = {
 		.transfer = 1,
 	};
 	struct rte_flow_action_jump jump_v = {
-		.group = MLX5_HW_SQ_MISS_GROUP,
+		.group = group,
 	};
 	struct rte_flow_action_jump jump_m = {
 		.group = UINT32_MAX,
@@ -3162,6 +3199,40 @@ flow_hw_create_ctrl_sq_miss_table(struct rte_eth_dev *dev,
 }
 
 /**
+ * Creates a control flow table used to transfer traffic
+ * from group 0 to group 1.
+ *
+ * @param dev
+ *   Pointer to Ethernet device.
+ * @param it
+ *   Pointer to flow pattern template.
+ * @param at
+ *   Pointer to flow actions template.
+ *
+ * @return
+ *   Pointer to flow table on success, NULL otherwise.
+ */
+static struct rte_flow_template_table *
+flow_hw_create_ctrl_jump_table(struct rte_eth_dev *dev,
+			       struct rte_flow_pattern_template *it,
+			       struct rte_flow_actions_template *at)
+{
+	struct rte_flow_template_table_attr attr = {
+		.flow_attr = {
+			.group = 0,
+			.priority = 15, /* TODO: Flow priority discovery. */
+			.ingress = 0,
+			.egress = 0,
+			.transfer = 1,
+			.hint_num_of_rules_log = 0,
+		},
+		.nb_flows = MLX5_HW_CTRL_FLOW_NB_RULES,
+	};
+
+	return flow_hw_table_create(dev, &attr, &it, 1, &at, 1, NULL);
+}
+
+/**
  * Creates a set of flow tables used to create control flows used
  * when E-Switch is engaged.
  *
@@ -3177,8 +3248,10 @@ flow_hw_create_ctrl_tables(struct rte_eth_dev *dev)
 	struct mlx5_priv *priv = dev->data->dev_private;
 	struct rte_flow_pattern_template *esw_mgr_items_tmpl = NULL;
 	struct rte_flow_pattern_template *sq_items_tmpl = NULL;
+	struct rte_flow_pattern_template *port_items_tmpl = NULL;
 	struct rte_flow_actions_template *jump_sq_actions_tmpl = NULL;
 	struct rte_flow_actions_template *port_actions_tmpl = NULL;
+	struct rte_flow_actions_template *jump_one_actions_tmpl = NULL;
 
 	/* Item templates */
 	esw_mgr_items_tmpl = flow_hw_create_ctrl_esw_mgr_pattern_template(dev);
@@ -3193,8 +3266,15 @@ flow_hw_create_ctrl_tables(struct rte_eth_dev *dev)
 			" control flows", dev->data->port_id);
 		goto error;
 	}
+	port_items_tmpl = flow_hw_create_ctrl_port_pattern_template(dev);
+	if (!port_items_tmpl) {
+		DRV_LOG(ERR, "port %u failed to create SQ item template for"
+			" control flows", dev->data->port_id);
+		goto error;
+	}
 	/* Action templates */
-	jump_sq_actions_tmpl = flow_hw_create_ctrl_jump_sq_actions_template(dev);
+	jump_sq_actions_tmpl = flow_hw_create_ctrl_jump_actions_template(dev,
+									 MLX5_HW_SQ_MISS_GROUP);
 	if (!jump_sq_actions_tmpl) {
 		DRV_LOG(ERR, "port %u failed to create jump action template"
 			" for control flows", dev->data->port_id);
@@ -3203,6 +3283,12 @@ flow_hw_create_ctrl_tables(struct rte_eth_dev *dev)
 	port_actions_tmpl = flow_hw_create_ctrl_port_actions_template(dev);
 	if (!port_actions_tmpl) {
 		DRV_LOG(ERR, "port %u failed to create port action template"
+			" for control flows", dev->data->port_id);
+		goto error;
+	}
+	jump_one_actions_tmpl = flow_hw_create_ctrl_jump_actions_template(dev, 1);
+	if (!jump_one_actions_tmpl) {
+		DRV_LOG(ERR, "port %u failed to create jump action template"
 			" for control flows", dev->data->port_id);
 		goto error;
 	}
@@ -3223,8 +3309,20 @@ flow_hw_create_ctrl_tables(struct rte_eth_dev *dev)
 			" for control flows", dev->data->port_id);
 		goto error;
 	}
+	MLX5_ASSERT(priv->hw_esw_zero_tbl == NULL);
+	priv->hw_esw_zero_tbl = flow_hw_create_ctrl_jump_table(dev, port_items_tmpl,
+							       jump_one_actions_tmpl);
+	if (!priv->hw_esw_zero_tbl) {
+		DRV_LOG(ERR, "port %u failed to create table for default jump to group 1"
+			" for control flows", dev->data->port_id);
+		goto error;
+	}
 	return 0;
 error:
+	if (priv->hw_esw_zero_tbl) {
+		flow_hw_table_destroy(dev, priv->hw_esw_zero_tbl, NULL);
+		priv->hw_esw_zero_tbl = NULL;
+	}
 	if (priv->hw_esw_sq_miss_tbl) {
 		flow_hw_table_destroy(dev, priv->hw_esw_sq_miss_tbl, NULL);
 		priv->hw_esw_sq_miss_tbl = NULL;
@@ -3233,10 +3331,14 @@ error:
 		flow_hw_table_destroy(dev, priv->hw_esw_sq_miss_root_tbl, NULL);
 		priv->hw_esw_sq_miss_root_tbl = NULL;
 	}
+	if (jump_one_actions_tmpl)
+		flow_hw_actions_template_destroy(dev, jump_one_actions_tmpl, NULL);
 	if (port_actions_tmpl)
 		flow_hw_actions_template_destroy(dev, port_actions_tmpl, NULL);
 	if (jump_sq_actions_tmpl)
 		flow_hw_actions_template_destroy(dev, jump_sq_actions_tmpl, NULL);
+	if (port_items_tmpl)
+		flow_hw_pattern_template_destroy(dev, port_items_tmpl, NULL);
 	if (sq_items_tmpl)
 		flow_hw_pattern_template_destroy(dev, sq_items_tmpl, NULL);
 	if (esw_mgr_items_tmpl)
@@ -3979,5 +4081,59 @@ mlx5_flow_hw_esw_create_sq_miss_flow(struct rte_eth_dev *dev, uint32_t txq)
 	}
 	return flow_hw_create_ctrl_flow(dev, proxy_dev,
 					proxy_priv->hw_esw_sq_miss_tbl,
+					items, 0, actions, 0);
+}
+
+int
+mlx5_flow_hw_esw_create_default_jump_flow(struct rte_eth_dev *dev)
+{
+	uint16_t port_id = dev->data->port_id;
+	struct rte_flow_item_ethdev port_spec = {
+		.port_id = port_id,
+	};
+	struct rte_flow_item items[] = {
+		{
+			.type = RTE_FLOW_ITEM_TYPE_REPRESENTED_PORT,
+			.spec = &port_spec,
+		},
+		{
+			.type = RTE_FLOW_ITEM_TYPE_END,
+		},
+	};
+	struct rte_flow_action_jump jump = {
+		.group = 1,
+	};
+	struct rte_flow_action actions[] = {
+		{
+			.type = RTE_FLOW_ACTION_TYPE_JUMP,
+			.conf = &jump,
+		},
+		{
+			.type = RTE_FLOW_ACTION_TYPE_END,
+		}
+	};
+	struct rte_eth_dev *proxy_dev;
+	struct mlx5_priv *proxy_priv;
+	uint16_t proxy_port_id = dev->data->port_id;
+	int ret;
+
+	ret = rte_flow_pick_transfer_proxy(port_id, &proxy_port_id, NULL);
+	if (ret) {
+		DRV_LOG(ERR, "Unable to pick proxy port for port %u", port_id);
+		return ret;
+	}
+	proxy_dev = &rte_eth_devices[proxy_port_id];
+	proxy_priv = proxy_dev->data->dev_private;
+	if (!proxy_priv->dr_ctx)
+		return 0;
+	if (!proxy_priv->hw_esw_zero_tbl) {
+		DRV_LOG(ERR, "port %u proxy port %u was configured but default"
+			" flow tables are not created",
+			port_id, proxy_port_id);
+		rte_errno = EINVAL;
+		return -rte_errno;
+	}
+	return flow_hw_create_ctrl_flow(dev, proxy_dev,
+					proxy_priv->hw_esw_zero_tbl,
 					items, 0, actions, 0);
 }
