@@ -1533,6 +1533,8 @@ struct mlx5_priv {
 	struct mlx5dr_action *hw_drop[2][MLX5DR_TABLE_TYPE_MAX];
 	struct mlx5dr_action *hw_tag[2];
 	struct mlx5dr_action **hw_vport;
+	struct rte_flow_template_table *hw_esw_sq_miss_root_tbl;
+	struct rte_flow_template_table *hw_esw_sq_miss_tbl;
 	struct mlx5_indexed_pool *flows[MLX5_FLOW_TYPE_MAXI];
 	/* RTE Flow rules. */
 	uint32_t ctrl_flows; /* Control flow rules. */
