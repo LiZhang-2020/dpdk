@@ -6,6 +6,7 @@
 #include <rte_malloc.h>
 #include <mlx5_malloc.h>
 #include <rte_ring.h>
+#include <mlx5_devx_cmds.h>
 
 #include "mlx5_utils.h"
 #include "mlx5_hws_cnt.h"
@@ -205,4 +206,76 @@ mlx5_hws_cnt_pool_aso_query(struct mlx5_dev_ctx_shared *sh,
 	RTE_SET_USED(sh);
 	RTE_SET_USED(cpool);
 	return 0;
+}
+
+int
+mlx5_hws_cnt_pool_dcs_alloc(struct mlx5_dev_ctx_shared *sh,
+			    struct mlx5_hws_cnt_pool *cpool)
+{
+	struct mlx5_hca_attr *hca_attr = &sh->cdev->config.hca_attr;
+	uint32_t max_log_bulk_sz = 0;
+	uint32_t log_bulk_sz;
+	uint32_t idx, alloced = 0;
+	unsigned int cnt_num = mlx5_hws_cnt_pool_get_size(cpool);
+	struct mlx5_devx_counter_attr attr = {0};
+	struct mlx5_devx_obj *dcs;
+
+	if (hca_attr->flow_counter_bulk_log_max_alloc == 0) {
+		DRV_LOG(ERR,
+			"Fw doesn't support bulk log max alloc");
+		return -1;
+	}
+	max_log_bulk_sz = 23; /* hard code to 8M (1 << 23). */
+	cnt_num = RTE_ALIGN_CEIL(cnt_num, 4); /* minimal 4 counter in bulk. */
+	log_bulk_sz = RTE_MIN(max_log_bulk_sz, rte_log2_u32(cnt_num));
+	attr.pd = sh->cdev->pdn;
+	attr.pd_valid = 1;
+	attr.bulk_log_max_alloc = 1;
+	attr.flow_counter_bulk_log_size = log_bulk_sz;
+	idx = 0;
+	dcs = mlx5_devx_cmd_flow_counter_alloc_general(sh->cdev->ctx, &attr);
+	if (dcs == NULL)
+		goto error;
+	cpool->dcs_mng.dcs[idx].obj = dcs;
+	cpool->dcs_mng.dcs[idx].batch_sz = (1 << log_bulk_sz);
+	cpool->dcs_mng.batch_total++;
+	idx++;
+	alloced = cpool->dcs_mng.dcs[0].batch_sz;
+	if (cnt_num > cpool->dcs_mng.dcs[0].batch_sz) {
+		for (; idx < MLX5_HWS_CNT_DCS_NUM; idx++) {
+			attr.flow_counter_bulk_log_size = --max_log_bulk_sz;
+			dcs = mlx5_devx_cmd_flow_counter_alloc_general
+				(sh->cdev->ctx, &attr);
+			if (dcs == NULL)
+				goto error;
+			cpool->dcs_mng.dcs[idx].obj = dcs;
+			cpool->dcs_mng.dcs[idx].batch_sz =
+				(1 << max_log_bulk_sz);
+			alloced += cpool->dcs_mng.dcs[idx].batch_sz;
+			cpool->dcs_mng.batch_total++;
+		}
+	}
+	return 0;
+error:
+	DRV_LOG(DEBUG,
+		"Cannot alloc device counter, allocated[%" PRIu32 "] request[%" PRIu32 "]",
+		alloced, cnt_num);
+	for (idx = 0; idx < cpool->dcs_mng.batch_total; idx++) {
+		mlx5_devx_cmd_destroy(cpool->dcs_mng.dcs[idx].obj);
+		cpool->dcs_mng.dcs[idx].obj = NULL;
+		cpool->dcs_mng.dcs[idx].batch_sz = 0;
+	}
+	cpool->dcs_mng.batch_total = 0;
+	return -1;
+}
+
+void
+mlx5_hws_cnt_pool_dcs_free(struct mlx5_hws_cnt_pool *cpool)
+{
+	uint32_t idx;
+
+	if (cpool == NULL)
+		return;
+	for (idx = 0; idx < MLX5_HWS_CNT_DCS_NUM; idx++)
+		mlx5_devx_cmd_destroy(cpool->dcs_mng.dcs[idx].obj);
 }

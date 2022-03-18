@@ -344,6 +344,12 @@ mlx5_hws_cnt_pool_get(struct mlx5_hws_cnt_pool *cpool,
 	return 0;
 }
 
+static __always_inline unsigned int
+mlx5_hws_cnt_pool_get_size(struct mlx5_hws_cnt_pool *cpool)
+{
+	return rte_ring_get_capacity(cpool->free_list);
+}
+
 /* init HWS counter pool. */
 struct mlx5_hws_cnt_pool *
 mlx5_hws_cnt_pool_init(const struct mlx5_hws_cnt_pool_cfg *pcfg,
@@ -361,5 +367,11 @@ mlx5_hws_cnt_service_thread_destroy(struct mlx5_dev_ctx_shared *sh);
 int
 mlx5_hws_cnt_pool_aso_query(struct mlx5_dev_ctx_shared *sh,
 			    struct mlx5_hws_cnt_pool *cpool);
+
+int
+mlx5_hws_cnt_pool_dcs_alloc(struct mlx5_dev_ctx_shared *sh,
+		struct mlx5_hws_cnt_pool *cpool);
+void
+mlx5_hws_cnt_pool_dcs_free(struct mlx5_hws_cnt_pool *cpool);
 
 #endif /* _MLX5_HWS_CNT_H_ */
