@@ -2428,4 +2428,6 @@ int flow_dv_action_query(struct rte_eth_dev *dev,
 int mlx5_flow_pick_transfer_proxy(struct rte_eth_dev *dev,
 				  uint16_t *proxy_port_id,
 				  struct rte_flow_error *error);
+
+int mlx5_flow_hw_flush_ctrl_flows(struct rte_eth_dev *dev);
 #endif /* RTE_PMD_MLX5_FLOW_H_ */

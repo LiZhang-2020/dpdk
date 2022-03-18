@@ -1481,6 +1481,12 @@ struct sft_flows {
 	uint32_t idx_list;
 };
 
+struct mlx5_hw_ctrl_flow {
+	LIST_ENTRY(mlx5_hw_ctrl_flow) next;
+	struct rte_eth_dev *owner_dev;
+	struct rte_flow *flow;
+};
+
 struct mlx5_priv {
 	struct rte_eth_dev_data *dev_data;  /* Pointer to device data. */
 	struct mlx5_dev_ctx_shared *sh; /* Shared device context. */
@@ -1522,6 +1528,8 @@ struct mlx5_priv {
 	unsigned int reta_idx_n; /* RETA index size. */
 	struct mlx5_drop drop_queue; /* Flow drop queues. */
 	void *root_drop_action; /* Pointer to root drop action. */
+	rte_spinlock_t hw_ctrl_lock;
+	LIST_HEAD(hw_ctrl_flow, mlx5_hw_ctrl_flow) hw_ctrl_flows;
 	struct mlx5dr_action *hw_drop[2][MLX5DR_TABLE_TYPE_MAX];
 	struct mlx5dr_action *hw_tag[2];
 	struct mlx5dr_action **hw_vport;

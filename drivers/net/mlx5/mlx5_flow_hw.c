@@ -33,6 +33,8 @@
 /* Default queue to flush the flows. */
 #define MLX5_DEFAULT_FLUSH_QUEUE 0
 
+static int flow_hw_flush_all_ctrl_flows(struct rte_eth_dev *dev);
+
 const struct mlx5_flow_driver_ops mlx5_flow_hw_drv_ops;
 
 /* DR action flags with different table. */
@@ -1813,7 +1815,9 @@ __flow_hw_pull_comp(struct rte_eth_dev *dev,
 	struct rte_flow_op_result comp[BURST_THR];
 	int ret, i, empty_loop = 0;
 
-	flow_hw_push(dev, queue, error);
+	ret = flow_hw_push(dev, queue, error);
+	if (ret < 0)
+		return ret;
 	while (pending_rules) {
 		ret = flow_hw_pull(dev, queue, comp, BURST_THR, error);
 		if (ret < 0)
@@ -3067,6 +3071,8 @@ flow_hw_configure(struct rte_eth_dev *dev,
 		goto err;
 	priv->dr_ctx = dr_ctx;
 	priv->nb_queue = nb_q_updated;
+	rte_spinlock_init(&priv->hw_ctrl_lock);
+	LIST_INIT(&priv->hw_ctrl_flows);
 	/* Add global actions. */
 	for (i = 0; i < MLX5_HW_ACTION_FLAG_MAX; i++) {
 		for (j = 0; j < MLX5DR_TABLE_TYPE_MAX; j++) {
@@ -3132,6 +3138,7 @@ flow_hw_resource_release(struct rte_eth_dev *dev)
 
 	if (!priv->dr_ctx)
 		return;
+	flow_hw_flush_all_ctrl_flows(dev);
 	while (!LIST_EMPTY(&priv->flow_hw_tbl)) {
 		tbl = LIST_FIRST(&priv->flow_hw_tbl);
 		flow_hw_table_destroy(dev, tbl, NULL);
@@ -3317,3 +3324,233 @@ const struct mlx5_flow_driver_ops mlx5_flow_hw_drv_ops = {
 	.action_update = flow_dv_action_update,
 	.action_query = flow_dv_action_query,
 };
+
+static uint32_t
+flow_hw_get_ctrl_queue(struct mlx5_priv *priv)
+{
+	MLX5_ASSERT(priv->nb_queue > 0);
+	return priv->nb_queue - 1;
+}
+
+/**
+ * Creates a control flow using flow template API on @p proxy_dev device,
+ * on behalf of @p owner_dev device.
+ *
+ * This function uses locks internally to synchronize access to the
+ * flow queue.
+ *
+ * Created flow is stored in private list associated with @p proxy_dev device.
+ *
+ * @param owner_dev
+ *   Pointer to Ethernet device on behalf of which flow is created.
+ * @param proxy_dev
+ *   Pointer to Ethernet device on which flow is created.
+ * @param table
+ *   Pointer to flow table.
+ * @param items
+ *   Pointer to flow rule items.
+ * @param item_template_idx
+ *   Index of an item template associated with @p table.
+ * @param actions
+ *   Pointer to flow rule actions.
+ * @param action_template_idx
+ *   Index of an action template associated with @p table.
+ *
+ * @return
+ *   0 on success, negative errno value otherwise and rte_errno set.
+ */
+static __rte_unused int
+flow_hw_create_ctrl_flow(struct rte_eth_dev *owner_dev,
+			 struct rte_eth_dev *proxy_dev,
+			 struct rte_flow_template_table *table,
+			 struct rte_flow_item items[],
+			 uint8_t item_template_idx,
+			 struct rte_flow_action actions[],
+			 uint8_t action_template_idx)
+{
+	struct mlx5_priv *priv = proxy_dev->data->dev_private;
+	uint32_t queue = flow_hw_get_ctrl_queue(priv);
+	struct rte_flow_op_attr op_attr = {
+		.postpone = 0,
+	};
+	struct rte_flow *flow = NULL;
+	struct mlx5_hw_ctrl_flow *entry = NULL;
+	int ret;
+
+	rte_spinlock_lock(&priv->hw_ctrl_lock);
+	entry = mlx5_malloc(MLX5_MEM_ZERO | MLX5_MEM_SYS, sizeof(*entry),
+			    0, SOCKET_ID_ANY);
+	if (!entry) {
+		DRV_LOG(ERR, "port %u not enough memory to create control flows",
+			proxy_dev->data->port_id);
+		rte_errno = ENOMEM;
+		ret = -rte_errno;
+		goto error;
+	}
+	flow = flow_hw_async_flow_create(proxy_dev, queue, &op_attr, table,
+					 items, item_template_idx,
+					 actions, action_template_idx,
+					 NULL, NULL);
+	if (!flow) {
+		DRV_LOG(ERR, "port %u failed to enqueue create control"
+			" flow operation", proxy_dev->data->port_id);
+		ret = -rte_errno;
+		goto error;
+	}
+	ret = flow_hw_push(proxy_dev, queue, NULL);
+	if (ret) {
+		DRV_LOG(ERR, "port %u failed to drain control flow queue",
+			proxy_dev->data->port_id);
+		goto error;
+	}
+	ret = __flow_hw_pull_comp(proxy_dev, queue, 1, NULL);
+	if (ret) {
+		DRV_LOG(ERR, "port %u failed to insert control flow",
+			proxy_dev->data->port_id);
+		rte_errno = EINVAL;
+		ret = -rte_errno;
+		goto error;
+	}
+	entry->owner_dev = owner_dev;
+	entry->flow = flow;
+	LIST_INSERT_HEAD(&priv->hw_ctrl_flows, entry, next);
+	rte_spinlock_unlock(&priv->hw_ctrl_lock);
+	return 0;
+error:
+	if (entry)
+		mlx5_free(entry);
+	rte_spinlock_unlock(&priv->hw_ctrl_lock);
+	return ret;
+}
+
+/**
+ * Destroys a control flow @p flow using flow template API on @p dev device.
+ *
+ * This function uses locks internally to synchronize access to the
+ * flow queue.
+ *
+ * If the @p flow is stored on any private list/pool, then caller must free up
+ * the relevant resources.
+ *
+ * @param dev
+ *   Pointer to Ethernet device.
+ * @param flow
+ *   Pointer to flow rule.
+ *
+ * @return
+ *   0 on success, non-zero value otherwise.
+ */
+static int
+flow_hw_destroy_ctrl_flow(struct rte_eth_dev *dev, struct rte_flow *flow)
+{
+	struct mlx5_priv *priv = dev->data->dev_private;
+	uint32_t queue = flow_hw_get_ctrl_queue(priv);
+	struct rte_flow_op_attr op_attr = {
+		.postpone = 0,
+	};
+	int ret;
+
+	rte_spinlock_lock(&priv->hw_ctrl_lock);
+	ret = flow_hw_async_flow_destroy(dev, queue, &op_attr, flow, NULL, NULL);
+	if (ret) {
+		DRV_LOG(ERR, "port %u failed to enqueue destroy control"
+			" flow operation", dev->data->port_id);
+		goto exit;
+	}
+	ret = flow_hw_push(dev, queue, NULL);
+	if (ret) {
+		DRV_LOG(ERR, "port %u failed to drain control flow queue",
+			dev->data->port_id);
+		goto exit;
+	}
+	ret = __flow_hw_pull_comp(dev, queue, 1, NULL);
+	if (ret) {
+		DRV_LOG(ERR, "port %u failed to destroy control flow",
+			dev->data->port_id);
+		rte_errno = EINVAL;
+		ret = -rte_errno;
+		goto exit;
+	}
+exit:
+	rte_spinlock_unlock(&priv->hw_ctrl_lock);
+	return ret;
+}
+
+/**
+ * Destroys control flows created on behalf of @p owner_dev device.
+ *
+ * @param owner_dev
+ *   Pointer to Ethernet device owning control flows.
+ *
+ * @return
+ *   0 on success, otherwise negative error code is returned and
+ *   rte_errno is set.
+ */
+int
+mlx5_flow_hw_flush_ctrl_flows(struct rte_eth_dev *owner_dev)
+{
+	struct rte_eth_dev *proxy_dev;
+	struct mlx5_priv *proxy_priv;
+	struct mlx5_hw_ctrl_flow *cf;
+	struct mlx5_hw_ctrl_flow *cf_next;
+	uint16_t owner_port_id = owner_dev->data->port_id;
+	uint16_t proxy_port_id = owner_dev->data->port_id;
+	int ret;
+
+	if (rte_flow_pick_transfer_proxy(owner_port_id, &proxy_port_id, NULL)) {
+		DRV_LOG(ERR, "Unable to find proxy port for port %u",
+			owner_port_id);
+		rte_errno = EINVAL;
+		return -rte_errno;
+	}
+	proxy_dev = &rte_eth_devices[proxy_port_id];
+	proxy_priv = proxy_dev->data->dev_private;
+	cf = LIST_FIRST(&proxy_priv->hw_ctrl_flows);
+	while (cf != NULL) {
+		cf_next = LIST_NEXT(cf, next);
+		if (cf->owner_dev == owner_dev) {
+			ret = flow_hw_destroy_ctrl_flow(proxy_dev, cf->flow);
+			if (ret) {
+				rte_errno = ret;
+				return -ret;
+			}
+			LIST_REMOVE(cf, next);
+			mlx5_free(cf);
+		}
+		cf = cf_next;
+	}
+	return 0;
+}
+
+/**
+ * Destroys all control flows created on @p dev device.
+ *
+ * @param owner_dev
+ *   Pointer to Ethernet device.
+ *
+ * @return
+ *   0 on success, otherwise negative error code is returned and
+ *   rte_errno is set.
+ */
+static int
+flow_hw_flush_all_ctrl_flows(struct rte_eth_dev *dev)
+{
+	struct mlx5_priv *priv = dev->data->dev_private;
+	struct mlx5_hw_ctrl_flow *cf;
+	struct mlx5_hw_ctrl_flow *cf_next;
+	int ret;
+
+	cf = LIST_FIRST(&priv->hw_ctrl_flows);
+	while (cf != NULL) {
+		cf_next = LIST_NEXT(cf, next);
+		ret = flow_hw_destroy_ctrl_flow(dev, cf->flow);
+		if (ret) {
+			rte_errno = ret;
+			return -ret;
+		}
+		LIST_REMOVE(cf, next);
+		mlx5_free(cf);
+		cf = cf_next;
+	}
+	return 0;
+}
