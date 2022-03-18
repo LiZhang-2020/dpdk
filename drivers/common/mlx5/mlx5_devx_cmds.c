@@ -174,6 +174,41 @@ error:
 	return rc;
 }
 
+struct mlx5_devx_obj *
+mlx5_devx_cmd_flow_counter_alloc_general(void *ctx,
+		struct mlx5_devx_counter_attr *attr)
+{
+	struct mlx5_devx_obj *dcs = mlx5_malloc(MLX5_MEM_ZERO, sizeof(*dcs),
+						0, SOCKET_ID_ANY);
+	uint32_t in[MLX5_ST_SZ_DW(alloc_flow_counter_in)]   = {0};
+	uint32_t out[MLX5_ST_SZ_DW(alloc_flow_counter_out)] = {0};
+
+	if (!dcs) {
+		rte_errno = ENOMEM;
+		return NULL;
+	}
+	MLX5_SET(alloc_flow_counter_in, in, opcode,
+		 MLX5_CMD_OP_ALLOC_FLOW_COUNTER);
+	if (attr->bulk_log_max_alloc)
+		MLX5_SET(alloc_flow_counter_in, in, flow_counter_bulk_log_size,
+			 attr->flow_counter_bulk_log_size);
+	else
+		MLX5_SET(alloc_flow_counter_in, in, flow_counter_bulk,
+			 attr->bulk_n_128);
+	if (attr->pd_valid)
+		MLX5_SET(alloc_flow_counter_in, in, pd, attr->pd);
+	dcs->obj = mlx5_glue->devx_obj_create(ctx, in,
+					      sizeof(in), out, sizeof(out));
+	if (!dcs->obj) {
+		DRV_LOG(ERR, "Can't allocate counters - error %d", errno);
+		rte_errno = errno;
+		mlx5_free(dcs);
+		return NULL;
+	}
+	dcs->id = MLX5_GET(alloc_flow_counter_out, out, flow_counter_id);
+	return dcs;
+}
+
 /**
  * Allocate flow counters via devx interface.
  *

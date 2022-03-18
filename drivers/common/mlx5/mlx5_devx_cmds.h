@@ -15,6 +15,16 @@
 #define MLX5_DEVX_MAX_KLM_ENTRIES ((UINT16_MAX - \
 		MLX5_ST_SZ_DW(create_mkey_in) * 4) / (MLX5_ST_SZ_DW(klm) * 4))
 
+struct mlx5_devx_counter_attr {
+	uint32_t pd_valid:1;
+	uint32_t pd:24;
+	uint32_t bulk_log_max_alloc:1;
+	union {
+		uint8_t flow_counter_bulk_log_size;
+		uint8_t bulk_n_128;
+	};
+};
+
 struct mlx5_devx_mkey_attr {
 	uint64_t addr;
 	uint64_t size;
@@ -586,6 +596,11 @@ struct mlx5_devx_crypto_login_attr {
 };
 
 /* mlx5_devx_cmds.c */
+
+__rte_internal
+struct mlx5_devx_obj *
+mlx5_devx_cmd_flow_counter_alloc_general(void *ctx,
+				struct mlx5_devx_counter_attr *attr);
 
 __rte_internal
 struct mlx5_devx_obj *mlx5_devx_cmd_flow_counter_alloc(void *ctx,

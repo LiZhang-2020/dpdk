@@ -1146,8 +1146,10 @@ struct mlx5_ifc_alloc_flow_counter_in_bits {
 	u8         reserved_at_10[0x10];
 	u8         reserved_at_20[0x10];
 	u8         op_mod[0x10];
-	u8         flow_counter_id[0x20];
-	u8         reserved_at_40[0x18];
+	u8         reserved_at_40[0x8];
+	u8         pd[0x18];
+	u8         reserved_at_60[0x13];
+	u8         flow_counter_bulk_log_size[0x5];
 	u8         flow_counter_bulk[0x8];
 };
 
