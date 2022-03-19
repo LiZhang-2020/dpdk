@@ -50,6 +50,12 @@ enum mlx5_rte_flow_action_type {
 	MLX5_RTE_FLOW_ACTION_TYPE_RSS,
 };
 
+/* Private (internal) Field IDs for MODIFY_FIELD action. */
+enum mlx5_rte_flow_field_id {
+	MLX5_RTE_FLOW_FIELD_END = INT_MIN,
+	MLX5_RTE_FLOW_FIELD_META_REG,
+};
+
 #define MLX5_INDIRECT_ACTION_TYPE_OFFSET 30
 
 enum {

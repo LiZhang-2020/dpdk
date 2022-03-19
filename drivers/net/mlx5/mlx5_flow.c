@@ -12350,7 +12350,7 @@ mlx5_flow_field_id_to_modify_info
 	uint32_t idx = 0;
 	uint32_t off_be = 0;
 	uint32_t length = 0;
-	switch (data->field) {
+	switch ((int)data->field) {
 	case RTE_FLOW_FIELD_START:
 		/* not supported yet */
 		MLX5_ASSERT(false);
@@ -12736,6 +12736,24 @@ mlx5_flow_field_id_to_modify_info
 					MLX5_MODI_OUT_IP_ECN};
 		if (mask)
 			mask[idx] = 0x3 >> (2 - width);
+		break;
+	case MLX5_RTE_FLOW_FIELD_META_REG:
+		{
+			uint32_t meta_mask = priv->sh->dv_meta_mask;
+			uint32_t meta_count = __builtin_popcount(meta_mask);
+			uint32_t reg = data->level;
+
+			RTE_SET_USED(meta_count);
+			MLX5_ASSERT(data->offset + width <= meta_count);
+			MLX5_ASSERT(reg != REG_NON);
+			MLX5_ASSERT(reg < RTE_DIM(reg_to_field));
+			info[idx] = (struct field_modify_info){4, 0, reg_to_field[reg]};
+			if (mask)
+				mask[idx] = flow_modify_info_mask_32_masked
+					(width, data->offset, meta_mask);
+			else
+				info[idx].offset = data->offset;
+		}
 		break;
 	case RTE_FLOW_FIELD_POINTER:
 	case RTE_FLOW_FIELD_VALUE:
