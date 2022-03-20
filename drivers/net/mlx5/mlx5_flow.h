@@ -1221,6 +1221,7 @@ struct rte_flow_actions_template {
 	struct rte_flow_action *actions; /* Cached flow actions. */
 	struct rte_flow_action *masks; /* Cached action masks.*/
 	uint32_t refcnt; /* Reference counter. */
+	uint16_t rx_cpy_pos; /* Action position of Rx metadata to be copied. */
 };
 
 /* Jump action struct. */

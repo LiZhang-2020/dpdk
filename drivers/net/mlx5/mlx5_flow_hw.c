@@ -2246,6 +2246,54 @@ flow_hw_validate_action_represented_port(struct rte_eth_dev *dev,
 	return 0;
 }
 
+static inline int
+flow_hw_action_meta_copy_insert(const struct rte_flow_action actions[],
+				const struct rte_flow_action masks[],
+				const struct rte_flow_action *ins_actions,
+				const struct rte_flow_action *ins_masks,
+				struct rte_flow_action *new_actions,
+				struct rte_flow_action *new_masks,
+				uint16_t *ins_pos)
+{
+	uint16_t idx, total = 0;
+	bool ins = false;
+	bool act_end = false;
+
+	MLX5_ASSERT(actions && masks);
+	MLX5_ASSERT(new_actions && new_masks);
+	MLX5_ASSERT(ins_actions && ins_masks);
+	for (idx = 0; !act_end; idx++) {
+		if (idx >= MLX5_HW_MAX_ACTS)
+			return -1;
+		if (actions[idx].type == RTE_FLOW_ACTION_TYPE_RSS ||
+		    actions[idx].type == RTE_FLOW_ACTION_TYPE_QUEUE) {
+			ins = true;
+			*ins_pos = idx;
+		}
+		if (actions[idx].type == RTE_FLOW_ACTION_TYPE_END)
+			act_end = true;
+	}
+	if (!ins)
+		return 0;
+	else if (idx == MLX5_HW_MAX_ACTS)
+		return -1; /* No more space. */
+	total = idx;
+	/* Before the position, no change for the actions. */
+	for (idx = 0; idx < *ins_pos; idx++) {
+		new_actions[idx] = actions[idx];
+		new_masks[idx] = masks[idx];
+	}
+	/* Insert the new action and mask to the position. */
+	new_actions[idx] = *ins_actions;
+	new_masks[idx] = *ins_masks;
+	/* Remaining content is right shifted by one position. */
+	for (; idx < total; idx++) {
+		new_actions[idx + 1] = actions[idx];
+		new_masks[idx + 1] = masks[idx];
+	}
+	return 0;
+}
+
 static int
 flow_hw_action_validate(struct rte_eth_dev *dev,
 			const struct rte_flow_actions_template_attr *attr,
@@ -2254,7 +2302,7 @@ flow_hw_action_validate(struct rte_eth_dev *dev,
 			struct rte_flow_error *error)
 {
 	struct mlx5_priv *priv = dev->data->dev_private;
-	int i;
+	uint16_t i;
 	bool actions_end = false;
 	int ret;
 
@@ -2268,6 +2316,7 @@ flow_hw_action_validate(struct rte_eth_dev *dev,
 		const struct rte_flow_action *action = &actions[i];
 		const struct rte_flow_action *mask = &masks[i];
 
+		MLX5_ASSERT(i < MLX5_HW_MAX_ACTS);
 		if (action->type != mask->type)
 			return rte_flow_error_set(error, ENOTSUP,
 						  RTE_FLOW_ERROR_TYPE_ACTION,
@@ -2364,21 +2413,59 @@ flow_hw_actions_template_create(struct rte_eth_dev *dev,
 {
 	struct mlx5_priv *priv = dev->data->dev_private;
 	int len, act_len, mask_len, i;
-	struct rte_flow_actions_template *at;
+	struct rte_flow_actions_template *at = NULL;
+	uint16_t pos = MLX5_HW_MAX_ACTS;
+	struct rte_flow_action tmp_action[MLX5_HW_MAX_ACTS];
+	struct rte_flow_action tmp_mask[MLX5_HW_MAX_ACTS];
+	const struct rte_flow_action *ra;
+	const struct rte_flow_action *rm;
+	const struct rte_flow_action_modify_field rx_mreg = {
+		.operation = RTE_FLOW_MODIFY_SET,
+		.dst = {
+			.field = (enum rte_flow_field_id)MLX5_RTE_FLOW_FIELD_META_REG,
+			.level = REG_B,
+		},
+		.src = {
+			.field = (enum rte_flow_field_id)MLX5_RTE_FLOW_FIELD_META_REG,
+			.level = REG_C_1,
+		},
+		.width = 32,
+	};
+	const struct rte_flow_action rx_cpy = {
+		.type = RTE_FLOW_ACTION_TYPE_MODIFY_FIELD,
+		.conf = &rx_mreg,
+	};
 
 	if (flow_hw_action_validate(dev, attr, actions, masks, error))
 		return NULL;
-	act_len = rte_flow_conv(RTE_FLOW_CONV_OP_ACTIONS,
-				NULL, 0, actions, error);
+	if (priv->sh->config.dv_xmeta_en == MLX5_XMETA_MODE_META32_HWS &&
+	    priv->sh->config.dv_esw_en) {
+		if (flow_hw_action_meta_copy_insert(actions, masks, &rx_cpy, &rx_cpy,
+						    tmp_action, tmp_mask, &pos)) {
+			rte_flow_error_set(error, EINVAL,
+					   RTE_FLOW_ERROR_TYPE_ACTION, NULL,
+					   "Failed to concatenate new action/mask");
+			return NULL;
+		}
+	}
+	/* Application should make sure only one Q/RSS exist in one rule. */
+	if (pos == MLX5_HW_MAX_ACTS) {
+		ra = actions;
+		rm = masks;
+	} else {
+		ra = tmp_action;
+		rm = tmp_mask;
+	}
+	act_len = rte_flow_conv(RTE_FLOW_CONV_OP_ACTIONS, NULL, 0, ra, error);
 	if (act_len <= 0)
 		return NULL;
 	len = RTE_ALIGN(act_len, 16);
-	mask_len = rte_flow_conv(RTE_FLOW_CONV_OP_ACTIONS,
-				 NULL, 0, masks, error);
+	mask_len = rte_flow_conv(RTE_FLOW_CONV_OP_ACTIONS, NULL, 0, rm, error);
 	if (mask_len <= 0)
 		return NULL;
 	len += RTE_ALIGN(mask_len, 16);
-	at = mlx5_malloc(MLX5_MEM_ZERO, len + sizeof(*at), 64, rte_socket_id());
+	at = mlx5_malloc(MLX5_MEM_ZERO, len + sizeof(*at),
+			 RTE_CACHE_LINE_SIZE, rte_socket_id());
 	if (!at) {
 		rte_flow_error_set(error, ENOMEM,
 				   RTE_FLOW_ERROR_TYPE_UNSPECIFIED,
@@ -2386,18 +2473,20 @@ flow_hw_actions_template_create(struct rte_eth_dev *dev,
 				   "cannot allocate action template");
 		return NULL;
 	}
+	/* Actions part is in the first half. */
 	at->attr = *attr;
 	at->actions = (struct rte_flow_action *)(at + 1);
-	act_len = rte_flow_conv(RTE_FLOW_CONV_OP_ACTIONS, at->actions, len,
-				actions, error);
+	act_len = rte_flow_conv(RTE_FLOW_CONV_OP_ACTIONS, at->actions,
+				len, ra, error);
 	if (act_len <= 0)
 		goto error;
-	at->masks = (struct rte_flow_action *)
-		    (((uint8_t *)at->actions) + act_len);
+	/* Masks part is in the second half. */
+	at->masks = (struct rte_flow_action *)(((uint8_t *)at->actions) + act_len);
 	mask_len = rte_flow_conv(RTE_FLOW_CONV_OP_ACTIONS, at->masks,
-				 len - act_len, masks, error);
+				 len - act_len, rm, error);
 	if (mask_len <= 0)
 		goto error;
+	at->rx_cpy_pos = pos;
 	/*
 	 * mlx5 PMD hacks indirect action index directly to the action conf.
 	 * The rte_flow_conv() function copies the content from conf pointer.
@@ -2414,7 +2503,8 @@ flow_hw_actions_template_create(struct rte_eth_dev *dev,
 	LIST_INSERT_HEAD(&priv->flow_hw_at, at, next);
 	return at;
 error:
-	mlx5_free(at);
+	if (at)
+		mlx5_free(at);
 	return NULL;
 }
 
