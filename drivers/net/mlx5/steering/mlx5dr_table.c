@@ -8,7 +8,10 @@ static void mlx5dr_table_init_next_ft_attr(struct mlx5dr_table *tbl,
 					   struct mlx5dr_cmd_ft_create_attr *ft_attr)
 {
 	ft_attr->type = tbl->fw_ft_type;
-	ft_attr->level = tbl->ctx->caps->nic_ft.max_level - 1;
+	if (tbl->type == MLX5DR_TABLE_TYPE_FDB)
+		ft_attr->level = tbl->ctx->caps->fdb_ft.max_level - 1;
+	else
+		ft_attr->level = tbl->ctx->caps->nic_ft.max_level - 1;
 	ft_attr->rtc_valid = true;
 }
 
@@ -31,7 +34,7 @@ mlx5dr_table_up_default_fdb_miss_tbl(struct mlx5dr_table *tbl)
 	}
 
 	ft_attr.type = tbl->fw_ft_type;
-	ft_attr.level = tbl->ctx->caps->nic_ft.max_level; /* The last level */
+	ft_attr.level = tbl->ctx->caps->fdb_ft.max_level; /* The last level */
 	ft_attr.rtc_valid = false;
 
 	assert(ctx->caps->eswitch_manager);
