@@ -786,6 +786,8 @@ flow_hw_modify_field_compile(struct rte_eth_dev *dev,
 					  NULL, "too many modify field operations specified");
 
 	cmds_end = mhdr->mhdr_cmds_num;
+	if (shared)
+		return 0;
 	ret = __flow_hw_act_data_hdr_modify_append(priv, acts, RTE_FLOW_ACTION_TYPE_MODIFY_FIELD,
 						   action - action_start, mhdr->pos,
 						   cmds_start, cmds_end, shared,
@@ -1080,6 +1082,16 @@ flow_hw_actions_translate(struct rte_eth_dev *dev,
 							   error);
 			if (ret)
 				goto err;
+			/*
+			 * Adjust the action source position for the following.
+			 * ... / MODIFY_FIELD: rx_cpy_pos / (QUEUE|RSS) / ...
+			 * The next action will be Q/RSS, there will not be
+			 * another adjustment and the real source position of
+			 * the following actions will be decreased by 1.
+			 * No change of the total actions in the new template.
+			 */
+			if ((actions - action_start) == at->rx_cpy_pos)
+				action_start += 1;
 			break;
 		case RTE_FLOW_ACTION_TYPE_REPRESENTED_PORT:
 			if (flow_hw_represented_port_compile
@@ -1633,7 +1645,13 @@ flow_hw_async_flow_create(struct rte_eth_dev *dev,
 	job->user_data = user_data;
 	rule_attr.user_data = job;
 	hw_acts = &table->ats[action_template_index].acts;
-	/* Construct the flow actions based on the input actions.*/
+	/*
+	 * Construct the flow actions based on the input actions.
+	 * The implicitly appended action is always fixed, like metadata
+	 * copy action from FDB to NIC Rx.
+	 * No need to copy and contrust a new "actions" list based on the
+	 * user's input, in order to save the cost.
+	 */
 	if (flow_hw_actions_construct(dev, job, hw_acts, pattern_template_index,
 				  actions, rule_acts, &acts_num)) {
 		rte_errno = EINVAL;
