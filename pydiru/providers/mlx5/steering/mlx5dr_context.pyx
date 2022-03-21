@@ -105,14 +105,14 @@ cdef class Mlx5drContext(PydiruCM):
         :param res_nb: Number of expected completeions
         :return: List of RteFlowResult
         """
-        cdef pdr.rte_flow_q_op_res* res_list_ptr = <pdr.rte_flow_q_op_res *>calloc(res_nb, sizeof(pdr.rte_flow_q_op_res))
+        cdef pdr.rte_flow_op_result* res_list_ptr = <pdr.rte_flow_op_result *>calloc(res_nb, sizeof(pdr.rte_flow_op_result))
         if res_list_ptr == NULL:
             raise MemoryError('Failed allocating memory')
         results = []
         res = dr.mlx5dr_send_queue_poll(self.context, queue_id, res_list_ptr, res_nb)
         if res > 0:
             for r in range(res):
-                if res_list_ptr[r].status == e.RTE_FLOW_Q_OP_ERROR:
+                if res_list_ptr[r].status == e.RTE_FLOW_OP_ERROR:
                     self.logger.warning(f'ERROR completion returned from queue {queue_id}.')
                 results.append(RteFlowResult(res_list_ptr[r].status,
                                              <uintptr_t><void*>res_list_ptr[r].user_data))

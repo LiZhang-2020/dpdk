@@ -30,4 +30,4 @@ cdef class RteFlowItemEnd(RteFlowItem):
     pass
 
 cdef class RteFlowResult(PydiruObject):
-    cdef pdr.rte_flow_q_op_res flow_res
+    cdef pdr.rte_flow_op_result flow_res

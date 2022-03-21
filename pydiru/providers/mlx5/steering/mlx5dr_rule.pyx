@@ -82,7 +82,7 @@ cdef class Mlx5drRule(PydiruCM):
             res = []
             while not res:
                 res = dr_ctx.poll_send_queue(rule_attr_create.attr.queue_id, 1)
-            if <RteFlowResult>(res[0]).status != e.RTE_FLOW_Q_OP_SUCCESS:
+            if <RteFlowResult>(res[0]).status != e.RTE_FLOW_OP_SUCCESS:
                 raise PydiruError(f'ERROR completion returned from queue ID: {rule_attr_create.attr.queue_id} '
                                   f'with status: {res[0]).status}.')
 

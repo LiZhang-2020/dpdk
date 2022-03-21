@@ -56,7 +56,7 @@ class Mlx5drMatcherTest(PydiruAPITestCase):
             start_poll_t = time.perf_counter()
             while not res and (time.perf_counter() - start_poll_t) < polling_timeout:
                 res = self.resources.dr_ctx.poll_send_queue(0, 1)
-            if res[0].status == p.RTE_FLOW_Q_OP_ERROR:
+            if res[0].status == p.RTE_FLOW_OP_ERROR:
                 # Two rules have to fit in 2x2 table or a table for 2 rules
                 if i < 2:
                     raise PydiruError(f'Failed to add {i+1} rules to table that'

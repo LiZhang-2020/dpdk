@@ -84,9 +84,9 @@ cdef extern  from '../../../../lib/librte_ethdev/rte_flow.h':
     cdef struct rte_flow_item_udp:
         rte_udp_hdr hdr
 
-    cdef struct rte_flow_q_op_res:
+    cdef struct rte_flow_op_result:
         uint32_t version
-        e.rte_flow_q_op_status status
+        e.rte_flow_op_status status
         void *user_data
 
     cdef struct rte_flow_item_gtp:

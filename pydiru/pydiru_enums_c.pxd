@@ -63,6 +63,6 @@ cdef extern  from '../../../../lib/librte_ethdev/rte_flow.h':
         RTE_FLOW_ITEM_TYPE_CONNTRACK
         RTE_FLOW_ITEM_TYPE_FLEX
 
-    cpdef enum rte_flow_q_op_status:
-        RTE_FLOW_Q_OP_SUCCESS
-        RTE_FLOW_Q_OP_ERROR
+    cpdef enum rte_flow_op_status:
+        RTE_FLOW_OP_SUCCESS
+        RTE_FLOW_OP_ERROR

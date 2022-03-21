@@ -121,6 +121,6 @@ cdef extern  from '../../../../drivers/net/mlx5/steering/mlx5dr.h':
                                                 me.mlx5dr_action_flags flags)
     int mlx5dr_action_destroy(mlx5dr_action *action)
 
-    int mlx5dr_send_queue_poll(mlx5dr_context *ctx, uint16_t queue_id, pdr.rte_flow_q_op_res *res,
+    int mlx5dr_send_queue_poll(mlx5dr_context *ctx, uint16_t queue_id, pdr.rte_flow_op_result *res,
                                uint32_t res_nb)
     int mlx5dr_debug_dump(mlx5dr_context *ctx, s.FILE *f)
