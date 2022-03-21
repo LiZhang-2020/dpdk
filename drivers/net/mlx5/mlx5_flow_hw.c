@@ -773,6 +773,77 @@ flow_hw_modify_field_compile(struct rte_eth_dev *dev,
 	return 0;
 }
 
+static int
+flow_hw_represented_port_compile(struct rte_eth_dev *dev,
+				 const struct rte_flow_attr *attr,
+				 const struct rte_flow_action *action_start,
+				 const struct rte_flow_action *action,
+				 const struct rte_flow_action *action_mask,
+				 struct mlx5_hw_actions *acts,
+				 uint16_t action_dst,
+				 struct rte_flow_error *error)
+{
+	struct mlx5_priv *priv = dev->data->dev_private;
+	const struct rte_flow_action_ethdev *v = action->conf;
+	const struct rte_flow_action_ethdev *m = action_mask->conf;
+	int ret;
+
+	if (!attr->group)
+		return rte_flow_error_set(error, EINVAL,
+					  RTE_FLOW_ERROR_TYPE_ATTR, NULL,
+					  "represented_port action cannot"
+					  " be used on group 0");
+	if (!attr->transfer)
+		return rte_flow_error_set(error, EINVAL,
+					  RTE_FLOW_ERROR_TYPE_ATTR_TRANSFER,
+					  NULL,
+					  "represented_port action requires"
+					  " transfer attribute");
+	if (attr->ingress || attr->egress)
+		return rte_flow_error_set(error, EINVAL,
+					  RTE_FLOW_ERROR_TYPE_ATTR, NULL,
+					  "represented_port action cannot"
+					  " be used with direction attributes");
+	if (!priv->master)
+		return rte_flow_error_set(error, EINVAL,
+					  RTE_FLOW_ERROR_TYPE_UNSPECIFIED, NULL,
+					  "represented_port acton must"
+					  " be used on proxy port");
+	if (m && !!m->port_id) {
+		struct mlx5_priv *port_priv;
+
+		port_priv = mlx5_port_to_eswitch_info(v->port_id, false);
+		if (port_priv == NULL)
+			return rte_flow_error_set
+					(error, EINVAL,
+					 RTE_FLOW_ERROR_TYPE_UNSPECIFIED, NULL,
+					 "port does not exist or unable to"
+					 " obtain E-Switch info for port");
+		MLX5_ASSERT(priv->hw_vport != NULL);
+		if (priv->hw_vport[v->port_id]) {
+			acts->rule_acts[action_dst].action =
+					priv->hw_vport[v->port_id];
+		} else {
+			return rte_flow_error_set
+					(error, EINVAL,
+					 RTE_FLOW_ERROR_TYPE_UNSPECIFIED, NULL,
+					 "cannot use represented_port action"
+					 " with this port");
+		}
+	} else {
+		ret = __flow_hw_act_data_general_append
+				(priv, acts, action->type,
+				 action - action_start, action_dst);
+		if (ret)
+			return rte_flow_error_set
+					(error, ENOMEM,
+					 RTE_FLOW_ERROR_TYPE_UNSPECIFIED, NULL,
+					 "not enough memory to store"
+					 " vport action");
+	}
+	return 0;
+}
+
 /**
  * Translate rte_flow actions to DR action.
  *
@@ -986,6 +1057,13 @@ flow_hw_actions_translate(struct rte_eth_dev *dev,
 							   error);
 			if (ret)
 				goto err;
+			break;
+		case RTE_FLOW_ACTION_TYPE_REPRESENTED_PORT:
+			if (flow_hw_represented_port_compile
+					(dev, attr, action_start, actions,
+					 masks, acts, i, error))
+				goto err;
+			i++;
 			break;
 		case RTE_FLOW_ACTION_TYPE_END:
 			actions_end = true;
@@ -1264,10 +1342,12 @@ flow_hw_actions_construct(struct rte_eth_dev *dev,
 			  struct mlx5dr_rule_action *rule_acts,
 			  uint32_t *acts_num)
 {
+	struct mlx5_priv *priv = dev->data->dev_private;
 	struct rte_flow_template_table *table = job->flow->table;
 	const struct rte_flow_action *action;
 	const struct rte_flow_action_raw_encap *raw_encap_data;
 	const struct rte_flow_item *enc_item = NULL;
+	const struct rte_flow_action_ethdev *port_action = NULL;
 	uint8_t *buf = job->encap_data;
 	struct rte_flow_attr attr = {
 		.ingress = 1,
@@ -1392,6 +1472,13 @@ flow_hw_actions_construct(struct rte_eth_dev *dev,
 							     hw_acts, action);
 			if (ret)
 				return -1;
+			break;
+		case RTE_FLOW_ACTION_TYPE_REPRESENTED_PORT:
+			port_action = action->conf;
+			if (!priv->hw_vport[port_action->port_id])
+				return -1;
+			rule_acts[act_data->action_dst].action =
+					priv->hw_vport[port_action->port_id];
 			break;
 		default:
 			break;
@@ -2047,7 +2134,51 @@ flow_hw_validate_action_modify_field(const struct rte_flow_action *action,
 }
 
 static int
-flow_hw_action_validate(const struct rte_flow_action actions[],
+flow_hw_validate_action_represented_port(struct rte_eth_dev *dev,
+					 const struct rte_flow_action *action,
+					 const struct rte_flow_action *mask,
+					 struct rte_flow_error *error)
+{
+	const struct rte_flow_action_ethdev *action_conf = action->conf;
+	const struct rte_flow_action_ethdev *mask_conf = mask->conf;
+	struct mlx5_priv *priv = dev->data->dev_private;
+
+	if (!priv->sh->config.dv_esw_en)
+		return rte_flow_error_set(error, EINVAL,
+					  RTE_FLOW_ERROR_TYPE_UNSPECIFIED, NULL,
+					  "cannot use represented_port actions"
+					  " without an E-Switch");
+	if (mask_conf->port_id) {
+		struct mlx5_priv *port_priv;
+		struct mlx5_priv *dev_priv;
+
+		port_priv = mlx5_port_to_eswitch_info(action_conf->port_id, false);
+		if (!port_priv)
+			return rte_flow_error_set(error, rte_errno,
+						  RTE_FLOW_ERROR_TYPE_ACTION,
+						  action,
+						  "failed to obtain E-Switch"
+						  " info for port");
+		dev_priv = mlx5_dev_to_eswitch_info(dev);
+		if (!dev_priv)
+			return rte_flow_error_set(error, rte_errno,
+						  RTE_FLOW_ERROR_TYPE_ACTION,
+						  action,
+						  "failed to obtain E-Switch"
+						  " info for transfer proxy");
+		if (port_priv->domain_id != dev_priv->domain_id)
+			return rte_flow_error_set(error, rte_errno,
+						  RTE_FLOW_ERROR_TYPE_ACTION,
+						  action,
+						  "cannot forward to port from"
+						  " a different E-Switch");
+	}
+	return 0;
+}
+
+static int
+flow_hw_action_validate(struct rte_eth_dev *dev,
+			const struct rte_flow_action actions[],
 			const struct rte_flow_action masks[],
 			struct rte_flow_error *error)
 {
@@ -2110,6 +2241,12 @@ flow_hw_action_validate(const struct rte_flow_action actions[],
 			if (ret < 0)
 				return ret;
 			break;
+		case RTE_FLOW_ACTION_TYPE_REPRESENTED_PORT:
+			ret = flow_hw_validate_action_represented_port
+					(dev, action, mask, error);
+			if (ret < 0)
+				return ret;
+			break;
 		case RTE_FLOW_ACTION_TYPE_END:
 			actions_end = true;
 			break;
@@ -2151,7 +2288,7 @@ flow_hw_actions_template_create(struct rte_eth_dev *dev,
 	int len, act_len, mask_len, i;
 	struct rte_flow_actions_template *at;
 
-	if (flow_hw_action_validate(actions, masks, error))
+	if (flow_hw_action_validate(dev, actions, masks, error))
 		return NULL;
 	act_len = rte_flow_conv(RTE_FLOW_CONV_OP_ACTIONS,
 				NULL, 0, actions, error);
