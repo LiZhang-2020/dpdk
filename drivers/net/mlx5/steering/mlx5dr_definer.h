@@ -99,14 +99,19 @@ struct mlx5_ifc_definer_hl_eth_l4_bits {
 	u8 l3_ok[0x1];
 	u8 ip_fragmented[0x1];
 	u8 tcp_ns[0x1];
-	u8 tcp_cwr[0x1];
-	u8 tcp_ece[0x1];
-	u8 tcp_urg[0x1];
-	u8 tcp_ack[0x1];
-	u8 tcp_psh[0x1];
-	u8 tcp_rst[0x1];
-	u8 tcp_syn[0x1];
-	u8 tcp_fin[0x1];
+	union {
+		u8 tcp_flags[0x8];
+		struct {
+			u8 tcp_cwr[0x1];
+			u8 tcp_ece[0x1];
+			u8 tcp_urg[0x1];
+			u8 tcp_ack[0x1];
+			u8 tcp_psh[0x1];
+			u8 tcp_rst[0x1];
+			u8 tcp_syn[0x1];
+			u8 tcp_fin[0x1];
+		};
+	};
 	u8 first_fragment[0x1];
 	u8 reserved_at_31[0xf];
 };

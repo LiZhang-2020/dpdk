@@ -126,6 +126,8 @@ enum mlx5dr_definer_fname {
 	MLX5DR_DEFINER_FNAME_L4_SPORT_I,
 	MLX5DR_DEFINER_FNAME_L4_DPORT_O,
 	MLX5DR_DEFINER_FNAME_L4_DPORT_I,
+	MLX5DR_DEFINER_FNAME_TCP_FLAGS_I,
+	MLX5DR_DEFINER_FNAME_TCP_FLAGS_O,
 	MLX5DR_DEFINER_FNAME_GTP_TEID,
 	MLX5DR_DEFINER_FNAME_GTP_MSG_TYPE,
 	MLX5DR_DEFINER_FNAME_GTP_EXT_FLAG,
@@ -209,6 +211,7 @@ struct mlx5dr_definer_conv_data {
 	X(SET,		udp_protocol,		STE_UDP,		rte_flow_item_udp) \
 	X(SET_BE16,	udp_src_port,		v->hdr.src_port,	rte_flow_item_udp) \
 	X(SET_BE16,	udp_dst_port,		v->hdr.dst_port,	rte_flow_item_udp) \
+	X(SET,		tcp_flags,		v->hdr.tcp_flags,	rte_flow_item_tcp) \
 	X(SET,		tcp_protocol,		STE_TCP,		rte_flow_item_tcp) \
 	X(SET_BE16,	tcp_src_port,		v->hdr.src_port,	rte_flow_item_tcp) \
 	X(SET_BE16,	tcp_dst_port,		v->hdr.dst_port,	rte_flow_item_tcp) \
@@ -654,11 +657,11 @@ mlx5dr_definer_conv_item_tcp(struct mlx5dr_definer_conv_data *cd,
 	if (!m)
 		return 0;
 
-	if (m->hdr.ack || m->hdr.fin || m->hdr.syn || m->hdr.rst ||
-	    m->hdr.psh || m->hdr.ack || m->hdr.urg || m->hdr.ecne ||
-	    m->hdr.cwr) {
-		rte_errno = ENOTSUP;
-		return rte_errno;
+	if (m->hdr.tcp_flags) {
+		fc = &cd->fc[DR_CALC_FNAME(TCP_FLAGS, inner)];
+		fc->item_idx = item_idx;
+		fc->tag_set = &mlx5dr_definer_tcp_flags_set;
+		DR_CALC_SET(fc, eth_l4, tcp_flags, inner);
 	}
 
 	if (m->hdr.src_port) {
