@@ -341,16 +341,11 @@ struct mlx5_ifc_header_gtp_psc_bits {
 	u8 reserved2[0x8];
 };
 
-struct mlx5_ifc_header_ipv6_bits {
+struct mlx5_ifc_header_ipv6_vtc_bits {
 	u8 version[0x4];
 	u8 dscp[0x6];
 	u8 ecn[0x2];
 	u8 flow_label[0x14];
-	u8 payload_len[0x10];
-	u8 next_header[0x8];
-	u8 hop_limits[0x8];
-	u8 src_addr[0x80];
-	u8 dst_addr[0x80];
 };
 
 struct mlx5_ifc_header_vxlan_bits {
