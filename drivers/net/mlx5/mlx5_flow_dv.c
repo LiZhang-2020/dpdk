@@ -8917,35 +8917,36 @@ flow_dv_translate_item_port_id_all(struct rte_eth_dev *dev,
  *
  * @param[in] dev
  *   The devich to configure through.
- * @param[in, out] matcher
- *   Flow matcher.
  * @param[in, out] key
  *   Flow matcher value.
  * @param[in] item
  *   Flow pattern to translate.
  * @param[in] attr
  *   Flow attributes.
+ * @param[in] key_type
+ *   Set flow matcher mask or value.
  *
  * @return
  *   0 on success, a negative errno value otherwise.
  */
 static int
-flow_dv_translate_item_represented_port(struct rte_eth_dev *dev, void *matcher,
-					void *key,
+flow_dv_translate_item_represented_port(struct rte_eth_dev *dev, void *key,
 					const struct rte_flow_item *item,
-					const struct rte_flow_attr *attr)
+					const struct rte_flow_attr *attr,
+					uint32_t key_type)
 {
 	const struct rte_flow_item_ethdev *pid_m = item ? item->mask : NULL;
 	const struct rte_flow_item_ethdev *pid_v = item ? item->spec : NULL;
 	struct mlx5_priv *priv;
 	uint16_t mask, id;
+	uint32_t vport_meta;
 
 	if (!pid_m && !pid_v)
 		return 0;
 	if (pid_v && pid_v->port_id == 0xffff) {
 		flow_dv_translate_item_source_vport(key,
-			flow_dv_get_esw_manager_vport_id(dev));
-		flow_dv_translate_item_source_vport(matcher, (int16_t)0xffff);
+				key_type & MLX5_SET_MATCHER_V ?
+				flow_dv_get_esw_manager_vport_id(dev) : 0xffff);
 		return 0;
 	}
 	mask = pid_m ? pid_m->port_id : 0xffff;
@@ -8953,6 +8954,13 @@ flow_dv_translate_item_represented_port(struct rte_eth_dev *dev, void *matcher,
 	priv = mlx5_port_to_eswitch_info(id, item == NULL);
 	if (!priv)
 		return -rte_errno;
+	if (key_type & MLX5_SET_MATCHER_M) {
+		id = mask;
+		vport_meta = priv->vport_meta_mask;
+	} else {
+		id = priv->vport_id;
+		vport_meta = priv->vport_meta_tag;
+	}
 	/*
 	 * Translate to vport field or to metadata, depending on mode.
 	 * Kernel can use either misc.source_port or half of C0 metadata
@@ -8965,25 +8973,18 @@ flow_dv_translate_item_represented_port(struct rte_eth_dev *dev, void *matcher,
 		 * save the extra vport match.
 		 */
 		if (mask == 0xffff && priv->vport_id == 0xffff &&
-		    priv->pf_bond < 0 && attr->transfer) {
-			flow_dv_translate_item_source_vport(key,
-							    priv->vport_id);
-			flow_dv_translate_item_source_vport(matcher, mask);
-		}
+		    priv->pf_bond < 0 && attr->transfer)
+			flow_dv_translate_item_source_vport(key, id);
 		/*
 		 * We should always set the vport metadata register,
 		 * otherwise the SW steering library can drop
 		 * the rule if wire vport metadata value is not zero,
 		 * it depends on kernel configuration.
 		 */
-		flow_dv_translate_item_meta_vport(matcher,
-						  priv->vport_meta_mask,
-						  priv->vport_meta_mask);
-		flow_dv_translate_item_meta_vport(key, priv->vport_meta_tag,
-						  priv->vport_meta_mask);
+		flow_dv_translate_item_meta_vport
+				(key, vport_meta, priv->vport_meta_mask);
 	} else {
-		flow_dv_translate_item_source_vport(matcher, mask);
-		flow_dv_translate_item_source_vport(key, priv->vport_id);
+		flow_dv_translate_item_source_vport(key, id);
 	}
 	return 0;
 }
@@ -12396,6 +12397,11 @@ flow_dv_translate_items(struct rte_eth_dev *dev,
 			(dev, key, items, wks->attr, key_type);
 		last_item = MLX5_FLOW_ITEM_PORT_ID;
 		break;
+	case RTE_FLOW_ITEM_TYPE_REPRESENTED_PORT:
+		flow_dv_translate_item_represented_port
+			(dev, key, items, wks->attr, key_type);
+		last_item = MLX5_FLOW_ITEM_REPRESENTED_PORT;
+		break;
 	case RTE_FLOW_ITEM_TYPE_ETH:
 		flow_dv_translate_item_eth(key, items, tunnel,
 					   wks->group, key_type);
@@ -12780,12 +12786,6 @@ flow_dv_translate_items_sws(struct rte_eth_dev *dev,
 			wks.last_item = tunnel ? MLX5_FLOW_ITEM_INNER_FLEX :
 						 MLX5_FLOW_ITEM_OUTER_FLEX;
 			break;
-		case RTE_FLOW_ITEM_TYPE_REPRESENTED_PORT:
-			flow_dv_translate_item_represented_port
-				(dev, match_mask, match_value, items, attr);
-			wks.last_item = MLX5_FLOW_ITEM_REPRESENTED_PORT;
-			break;
-
 		default:
 			ret = flow_dv_translate_items(dev, items, &wks_m,
 				match_mask, MLX5_SET_MATCHER_SW_M, error);
