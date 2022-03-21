@@ -372,6 +372,13 @@ int
 mlx5_hws_cnt_pool_dcs_alloc(struct mlx5_dev_ctx_shared *sh,
 		struct mlx5_hws_cnt_pool *cpool);
 void
-mlx5_hws_cnt_pool_dcs_free(struct mlx5_hws_cnt_pool *cpool);
+mlx5_hws_cnt_pool_dcs_free(struct mlx5_dev_ctx_shared *sh,
+		struct mlx5_hws_cnt_pool *cpool);
+
+int
+mlx5_hws_cnt_aso_access_alloc(struct mlx5_dev_ctx_shared *sh);
+
+void
+mlx5_hws_cnt_aso_free(struct mlx5_dev_ctx_shared *sh);
 
 #endif /* _MLX5_HWS_CNT_H_ */

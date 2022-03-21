@@ -1236,9 +1236,11 @@ struct mlx5_flex_item {
 	struct mlx5_flex_pattern_field map[MLX5_FLEX_ITEM_MAPPING_NUM];
 };
 
+#define HWS_CNT_ASO_SQ_NUM 4
+
 struct mlx5_hws_aso_mng {
 	uint16_t sq_num;
-	struct mlx5_aso_sq *sqs;
+	struct mlx5_aso_sq sqs[HWS_CNT_ASO_SQ_NUM];
 };
 
 struct mlx5_hws_cnt_svc_mng {
