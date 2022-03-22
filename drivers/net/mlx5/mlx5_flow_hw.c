@@ -1492,6 +1492,52 @@ flow_hw_actions_construct(struct rte_eth_dev *dev,
 	return 0;
 }
 
+static const struct rte_flow_item *
+flow_hw_get_rule_items(struct rte_eth_dev *dev,
+		       struct rte_flow_template_table *table,
+		       const struct rte_flow_item items[],
+		       uint8_t pattern_template_index,
+		       struct mlx5_hw_q_job *job)
+{
+	if (table->its[pattern_template_index]->implicit_port) {
+		const struct rte_flow_item *curr_item;
+		unsigned int nb_items;
+		bool found_end;
+		unsigned int i;
+
+		/* Count number of pattern items. */
+		nb_items = 0;
+		found_end = false;
+		for (curr_item = items; !found_end; ++curr_item) {
+			++nb_items;
+			if (curr_item->type == RTE_FLOW_ITEM_TYPE_END)
+				found_end = true;
+		}
+		/* Prepend represented port item. */
+		job->port_spec = (struct rte_flow_item_ethdev){
+			.port_id = dev->data->port_id,
+		};
+		job->items[0] = (struct rte_flow_item){
+			.type = RTE_FLOW_ITEM_TYPE_REPRESENTED_PORT,
+			.spec = &job->port_spec,
+		};
+		found_end = false;
+		for (i = 1; i < MLX5_HW_MAX_ITEMS && i - 1 < nb_items; ++i) {
+			job->items[i] = items[i - 1];
+			if (items[i - 1].type == RTE_FLOW_ITEM_TYPE_END) {
+				found_end = true;
+				break;
+			}
+		}
+		if (i >= MLX5_HW_MAX_ITEMS && !found_end) {
+			rte_errno = ENOMEM;
+			return NULL;
+		}
+		return job->items;
+	}
+	return items;
+}
+
 /**
  * Enqueue HW steering flow creation.
  *
@@ -1543,6 +1589,7 @@ flow_hw_async_flow_create(struct rte_eth_dev *dev,
 	struct mlx5_hw_actions *hw_acts;
 	struct rte_flow_hw *flow;
 	struct mlx5_hw_q_job *job;
+	const struct rte_flow_item *rule_items;
 	uint32_t acts_num, flow_idx;
 	int ret;
 
@@ -1575,8 +1622,12 @@ flow_hw_async_flow_create(struct rte_eth_dev *dev,
 		rte_errno = EINVAL;
 		goto free;
 	}
+	rule_items = flow_hw_get_rule_items(dev, table, items,
+					    pattern_template_index, job);
+	if (!rule_items)
+		goto free;
 	ret = mlx5dr_rule_create(table->matcher,
-				 pattern_template_index, items,
+				 pattern_template_index, rule_items,
 				 rule_acts, acts_num,
 				 &rule_attr, &flow->rule);
 	if (likely(!ret))
@@ -2371,6 +2422,46 @@ flow_hw_actions_template_destroy(struct rte_eth_dev *dev __rte_unused,
 	return 0;
 }
 
+static struct rte_flow_item *
+flow_hw_copy_prepend_port_item(const struct rte_flow_item *items,
+			       struct rte_flow_error *error)
+{
+	const struct rte_flow_item *curr_item;
+	struct rte_flow_item *copied_items;
+	bool found_end;
+	unsigned int nb_items;
+	unsigned int i;
+	size_t size;
+
+	/* Count number of pattern items. */
+	nb_items = 0;
+	found_end = false;
+	for (curr_item = items; !found_end; ++curr_item) {
+		++nb_items;
+		if (curr_item->type == RTE_FLOW_ITEM_TYPE_END)
+			found_end = true;
+	}
+	/* Allocate new array of items and prepend REPRESENTED_PORT item. */
+	size = sizeof(*copied_items) * (nb_items + 1);
+	copied_items = mlx5_malloc(MLX5_MEM_ZERO, size, 0, rte_socket_id());
+	if (!copied_items) {
+		rte_flow_error_set(error, ENOMEM,
+				   RTE_FLOW_ERROR_TYPE_UNSPECIFIED,
+				   NULL,
+				   "cannot allocate item template");
+		return NULL;
+	}
+	copied_items[0] = (struct rte_flow_item){
+		.type = RTE_FLOW_ITEM_TYPE_REPRESENTED_PORT,
+		.spec = NULL,
+		.last = NULL,
+		.mask = &rte_flow_item_ethdev_mask,
+	};
+	for (i = 1; i < nb_items + 1; ++i)
+		copied_items[i] = items[i - 1];
+	return copied_items;
+}
+
 /**
  * Create flow item template.
  *
@@ -2394,9 +2485,35 @@ flow_hw_pattern_template_create(struct rte_eth_dev *dev,
 {
 	struct mlx5_priv *priv = dev->data->dev_private;
 	struct rte_flow_pattern_template *it;
+	struct rte_flow_item *copied_items = NULL;
+	const struct rte_flow_item *tmpl_items;
 
+	if (priv->sh->config.dv_esw_en && attr->ingress) {
+		/*
+		 * Disallow pattern template with ingress and egress/transfer
+		 * attributes in order to forbid implicit port matching
+		 * on egress and transfer traffic.
+		 */
+		if (attr->egress || attr->transfer) {
+			rte_flow_error_set(error, EINVAL,
+					   RTE_FLOW_ERROR_TYPE_UNSPECIFIED,
+					   NULL,
+					   "item template for ingress traffic"
+					   " cannot be used for egress/transfer"
+					   " traffic when E-Switch is enabled");
+			return NULL;
+		}
+		copied_items = flow_hw_copy_prepend_port_item(items, error);
+		if (!copied_items)
+			return NULL;
+		tmpl_items = copied_items;
+	} else {
+		tmpl_items = items;
+	}
 	it = mlx5_malloc(MLX5_MEM_ZERO, sizeof(*it), 0, rte_socket_id());
 	if (!it) {
+		if (copied_items)
+			mlx5_free(copied_items);
 		rte_flow_error_set(error, ENOMEM,
 				   RTE_FLOW_ERROR_TYPE_UNSPECIFIED,
 				   NULL,
@@ -2404,8 +2521,10 @@ flow_hw_pattern_template_create(struct rte_eth_dev *dev,
 		return NULL;
 	}
 	it->attr = *attr;
-	it->mt = mlx5dr_match_template_create(items, attr->relaxed_matching);
+	it->mt = mlx5dr_match_template_create(tmpl_items, attr->relaxed_matching);
 	if (!it->mt) {
+		if (copied_items)
+			mlx5_free(copied_items);
 		mlx5_free(it);
 		rte_flow_error_set(error, rte_errno,
 				   RTE_FLOW_ERROR_TYPE_UNSPECIFIED,
@@ -2413,9 +2532,12 @@ flow_hw_pattern_template_create(struct rte_eth_dev *dev,
 				   "cannot create match template");
 		return NULL;
 	}
-	it->item_flags = flow_hw_rss_item_flags_get(items);
+	it->item_flags = flow_hw_rss_item_flags_get(tmpl_items);
+	it->implicit_port = !!copied_items;
 	__atomic_fetch_add(&it->refcnt, 1, __ATOMIC_RELAXED);
 	LIST_INSERT_HEAD(&priv->flow_hw_itt, it, next);
+	if (copied_items)
+		mlx5_free(copied_items);
 	return it;
 }
 
@@ -2895,7 +3017,9 @@ flow_hw_configure(struct rte_eth_dev *dev,
 			    sizeof(struct mlx5_hw_q_job) +
 			    sizeof(uint8_t) * MLX5_ENCAP_MAX_LEN +
 			    sizeof(struct mlx5_modification_cmd) *
-			    MLX5_MHDR_MAX_CMD) *
+			    MLX5_MHDR_MAX_CMD +
+			    sizeof(struct rte_flow_item) *
+			    MLX5_HW_MAX_ITEMS) *
 			    _queue_attr[i]->size;
 	}
 	priv->hw_q = mlx5_malloc(MLX5_MEM_ZERO, mem_size,
@@ -2907,6 +3031,7 @@ flow_hw_configure(struct rte_eth_dev *dev,
 	for (i = 0; i < nb_q_updated; i++) {
 		uint8_t *encap = NULL;
 		struct mlx5_modification_cmd *mhdr_cmd = NULL;
+		struct rte_flow_item *items = NULL;
 
 		priv->hw_q[i].job_idx = _queue_attr[i]->size;
 		priv->hw_q[i].size = _queue_attr[i]->size;
@@ -2923,9 +3048,12 @@ flow_hw_configure(struct rte_eth_dev *dev,
 			   &job[_queue_attr[i]->size];
 		encap = (uint8_t *)
 			 &mhdr_cmd[_queue_attr[i]->size * MLX5_MHDR_MAX_CMD];
+		items = (struct rte_flow_item *)
+			 &encap[_queue_attr[i]->size * MLX5_ENCAP_MAX_LEN];
 		for (j = 0; j < _queue_attr[i]->size; j++) {
 			job[j].mhdr_cmd = &mhdr_cmd[j * MLX5_MHDR_MAX_CMD];
 			job[j].encap_data = &encap[j * MLX5_ENCAP_MAX_LEN];
+			job[j].items = &items[j * MLX5_HW_MAX_ITEMS];
 			priv->hw_q[i].job[j] = &job[j];
 		}
 	}

@@ -1197,6 +1197,11 @@ struct rte_flow_pattern_template {
 	struct mlx5dr_match_template *mt; /* mlx5 match template. */
 	uint64_t item_flags; /* Item layer flags. */
 	uint32_t refcnt;  /* Reference counter. */
+	/*
+	 * If true, then rule pattern should be prepended with
+	 * represented_port pattern item.
+	 */
+	bool implicit_port;
 };
 
 /* Flow action template struct. */
