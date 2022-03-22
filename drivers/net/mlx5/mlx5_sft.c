@@ -460,7 +460,7 @@ mlx5_sft_start(struct rte_eth_dev *dev, uint16_t nb_queue,
 					 RTE_SFT_ERROR_TYPE_UNSPECIFIED, NULL,
 					 "failed to allocate PMD sft memory");
 	/* Enable MARK for all Rx queues. */
-	priv->mark_enabled = 1;
+	flow_rxq_mark_flag_set(dev);
 	if (mlx5_create_sft_flows(dev, error))
 		goto err;
 	sh->nb_sft_queue = nb_queue;
@@ -482,7 +482,6 @@ static int mlx5_sft_stop(struct rte_eth_dev *dev, struct rte_sft_error *error)
 					 RTE_SFT_ERROR_TYPE_UNSPECIFIED, NULL,
 					 "no PMD support for SFT");
 	mlx5_destroy_sft_flows(dev, error);
-	priv->mark_enabled = 0;
 	mlx5_sft_release_mem(dev, sh->nb_sft_queue, error);
 	return 0;
 }

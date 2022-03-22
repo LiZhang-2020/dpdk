@@ -1974,6 +1974,7 @@ int mlx5_flow_get_reg_id(struct rte_eth_dev *dev,
 const struct rte_flow_action *mlx5_flow_find_action
 					(const struct rte_flow_action *actions,
 					 enum rte_flow_action_type action);
+void flow_rxq_mark_flag_set(struct rte_eth_dev *dev);
 int mlx5_validate_action_rss(struct rte_eth_dev *dev,
 			     const struct rte_flow_action *action,
 			     struct rte_flow_error *error);
