@@ -4860,10 +4860,20 @@ struct rte_flow_port_info {
 	 */
 	uint32_t max_nb_aging_objects;
 	/**
-	 * Maximum number traffic meters.
+	 * Maximum number of traffic meters.
 	 * @see RTE_FLOW_ACTION_TYPE_METER
 	 */
 	uint32_t max_nb_meters;
+	/**
+	 * Maximum number of traffic meter profiles.
+	 * @see RTE_FLOW_ACTION_TYPE_METER
+	 */
+	uint32_t max_nb_meter_profiles;
+	/**
+	 * Maximum number of traffic meter policies.
+	 * @see RTE_FLOW_ACTION_TYPE_METER
+	 */
+	uint32_t max_nb_meter_policies;
 };
 
 /**
@@ -4933,6 +4943,16 @@ struct rte_flow_port_attr {
 	 * @see RTE_FLOW_ACTION_TYPE_METER
 	 */
 	uint32_t nb_meters;
+	/**
+	 * Number of traffic meter profiles to configure.
+	 * @see RTE_FLOW_ACTION_TYPE_METER
+	 */
+	uint32_t nb_meter_profiles;
+	/**
+	 * Number of traffic meter policies to configure.
+	 * @see RTE_FLOW_ACTION_TYPE_METER
+	 */
+	uint32_t nb_meter_policies;
 };
 
 /**
