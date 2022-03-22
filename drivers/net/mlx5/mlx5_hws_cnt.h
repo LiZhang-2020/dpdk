@@ -381,4 +381,11 @@ mlx5_hws_cnt_aso_access_alloc(struct mlx5_dev_ctx_shared *sh);
 void
 mlx5_hws_cnt_aso_free(struct mlx5_dev_ctx_shared *sh);
 
+int
+mlx5_hws_cnt_pool_action_create(struct mlx5_priv *priv,
+		struct mlx5_hws_cnt_pool *cpool);
+
+void
+mlx5_hws_cnt_pool_action_destroy(struct mlx5_hws_cnt_pool *cpool);
+
 #endif /* _MLX5_HWS_CNT_H_ */

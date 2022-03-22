@@ -632,3 +632,42 @@ mlx5_hws_cnt_aso_free(struct mlx5_dev_ctx_shared *sh)
 		mlx5_aso_destroy_sq(&sh->cnt_svc->aso_mng.sqs[idx]);
 	sh->cnt_svc->aso_mng.sq_num = 0;
 }
+
+int
+mlx5_hws_cnt_pool_action_create(struct mlx5_priv *priv,
+		struct mlx5_hws_cnt_pool *cpool)
+{
+	uint32_t idx;
+	int ret = 0;
+	struct mlx5_hws_cnt_dcs *dcs;
+
+	for (idx = 0; idx < cpool->dcs_mng.batch_total; idx++) {
+		dcs = &cpool->dcs_mng.dcs[idx];
+		dcs->dr_action = mlx5dr_action_create_counter(priv->dr_ctx,
+					(struct mlx5dr_devx_obj *)dcs->obj,
+					MLX5DR_ACTION_FLAG_HWS_RX |
+					MLX5DR_ACTION_FLAG_HWS_TX |
+					MLX5DR_ACTION_FLAG_HWS_FDB);
+		if (dcs->dr_action == NULL) {
+			mlx5_hws_cnt_pool_action_destroy(cpool);
+			ret = -ENOSYS;
+			break;
+		}
+	}
+	return ret;
+}
+
+void
+mlx5_hws_cnt_pool_action_destroy(struct mlx5_hws_cnt_pool *cpool)
+{
+	uint32_t idx;
+	struct mlx5_hws_cnt_dcs *dcs;
+
+	for (idx = 0; idx < cpool->dcs_mng.batch_total; idx++) {
+		dcs = &cpool->dcs_mng.dcs[idx];
+		if (dcs->dr_action != NULL) {
+			mlx5dr_action_destroy(dcs->dr_action);
+			dcs->dr_action = NULL;
+		}
+	}
+}
