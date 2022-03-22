@@ -1148,6 +1148,7 @@ struct rte_flow_hw {
 	/* The table flow allcated from. */
 	struct rte_flow_template_table *table;
 	struct mlx5dr_rule rule; /* HWS layer data struct. */
+	uint32_t cnt_id;
 } __rte_packed;
 
 /* rte flow action translate to DR action struct. */

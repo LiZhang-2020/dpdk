@@ -7,9 +7,45 @@
 #include <mlx5_malloc.h>
 #include <rte_ring.h>
 #include <mlx5_devx_cmds.h>
+#include <rte_cycles.h>
 
 #include "mlx5_utils.h"
 #include "mlx5_hws_cnt.h"
+
+#define HWS_CNT_CACHE_SZ_DEFAULT 511
+#define HWS_CNT_CACHE_PRELOAD_DEFAULT 254
+#define HWS_CNT_CACHE_FETCH_DEFAULT 254
+#define HWS_CNT_CACHE_THRESHOLD_DEFAULT 254
+#define HWS_CNT_ALLOC_FACTOR_DEFAULT 20
+
+static void
+__hws_cnt_id_load(struct mlx5_hws_cnt_pool *cpool)
+{
+	uint32_t preload;
+	uint32_t q_num = cpool->cache->q_num;
+	uint32_t cnt_num = mlx5_hws_cnt_pool_get_size(cpool);
+	cnt_id_t cnt_id, iidx = 0;
+	uint32_t qidx;
+	struct rte_ring *qcache = NULL;
+
+	preload = RTE_MIN(cpool->cache->preload_sz, cnt_num / q_num);
+	for (qidx = 0; qidx < q_num; qidx++) {
+		for (; iidx < preload * (qidx + 1); iidx++) {
+			cnt_id = (MLX5_INDIRECT_ACTION_TYPE_COUNT <<
+				  MLX5_INDIRECT_ACTION_TYPE_OFFSET) | iidx;
+			qcache = cpool->cache->qcache[qidx];
+			if (qcache)
+				rte_ring_enqueue_elem(qcache, &cnt_id,
+						sizeof(cnt_id));
+		}
+	}
+	for (; iidx < cnt_num; iidx++) {
+		cnt_id = (MLX5_INDIRECT_ACTION_TYPE_COUNT <<
+			  MLX5_INDIRECT_ACTION_TYPE_OFFSET) | iidx;
+		rte_ring_enqueue_elem(cpool->free_list, &cnt_id,
+				sizeof(cnt_id));
+	}
+}
 
 static void
 __mlx5_hws_cnt_svc(struct mlx5_dev_ctx_shared *sh,
@@ -670,4 +706,101 @@ mlx5_hws_cnt_pool_action_destroy(struct mlx5_hws_cnt_pool *cpool)
 			dcs->dr_action = NULL;
 		}
 	}
+}
+
+struct mlx5_hws_cnt_pool *
+mlx5_hws_cnt_pool_create(struct rte_eth_dev *dev,
+		const struct rte_flow_port_attr *pattr, uint16_t nb_queue)
+{
+	struct mlx5_hws_cnt_pool *cpool = NULL;
+	struct mlx5_priv *priv = dev->data->dev_private;
+	struct mlx5_hws_cache_param cparam = {0};
+	struct mlx5_hws_cnt_pool_cfg pcfg = {0};
+	int ret = 0;
+	size_t sz;
+
+	/* init cnt service if not. */
+	if (priv->sh->cnt_svc == NULL) {
+		ret = mlx5_hws_cnt_svc_init(priv->sh);
+		if (ret != 0)
+			return NULL;
+	}
+	cparam.fetch_sz = HWS_CNT_CACHE_FETCH_DEFAULT;
+	cparam.preload_sz = HWS_CNT_CACHE_PRELOAD_DEFAULT;
+	cparam.q_num = nb_queue;
+	cparam.threshold = HWS_CNT_CACHE_THRESHOLD_DEFAULT;
+	cparam.size = HWS_CNT_CACHE_SZ_DEFAULT;
+	pcfg.alloc_factor = HWS_CNT_ALLOC_FACTOR_DEFAULT;
+	pcfg.name = "MLX5_HWS_CNT_POOL";
+	pcfg.request_num = pattr->nb_counters;
+	cpool = mlx5_hws_cnt_pool_init(&pcfg, &cparam);
+	if (cpool == NULL)
+		goto error;
+	ret = mlx5_hws_cnt_pool_dcs_alloc(priv->sh, cpool);
+	if (ret != 0)
+		goto error;
+	sz = RTE_ALIGN_CEIL(mlx5_hws_cnt_pool_get_size(cpool), 4);
+	cpool->raw_mng = mlx5_hws_cnt_raw_data_alloc(priv->sh, sz);
+	if (cpool->raw_mng == NULL)
+		goto error;
+	__hws_cnt_id_load(cpool);
+	ret = mlx5_hws_cnt_pool_action_create(priv, cpool);
+	if (ret != 0)
+		goto error;
+	priv->sh->cnt_svc->refcnt++;
+	return cpool;
+error:
+	mlx5_hws_cnt_pool_destroy(priv->sh, cpool);
+	return NULL;
+}
+
+void
+mlx5_hws_cnt_pool_destroy(struct mlx5_dev_ctx_shared *sh,
+		struct mlx5_hws_cnt_pool *cpool)
+{
+	if (cpool == NULL)
+		return;
+	if (--sh->cnt_svc->refcnt == 0)
+		mlx5_hws_cnt_svc_deinit(sh);
+	mlx5_hws_cnt_pool_action_destroy(cpool);
+	mlx5_hws_cnt_pool_dcs_free(sh, cpool);
+	mlx5_hws_cnt_raw_data_free(sh, cpool->raw_mng);
+	mlx5_hws_cnt_pool_deinit(cpool);
+}
+
+int
+mlx5_hws_cnt_svc_init(struct mlx5_dev_ctx_shared *sh)
+{
+	int ret;
+
+	sh->cnt_svc = mlx5_malloc(MLX5_MEM_ANY | MLX5_MEM_ZERO,
+			sizeof(*sh->cnt_svc), 0, SOCKET_ID_ANY);
+	if (sh->cnt_svc == NULL)
+		return -1;
+	sh->cnt_svc->query_interval = sh->config.cnt_svc.cycle_time;
+	sh->cnt_svc->service_core = sh->config.cnt_svc.service_core;
+	ret = mlx5_hws_cnt_aso_access_alloc(sh);
+	if (ret != 0) {
+		mlx5_free(sh->cnt_svc);
+		sh->cnt_svc = NULL;
+		return -1;
+	}
+	ret = mlx5_hws_cnt_service_thread_create(sh);
+	if (ret != 0) {
+		mlx5_hws_cnt_aso_free(sh);
+		mlx5_free(sh->cnt_svc);
+		sh->cnt_svc = NULL;
+	}
+	return 0;
+}
+
+void
+mlx5_hws_cnt_svc_deinit(struct mlx5_dev_ctx_shared *sh)
+{
+	if (sh->cnt_svc == NULL)
+		return;
+	mlx5_hws_cnt_service_thread_destroy(sh);
+	mlx5_hws_cnt_aso_free(sh);
+	mlx5_free(sh->cnt_svc);
+	sh->cnt_svc = NULL;
 }

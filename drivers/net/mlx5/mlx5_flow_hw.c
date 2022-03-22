@@ -9,6 +9,7 @@
 
 #include "mlx5dr_context.h"
 #include "mlx5dr_send.h"
+#include "mlx5_hws_cnt.h"
 
 /* The maximum actions support in the flow. */
 #define MLX5_HW_MAX_ACTS 16
@@ -1145,6 +1146,14 @@ flow_hw_actions_translate(struct rte_eth_dev *dev,
 				goto err;
 			i++;
 			break;
+		case RTE_FLOW_ACTION_TYPE_COUNT:
+			if (__flow_hw_act_data_general_append
+					(priv, acts, actions->type,
+					 actions - action_start, i)) {
+				goto err;
+			}
+			i++;
+			break;
 		case RTE_FLOW_ACTION_TYPE_END:
 			actions_end = true;
 			break;
@@ -1420,7 +1429,8 @@ flow_hw_actions_construct(struct rte_eth_dev *dev,
 			  const uint8_t it_idx,
 			  const struct rte_flow_action actions[],
 			  struct mlx5dr_rule_action *rule_acts,
-			  uint32_t *acts_num)
+			  uint32_t *acts_num,
+			  uint32_t queue)
 {
 	struct mlx5_priv *priv = dev->data->dev_private;
 	struct rte_flow_template_table *table = job->flow->table;
@@ -1474,6 +1484,7 @@ flow_hw_actions_construct(struct rte_eth_dev *dev,
 		struct mlx5_hrxq *hrxq;
 		struct mlx5_hw_jump_action *jump;
 		int ret;
+		cnt_id_t cnt_id;
 
 		action = &actions[act_data->action_src];
 		MLX5_ASSERT(action->type == RTE_FLOW_ACTION_TYPE_INDIRECT ||
@@ -1579,6 +1590,21 @@ flow_hw_actions_construct(struct rte_eth_dev *dev,
 			(*acts_num)++;
 			if (mlx5_aso_mtr_wait(priv->sh, mtr))
 				return -1;
+			break;
+		case RTE_FLOW_ACTION_TYPE_COUNT:
+			ret = mlx5_hws_cnt_pool_get(priv->hws_cpool, &queue,
+					&cnt_id);
+			if (ret != 0)
+				return ret;
+			ret = mlx5_hws_cnt_pool_get_action_offset
+				(priv->hws_cpool,
+				 cnt_id,
+				 &rule_acts[act_data->action_dst].action,
+				 &rule_acts[act_data->action_dst].counter.offset
+				 );
+			if (ret != 0)
+				return ret;
+			job->flow->cnt_id = cnt_id;
 			break;
 		default:
 			break;
@@ -1724,7 +1750,7 @@ flow_hw_async_flow_create(struct rte_eth_dev *dev,
 	 * user's input, in order to save the cost.
 	 */
 	if (flow_hw_actions_construct(dev, job, hw_acts, pattern_template_index,
-				  actions, rule_acts, &acts_num)) {
+				  actions, rule_acts, &acts_num, queue)) {
 		rte_errno = EINVAL;
 		goto free;
 	}
@@ -1854,6 +1880,13 @@ flow_hw_pull(struct rte_eth_dev *dev,
 				mlx5_hrxq_obj_release(dev, job->flow->hrxq);
 			else if (job->flow->fate_type == MLX5_FLOW_FATE_JUMP)
 				flow_hw_jump_release(dev, job->flow->jump);
+			if (job->flow->cnt_id >= (uint32_t)
+					(MLX5_INDIRECT_ACTION_TYPE_COUNT <<
+					 MLX5_INDIRECT_ACTION_TYPE_OFFSET)) {
+				mlx5_hws_cnt_pool_put(priv->hws_cpool, &queue,
+						&job->flow->cnt_id);
+				job->flow->cnt_id = 0;
+			}
 			mlx5_ipool_free(job->flow->table->flow, job->flow->idx);
 		}
 		priv->hw_q[queue].job[priv->hw_q[queue].job_idx++] = job;
@@ -2465,6 +2498,9 @@ flow_hw_action_validate(struct rte_eth_dev *dev,
 					(dev, action, mask, error);
 			if (ret < 0)
 				return ret;
+			break;
+		case RTE_FLOW_ACTION_TYPE_COUNT:
+			/* TODO: Validation logic */
 			break;
 		case RTE_FLOW_ACTION_TYPE_END:
 			actions_end = true;
@@ -3823,6 +3859,12 @@ flow_hw_configure(struct rte_eth_dev *dev,
 	}
 	if (_queue_attr)
 		mlx5_free(_queue_attr);
+	if (port_attr->nb_counters) {
+		priv->hws_cpool = mlx5_hws_cnt_pool_create(dev, port_attr,
+				nb_queue);
+		if (priv->hws_cpool == NULL)
+			goto err;
+	}
 	return 0;
 err:
 	flow_hw_free_vport_actions(priv);
@@ -3895,6 +3937,8 @@ flow_hw_resource_release(struct rte_eth_dev *dev)
 		mlx5_ipool_destroy(priv->acts_ipool);
 		priv->acts_ipool = NULL;
 	}
+	if (priv->hws_cpool)
+		mlx5_hws_cnt_pool_destroy(priv->sh, priv->hws_cpool);
 	mlx5_free(priv->hw_q);
 	priv->hw_q = NULL;
 	claim_zero(mlx5dr_context_close(priv->dr_ctx));
@@ -4259,6 +4303,58 @@ flow_hw_destroy_tx_default_mreg_copy(struct rte_eth_dev *dev,
 	priv->sh->hws_tx = NULL;
 }
 
+static int
+flow_hw_query_counter(const struct rte_eth_dev *dev, uint32_t counter,
+		      void *data, struct rte_flow_error *error)
+{
+	struct mlx5_priv *priv = dev->data->dev_private;
+	struct mlx5_hws_cnt *cnt;
+	struct rte_flow_query_count *qc = data;
+	uint32_t iidx = counter & ((1 << MLX5_INDIRECT_ACTION_TYPE_OFFSET) - 1);
+	uint64_t pkts, bytes;
+
+	RTE_SET_USED(error);
+	cnt = &priv->hws_cpool->pool[iidx];
+	__hws_cnt_query_raw(priv->hws_cpool, counter, &pkts, &bytes);
+	qc->hits_set = 1;
+	qc->bytes_set = 1;
+	qc->hits = pkts - cnt->reset.hits;
+	qc->bytes = bytes - cnt->reset.bytes;
+	if (qc->reset) {
+		cnt->reset.bytes = bytes;
+		cnt->reset.hits = pkts;
+	}
+	return 0;
+}
+
+static int
+flow_hw_query(const struct rte_eth_dev *dev,
+	      struct rte_flow *flow __rte_unused,
+	      const struct rte_flow_action *actions __rte_unused,
+	      void *data __rte_unused,
+	      struct rte_flow_error *error __rte_unused)
+{
+	int ret = -EINVAL;
+	struct rte_flow_hw *hw_flow = (struct rte_flow_hw *)flow;
+
+	for (; actions->type != RTE_FLOW_ACTION_TYPE_END; actions++) {
+		switch (actions->type) {
+		case RTE_FLOW_ACTION_TYPE_VOID:
+			break;
+		case RTE_FLOW_ACTION_TYPE_COUNT:
+			ret = flow_hw_query_counter(dev, hw_flow->cnt_id, data,
+						  error);
+			break;
+		default:
+			return rte_flow_error_set(error, ENOTSUP,
+						  RTE_FLOW_ERROR_TYPE_ACTION,
+						  actions,
+						  "action not supported");
+		}
+	}
+	return ret;
+}
+
 const struct mlx5_flow_driver_ops mlx5_flow_hw_drv_ops = {
 	.info_get = flow_hw_info_get,
 	.configure = flow_hw_configure,
@@ -4280,6 +4376,7 @@ const struct mlx5_flow_driver_ops mlx5_flow_hw_drv_ops = {
 	.action_destroy = flow_dv_action_destroy,
 	.action_update = flow_dv_action_update,
 	.action_query = flow_dv_action_query,
+	.query = flow_hw_query,
 };
 
 /**

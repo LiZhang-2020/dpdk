@@ -1930,7 +1930,7 @@ int mlx5_flow_destroy(struct rte_eth_dev *dev, struct rte_flow *flow,
 void mlx5_flow_list_flush(struct rte_eth_dev *dev, enum mlx5_flow_type type,
 			  bool active);
 int mlx5_flow_flush(struct rte_eth_dev *dev, struct rte_flow_error *error);
-int mlx5_flow_query(const struct rte_eth_dev *dev, uint32_t flow_idx,
+int mlx5_flow_query(const struct rte_eth_dev *dev, uint64_t flow_idx,
 		    enum mlx5_flow_type type,
 		    const struct rte_flow_action *action, void *data,
 		    struct rte_flow_error *error);

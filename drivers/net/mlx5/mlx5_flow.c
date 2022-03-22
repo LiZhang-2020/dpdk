@@ -8142,7 +8142,7 @@ mlx5_flow_isolate(struct rte_eth_dev *dev,
 
 int
 mlx5_flow_query(const struct rte_eth_dev *dev,
-		uint32_t flow_idx,
+		uint64_t flow_idx,
 		enum mlx5_flow_type type,
 		const struct rte_flow_action *actions,
 		void *data,
@@ -8150,10 +8150,23 @@ mlx5_flow_query(const struct rte_eth_dev *dev,
 {
 	struct mlx5_priv *priv = dev->data->dev_private;
 	const struct mlx5_flow_driver_ops *fops;
-	struct rte_flow *flow = mlx5_ipool_get(priv->flows[type],
-					       flow_idx);
+	struct rte_flow *flow;
 	enum mlx5_flow_drv_type ftype;
+	uint32_t flow_hw_idx;
 
+	if (priv->sh->config.dv_flow_en == 2) {
+		struct rte_flow_hw *hw_flow;
+		struct rte_flow_template_table *hw_table;
+		hw_flow = (struct rte_flow_hw *)flow_idx;
+		hw_table = hw_flow->table;
+		flow_hw_idx = hw_flow->idx;
+		flow = (struct rte_flow *)mlx5_ipool_get(hw_table->flow,
+				flow_hw_idx);
+		flow->drv_type = MLX5_FLOW_TYPE_HW;
+	} else {
+		flow = (struct rte_flow *)mlx5_ipool_get(priv->flows[type],
+				flow_idx);
+	}
 	if (!flow) {
 		return rte_flow_error_set(error, ENOENT,
 			  RTE_FLOW_ERROR_TYPE_UNSPECIFIED,
