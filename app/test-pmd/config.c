@@ -1907,15 +1907,19 @@ port_flow_get_info(portid_t port_id)
 		return port_flow_complain(&error);
 	printf("Flow engine resources on port %u:\n"
 	       "Number of queues: %d\n"
-		   "Size of queues: %d\n"
+	       "Size of queues: %d\n"
 	       "Number of counters: %d\n"
 	       "Number of aging objects: %d\n"
-	       "Number of meter actions: %d\n",
+	       "Number of meter objects: %d\n"
+	       "Number of meter profiles: %d\n"
+	       "Number of meter policies: %d\n",
 	       port_id, port_info.max_nb_queues,
-		   queue_info.max_size,
+	       queue_info.max_size,
 	       port_info.max_nb_counters,
 	       port_info.max_nb_aging_objects,
-	       port_info.max_nb_meters);
+	       port_info.max_nb_meters,
+	       port_info.max_nb_meter_profiles,
+	       port_info.max_nb_meter_policies);
 	return 0;
 }
 
