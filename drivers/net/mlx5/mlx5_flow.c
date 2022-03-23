@@ -42,6 +42,17 @@
  */
 struct flow_hw_port_info mlx5_flow_hw_port_infos[RTE_MAX_ETHPORTS];
 
+/*
+ * A global structure to save the available REG_C_x for tags usage.
+ * The Meter color REG (ASO) and the last available one will be reserved
+ * for PMD internal usage.
+ * Since there is no "port" concept in the driver, it is assumed that the
+ * available tags set will be the minimum intersection.
+ * 3 - in FDB mode / 5 - in legacy mode
+ */
+uint32_t mlx5_flow_hw_avl_tags_init_cnt;
+enum modify_reg mlx5_flow_hw_avl_tags[MLX5_FLOW_HW_TAGS_MAX] = {REG_NON};
+
 struct tunnel_default_miss_ctx {
 	uint16_t *queue;
 	__extension__
@@ -12664,8 +12675,7 @@ mlx5_flow_field_id_to_modify_info
 	case RTE_FLOW_FIELD_TAG:
 		{
 			MLX5_ASSERT(data->offset + width <= 32);
-			int reg = mlx5_flow_get_reg_id(dev, MLX5_APP_TAG,
-						   data->level, error);
+			int reg = flow_hw_get_reg_id(RTE_FLOW_ITEM_TYPE_TAG, data->level);
 			if (reg < 0)
 				return;
 			MLX5_ASSERT(reg != REG_NON);
