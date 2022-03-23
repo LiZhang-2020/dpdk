@@ -302,7 +302,7 @@ struct mlx5_sh_config {
 	uint32_t reclaim_mode:2; /* Memory reclaim mode. */
 	uint32_t dv_esw_en:1; /* Enable E-Switch DV flow. */
 	uint32_t dv_flow_en:2; /* Enable DV flow. */
-	uint32_t dv_xmeta_en:2; /* Enable extensive flow metadata. */
+	uint32_t dv_xmeta_en:3; /* Enable extensive flow metadata. */
 	uint32_t dv_miss_info:1; /* Restore packet after partial hw miss. */
 	uint32_t dv_validate_mod:1; /* Validate on modify actions */
 	uint32_t l3_vxlan_en:1; /* Enable L3 VXLAN flow creation. */
@@ -314,7 +314,6 @@ struct mlx5_sh_config {
 	/* Allow/Prevent the duplicate rules pattern. */
 	uint32_t fdb_def_rule:1; /* Create FDB default jump rule */
 };
-
 
 /* Structure for VF VLAN workaround. */
 struct mlx5_vf_vlan {

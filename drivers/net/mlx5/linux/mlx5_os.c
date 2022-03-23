@@ -1580,8 +1580,18 @@ err_secondary:
 		err = EINVAL;
 		goto error;
 	}
-	if (priv->sh->config.dv_flow_en == 2)
+	if (priv->sh->config.dv_flow_en == 2) {
+		if (priv->sh->config.dv_esw_en &&
+		    priv->sh->config.dv_xmeta_en != MLX5_XMETA_MODE_LEGACY &&
+		    priv->sh->config.dv_xmeta_en != MLX5_XMETA_MODE_META32_HWS) {
+			DRV_LOG(ERR,
+				"metadata mode %u is not supported in HWS eswitch mode",
+				priv->sh->config.dv_xmeta_en);
+				err = ENOTSUP;
+				goto error;
+		}
 		return eth_dev;
+	}
 	/* Port representor shares the same max prioirity with master. */
 	if (!priv->sh->flow_priority_check_flag) {
 		err = mlx5_flow_discover_priorities(eth_dev);

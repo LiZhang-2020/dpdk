@@ -1214,7 +1214,8 @@ mlx5_dev_args_check_handler(const char *key, const char *val, void *opaque)
 		if (tmp != MLX5_XMETA_MODE_LEGACY &&
 		    tmp != MLX5_XMETA_MODE_META16 &&
 		    tmp != MLX5_XMETA_MODE_META32 &&
-		    tmp != MLX5_XMETA_MODE_MISS_INFO) {
+		    tmp != MLX5_XMETA_MODE_MISS_INFO &&
+		    tmp != MLX5_XMETA_MODE_META32_HWS) {
 			DRV_LOG(ERR, "Invalid extensive metadata parameter.");
 			rte_errno = EINVAL;
 			return -rte_errno;
@@ -2306,7 +2307,6 @@ mlx5_port_args_check_handler(const char *key, const char *val, void *opaque)
 		DRV_LOG(WARNING, "%s: deprecated parameter, ignored", key);
 	} else if (strcmp(MLX5_RX_VEC_EN, key) == 0) {
 		config->rx_vec_en = !!tmp;
-	} else if (strcmp(MLX5_MAX_DUMP_FILES_NUM, key) == 0) {
 		config->max_dump_files_num = tmp;
 	} else if (strcmp(MLX5_LRO_TIMEOUT_USEC, key) == 0) {
 		config->lro_timeout = tmp;
@@ -2875,6 +2875,10 @@ mlx5_set_metadata_mask(struct rte_eth_dev *dev)
 	case MLX5_XMETA_MODE_META32:
 		meta = UINT32_MAX;
 		mark = (reg_c0 >> rte_bsf32(reg_c0)) & MLX5_FLOW_MARK_MASK;
+		break;
+	case MLX5_XMETA_MODE_META32_HWS:
+		meta = UINT32_MAX;
+		mark = MLX5_FLOW_MARK_MASK;
 		break;
 	default:
 		meta = 0;
