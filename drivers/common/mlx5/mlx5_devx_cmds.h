@@ -242,6 +242,8 @@ struct mlx5_hca_attr {
 	uint32_t esw_mgr_vport_id_valid:1; /* E-Switch Mgr vport ID is valid. */
 	uint16_t esw_mgr_vport_id; /* E-Switch Mgr vport ID . */
 	uint16_t max_wqe_sz_sq;
+	uint32_t set_reg_c:8;
+	uint32_t nic_flow_table:1;
 	uint32_t modify_outer_ip_ecn:1;
 };
 

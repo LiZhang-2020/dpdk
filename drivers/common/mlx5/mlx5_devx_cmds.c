@@ -961,6 +961,7 @@ mlx5_devx_cmd_query_hca_attr(void *ctx,
 	attr->wait_on_time = MLX5_GET(cmd_hca_cap, hcattr, wait_on_time);
 	attr->crypto = MLX5_GET(cmd_hca_cap, hcattr, crypto);
 	attr->rq_delay_drop = MLX5_GET(cmd_hca_cap, hcattr, rq_delay_drop);
+	attr->nic_flow_table = MLX5_GET(cmd_hca_cap, hcattr, nic_flow_table);
 	if (attr->crypto)
 		attr->aes_xts = MLX5_GET(cmd_hca_cap, hcattr, aes_xts);
 	if (hca_cap_2_sup) {
@@ -1049,6 +1050,24 @@ mlx5_devx_cmd_query_hca_attr(void *ctx,
 	attr->modify_outer_ip_ecn = MLX5_GET
 		(flow_table_nic_cap, hcattr,
 		 ft_header_modify_nic_receive.outer_ip_ecn);
+	attr->set_reg_c = 0xff;
+	if (attr->nic_flow_table) {
+#define GET_RX_REG_X_BITS \
+		MLX5_GET(flow_table_nic_cap, hcattr, \
+			 ft_header_modify_nic_receive.metadata_reg_c_x)
+#define GET_TX_REG_X_BITS \
+		MLX5_GET(flow_table_nic_cap, hcattr, \
+			 ft_header_modify_nic_transmit.metadata_reg_c_x)
+
+		uint32_t tx_reg, rx_reg;
+
+		tx_reg = GET_TX_REG_X_BITS;
+		rx_reg = GET_RX_REG_X_BITS;
+		attr->set_reg_c &= (rx_reg & tx_reg);
+
+#undef GET_RX_REG_X_BITS
+#undef GET_TX_REG_X_BITS
+	}
 	attr->pkt_integrity_match = mlx5_devx_query_pkt_integrity_match(hcattr);
 	/* Query HCA offloads for Ethernet protocol. */
 	hcattr = mlx5_devx_get_hca_cap(ctx, in, out, &rc,
@@ -1118,6 +1137,18 @@ mlx5_devx_cmd_query_hca_attr(void *ctx,
 				 esw_manager_vport_number_valid);
 		attr->esw_mgr_vport_id =
 			MLX5_GET(esw_cap, hcattr, esw_manager_vport_number);
+	}
+	if (attr->eswitch_manager) {
+		uint32_t esw_reg;
+
+		hcattr = mlx5_devx_get_hca_cap(ctx, in, out, &rc,
+				MLX5_GET_HCA_CAP_OP_MOD_ESW_FLOW_TABLE |
+				MLX5_HCA_CAP_OPMOD_GET_CUR);
+		if (!hcattr)
+			return rc;
+		esw_reg = MLX5_GET(flow_table_esw_cap, hcattr,
+				   ft_header_modify_esw_fdb.metadata_reg_c_x);
+		attr->set_reg_c &= esw_reg;
 	}
 	return 0;
 error:
