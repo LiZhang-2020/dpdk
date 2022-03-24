@@ -1468,13 +1468,32 @@ flow_rxq_mark_flag_set(struct rte_eth_dev *dev)
 {
 	struct mlx5_priv *priv = dev->data->dev_private;
 	struct mlx5_rxq_ctrl *rxq_ctrl;
+	uint16_t port_id;
 
-	if (priv->mark_enabled)
+	if (priv->sh->shared_mark_enabled)
 		return;
-	LIST_FOREACH(rxq_ctrl, &priv->rxqsctrl, next) {
-		rxq_ctrl->rxq.mark = 1;
+	if (priv->master || priv->representor) {
+		MLX5_ETH_FOREACH_DEV(port_id, dev->device) {
+			struct mlx5_priv *opriv =
+				rte_eth_devices[port_id].data->dev_private;
+
+			if (!opriv ||
+			    opriv->sh != priv->sh ||
+			    opriv->domain_id != priv->domain_id ||
+			    opriv->mark_enabled)
+				continue;
+			LIST_FOREACH(rxq_ctrl, &opriv->rxqsctrl, next) {
+				rxq_ctrl->rxq.mark = 1;
+			}
+			opriv->mark_enabled = 1;
+		}
+	} else {
+		LIST_FOREACH(rxq_ctrl, &priv->rxqsctrl, next) {
+			rxq_ctrl->rxq.mark = 1;
+		}
+		priv->mark_enabled = 1;
 	}
-	priv->mark_enabled = 1;
+	priv->sh->shared_mark_enabled = 1;
 }
 
 /**
@@ -1607,6 +1626,7 @@ flow_rxq_flags_clear(struct rte_eth_dev *dev)
 		rxq->ctrl->rxq.tunnel = 0;
 	}
 	priv->mark_enabled = 0;
+	priv->sh->shared_mark_enabled = 0;
 }
 
 /**

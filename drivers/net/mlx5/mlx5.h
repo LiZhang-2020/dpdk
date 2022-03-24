@@ -1213,6 +1213,8 @@ struct mlx5_dev_ctx_shared {
 	uint32_t drop_action_check_flag:1; /* Check Flag for drop action. */
 	uint32_t flow_priority_check_flag:1; /* Check Flag for flow priority. */
 	uint32_t metadata_regc_check_flag:1; /* Check Flag for metadata REGC. */
+	uint32_t shared_mark_enabled:1;
+	/* If mark action is enabled on Rxqs (shared E-Switch domain). */
 	uint32_t eqn; /* Event Queue number. */
 	uint32_t max_port; /* Maximal IB device port index. */
 	struct mlx5_bond_info bond; /* Bonding information. */
