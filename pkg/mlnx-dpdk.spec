@@ -12,7 +12,7 @@
 
 Name: mlnx-dpdk
 Version: 20.11.0
-Release: 4.0.7
+Release: 4.0.8
 Packager: dev@dpdk.org
 URL: http://dpdk.org
 Source: http://dpdk.org/browse/dpdk/snapshot/mlnx-dpdk-%{version}.tar.gz
