@@ -120,6 +120,16 @@ cdef class RteFlowItemGtpPsc(PydiruCM):
         self.item.qfi = qfi
 
 
+cdef class RteFlowItemEthdev(PydiruCM):
+    def __init__(self, port_id=0):
+        """
+        Initializes a RteFlowItemEthdev object representing rte_flow_item_ethdev
+        C struct.
+        :param port_id: ethdev port ID
+        """
+        self.item.port_id = port_id
+
+
 cdef class RteFlowItem(PydiruCM):
     def __init__(self, flow_item_type, spec=None, mask=None, last=None):
         self.item.type = flow_item_type
@@ -141,6 +151,9 @@ cdef class RteFlowItem(PydiruCM):
             size = sizeof(pdr.rte_flow_item_gtp)
         if flow_item_type == e.RTE_FLOW_ITEM_TYPE_GTP_PSC:
             size = sizeof(pdr.rte_flow_item_gtp_psc)
+        if flow_item_type in [e.RTE_FLOW_ITEM_TYPE_PORT_REPRESENTOR,
+                              e.RTE_FLOW_ITEM_TYPE_REPRESENTED_PORT]:
+            size = sizeof(pdr.rte_flow_item_ethdev)
         if spec:
             self.item.spec = calloc(1, size)
             memcpy(self.item.spec, <void *>&((<RteFlowItem>spec).item), size)

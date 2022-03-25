@@ -62,6 +62,8 @@ cdef extern  from '../../../../lib/librte_ethdev/rte_flow.h':
         RTE_FLOW_ITEM_TYPE_INTEGRITY
         RTE_FLOW_ITEM_TYPE_CONNTRACK
         RTE_FLOW_ITEM_TYPE_FLEX
+        RTE_FLOW_ITEM_TYPE_PORT_REPRESENTOR
+        RTE_FLOW_ITEM_TYPE_REPRESENTED_PORT
 
     cpdef enum rte_flow_op_status:
         RTE_FLOW_OP_SUCCESS
