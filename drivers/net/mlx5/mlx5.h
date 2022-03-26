@@ -922,6 +922,7 @@ struct mlx5_flow_meter_profile {
 	uint32_t ref_cnt; /**< Use count. */
 	uint32_t g_support:1; /**< If G color will be generated. */
 	uint32_t y_support:1; /**< If Y color will be generated. */
+	uint32_t initialized:1; /**< Initialized. */
 };
 
 /* 2 meters in each ASO cache line */

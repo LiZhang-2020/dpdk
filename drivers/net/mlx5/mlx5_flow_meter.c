@@ -251,6 +251,8 @@ mlx5_flow_meter_profile_find(struct mlx5_priv *priv, uint32_t meter_profile_id)
 	union mlx5_l3t_data data;
 	int32_t ret;
 
+	if (priv->mtr_profile_arr)
+		return &priv->mtr_profile_arr[meter_profile_id];
 	if (mlx5_l3t_get_entry(priv->mtr_profile_tbl,
 			       meter_profile_id, &data) || !data.ptr)
 		return NULL;
@@ -298,17 +300,29 @@ mlx5_flow_meter_profile_validate(struct rte_eth_dev *dev,
 					  RTE_MTR_ERROR_TYPE_METER_PROFILE,
 					  NULL, "Meter profile is null.");
 	/* Meter profile ID must be valid. */
-	if (meter_profile_id == UINT32_MAX)
-		return -rte_mtr_error_set(error, EINVAL,
-					  RTE_MTR_ERROR_TYPE_METER_PROFILE_ID,
-					  NULL, "Meter profile id not valid.");
-	/* Meter profile must not exist. */
-	fmp = mlx5_flow_meter_profile_find(priv, meter_profile_id);
-	if (fmp)
-		return -rte_mtr_error_set(error, EEXIST,
-					  RTE_MTR_ERROR_TYPE_METER_PROFILE_ID,
-					  NULL,
-					  "Meter profile already exists.");
+	if (priv->mtr_profile_arr) {
+		if (meter_profile_id >= priv->mtr_config.nb_meter_profiles)
+			return -rte_mtr_error_set(error, EINVAL,
+					RTE_MTR_ERROR_TYPE_METER_PROFILE_ID,
+					NULL, "Meter profile id not valid.");
+		fmp = mlx5_flow_meter_profile_find(priv, meter_profile_id);
+		/* Meter profile must not exist. */
+		if (fmp->initialized)
+			return -rte_mtr_error_set(error, EEXIST,
+					RTE_MTR_ERROR_TYPE_METER_PROFILE_ID,
+					NULL, "Meter profile already exists.");
+	} else {
+		if (meter_profile_id == UINT32_MAX)
+			return -rte_mtr_error_set(error, EINVAL,
+					RTE_MTR_ERROR_TYPE_METER_PROFILE_ID,
+					NULL, "Meter profile id not valid.");
+		fmp = mlx5_flow_meter_profile_find(priv, meter_profile_id);
+		/* Meter profile must not exist. */
+		if (fmp)
+			return -rte_mtr_error_set(error, EEXIST,
+					RTE_MTR_ERROR_TYPE_METER_PROFILE_ID,
+					NULL, "Meter profile already exists.");
+	}
 	if (!priv->sh->meter_aso_en) {
 		/* Old version is even not supported. */
 		if (!priv->sh->cdev->config.hca_attr.qos.srtcm_sup)
@@ -724,6 +738,96 @@ mlx5_flow_meter_profile_delete(struct rte_eth_dev *dev,
 					  RTE_MTR_ERROR_TYPE_METER_PROFILE_ID,
 					  NULL, "Meter profile remove fail.");
 	mlx5_free(fmp);
+	return 0;
+}
+
+/**
+ * Callback to add MTR profile with HWS.
+ *
+ * @param[in] dev
+ *   Pointer to Ethernet device.
+ * @param[in] meter_profile_id
+ *   Meter profile id.
+ * @param[in] profile
+ *   Pointer to meter profile detail.
+ * @param[out] error
+ *   Pointer to the error structure.
+ *
+ * @return
+ *   0 on success, a negative errno value otherwise and rte_errno is set.
+ */
+static int
+mlx5_flow_meter_profile_hws_add(struct rte_eth_dev *dev,
+			uint32_t meter_profile_id,
+			struct rte_mtr_meter_profile *profile,
+			struct rte_mtr_error *error)
+{
+	struct mlx5_priv *priv = dev->data->dev_private;
+	struct mlx5_flow_meter_profile *fmp;
+	int ret;
+
+	if (!priv->mtr_profile_arr)
+		return -rte_mtr_error_set(error, ENOTSUP,
+					  RTE_MTR_ERROR_TYPE_UNSPECIFIED,
+					  NULL, "Meter profile array is not allocated");
+	/* Check input params. */
+	ret = mlx5_flow_meter_profile_validate(dev, meter_profile_id,
+					       profile, error);
+	if (ret)
+		return ret;
+	fmp = mlx5_flow_meter_profile_find(priv, meter_profile_id);
+	/* Fill profile info. */
+	fmp->id = meter_profile_id;
+	fmp->profile = *profile;
+	fmp->initialized = 1;
+	/* Fill the flow meter parameters for the PRM. */
+	return mlx5_flow_meter_param_fill(fmp, error);
+}
+
+/**
+ * Callback to delete MTR profile with HWS.
+ *
+ * @param[in] dev
+ *   Pointer to Ethernet device.
+ * @param[in] meter_profile_id
+ *   Meter profile id.
+ * @param[out] error
+ *   Pointer to the error structure.
+ *
+ * @return
+ *   0 on success, a negative errno value otherwise and rte_errno is set.
+ */
+static int
+mlx5_flow_meter_profile_hws_delete(struct rte_eth_dev *dev,
+			uint32_t meter_profile_id,
+			struct rte_mtr_error *error)
+{
+	struct mlx5_priv *priv = dev->data->dev_private;
+	struct mlx5_flow_meter_profile *fmp;
+
+	if (!priv->mtr_profile_arr)
+		return -rte_mtr_error_set(error, ENOTSUP,
+					  RTE_MTR_ERROR_TYPE_UNSPECIFIED,
+					  NULL, "Meter profile array is not allocated");
+	/* Meter id must be valid. */
+	if (meter_profile_id >= priv->mtr_config.nb_meter_profiles)
+		return -rte_mtr_error_set(error, EINVAL,
+					  RTE_MTR_ERROR_TYPE_METER_PROFILE_ID,
+					  &meter_profile_id,
+					  "Meter profile id not valid.");
+	/* Meter profile must exist. */
+	fmp = mlx5_flow_meter_profile_find(priv, meter_profile_id);
+	if (!fmp->initialized)
+		return -rte_mtr_error_set(error, ENOENT,
+					  RTE_MTR_ERROR_TYPE_METER_PROFILE_ID,
+					  &meter_profile_id,
+					  "Meter profile id is invalid.");
+	/* Check profile is unused. */
+	if (fmp->ref_cnt)
+		return -rte_mtr_error_set(error, EBUSY,
+					  RTE_MTR_ERROR_TYPE_METER_PROFILE_ID,
+					  NULL, "Meter profile is in use.");
+	memset(fmp, 0, sizeof(struct mlx5_flow_meter_profile));
 	return 0;
 }
 
@@ -1921,8 +2025,8 @@ static const struct rte_mtr_ops mlx5_flow_mtr_ops = {
 
 static const struct rte_mtr_ops mlx5_flow_mtr_hws_ops = {
 	.capabilities_get = mlx5_flow_mtr_cap_get,
-	.meter_profile_add = NULL,
-	.meter_profile_delete = NULL,
+	.meter_profile_add = mlx5_flow_meter_profile_hws_add,
+	.meter_profile_delete = mlx5_flow_meter_profile_hws_delete,
 	.meter_policy_validate = NULL,
 	.meter_policy_add = NULL,
 	.meter_policy_delete = NULL,
@@ -2403,6 +2507,14 @@ mlx5_flow_meter_flush(struct rte_eth_dev *dev, struct rte_mtr_error *error)
 		}
 		mlx5_l3t_destroy(priv->mtr_profile_tbl);
 		priv->mtr_profile_tbl = NULL;
+	}
+	if (priv->mtr_profile_arr) {
+		for (i = 0; i < priv->mtr_config.nb_meter_profiles; i++) {
+			fmp = mlx5_flow_meter_profile_find(priv, i);
+			if (fmp->initialized)
+				mlx5_flow_meter_profile_hws_delete(dev, i,
+								   error);
+		}
 	}
 	/* Delete default policy table. */
 	mlx5_flow_destroy_def_policy(dev);
