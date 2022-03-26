@@ -869,6 +869,36 @@ flow_hw_represented_port_compile(struct rte_eth_dev *dev,
 	return 0;
 }
 
+static __rte_always_inline int
+flow_hw_meter_compile(struct rte_eth_dev *dev, const struct rte_flow_attr *attr,
+		      uint32_t  start_pos, const struct rte_flow_action *action,
+		      struct mlx5_hw_actions *acts, uint32_t *end_pos,
+		      struct rte_flow_error *error)
+{
+	struct mlx5_priv *priv = dev->data->dev_private;
+	struct mlx5_aso_mtr *aso_mtr;
+	const struct rte_flow_action_meter *meter = action->conf;
+	uint32_t pos = start_pos;
+
+	aso_mtr = mlx5_aso_meter_by_idx(priv, meter->mtr_id);
+	acts->rule_acts[pos].action = priv->mtr_bulk.action;
+	acts->rule_acts[pos].aso.offset = aso_mtr->offset;
+		acts->jump = flow_hw_jump_action_register
+		(dev, attr, aso_mtr->fm.group, error);
+	if (!acts->jump) {
+		*end_pos = start_pos;
+		return -ENOMEM;
+	}
+	acts->rule_acts[++pos].action = (!!attr->group) ?
+				    acts->jump->hws_action :
+				    acts->jump->root_action;
+	*end_pos = pos;
+	if (mlx5_aso_mtr_wait(priv->sh, aso_mtr)) {
+		*end_pos = start_pos;
+		return -ENOMEM;
+	}
+	return 0;
+}
 /**
  * Translate rte_flow actions to DR action.
  *
@@ -1097,6 +1127,21 @@ flow_hw_actions_translate(struct rte_eth_dev *dev,
 			if (flow_hw_represented_port_compile
 					(dev, attr, action_start, actions,
 					 masks, acts, i, error))
+				goto err;
+			i++;
+			break;
+		case RTE_FLOW_ACTION_TYPE_METER:
+			if (actions->conf && masks->conf &&
+			    ((const struct rte_flow_action_meter *)
+			     masks->conf)->mtr_id) {
+				ret = flow_hw_meter_compile(dev, attr,
+						i, actions, acts, &i, error);
+				if (ret)
+					goto err;
+			} else if (__flow_hw_act_data_general_append(priv, acts,
+							actions->type,
+							actions - action_start,
+							i))
 				goto err;
 			i++;
 			break;
@@ -1383,12 +1428,15 @@ flow_hw_actions_construct(struct rte_eth_dev *dev,
 	const struct rte_flow_action_raw_encap *raw_encap_data;
 	const struct rte_flow_item *enc_item = NULL;
 	const struct rte_flow_action_ethdev *port_action = NULL;
+	const struct rte_flow_action_meter *meter = NULL;
 	uint8_t *buf = job->encap_data;
 	struct rte_flow_attr attr = {
 		.ingress = 1,
 	};
 	uint32_t ft_flag;
 	struct mlx5_action_construct_data *act_data;
+	struct mlx5_aso_mtr *mtr;
+	uint32_t mtr_id;
 
 	rte_memcpy(rule_acts, hw_acts->rule_acts, sizeof(*rule_acts) * hw_acts->acts_num);
 	*acts_num = hw_acts->acts_num;
@@ -1508,6 +1556,29 @@ flow_hw_actions_construct(struct rte_eth_dev *dev,
 				return -1;
 			rule_acts[act_data->action_dst].action =
 					priv->hw_vport[port_action->port_id];
+			break;
+		case RTE_FLOW_ACTION_TYPE_METER:
+			meter = action->conf;
+			mtr_id = meter->mtr_id;
+			mtr = mlx5_aso_meter_by_idx(priv, mtr_id);
+			rule_acts[act_data->action_dst].action =
+				priv->mtr_bulk.action;
+			rule_acts[act_data->action_dst].aso.offset =
+								mtr->offset;
+			jump = flow_hw_jump_action_register
+				(dev, &attr, mtr->fm.group, NULL);
+			if (!jump)
+				return -1;
+			MLX5_ASSERT
+				(!rule_acts[act_data->action_dst + 1].action);
+			rule_acts[act_data->action_dst + 1].action =
+					(!!attr.group) ? jump->hws_action :
+							 jump->root_action;
+			job->flow->jump = jump;
+			job->flow->fate_type = MLX5_FLOW_FATE_JUMP;
+			(*acts_num)++;
+			if (mlx5_aso_mtr_wait(priv->sh, mtr))
+				return -1;
 			break;
 		default:
 			break;
@@ -2377,6 +2448,9 @@ flow_hw_action_validate(struct rte_eth_dev *dev,
 			/* TODO: Validation logic */
 			break;
 		case RTE_FLOW_ACTION_TYPE_RAW_DECAP:
+			/* TODO: Validation logic */
+			break;
+		case RTE_FLOW_ACTION_TYPE_METER:
 			/* TODO: Validation logic */
 			break;
 		case RTE_FLOW_ACTION_TYPE_MODIFY_FIELD:
