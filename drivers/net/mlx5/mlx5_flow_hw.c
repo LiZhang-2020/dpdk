@@ -3690,6 +3690,13 @@ flow_hw_configure(struct rte_eth_dev *dev,
 	priv->nb_queue = nb_q_updated;
 	rte_spinlock_init(&priv->hw_ctrl_lock);
 	LIST_INIT(&priv->hw_ctrl_flows);
+	/* Initialize meter library*/
+	if (port_attr->nb_meters)
+		if (mlx5_flow_meter_init(dev,
+					port_attr->nb_meters,
+					port_attr->nb_meter_profiles,
+					port_attr->nb_meter_policies))
+			goto err;
 	/* Add global actions. */
 	for (i = 0; i < MLX5_HW_ACTION_FLAG_MAX; i++) {
 		uint32_t act_flags = 0;

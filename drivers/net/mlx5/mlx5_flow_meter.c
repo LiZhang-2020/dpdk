@@ -15,6 +15,158 @@
 #include "mlx5.h"
 #include "mlx5_flow.h"
 
+static void
+mlx5_flow_meter_uninit(struct rte_eth_dev *dev)
+{
+	struct mlx5_priv *priv = dev->data->dev_private;
+
+	if (priv->mtr_policy_arr) {
+		mlx5_free(priv->mtr_policy_arr);
+		priv->mtr_policy_arr = NULL;
+	}
+	if (priv->mtr_profile_arr) {
+		mlx5_free(priv->mtr_profile_arr);
+		priv->mtr_profile_arr = NULL;
+	}
+	if (priv->mtr_bulk.aso) {
+		mlx5_free(priv->mtr_bulk.aso);
+		priv->mtr_bulk.aso = NULL;
+		priv->mtr_bulk.size = 0;
+		mlx5_aso_queue_uninit(priv->sh, ASO_OPC_MOD_POLICER);
+	}
+	if (priv->mtr_bulk.action) {
+		mlx5dr_action_destroy(priv->mtr_bulk.action);
+		priv->mtr_bulk.action = NULL;
+	}
+	if (priv->mtr_bulk.devx_obj) {
+		claim_zero(mlx5_devx_cmd_destroy(priv->mtr_bulk.devx_obj));
+		priv->mtr_bulk.devx_obj = NULL;
+	}
+}
+
+int
+mlx5_flow_meter_init(struct rte_eth_dev *dev,
+		     uint32_t nb_meters,
+		     uint32_t nb_meter_profiles,
+		     uint32_t nb_meter_policies)
+{
+	struct mlx5_priv *priv = dev->data->dev_private;
+	struct mlx5_devx_obj *dcs = NULL;
+	uint32_t log_obj_size;
+	int ret = 0;
+	int reg_id;
+	struct mlx5_aso_mtr *aso;
+	uint32_t i;
+	struct rte_mtr_error error;
+
+	if (!nb_meters || !nb_meter_profiles || !nb_meter_policies) {
+		ret = ENOTSUP;
+		rte_mtr_error_set(&error, ENOMEM,
+					RTE_MTR_ERROR_TYPE_UNSPECIFIED,
+					NULL, "Meter configuration is invalid.");
+		goto err;
+	}
+	if (!priv->mtr_en || !priv->sh->meter_aso_en) {
+		ret = ENOTSUP;
+		rte_mtr_error_set(&error, ENOMEM,
+					RTE_MTR_ERROR_TYPE_UNSPECIFIED,
+					NULL, "Meter ASO is not supported.");
+		goto err;
+	}
+	priv->mtr_config.nb_meters = rte_log2_u32(nb_meters);
+	if (mlx5_aso_queue_init(priv->sh, ASO_OPC_MOD_POLICER)) {
+		ret = ENOMEM;
+		rte_mtr_error_set(&error, ENOMEM,
+					RTE_MTR_ERROR_TYPE_UNSPECIFIED,
+					NULL, "Meter ASO queue allocation failed.");
+		goto err;
+	}
+	log_obj_size = rte_log2_u32(nb_meters >> 1);
+	dcs = mlx5_devx_cmd_create_flow_meter_aso_obj
+		(priv->sh->cdev->ctx, priv->sh->cdev->pdn,
+			log_obj_size);
+	if (!dcs) {
+		ret = ENOMEM;
+		rte_mtr_error_set(&error, ENOMEM,
+					RTE_MTR_ERROR_TYPE_UNSPECIFIED,
+					NULL, "Meter ASO object allocation failed.");
+		goto err;
+	}
+	priv->mtr_bulk.devx_obj = dcs;
+	reg_id = mlx5_flow_get_reg_id(dev, MLX5_MTR_COLOR, 0, NULL);
+	if (reg_id < 0) {
+		ret = ENOTSUP;
+		rte_mtr_error_set(&error, ENOMEM,
+					RTE_MTR_ERROR_TYPE_UNSPECIFIED,
+					NULL, "Meter register is not available.");
+		goto err;
+	}
+	priv->mtr_bulk.action = mlx5dr_action_create_aso_flow_meter
+			(priv->dr_ctx, (struct mlx5dr_devx_obj *)dcs,
+				reg_id - REG_C_0, MLX5DR_ACTION_FLAG_HWS_RX |
+				MLX5DR_ACTION_FLAG_HWS_TX |
+				MLX5DR_ACTION_FLAG_HWS_FDB);
+	if (!priv->mtr_bulk.action) {
+		ret = ENOMEM;
+		rte_mtr_error_set(&error, ENOMEM,
+					RTE_MTR_ERROR_TYPE_UNSPECIFIED,
+					NULL, "Meter action creation failed.");
+		goto err;
+	}
+	priv->mtr_bulk.aso = mlx5_malloc(MLX5_MEM_ZERO,
+						sizeof(struct mlx5_aso_mtr) *
+						rte_log2_u32(nb_meters),
+						RTE_CACHE_LINE_SIZE,
+						SOCKET_ID_ANY);
+	if (!priv->mtr_bulk.aso) {
+		ret = ENOMEM;
+		rte_mtr_error_set(&error, ENOMEM,
+					RTE_MTR_ERROR_TYPE_UNSPECIFIED,
+					NULL, "Meter bulk ASO allocation failed.");
+		goto err;
+	}
+	priv->mtr_bulk.size = rte_log2_u32(nb_meters);
+	aso = priv->mtr_bulk.aso;
+	for (i = 0; i < priv->mtr_bulk.size; i++) {
+		aso->type = ASO_METER_DIRECT;
+		aso->state = ASO_METER_WAIT;
+		aso->offset = i;
+		aso++;
+	}
+	priv->mtr_config.nb_meter_profiles = nb_meter_profiles;
+	priv->mtr_profile_arr =
+		mlx5_malloc(MLX5_MEM_ZERO,
+				sizeof(struct mlx5_flow_meter_profile) *
+				nb_meter_profiles,
+				RTE_CACHE_LINE_SIZE,
+				SOCKET_ID_ANY);
+	if (!priv->mtr_profile_arr) {
+		ret = ENOMEM;
+		rte_mtr_error_set(&error, ENOMEM,
+					RTE_MTR_ERROR_TYPE_UNSPECIFIED,
+					NULL, "Meter profile allocation failed.");
+		goto err;
+	}
+	priv->mtr_config.nb_meter_policies = nb_meter_policies;
+	priv->mtr_policy_arr =
+		mlx5_malloc(MLX5_MEM_ZERO,
+				sizeof(struct mlx5_flow_meter_policy) *
+				nb_meter_policies,
+				RTE_CACHE_LINE_SIZE,
+				SOCKET_ID_ANY);
+	if (!priv->mtr_policy_arr) {
+		ret = ENOMEM;
+		rte_mtr_error_set(&error, ENOMEM,
+					RTE_MTR_ERROR_TYPE_UNSPECIFIED,
+					NULL, "Meter policy allocation failed.");
+		goto err;
+	}
+	return 0;
+err:
+	mlx5_flow_meter_uninit(dev);
+	return ret;
+}
+
 static int
 mlx5_flow_meter_disable(struct rte_eth_dev *dev,
 			uint32_t meter_id,
@@ -2234,5 +2386,7 @@ mlx5_flow_meter_flush(struct rte_eth_dev *dev, struct rte_mtr_error *error)
 	mlx5_flow_destroy_def_policy(dev);
 	if (priv->sh->refcnt == 1)
 		mlx5_flow_destroy_mtr_drop_tbls(dev);
+	/* Destroy HWS configuration. */
+	mlx5_flow_meter_uninit(dev);
 	return 0;
 }

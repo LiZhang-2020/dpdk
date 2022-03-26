@@ -939,13 +939,20 @@ enum mlx5_aso_mtr_state {
 	ASO_METER_READY, /* CQE received. */
 };
 
+/*aso flow meter type*/
+enum mlx5_aso_mtr_type {
+	ASO_METER_INDIRECT,
+	ASO_METER_DIRECT,
+};
+
 /* Generic aso_flow_meter information. */
 struct mlx5_aso_mtr {
 	LIST_ENTRY(mlx5_aso_mtr) next;
+	enum mlx5_aso_mtr_type type;
 	struct mlx5_flow_meter_info fm;
 	/**< Pointer to the next aso flow meter structure. */
 	uint8_t state; /**< ASO flow meter state. */
-	uint8_t offset;
+	uint32_t offset;
 };
 
 /* Generic aso_flow_meter pool structure. */
@@ -967,6 +974,14 @@ struct mlx5_aso_mtr_pools_mng {
 	struct aso_meter_list meters; /* Free ASO flow meter list. */
 	struct mlx5_aso_sq sq; /*SQ using by ASO flow meter. */
 	struct mlx5_aso_mtr_pool **pools; /* ASO flow meter pool array. */
+};
+
+/* Bulk management structure for ASO flow meter. */
+struct mlx5_mtr_bulk {
+	uint32_t size; /* Number of ASO objects. */
+	struct mlx5dr_action *action; /* HWS action */
+	struct mlx5_devx_obj *devx_obj; /* DEVX object. */
+	struct mlx5_aso_mtr *aso; /* Array of ASO objects. */
 };
 
 /* Meter management structure for global flow meter resource. */
@@ -1319,6 +1334,12 @@ TAILQ_HEAD(mlx5_mtr_profiles, mlx5_flow_meter_profile);
 /* MTR list. */
 TAILQ_HEAD(mlx5_legacy_flow_meters, mlx5_legacy_flow_meter);
 
+struct mlx5_mtr_config {
+	uint32_t nb_meters; /**< Number of configured meters */
+	uint32_t nb_meter_profiles; /**< Number of configured meter profiles */
+	uint32_t nb_meter_policies; /**< Number of configured meter policies */
+};
+
 /* RSS description. */
 struct mlx5_flow_rss_desc {
 	uint32_t level;
@@ -1569,12 +1590,16 @@ struct mlx5_priv {
 	struct mlx5_nl_vlan_vmwa_context *vmwa_context; /* VLAN WA context. */
 	struct mlx5_hlist *mreg_cp_tbl;
 	/* Hash table of Rx metadata register copy table. */
+	struct mlx5_mtr_config mtr_config; /* Meter configuration */
 	uint8_t mtr_sfx_reg; /* Meter prefix-suffix flow match REG_C. */
 	uint8_t mtr_color_reg; /* Meter color match REG_C. */
 	struct mlx5_legacy_flow_meters flow_meters; /* MTR list. */
 	struct mlx5_l3t_tbl *mtr_profile_tbl; /* Meter index lookup table. */
+	struct mlx5_flow_meter_profile *mtr_profile_arr; /* Profile array. */
 	struct mlx5_l3t_tbl *policy_idx_tbl; /* Policy index lookup table. */
+	struct mlx5_flow_meter_policy *mtr_policy_arr; /* Policy array. */
 	struct mlx5_l3t_tbl *mtr_idx_tbl; /* Meter index lookup table. */
+	struct mlx5_mtr_bulk mtr_bulk; /* Meter index mapping for HWS */
 	uint8_t skip_default_rss_reta; /* Skip configuration of default reta. */
 	uint8_t fdb_def_rule; /* Whether fdb jump to table 1 is configured. */
 	struct mlx5_mp_id mp_id; /* ID of a multi-process process */
@@ -1929,6 +1954,10 @@ void mlx5_pmd_socket_uninit(void);
 
 /* mlx5_flow_meter.c */
 
+int mlx5_flow_meter_init(struct rte_eth_dev *dev,
+			 uint32_t nb_meters,
+			 uint32_t nb_meter_profiles,
+			 uint32_t nb_meter_policies);
 int mlx5_flow_meter_ops_get(struct rte_eth_dev *dev, void *arg);
 struct mlx5_flow_meter_info *mlx5_flow_meter_find(struct mlx5_priv *priv,
 		uint32_t meter_id, uint32_t *mtr_idx);
