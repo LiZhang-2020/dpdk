@@ -245,31 +245,6 @@ flow_dv_attr_init(const struct rte_flow_item *item, union flow_dv_attr *attr,
 	attr->valid = 1;
 }
 
-/*
- * Convert rte_mtr_color to mlx5 color.
- *
- * @param[in] rcol
- *   rte_mtr_color.
- *
- * @return
- *   mlx5 color.
- */
-static inline int
-rte_col_2_mlx5_col(enum rte_color rcol)
-{
-	switch (rcol) {
-	case RTE_COLOR_GREEN:
-		return MLX5_FLOW_COLOR_GREEN;
-	case RTE_COLOR_YELLOW:
-		return MLX5_FLOW_COLOR_YELLOW;
-	case RTE_COLOR_RED:
-		return MLX5_FLOW_COLOR_RED;
-	default:
-		break;
-	}
-	return MLX5_FLOW_COLOR_UNDEFINED;
-}
-
 static void
 mlx5_flow_tunnel_ip_check(const struct rte_flow_item *item __rte_unused,
 			  uint8_t next_protocol, uint64_t *item_flags,

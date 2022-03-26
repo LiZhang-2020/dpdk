@@ -2020,6 +2020,31 @@ mlx5_translate_tunnel_etypes(uint64_t pattern_flags)
 	return 0;
 }
 
+/*
+ * Convert rte_mtr_color to mlx5 color.
+ *
+ * @param[in] rcol
+ *   rte_mtr_color.
+ *
+ * @return
+ *   mlx5 color.
+ */
+static inline int
+rte_col_2_mlx5_col(enum rte_color rcol)
+{
+	switch (rcol) {
+	case RTE_COLOR_GREEN:
+		return MLX5_FLOW_COLOR_GREEN;
+	case RTE_COLOR_YELLOW:
+		return MLX5_FLOW_COLOR_YELLOW;
+	case RTE_COLOR_RED:
+		return MLX5_FLOW_COLOR_RED;
+	default:
+		break;
+	}
+	return MLX5_FLOW_COLOR_UNDEFINED;
+}
+
 int mlx5_flow_group_to_table(struct rte_eth_dev *dev,
 			     const struct mlx5_flow_tunnel *tunnel,
 			     uint32_t group, uint32_t *table,
