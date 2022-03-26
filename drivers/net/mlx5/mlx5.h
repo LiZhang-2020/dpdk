@@ -794,15 +794,29 @@ struct mlx5_flow_meter_policy {
 	/* Is queue action in policy table. */
 	uint32_t is_hierarchy:1;
 	/* Is meter action in policy table. */
+	uint32_t skip_r:1;
+	/* If red color policy is skipped. */
 	uint32_t skip_y:1;
 	/* If yellow color policy is skipped. */
 	uint32_t skip_g:1;
 	/* If green color policy is skipped. */
 	uint32_t mark:1;
 	/* If policy contains mark action. */
+	uint32_t initialized:1;
+	/* Initialized. */
+	uint16_t group;
+	/* The group. */
 	rte_spinlock_t sl;
 	uint32_t ref_cnt;
 	/* Use count. */
+	struct rte_flow_pattern_template *hws_item_templ;
+	/* Hardware steering item templates. */
+	struct rte_flow_actions_template *hws_act_templ[MLX5_MTR_DOMAIN_MAX];
+	/* Hardware steering action templates. */
+	struct rte_flow_template_table *hws_flow_table[MLX5_MTR_DOMAIN_MAX];
+	/* Hardware steering tables. */
+	struct rte_flow *hws_flow_rule[MLX5_MTR_DOMAIN_MAX][RTE_COLORS];
+	/* Hardware steering rules. */
 	struct mlx5_meter_policy_action_container act_cnt[MLX5_MTR_RTE_COLORS];
 	/* Policy actions container. */
 	void *dr_drop_action[MLX5_MTR_DOMAIN_MAX];
@@ -1040,6 +1054,7 @@ struct mlx5_flow_tbl_resource {
 /* Tables for metering splits should be added here. */
 #define MLX5_FLOW_TABLE_LEVEL_METER (MLX5_MAX_TABLES - 3)
 #define MLX5_FLOW_TABLE_LEVEL_POLICY (MLX5_MAX_TABLES - 4)
+#define MLX5_FLOW_TABLE_HWS_POLICY (MLX5_MAX_TABLES - 10)
 /* SFT tables */
 #define MLX5_FLOW_TABLE_SFT_L0 (MLX5_MAX_TABLES - 7)
 #define MLX5_FLOW_TABLE_SFT_L1 (MLX5_MAX_TABLES - 6)

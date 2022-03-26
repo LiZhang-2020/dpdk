@@ -851,6 +851,11 @@ mlx5_flow_meter_policy_find(struct rte_eth_dev *dev,
 	struct mlx5_flow_meter_sub_policy *sub_policy = NULL;
 	union mlx5_l3t_data data;
 
+	if (priv->mtr_policy_arr) {
+		if (policy_idx)
+			*policy_idx = policy_id;
+		return &priv->mtr_policy_arr[policy_id];
+	}
 	if (policy_id > MLX5_MAX_SUB_POLICY_TBL_NUM || !priv->policy_idx_tbl)
 		return NULL;
 	if (mlx5_l3t_get_entry(priv->policy_idx_tbl, policy_id, &data) ||
@@ -1228,6 +1233,269 @@ mlx5_flow_meter_policy_delete(struct rte_eth_dev *dev,
 		return ret;
 	mlx5_free(mtr_policy);
 	return 0;
+}
+
+/**
+ * Callback to delete MTR policy for HWS.
+ *
+ * @param[in] dev
+ *   Pointer to Ethernet device.
+ * @param[in] policy_id
+ *   Meter policy id.
+ * @param[out] error
+ *   Pointer to the error structure.
+ *
+ * @return
+ *   0 on success, a negative errno value otherwise and rte_errno is set.
+ */
+static int
+mlx5_flow_meter_policy_hws_delete(struct rte_eth_dev *dev,
+			  uint32_t policy_id,
+			  struct rte_mtr_error *error)
+{
+	struct mlx5_priv *priv = dev->data->dev_private;
+	struct mlx5_flow_meter_policy *mtr_policy;
+	uint32_t i, j;
+	uint32_t nb_flows = 0;
+	int ret;
+	struct rte_flow_op_attr op_attr = { .postpone = 1 };
+	struct rte_flow_op_result result[RTE_COLORS * MLX5_MTR_DOMAIN_MAX];
+
+	if (!priv->mtr_policy_arr)
+		return -rte_mtr_error_set(error, ENOTSUP,
+					  RTE_MTR_ERROR_TYPE_UNSPECIFIED,
+					  NULL, "Meter policy array is not allocated");
+	/* Meter id must be valid. */
+	if (policy_id >= priv->mtr_config.nb_meter_policies)
+		return -rte_mtr_error_set(error, EINVAL,
+					  RTE_MTR_ERROR_TYPE_METER_POLICY_ID,
+					  &policy_id,
+					  "Meter policy id not valid.");
+	/* Meter policy must exist. */
+	mtr_policy = mlx5_flow_meter_policy_find(dev, policy_id, NULL);
+	if (!mtr_policy->initialized)
+		return -rte_mtr_error_set(error, ENOENT,
+			RTE_MTR_ERROR_TYPE_METER_POLICY_ID, NULL,
+			"Meter policy does not exists.");
+	/* Check policy is unused. */
+	if (mtr_policy->ref_cnt)
+		return -rte_mtr_error_set(error, EBUSY,
+					  RTE_MTR_ERROR_TYPE_METER_POLICY_ID,
+					  NULL, "Meter policy is in use.");
+	rte_spinlock_lock(&priv->hw_ctrl_lock);
+	for (i = 0; i < MLX5_MTR_DOMAIN_MAX; i++) {
+		for (j = 0; j < RTE_COLORS; j++) {
+			if (mtr_policy->hws_flow_rule[i][j]) {
+				ret = rte_flow_async_destroy(dev->data->port_id,
+					CTRL_QUEUE_ID(priv), &op_attr,
+					mtr_policy->hws_flow_rule[i][j],
+					NULL, NULL);
+				if (ret < 0)
+					continue;
+				nb_flows++;
+			}
+		}
+	}
+	ret = rte_flow_push(dev->data->port_id, CTRL_QUEUE_ID(priv), NULL);
+	while (nb_flows && (ret >= 0)) {
+		ret = rte_flow_pull(dev->data->port_id,
+					CTRL_QUEUE_ID(priv), result,
+					nb_flows, NULL);
+		nb_flows -= ret;
+	}
+	for (i = 0; i < MLX5_MTR_DOMAIN_MAX; i++) {
+		if (mtr_policy->hws_flow_table[i])
+			rte_flow_template_table_destroy(dev->data->port_id,
+				 mtr_policy->hws_flow_table[i], NULL);
+	}
+	for (i = 0; i < RTE_COLORS; i++) {
+		if (mtr_policy->hws_act_templ[i])
+			rte_flow_actions_template_destroy(dev->data->port_id,
+				 mtr_policy->hws_act_templ[i], NULL);
+	}
+	if (mtr_policy->hws_item_templ)
+		rte_flow_pattern_template_destroy(dev->data->port_id,
+				mtr_policy->hws_item_templ, NULL);
+	rte_spinlock_unlock(&priv->hw_ctrl_lock);
+	memset(mtr_policy, 0, sizeof(struct mlx5_flow_meter_policy));
+	return 0;
+}
+
+/**
+ * Callback to add MTR policy for HWS.
+ *
+ * @param[in] dev
+ *   Pointer to Ethernet device.
+ * @param[out] policy_id
+ *   Pointer to policy id
+ * @param[in] actions
+ *   Pointer to meter policy action detail.
+ * @param[out] error
+ *   Pointer to the error structure.
+ *
+ * @return
+ *   0 on success, a negative errno value otherwise and rte_errno is set.
+ */
+static int
+mlx5_flow_meter_policy_hws_add(struct rte_eth_dev *dev,
+			uint32_t policy_id,
+			struct rte_mtr_meter_policy_params *policy,
+			struct rte_mtr_error *error)
+{
+	struct mlx5_priv *priv = dev->data->dev_private;
+	struct rte_flow_attr attr = { .transfer = priv->sh->config.dv_esw_en ?
+							1 : 0 };
+	struct mlx5_flow_meter_policy *mtr_policy = NULL;
+	bool is_rss = false;
+	uint8_t domain_bitmap = 0;
+	uint8_t policy_mode = MLX5_MTR_POLICY_MODE_DEF;
+	int i, j;
+	uint32_t nb_colors = 0;
+	uint32_t nb_flows = 0;
+	int color;
+	int ret;
+	struct rte_flow_pattern_template_attr pta = {0};
+	struct rte_flow_actions_template_attr ata = {0};
+	struct rte_flow_template_table_attr ta = { {0}, 0 };
+	struct rte_flow_op_attr op_attr = { .postpone = 1 };
+	struct rte_flow_op_result result[RTE_COLORS * MLX5_MTR_DOMAIN_MAX];
+	const uint32_t color_mask = (UINT32_C(1) << MLX5_MTR_COLOR_BITS) - 1;
+	int color_reg_c_idx = mlx5_flow_get_reg_id(dev, MLX5_MTR_COLOR,
+						   0, NULL);
+	struct rte_flow_item_tag tag_spec = {
+		.data = 0,
+		.index = color_reg_c_idx
+	};
+	struct rte_flow_item_tag tag_mask = {
+		.data = color_mask,
+		.index = 0xff};
+	struct rte_flow_item pattern[] = {
+		[0] = {
+			.type = MLX5_RTE_FLOW_ITEM_TYPE_TAG,
+			.spec = &tag_spec,
+			.mask = &tag_mask,
+		},
+		[1] = { .type = RTE_FLOW_ITEM_TYPE_END }
+	};
+
+	if (!priv->mtr_policy_arr)
+		return -rte_mtr_error_set(error, ENOTSUP,
+					  RTE_MTR_ERROR_TYPE_METER_POLICY,
+					  NULL, "Meter policy array is not allocated.");
+	if (policy_id >= priv->mtr_config.nb_meter_policies)
+		return -rte_mtr_error_set(error, ENOTSUP,
+					  RTE_MTR_ERROR_TYPE_METER_POLICY_ID,
+					  NULL, "Meter policy id not valid.");
+	mtr_policy = mlx5_flow_meter_policy_find(dev, policy_id, NULL);
+	if (mtr_policy->initialized)
+		return -rte_mtr_error_set(error, ENOTSUP,
+			RTE_MTR_ERROR_TYPE_METER_POLICY_ID, NULL,
+			"Meter policy already exists.");
+	ret = mlx5_flow_validate_mtr_acts(dev, policy->actions, &attr,
+					  &is_rss, &domain_bitmap,
+					  &policy_mode, error);
+	if (ret)
+		return ret;
+	if (policy_mode == MLX5_MTR_POLICY_MODE_DEF)
+		return -rte_mtr_error_set(error, ENOTSUP,
+					  RTE_MTR_ERROR_TYPE_METER_POLICY_ID,
+					  NULL, "Non-terminating policy in not supported.");
+	if (policy_mode == MLX5_MTR_POLICY_MODE_OG)
+		mtr_policy->skip_y = 1;
+	else if (policy_mode == MLX5_MTR_POLICY_MODE_OY)
+		mtr_policy->skip_g = 1;
+	mtr_policy->is_rss = is_rss;
+	mtr_policy->group = MLX5_FLOW_TABLE_HWS_POLICY - policy_id;
+	mtr_policy->initialized = 1;
+	rte_spinlock_lock(&priv->hw_ctrl_lock);
+	mtr_policy->hws_item_templ =
+		rte_flow_pattern_template_create(dev->data->port_id,
+						 &pta, pattern, NULL);
+	if (!mtr_policy->hws_item_templ)
+		goto policy_add_err;
+	for (i = 0; i < RTE_COLORS; i++) {
+		if (mtr_policy->skip_g && i == RTE_COLOR_GREEN)
+			continue;
+		if (mtr_policy->skip_y && i == RTE_COLOR_YELLOW)
+			continue;
+		if (mtr_policy->skip_r && i == RTE_COLOR_RED)
+			continue;
+		mtr_policy->hws_act_templ[nb_colors] =
+			rte_flow_actions_template_create(dev->data->port_id,
+						&ata, policy->actions[i],
+						policy->actions[i], NULL);
+		if (!mtr_policy->hws_act_templ[nb_colors])
+			goto policy_add_err;
+		nb_colors++;
+	}
+	for (i = 0; i < MLX5_MTR_DOMAIN_MAX; i++) {
+		if (!(domain_bitmap & (1 << i)))
+			continue;
+		memset(&ta, 0, sizeof(ta));
+		ta.nb_flows = RTE_COLORS;
+		ta.flow_attr.group = mtr_policy->group;
+		if (i == MLX5_MTR_DOMAIN_INGRESS)
+			ta.flow_attr.ingress = 1;
+		else if (i == MLX5_MTR_DOMAIN_EGRESS)
+			ta.flow_attr.egress = 1;
+		else if (i == MLX5_MTR_DOMAIN_TRANSFER)
+			ta.flow_attr.transfer = 1;
+		mtr_policy->hws_flow_table[i] =
+			rte_flow_template_table_create(dev->data->port_id,
+					&ta, &mtr_policy->hws_item_templ, 1,
+					mtr_policy->hws_act_templ, nb_colors,
+					NULL);
+		if (!mtr_policy->hws_flow_table[i])
+			goto policy_add_err;
+		nb_colors = 0;
+		for (j = 0; j < RTE_COLORS; j++) {
+			if (mtr_policy->skip_g && j == RTE_COLOR_GREEN)
+				continue;
+			if (mtr_policy->skip_y && j == RTE_COLOR_YELLOW)
+				continue;
+			if (mtr_policy->skip_r && j == RTE_COLOR_RED)
+				continue;
+			color = rte_col_2_mlx5_col((enum rte_color)j);
+			tag_spec.data = color;
+			mtr_policy->hws_flow_rule[i][j] =
+				rte_flow_async_create(dev->data->port_id,
+					CTRL_QUEUE_ID(priv), &op_attr,
+					mtr_policy->hws_flow_table[i],
+					pattern, 0, policy->actions[j],
+					nb_colors, NULL, NULL);
+			if (!mtr_policy->hws_flow_rule[i][j])
+				goto policy_add_err;
+			nb_colors++;
+			nb_flows++;
+		}
+		ret = rte_flow_push(dev->data->port_id,
+				    CTRL_QUEUE_ID(priv), NULL);
+		if (ret < 0)
+			goto policy_add_err;
+		while (nb_flows) {
+			ret = rte_flow_pull(dev->data->port_id,
+					    CTRL_QUEUE_ID(priv), result,
+					    nb_flows, NULL);
+			if (ret < 0)
+				goto policy_add_err;
+			for (j = 0; j < ret; j++) {
+				if (result[j].status == RTE_FLOW_OP_ERROR)
+					goto policy_add_err;
+			}
+			nb_flows -= ret;
+		}
+	}
+	rte_spinlock_unlock(&priv->hw_ctrl_lock);
+	return 0;
+policy_add_err:
+	rte_spinlock_unlock(&priv->hw_ctrl_lock);
+	ret = mlx5_flow_meter_policy_hws_delete(dev, policy_id, error);
+	memset(mtr_policy, 0, sizeof(struct mlx5_flow_meter_policy));
+	if (ret)
+		return ret;
+	return -rte_mtr_error_set(error, ENOTSUP,
+				  RTE_MTR_ERROR_TYPE_UNSPECIFIED,
+				  NULL, "Failed to create meter policy.");
 }
 
 /**
@@ -2027,9 +2295,9 @@ static const struct rte_mtr_ops mlx5_flow_mtr_hws_ops = {
 	.capabilities_get = mlx5_flow_mtr_cap_get,
 	.meter_profile_add = mlx5_flow_meter_profile_hws_add,
 	.meter_profile_delete = mlx5_flow_meter_profile_hws_delete,
-	.meter_policy_validate = NULL,
-	.meter_policy_add = NULL,
-	.meter_policy_delete = NULL,
+	.meter_policy_validate = mlx5_flow_meter_policy_validate,
+	.meter_policy_add = mlx5_flow_meter_policy_hws_add,
+	.meter_policy_delete = mlx5_flow_meter_policy_hws_delete,
 	.create = NULL,
 	.destroy = NULL,
 	.meter_enable = NULL,
@@ -2436,6 +2704,7 @@ mlx5_flow_meter_flush(struct rte_eth_dev *dev, struct rte_mtr_error *error)
 	struct mlx5_flow_meter_profile *fmp;
 	struct mlx5_legacy_flow_meter *legacy_fm;
 	struct mlx5_flow_meter_info *fm;
+	struct mlx5_flow_meter_policy *policy;
 	struct mlx5_flow_meter_sub_policy *sub_policy;
 	void *tmp;
 	uint32_t i, mtr_idx, policy_idx;
@@ -2494,6 +2763,15 @@ mlx5_flow_meter_flush(struct rte_eth_dev *dev, struct rte_mtr_error *error)
 		}
 		mlx5_l3t_destroy(priv->policy_idx_tbl);
 		priv->policy_idx_tbl = NULL;
+	}
+	if (priv->mtr_policy_arr) {
+		for (i = 0; i < priv->mtr_config.nb_meter_policies; i++) {
+			policy = mlx5_flow_meter_policy_find(dev, i,
+							     &policy_idx);
+			if (policy->initialized)
+				mlx5_flow_meter_policy_hws_delete(dev, i,
+								  error);
+		}
 	}
 	if (priv->mtr_profile_tbl) {
 		MLX5_L3T_FOREACH(priv->mtr_profile_tbl, i, entry) {
