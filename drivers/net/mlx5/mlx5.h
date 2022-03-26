@@ -891,6 +891,7 @@ struct mlx5_flow_meter_info {
 	 */
 	uint32_t transfer:1;
 	uint32_t def_policy:1;
+	uint32_t initialized:1;
 	/* Meter points to default policy. */
 	void *drop_rule[MLX5_MTR_DOMAIN_MAX];
 	/* Meter drop rule in drop table. */
@@ -902,6 +903,10 @@ struct mlx5_flow_meter_info {
 	/**< Index pool for flow id. */
 	void *meter_action;
 	/**< Flow meter action. */
+	uint32_t meter_offset;
+	/**< Flow meter offset. */
+	uint16_t group;
+	/**< Flow meter group. */
 };
 
 /* PPS(packets per second) map to BPS(Bytes per second).

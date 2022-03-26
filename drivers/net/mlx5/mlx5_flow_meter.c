@@ -1865,6 +1865,90 @@ error:
 		NULL, "Failed to create devx meter.");
 }
 
+/**
+ * Create meter rules.
+ *
+ * @param[in] dev
+ *   Pointer to Ethernet device.
+ * @param[in] meter_id
+ *   Meter id.
+ * @param[in] params
+ *   Pointer to rte meter parameters.
+ * @param[in] shared
+ *   Meter shared with other flow or not.
+ * @param[out] error
+ *   Pointer to rte meter error structure.
+ *
+ * @return
+ *   0 on success, a negative errno value otherwise and rte_errno is set.
+ */
+static int
+mlx5_flow_meter_hws_create(struct rte_eth_dev *dev, uint32_t meter_id,
+		       struct rte_mtr_params *params, int shared,
+		       struct rte_mtr_error *error)
+{
+	struct mlx5_priv *priv = dev->data->dev_private;
+	struct mlx5_flow_meter_profile *profile;
+	struct mlx5_flow_meter_info *fm;
+	struct mlx5_flow_meter_policy *policy = NULL;
+	struct mlx5_aso_mtr *aso_mtr;
+	int ret;
+
+	if (!priv->mtr_profile_arr ||
+	    !priv->mtr_policy_arr ||
+	    !priv->mtr_bulk.aso)
+		return -rte_mtr_error_set(error, ENOTSUP,
+			RTE_MTR_ERROR_TYPE_UNSPECIFIED, NULL,
+			"Meter bulk array is not allocated.");
+	/* Meter profile must exist. */
+	profile = mlx5_flow_meter_profile_find(priv, params->meter_profile_id);
+	if (!profile->initialized)
+		return -rte_mtr_error_set(error, ENOENT,
+			RTE_MTR_ERROR_TYPE_METER_PROFILE_ID,
+			NULL, "Meter profile id not valid.");
+	/* Meter policy must exist. */
+	policy = mlx5_flow_meter_policy_find(dev,
+			params->meter_policy_id, NULL);
+	if (!policy->initialized)
+		return -rte_mtr_error_set(error, ENOENT,
+			RTE_MTR_ERROR_TYPE_METER_POLICY_ID,
+			NULL, "Meter policy id not valid.");
+	/* Meter ID must be valid. */
+	if (meter_id >= priv->mtr_config.nb_meters)
+		return -rte_mtr_error_set(error, EINVAL,
+			RTE_MTR_ERROR_TYPE_MTR_ID,
+			NULL, "Meter id not valid.");
+	/* Find ASO object. */
+	aso_mtr = mlx5_aso_meter_by_idx(priv, meter_id);
+	fm = &aso_mtr->fm;
+	if (fm->initialized)
+		return -rte_mtr_error_set(error, ENOENT,
+					  RTE_MTR_ERROR_TYPE_MTR_ID,
+					  NULL, "Meter object already exists.");
+	/* Fill the flow meter parameters. */
+	fm->meter_id = meter_id;
+	fm->policy_id = params->meter_policy_id;
+	fm->profile = profile;
+	fm->meter_offset = meter_id;
+	fm->group = policy->group;
+	/* Add to the flow meter list. */
+	fm->active_state = 1; /* Config meter starts as active. */
+	fm->is_enable = params->meter_enable;
+	fm->shared = !!shared;
+	fm->initialized = 1;
+	/* Update ASO flow meter by wqe. */
+	ret = mlx5_aso_meter_update_by_wqe(priv->sh, aso_mtr,
+					   &priv->mtr_bulk);
+	if (ret)
+		return -rte_mtr_error_set(error, ENOTSUP,
+			RTE_MTR_ERROR_TYPE_UNSPECIFIED,
+			NULL, "Failed to create devx meter.");
+	fm->active_state = params->meter_enable;
+	__atomic_add_fetch(&fm->profile->ref_cnt, 1, __ATOMIC_RELAXED);
+	__atomic_add_fetch(&policy->ref_cnt, 1, __ATOMIC_RELAXED);
+	return 0;
+}
+
 static int
 mlx5_flow_meter_params_flush(struct rte_eth_dev *dev,
 			struct mlx5_flow_meter_info *fm,
@@ -1968,6 +2052,58 @@ mlx5_flow_meter_destroy(struct rte_eth_dev *dev, uint32_t meter_id,
 					RTE_MTR_ERROR_TYPE_METER_PROFILE_ID,
 					NULL,
 					"MTR object meter profile invalid.");
+	return 0;
+}
+
+/**
+ * Destroy meter rules.
+ *
+ * @param[in] dev
+ *   Pointer to Ethernet device.
+ * @param[in] meter_id
+ *   Meter id.
+ * @param[out] error
+ *   Pointer to rte meter error structure.
+ *
+ * @return
+ *   0 on success, a negative errno value otherwise and rte_errno is set.
+ */
+static int
+mlx5_flow_meter_hws_destroy(struct rte_eth_dev *dev, uint32_t meter_id,
+			struct rte_mtr_error *error)
+{
+	struct mlx5_priv *priv = dev->data->dev_private;
+	struct mlx5_aso_mtr *aso_mtr;
+	struct mlx5_flow_meter_info *fm;
+	struct mlx5_flow_meter_policy *policy;
+
+	if (!priv->mtr_profile_arr ||
+	    !priv->mtr_policy_arr ||
+	    !priv->mtr_bulk.aso)
+		return -rte_mtr_error_set(error, ENOTSUP,
+			RTE_MTR_ERROR_TYPE_METER_POLICY, NULL,
+			"Meter bulk array is not allocated.");
+	/* Find ASO object. */
+	aso_mtr = mlx5_aso_meter_by_idx(priv, meter_id);
+	fm = &aso_mtr->fm;
+	if (!fm->initialized)
+		return -rte_mtr_error_set(error, ENOENT,
+					  RTE_MTR_ERROR_TYPE_MTR_ID,
+					  NULL, "Meter object id not valid.");
+	/* Meter object must not have any owner. */
+	if (fm->ref_cnt > 0)
+		return -rte_mtr_error_set(error, EBUSY,
+					  RTE_MTR_ERROR_TYPE_UNSPECIFIED,
+					  NULL, "Meter object is being used.");
+	/* Destroy the meter profile. */
+	__atomic_sub_fetch(&fm->profile->ref_cnt,
+						1, __ATOMIC_RELAXED);
+	/* Destroy the meter policy. */
+	policy = mlx5_flow_meter_policy_find(dev,
+			fm->policy_id, NULL);
+	__atomic_sub_fetch(&policy->ref_cnt,
+						1, __ATOMIC_RELAXED);
+	memset(fm, 0, sizeof(struct mlx5_flow_meter_info));
 	return 0;
 }
 
@@ -2300,8 +2436,8 @@ static const struct rte_mtr_ops mlx5_flow_mtr_hws_ops = {
 	.meter_policy_validate = mlx5_flow_meter_policy_validate,
 	.meter_policy_add = mlx5_flow_meter_policy_hws_add,
 	.meter_policy_delete = mlx5_flow_meter_policy_hws_delete,
-	.create = NULL,
-	.destroy = NULL,
+	.create = mlx5_flow_meter_hws_create,
+	.destroy = mlx5_flow_meter_hws_destroy,
 	.meter_enable = NULL,
 	.meter_disable = NULL,
 	.meter_profile_update = NULL,
@@ -2739,6 +2875,14 @@ mlx5_flow_meter_flush(struct rte_eth_dev *dev, struct rte_mtr_error *error)
 				return -rte_mtr_error_set(error, EINVAL,
 				RTE_MTR_ERROR_TYPE_METER_PROFILE_ID,
 				NULL, "MTR object meter profile invalid.");
+		}
+	}
+	if (priv->mtr_bulk.aso) {
+		for (i = 0; i < priv->mtr_config.nb_meter_profiles; i++) {
+			aso_mtr = mlx5_aso_meter_by_idx(priv, i);
+			fm = &aso_mtr->fm;
+			if (fm->initialized)
+				mlx5_flow_meter_hws_destroy(dev, i, error);
 		}
 	}
 	if (priv->policy_idx_tbl) {
