@@ -1919,6 +1919,23 @@ static const struct rte_mtr_ops mlx5_flow_mtr_ops = {
 	.stats_read = mlx5_flow_meter_stats_read,
 };
 
+static const struct rte_mtr_ops mlx5_flow_mtr_hws_ops = {
+	.capabilities_get = mlx5_flow_mtr_cap_get,
+	.meter_profile_add = NULL,
+	.meter_profile_delete = NULL,
+	.meter_policy_validate = NULL,
+	.meter_policy_add = NULL,
+	.meter_policy_delete = NULL,
+	.create = NULL,
+	.destroy = NULL,
+	.meter_enable = NULL,
+	.meter_disable = NULL,
+	.meter_profile_update = NULL,
+	.meter_dscp_table_update = NULL,
+	.stats_update = NULL,
+	.stats_read = NULL,
+};
+
 /**
  * Get meter operations.
  *
@@ -1933,7 +1950,12 @@ static const struct rte_mtr_ops mlx5_flow_mtr_ops = {
 int
 mlx5_flow_meter_ops_get(struct rte_eth_dev *dev __rte_unused, void *arg)
 {
-	*(const struct rte_mtr_ops **)arg = &mlx5_flow_mtr_ops;
+	struct mlx5_priv *priv = dev->data->dev_private;
+
+	if (priv->sh->config.dv_flow_en == 2)
+		*(const struct rte_mtr_ops **)arg = &mlx5_flow_mtr_hws_ops;
+	else
+		*(const struct rte_mtr_ops **)arg = &mlx5_flow_mtr_ops;
 	return 0;
 }
 
