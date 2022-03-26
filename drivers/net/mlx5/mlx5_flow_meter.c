@@ -1581,7 +1581,8 @@ mlx5_flow_meter_action_modify(struct mlx5_priv *priv,
 	if (priv->sh->meter_aso_en) {
 		fm->is_enable = !!is_enable;
 		aso_mtr = container_of(fm, struct mlx5_aso_mtr, fm);
-		ret = mlx5_aso_meter_update_by_wqe(priv->sh, aso_mtr);
+		ret = mlx5_aso_meter_update_by_wqe(priv->sh, aso_mtr,
+						   &priv->mtr_bulk);
 		if (ret)
 			return ret;
 		ret = mlx5_aso_mtr_wait(priv->sh, aso_mtr);
@@ -1829,7 +1830,8 @@ mlx5_flow_meter_create(struct rte_eth_dev *dev, uint32_t meter_id,
 	/* If ASO meter supported, update ASO flow meter by wqe. */
 	if (priv->sh->meter_aso_en) {
 		aso_mtr = container_of(fm, struct mlx5_aso_mtr, fm);
-		ret = mlx5_aso_meter_update_by_wqe(priv->sh, aso_mtr);
+		ret = mlx5_aso_meter_update_by_wqe(priv->sh, aso_mtr,
+						   &priv->mtr_bulk);
 		if (ret)
 			goto error;
 		if (!priv->mtr_idx_tbl) {
