@@ -93,10 +93,15 @@ mlx5dr_send_wqe_set_tag(struct mlx5dr_wqe_gta_data_seg_ste *wqe_data,
 			struct mlx5dr_rule_match_tag *tag,
 			bool is_jumbo)
 {
-	if (is_jumbo)
+	if (is_jumbo) {
+		/* Clear previous possibly dirty control */
+		memset(wqe_data, 0, MLX5DR_STE_CTRL_SZ);
 		memcpy(wqe_data->action, tag->jumbo, MLX5DR_JUMBO_TAG_SZ);
-	else
+	} else {
+		/* Clear previous possibly dirty control and actions */
+		memset(wqe_data, 0, MLX5DR_STE_CTRL_SZ + MLX5DR_ACTIONS_SZ);
 		memcpy(wqe_data->tag, tag->match, MLX5DR_MATCH_TAG_SZ);
+	}
 }
 
 #define MLX5_WQE_CTRL_SMALL_FENCE (1 << 5)
