@@ -1363,8 +1363,7 @@ flow_hw_actions_construct(struct rte_eth_dev *dev,
 	uint32_t ft_flag;
 	struct mlx5_action_construct_data *act_data;
 
-	memcpy(rule_acts, hw_acts->rule_acts,
-	       sizeof(*rule_acts) * hw_acts->acts_num);
+	rte_memcpy(rule_acts, hw_acts->rule_acts, sizeof(*rule_acts) * hw_acts->acts_num);
 	*acts_num = hw_acts->acts_num;
 	attr.group = table->grp->group_id;
 	ft_flag = mlx5_hw_act_flag[!!table->grp->group_id][table->type];
@@ -1377,8 +1376,7 @@ flow_hw_actions_construct(struct rte_eth_dev *dev,
 	} else {
 		attr.ingress = 1;
 	}
-	memcpy(rule_acts, hw_acts->rule_acts,
-	       sizeof(*rule_acts) * hw_acts->acts_num);
+	rte_memcpy(rule_acts, hw_acts->rule_acts, sizeof(*rule_acts) * hw_acts->acts_num);
 	*acts_num = hw_acts->acts_num;
 	if (hw_acts->mhdr && hw_acts->mhdr->mhdr_cmds_num > 0) {
 		uint16_t pos = hw_acts->mhdr->pos;
@@ -1388,16 +1386,12 @@ flow_hw_actions_construct(struct rte_eth_dev *dev,
 						job->flow->idx - 1;
 			rule_acts[pos].modify_header.data =
 						(uint8_t *)job->mhdr_cmd;
-			memcpy(job->mhdr_cmd, hw_acts->mhdr->mhdr_cmds,
-			       sizeof(*job->mhdr_cmd) * hw_acts->mhdr->mhdr_cmds_num);
-		} else {
-			rule_acts[pos].modify_header.offset = 0;
-			rule_acts[pos].modify_header.data = NULL;
+			rte_memcpy(job->mhdr_cmd, hw_acts->mhdr->mhdr_cmds,
+				   sizeof(*job->mhdr_cmd) * hw_acts->mhdr->mhdr_cmds_num);
 		}
 	}
 	if (hw_acts->encap_decap && hw_acts->encap_decap->data_size)
-		memcpy(buf, hw_acts->encap_decap->data,
-		       hw_acts->encap_decap->data_size);
+		rte_memcpy(buf, hw_acts->encap_decap->data, hw_acts->encap_decap->data_size);
 	LIST_FOREACH(act_data, &hw_acts->act_list, next) {
 		uint32_t tag;
 		uint32_t jump_group;
