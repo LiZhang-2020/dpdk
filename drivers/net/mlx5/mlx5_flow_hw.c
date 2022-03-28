@@ -952,7 +952,7 @@ flow_hw_actions_translate(struct rte_eth_dev *dev,
 			break;
 		case RTE_FLOW_ACTION_TYPE_DROP:
 			acts->rule_acts[i++].action =
-				priv->hw_drop[!!attr->group][type];
+				priv->hw_drop[!!attr->group];
 			break;
 		case RTE_FLOW_ACTION_TYPE_JUMP:
 			if (masks->conf) {
@@ -3391,6 +3391,7 @@ flow_hw_configure(struct rte_eth_dev *dev,
 	uint16_t nb_q_updated;
 	struct rte_flow_queue_attr **_queue_attr = NULL;
 	struct rte_flow_queue_attr ctrl_queue_attr = {0};
+	bool is_proxy = !!(priv->sh->config.dv_esw_en && priv->master);
 	int ret;
 
 	if (!port_attr || !nb_queue || !queue_attr) {
@@ -3496,18 +3497,20 @@ flow_hw_configure(struct rte_eth_dev *dev,
 	LIST_INIT(&priv->hw_ctrl_flows);
 	/* Add global actions. */
 	for (i = 0; i < MLX5_HW_ACTION_FLAG_MAX; i++) {
-		for (j = 0; j < MLX5DR_TABLE_TYPE_MAX; j++) {
-			priv->hw_drop[i][j] = mlx5dr_action_create_dest_drop
-				(priv->dr_ctx, mlx5_hw_act_flag[i][j]);
-			if (!priv->hw_drop[i][j])
-				goto err;
-		}
+		uint32_t act_flags = 0;
+
+		act_flags = mlx5_hw_act_flag[i][0] | mlx5_hw_act_flag[i][1];
+		if (is_proxy)
+			act_flags |= mlx5_hw_act_flag[i][2];
+		priv->hw_drop[i] = mlx5dr_action_create_dest_drop(priv->dr_ctx, act_flags);
+		if (!priv->hw_drop[i])
+			goto err;
 		priv->hw_tag[i] = mlx5dr_action_create_tag
 			(priv->dr_ctx, mlx5_hw_act_flag[i][0]);
 		if (!priv->hw_tag[i])
 			goto err;
 	}
-	if (priv->sh->config.dv_esw_en && priv->master) {
+	if (is_proxy) {
 		ret = flow_hw_create_vport_actions(priv);
 		if (ret) {
 			rte_errno = -ret;
@@ -3525,10 +3528,8 @@ flow_hw_configure(struct rte_eth_dev *dev,
 err:
 	flow_hw_free_vport_actions(priv);
 	for (i = 0; i < MLX5_HW_ACTION_FLAG_MAX; i++) {
-		for (j = 0; j < MLX5DR_TABLE_TYPE_MAX; j++) {
-			if (priv->hw_drop[i][j])
-				mlx5dr_action_destroy(priv->hw_drop[i][j]);
-		}
+		if (priv->hw_drop[i])
+			mlx5dr_action_destroy(priv->hw_drop[i]);
 		if (priv->hw_tag[i])
 			mlx5dr_action_destroy(priv->hw_tag[i]);
 	}
@@ -3560,7 +3561,7 @@ flow_hw_resource_release(struct rte_eth_dev *dev)
 	struct rte_flow_template_table *tbl;
 	struct rte_flow_pattern_template *it;
 	struct rte_flow_actions_template *at;
-	int i, j;
+	int i;
 
 	if (!priv->dr_ctx)
 		return;
@@ -3578,10 +3579,8 @@ flow_hw_resource_release(struct rte_eth_dev *dev)
 		flow_hw_actions_template_destroy(dev, at, NULL);
 	}
 	for (i = 0; i < MLX5_HW_ACTION_FLAG_MAX; i++) {
-		for (j = 0; j < MLX5DR_TABLE_TYPE_MAX; j++) {
-			if (priv->hw_drop[i][j])
-				mlx5dr_action_destroy(priv->hw_drop[i][j]);
-		}
+		if (priv->hw_drop[i])
+			mlx5dr_action_destroy(priv->hw_drop[i]);
 		if (priv->hw_tag[i])
 			mlx5dr_action_destroy(priv->hw_tag[i]);
 	}

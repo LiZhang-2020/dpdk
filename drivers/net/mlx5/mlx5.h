@@ -1533,7 +1533,7 @@ struct mlx5_priv {
 	void *root_drop_action; /* Pointer to root drop action. */
 	rte_spinlock_t hw_ctrl_lock;
 	LIST_HEAD(hw_ctrl_flow, mlx5_hw_ctrl_flow) hw_ctrl_flows;
-	struct mlx5dr_action *hw_drop[2][MLX5DR_TABLE_TYPE_MAX];
+	struct mlx5dr_action *hw_drop[2];
 	struct mlx5dr_action *hw_tag[2];
 	struct mlx5dr_action **hw_vport;
 	struct rte_flow_template_table *hw_esw_sq_miss_root_tbl;
