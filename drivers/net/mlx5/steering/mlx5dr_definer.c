@@ -146,6 +146,14 @@ enum mlx5dr_definer_fname {
 	MLX5DR_DEFINER_FNAME_VXLAN_FLAGS,
 	MLX5DR_DEFINER_FNAME_VXLAN_VNI,
 	MLX5DR_DEFINER_FNAME_SOURCE_QP,
+	MLX5DR_DEFINER_FNAME_REG_0,
+	MLX5DR_DEFINER_FNAME_REG_1,
+	MLX5DR_DEFINER_FNAME_REG_2,
+	MLX5DR_DEFINER_FNAME_REG_3,
+	MLX5DR_DEFINER_FNAME_REG_4,
+	MLX5DR_DEFINER_FNAME_REG_5,
+	MLX5DR_DEFINER_FNAME_REG_6,
+	MLX5DR_DEFINER_FNAME_REG_7,
 	MLX5DR_DEFINER_FNAME_MAX,
 };
 
@@ -225,8 +233,9 @@ struct mlx5dr_definer_conv_data {
 	X(SET,		gtp_ext_hdr_qfi,	v->qfi,			rte_flow_item_gtp_psc) \
 	X(SET,		vxlan_flags,		v->flags,		rte_flow_item_vxlan) \
 	X(SET,		vxlan_udp_port,		ETH_VXLAN_DEFAULT_PORT,	rte_flow_item_vxlan) \
-	X(SET,		source_qp,		v->queue,		mlx5_rte_flow_item_tx_queue)
-
+	X(SET,		source_qp,		v->queue,		mlx5_rte_flow_item_tx_queue) \
+	X(SET,		tag,			v->data,		rte_flow_item_tag) \
+	X(SET,		metadata,		v->data,		rte_flow_item_meta)
 
 /* Item set function format */
 #define X(set_type, func_name, value, itme_type) \
@@ -910,6 +919,104 @@ mlx5dr_definer_conv_item_vxlan(struct mlx5dr_definer_conv_data *cd,
 	return 0;
 }
 
+static struct mlx5dr_definer_fc *
+mlx5dr_definer_get_register_fc(struct mlx5dr_definer_conv_data *cd, int reg)
+{
+	struct mlx5dr_definer_fc *fc;
+
+	switch (reg) {
+	case REG_C_0:
+		fc = &cd->fc[MLX5DR_DEFINER_FNAME_REG_0];
+		DR_CALC_SET_HDR(fc, registers, register_c_0);
+		break;
+	case REG_C_1:
+		fc = &cd->fc[MLX5DR_DEFINER_FNAME_REG_1];
+		DR_CALC_SET_HDR(fc, registers, register_c_1);
+		break;
+	case REG_C_2:
+		fc = &cd->fc[MLX5DR_DEFINER_FNAME_REG_2];
+		DR_CALC_SET_HDR(fc, registers, register_c_2);
+		break;
+	case REG_C_3:
+		fc = &cd->fc[MLX5DR_DEFINER_FNAME_REG_3];
+		DR_CALC_SET_HDR(fc, registers, register_c_3);
+		break;
+	case REG_C_4:
+		fc = &cd->fc[MLX5DR_DEFINER_FNAME_REG_4];
+		DR_CALC_SET_HDR(fc, registers, register_c_4);
+		break;
+	case REG_C_5:
+		fc = &cd->fc[MLX5DR_DEFINER_FNAME_REG_5];
+		DR_CALC_SET_HDR(fc, registers, register_c_5);
+		break;
+	case REG_C_6:
+		fc = &cd->fc[MLX5DR_DEFINER_FNAME_REG_6];
+		DR_CALC_SET_HDR(fc, registers, register_c_6);
+		break;
+	case REG_C_7:
+		fc = &cd->fc[MLX5DR_DEFINER_FNAME_REG_7];
+		DR_CALC_SET_HDR(fc, registers, register_c_7);
+		break;
+	default:
+		rte_errno = ENOTSUP;
+		return NULL;
+	}
+
+	return fc;
+}
+
+static int
+mlx5dr_definer_conv_item_tag(struct mlx5dr_definer_conv_data *cd,
+			     struct rte_flow_item *item,
+			     int item_idx)
+{
+	const struct rte_flow_item_tag *m = item->mask;
+	const struct rte_flow_item_tag *v = item->spec;
+	struct mlx5dr_definer_fc *fc;
+	int reg;
+
+	if (!m || !v)
+		return 0;
+
+	if (item->type == RTE_FLOW_ITEM_TYPE_TAG)
+		reg = flow_hw_get_reg_id(RTE_FLOW_ITEM_TYPE_TAG, v->index);
+	else
+		reg = (int)v->index;
+	MLX5_ASSERT(reg > 0);
+
+	fc = mlx5dr_definer_get_register_fc(cd, reg);
+	if (!fc)
+		return rte_errno;
+
+	fc->item_idx = item_idx;
+	fc->tag_set = &mlx5dr_definer_tag_set;
+	return 0;
+}
+
+static int
+mlx5dr_definer_conv_item_metadata(struct mlx5dr_definer_conv_data *cd,
+				  struct rte_flow_item *item,
+				  int item_idx)
+{
+	const struct rte_flow_item_meta *m = item->mask;
+	struct mlx5dr_definer_fc *fc;
+	int reg;
+
+	if (!m)
+		return 0;
+
+	reg = flow_hw_get_reg_id(RTE_FLOW_ITEM_TYPE_META, -1);
+	MLX5_ASSERT(reg > 0);
+
+	fc = mlx5dr_definer_get_register_fc(cd, reg);
+	if (!fc)
+		return rte_errno;
+
+	fc->item_idx = item_idx;
+	fc->tag_set = &mlx5dr_definer_metadata_set;
+	return 0;
+}
+
 static int
 mlx5dr_definer_conv_item_tx_queue(struct mlx5dr_definer_conv_data *cd,
 				  struct rte_flow_item *item,
@@ -1000,6 +1107,15 @@ mlx5dr_definer_conv_items_to_hl(struct mlx5dr_context *ctx,
 		case MLX5_RTE_FLOW_ITEM_TYPE_TX_QUEUE:
 			ret = mlx5dr_definer_conv_item_tx_queue(&cd, items, i);
 			item_flags |= MLX5_FLOW_ITEM_TX_QUEUE;
+			break;
+		case RTE_FLOW_ITEM_TYPE_TAG:
+		case MLX5_RTE_FLOW_ITEM_TYPE_TAG:
+			ret = mlx5dr_definer_conv_item_tag(&cd, items, i);
+			item_flags |= MLX5_FLOW_ITEM_TAG;
+			break;
+		case RTE_FLOW_ITEM_TYPE_META:
+			ret = mlx5dr_definer_conv_item_metadata(&cd, items, i);
+			item_flags |= MLX5_FLOW_ITEM_METADATA;
 			break;
 		default:
 			DR_LOG(ERR, "Unsupported item type %d", items->type);

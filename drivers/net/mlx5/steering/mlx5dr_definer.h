@@ -243,6 +243,10 @@ struct mlx5_ifc_definer_hl_flex_parser_bits {
 };
 
 struct mlx5_ifc_definer_hl_registers_bits {
+	u8 register_c_10[0x20];
+	u8 register_c_11[0x20];
+	u8 register_c_8[0x20];
+	u8 register_c_9[0x20];
 	u8 register_c_6[0x20];
 	u8 register_c_7[0x20];
 	u8 register_c_4[0x20];
