@@ -817,25 +817,6 @@ int mlx5dr_cmd_query_caps(struct ibv_context *ctx,
 					capability.flow_table_nic_cap.
 					flow_table_properties_nic_receive.reparse);
 
-	MLX5_SET(query_hca_cap_in, in, op_mod,
-		 MLX5_GET_HCA_CAP_OP_MOD_ESW_FLOW_TABLE |
-		 MLX5_HCA_CAP_OPMOD_GET_CUR);
-
-	ret = mlx5_glue->devx_general_cmd(ctx, in, sizeof(in), out, sizeof(out));
-	if (ret) {
-		DR_LOG(ERR, "Failed to query flow table esw caps");
-		rte_errno = errno;
-		return rte_errno;
-	}
-
-	caps->fdb_ft.max_level = MLX5_GET(query_hca_cap_out, out,
-					  capability.flow_table_nic_cap.
-					  flow_table_properties_nic_receive.max_ft_level);
-
-	caps->fdb_ft.reparse = MLX5_GET(query_hca_cap_out, out,
-					capability.flow_table_nic_cap.
-					flow_table_properties_nic_receive.reparse);
-
 	if (caps->wqe_based_update) {
 		MLX5_SET(query_hca_cap_in, in, op_mod,
 			 MLX5_GET_HCA_CAP_OP_MOD_WQE_BASED_FLOW_TABLE |
@@ -882,6 +863,25 @@ int mlx5dr_cmd_query_caps(struct ibv_context *ctx,
 	}
 
 	if (caps->eswitch_manager) {
+		MLX5_SET(query_hca_cap_in, in, op_mod,
+			 MLX5_GET_HCA_CAP_OP_MOD_ESW_FLOW_TABLE |
+			 MLX5_HCA_CAP_OPMOD_GET_CUR);
+
+		ret = mlx5_glue->devx_general_cmd(ctx, in, sizeof(in), out, sizeof(out));
+		if (ret) {
+			DR_LOG(ERR, "Failed to query flow table esw caps");
+			rte_errno = errno;
+			return rte_errno;
+		}
+
+		caps->fdb_ft.max_level = MLX5_GET(query_hca_cap_out, out,
+						  capability.flow_table_nic_cap.
+						  flow_table_properties_nic_receive.max_ft_level);
+
+		caps->fdb_ft.reparse = MLX5_GET(query_hca_cap_out, out,
+						capability.flow_table_nic_cap.
+						flow_table_properties_nic_receive.reparse);
+
 		MLX5_SET(query_hca_cap_in, in, op_mod,
 			 MLX5_SET_HCA_CAP_OP_MOD_ESW | MLX5_HCA_CAP_OPMOD_GET_CUR);
 
