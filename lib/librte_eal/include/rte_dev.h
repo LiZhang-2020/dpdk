@@ -327,6 +327,12 @@ rte_dev_iterator_next(struct rte_dev_iterator *it);
 	     dev != NULL; \
 	     dev = rte_dev_iterator_next(it))
 
+#define RTE_DEV_FOREACH_SAFE(dev, devstr, it, tdev) \
+	for (rte_dev_iterator_init(it, devstr), \
+		(dev) = rte_dev_iterator_next(it); \
+		(dev) && ((tdev) = rte_dev_iterator_next(it), 1); \
+		(dev) = (tdev))
+
 #ifdef __cplusplus
 }
 #endif

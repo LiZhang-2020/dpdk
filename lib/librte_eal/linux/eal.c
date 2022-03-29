@@ -1352,6 +1352,38 @@ mark_freeable(const struct rte_memseg_list *msl, const struct rte_memseg *ms,
 	return 0;
 }
 
+static int
+bus_match_all(const struct rte_bus *bus, const void *data)
+{
+	RTE_SET_USED(bus);
+	RTE_SET_USED(data);
+	return 0;
+}
+
+static void
+remove_all_device(void)
+{
+	struct rte_bus *start = NULL, *next;
+	struct rte_dev_iterator dev_iter = {0};
+	struct rte_device *dev = NULL;
+	struct rte_device *tdev = NULL;
+	char devstr[128];
+
+	RTE_DEV_FOREACH_SAFE(dev, "bus=vdev", &dev_iter, tdev) {
+		(void)rte_dev_remove(dev);
+	}
+	while ((next = rte_bus_find(start, bus_match_all, NULL)) != NULL) {
+		start = next;
+		/* Skip buses that don't have iterate method */
+		if (!next->dev_iterate || !next->name)
+			continue;
+		snprintf(devstr, sizeof(devstr), "bus=%s", next->name);
+		RTE_DEV_FOREACH_SAFE(dev, devstr, &dev_iter, tdev) {
+			(void)rte_dev_remove(dev);
+		}
+	};
+}
+
 int
 rte_eal_cleanup(void)
 {
@@ -1361,6 +1393,7 @@ rte_eal_cleanup(void)
 	struct internal_config *internal_conf =
 		eal_get_internal_configuration();
 
+	remove_all_device();
 	if (rte_eal_process_type() == RTE_PROC_PRIMARY &&
 			internal_conf->hugepage_file.unlink_existing)
 		rte_memseg_walk(mark_freeable, NULL);
