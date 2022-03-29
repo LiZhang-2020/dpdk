@@ -1212,7 +1212,7 @@ rte_pmd_mlx5_config_rxq_lwm(uint16_t port_id, uint16_t rx_queue_id,
 	uint16_t event_nums[1] = {MLX5_EVENT_TYPE_SRQ_LIMIT_REACHED};
 	struct mlx5_rxq_data *rxq_data;
 	struct mlx5_priv *priv;
-	uint32_t cqe_cnt;
+	uint32_t wqe_cnt;
 	uint64_t cookie;
 	int ret = 0;
 
@@ -1239,7 +1239,7 @@ rte_pmd_mlx5_config_rxq_lwm(uint16_t port_id, uint16_t rx_queue_id,
 		ret = 0;
 		goto end;
 	}
-	cqe_cnt = (1 << rxq_data->cqe_n) - 1;
+	wqe_cnt = 1 << rxq_data->elts_n;
 	if (lwm) {
 		if (!priv->sh->devx_channel_lwm) {
 			ret = mlx5_lwm_setup(priv);
@@ -1270,7 +1270,14 @@ rte_pmd_mlx5_config_rxq_lwm(uint16_t port_id, uint16_t rx_queue_id,
 		}
 	}
 	/* Save LWM to rxq and send modfiy_rq devx command. */
-	rxq->lwm = lwm * cqe_cnt / 100;
+	rxq->lwm = lwm * wqe_cnt / 100;
+	if (lwm && !rxq->lwm) {
+		/* With mprq, wqe_cnt may be < 100. */
+		DRV_LOG(WARNING, "Too small LWM configuration.");
+		rte_errno = EINVAL;
+		ret = -rte_errno;
+		goto end;
+	}
 	rxq->lwm_event_rxq_limit_reached = lwm ? cb : NULL;
 	ret = mlx5_devx_modify_rq(rxq, MLX5_RXQ_MOD_RDY2RDY);
 end:
