@@ -275,13 +275,17 @@ mlx5_vdpa_wait_dev_close_tasks_done(struct mlx5_vdpa_priv *priv)
 }
 
 static int
-mlx5_vdpa_dev_close(int vid)
+_internal_mlx5_vdpa_dev_close(int vid, bool release_resource)
 {
 	struct rte_vdpa_device *vdev = rte_vhost_get_vdpa_device(vid);
-	struct mlx5_vdpa_priv *priv =
-		mlx5_vdpa_find_priv_resource_by_vdev(vdev);
+	struct mlx5_vdpa_priv *priv;
 	int ret = 0;
 
+	if (!vdev) {
+		DRV_LOG(ERR, "Invalid vDPA device.");
+		return -1;
+	}
+	priv = mlx5_vdpa_find_priv_resource_by_vdev(vdev);
 	if (priv == NULL) {
 		DRV_LOG(ERR, "Invalid vDPA device: %s.", vdev->device->name);
 		return -1;
@@ -291,7 +295,7 @@ mlx5_vdpa_dev_close(int vid)
 		ret |= mlx5_vdpa_lm_log(priv);
 		priv->state = MLX5_VDPA_STATE_IN_PROGRESS;
 	}
-	if (priv->use_c_thread) {
+	if (priv->use_c_thread && !release_resource) {
 		if (priv->last_c_thrd_idx >=
 			(conf_thread_mng.max_thrds - 1))
 			priv->last_c_thrd_idx = 0;
@@ -315,7 +319,7 @@ single_thrd:
 	pthread_mutex_lock(&priv->steer_update_lock);
 	mlx5_vdpa_steer_unset(priv);
 	pthread_mutex_unlock(&priv->steer_update_lock);
-	mlx5_vdpa_virtqs_release(priv);
+	mlx5_vdpa_virtqs_release(priv, release_resource);
 	mlx5_vdpa_drain_cq(priv);
 	if (priv->lm_mr.addr)
 		mlx5_os_wrapped_mkey_destroy(&priv->lm_mr);
@@ -327,6 +331,12 @@ single_thrd:
 	priv->state = MLX5_VDPA_STATE_PROBED;
 	DRV_LOG(INFO, "vDPA device %d was closed.", vid);
 	return ret;
+}
+
+static int
+mlx5_vdpa_dev_close(int vid)
+{
+	return _internal_mlx5_vdpa_dev_close(vid, false);
 }
 
 static int
@@ -622,8 +632,9 @@ mlx5_vdpa_config_get(struct mlx5_kvargs_ctrl *mkvlist,
 static int
 mlx5_vdpa_virtq_resource_prepare(struct mlx5_vdpa_priv *priv)
 {
+	uint32_t remaining_cnt = 0, err_cnt = 0, task_num = 0;
 	uint32_t max_queues = priv->queues * 2;
-	uint32_t index;
+	uint32_t index, thrd_idx, data[1];
 	struct mlx5_vdpa_virtq *virtq;
 
 	for (index = 0; index < priv->caps.max_num_virtio_queues * 2;
@@ -633,10 +644,48 @@ mlx5_vdpa_virtq_resource_prepare(struct mlx5_vdpa_priv *priv)
 	}
 	if (!priv->queues || !priv->queue_size)
 		return 0;
-	for (index = 0; index < max_queues; ++index)
-		if (mlx5_vdpa_virtq_single_resource_prepare(priv,
-			index))
+	if (priv->use_c_thread) {
+		uint32_t main_task_idx[max_queues];
+
+		for (index = 0; index < max_queues; ++index) {
+			virtq = &priv->virtqs[index];
+			thrd_idx = index % (conf_thread_mng.max_thrds + 1);
+			if (!thrd_idx) {
+				main_task_idx[task_num] = index;
+				task_num++;
+				continue;
+			}
+			thrd_idx = priv->last_c_thrd_idx + 1;
+			if (thrd_idx >= conf_thread_mng.max_thrds)
+				thrd_idx = 0;
+			priv->last_c_thrd_idx = thrd_idx;
+			data[0] = index;
+			if (mlx5_vdpa_task_add(priv, thrd_idx,
+				MLX5_VDPA_TASK_PREPARE_VIRTQ,
+				&remaining_cnt, &err_cnt,
+				(void **)&data, 1)) {
+				DRV_LOG(ERR, "Fail to add "
+				"task prepare virtq (%d).", index);
+				main_task_idx[task_num] = index;
+				task_num++;
+			}
+		}
+		for (index = 0; index < task_num; ++index)
+			if (mlx5_vdpa_virtq_single_resource_prepare(priv,
+				main_task_idx[index]))
+				goto error;
+		if (mlx5_vdpa_c_thread_wait_bulk_tasks_done(&remaining_cnt,
+			&err_cnt, 2000)) {
+			DRV_LOG(ERR,
+			"Failed to wait virt-queue prepare tasks ready.");
 			goto error;
+		}
+	} else {
+		for (index = 0; index < max_queues; ++index)
+			if (mlx5_vdpa_virtq_single_resource_prepare(priv,
+				index))
+				goto error;
+	}
 	if (mlx5_vdpa_is_modify_virtq_supported(priv))
 		if (mlx5_vdpa_steer_update(priv, true))
 			goto error;
@@ -851,7 +900,7 @@ static void
 mlx5_vdpa_dev_release(struct mlx5_vdpa_priv *priv)
 {
 	if (priv->state == MLX5_VDPA_STATE_CONFIGURED)
-		mlx5_vdpa_dev_close(priv->vid);
+		_internal_mlx5_vdpa_dev_close(priv->vid, true);
 	if (priv->use_c_thread)
 		mlx5_vdpa_wait_dev_close_tasks_done(priv);
 	mlx5_vdpa_release_dev_resources(priv);

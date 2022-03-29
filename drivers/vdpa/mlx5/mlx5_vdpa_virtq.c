@@ -113,6 +113,16 @@ mlx5_vdpa_virtq_unreg_intr_handle_all(struct mlx5_vdpa_priv *priv)
 	}
 }
 
+static void
+mlx5_vdpa_vq_destroy(struct mlx5_vdpa_virtq *virtq)
+{
+	/* Clean pre-created resource in dev removal only */
+	claim_zero(mlx5_devx_cmd_destroy(virtq->virtq));
+	virtq->index = 0;
+	virtq->virtq = NULL;
+	virtq->configured = 0;
+}
+
 /* Release cached VQ resources. */
 void
 mlx5_vdpa_virtqs_cleanup(struct mlx5_vdpa_priv *priv)
@@ -125,6 +135,8 @@ mlx5_vdpa_virtqs_cleanup(struct mlx5_vdpa_priv *priv)
 		if (virtq->index != i)
 			continue;
 		pthread_mutex_lock(&virtq->virtq_lock);
+		if (virtq->virtq)
+			mlx5_vdpa_vq_destroy(virtq);
 		for (j = 0; j < RTE_DIM(virtq->umems); ++j) {
 			if (virtq->umems[j].obj) {
 				claim_zero(mlx5_glue->devx_umem_dereg
@@ -154,29 +166,34 @@ mlx5_vdpa_virtq_unset(struct mlx5_vdpa_virtq *virtq)
 		if (ret)
 			DRV_LOG(WARNING, "Failed to stop virtq %d.",
 				virtq->index);
-		claim_zero(mlx5_devx_cmd_destroy(virtq->virtq));
-		virtq->index = 0;
-		virtq->virtq = NULL;
-		virtq->configured = 0;
+		mlx5_vdpa_vq_destroy(virtq);
 	}
 	virtq->notifier_state = MLX5_VDPA_NOTIFIER_STATE_DISABLED;
 }
 
 void
-mlx5_vdpa_virtqs_release(struct mlx5_vdpa_priv *priv)
+mlx5_vdpa_virtqs_release(struct mlx5_vdpa_priv *priv,
+	bool release_resource)
 {
 	struct mlx5_vdpa_virtq *virtq;
-	int i;
+	uint32_t i, max_virtq;
 
-	for (i = 0; i < priv->nr_virtqs; i++) {
+	max_virtq = (release_resource &&
+		(priv->queues * 2) > priv->nr_virtqs) ?
+		(priv->queues * 2) : priv->nr_virtqs;
+	for (i = 0; i < max_virtq; i++) {
 		virtq = &priv->virtqs[i];
 		pthread_mutex_lock(&virtq->virtq_lock);
 		mlx5_vdpa_virtq_unset(virtq);
-		if (i < (priv->queues * 2))
+		if (!release_resource && i < (priv->queues * 2))
 			mlx5_vdpa_virtq_single_resource_prepare(
 					priv, i);
 		pthread_mutex_unlock(&virtq->virtq_lock);
 	}
+	if (!release_resource && priv->queues &&
+		mlx5_vdpa_is_modify_virtq_supported(priv))
+		if (mlx5_vdpa_steer_update(priv, true))
+			mlx5_vdpa_steer_unset(priv);
 	priv->features = 0;
 	priv->nr_virtqs = 0;
 }
@@ -707,7 +724,7 @@ mlx5_vdpa_virtqs_prepare(struct mlx5_vdpa_priv *priv)
 	}
 	return 0;
 error:
-	mlx5_vdpa_virtqs_release(priv);
+	mlx5_vdpa_virtqs_release(priv, true);
 	return -1;
 }
 
