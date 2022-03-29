@@ -931,12 +931,14 @@ int mlx5dr_cmd_query_ib_port(struct ibv_context *ctx,
 			     uint32_t port_num)
 {
 	struct mlx5_port_info port_info = {0};
+	uint32_t flags;
 	int ret;
+
+	flags = MLX5_PORT_QUERY_VPORT | MLX5_PORT_QUERY_ESW_OWNER_VHCA_ID;
 
 	ret = mlx5_glue->devx_port_query(ctx, port_num, &port_info);
 	/* Check if query succeed and vport is enabled */
-	if (ret || !(port_info.query_flags &
-		     (MLX5_PORT_QUERY_VPORT | MLX5_PORT_QUERY_VHCA_ID))) {
+	if (ret || (port_info.query_flags & flags) != flags) {
 		rte_errno = ENOTSUP;
 		return rte_errno;
 	}

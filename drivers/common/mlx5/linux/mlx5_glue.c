@@ -1265,9 +1265,9 @@ mlx5_glue_devx_port_query(struct ibv_context *ctx,
 		info->vport_id = devx_port.vport;
 		info->query_flags |= MLX5_PORT_QUERY_VPORT;
 	}
-	if (devx_port.flags & MLX5DV_QUERY_PORT_VPORT_VHCA_ID) {
+	if (devx_port.flags & MLX5DV_QUERY_PORT_ESW_OWNER_VHCA_ID) {
 		info->esw_owner_vhca_id = devx_port.esw_owner_vhca_id;
-		info->query_flags |= MLX5_PORT_QUERY_VHCA_ID;
+		info->query_flags |= MLX5_PORT_QUERY_ESW_OWNER_VHCA_ID;
 	}
 #else
 #ifdef HAVE_MLX5DV_DR_DEVX_PORT
@@ -1275,7 +1275,8 @@ mlx5_glue_devx_port_query(struct ibv_context *ctx,
 	struct mlx5dv_devx_port devx_port = {
 		.comp_mask = MLX5DV_DEVX_PORT_VPORT |
 			     MLX5DV_DEVX_PORT_MATCH_REG_C_0 |
-			     MLX5DV_DEVX_PORT_VPORT_VHCA_ID
+			     MLX5DV_DEVX_PORT_VPORT_VHCA_ID |
+			     MLX5DV_DEVX_PORT_ESW_OWNER_VHCA_ID
 	};
 
 	err = mlx5dv_query_devx_port(ctx, port_num, &devx_port);
@@ -1290,9 +1291,9 @@ mlx5_glue_devx_port_query(struct ibv_context *ctx,
 		info->vport_id = devx_port.vport_num;
 		info->query_flags |= MLX5_PORT_QUERY_VPORT;
 	}
-	if (devx_port.comp_mask & MLX5DV_DEVX_PORT_VPORT_VHCA_ID) {
+	if (devx_port.comp_mask & MLX5DV_DEVX_PORT_ESW_OWNER_VHCA_ID) {
 		info->esw_owner_vhca_id = devx_port.esw_owner_vhca_id;
-		info->query_flags |= MLX5_PORT_QUERY_VHCA_ID;
+		info->query_flags |= MLX5_PORT_QUERY_ESW_OWNER_VHCA_ID;
 	}
 
 #else

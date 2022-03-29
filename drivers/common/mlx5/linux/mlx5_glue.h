@@ -91,7 +91,7 @@ struct mlx5dv_port;
 
 #define MLX5_PORT_QUERY_VPORT (1u << 0)
 #define MLX5_PORT_QUERY_REG_C0 (1u << 1)
-#define MLX5_PORT_QUERY_VHCA_ID (1u << 2)
+#define MLX5_PORT_QUERY_ESW_OWNER_VHCA_ID (1u << 2)
 
 struct mlx5_port_info {
 	uint16_t query_flags;
