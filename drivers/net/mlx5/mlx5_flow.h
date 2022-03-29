@@ -1426,6 +1426,7 @@ struct mlx5_flow_workspace {
 	uint32_t skip_matcher_reg:1;
 	/* Indicates if need to skip matcher register in translate. */
 	uint32_t mark:1; /* Indicates if flow contains mark action. */
+	uint32_t vport_meta_tag; /* Used for vport index match. */
 };
 
 struct mlx5_flow_split_info {

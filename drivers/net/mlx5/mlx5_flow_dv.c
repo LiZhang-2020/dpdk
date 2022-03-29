@@ -7146,6 +7146,7 @@ flow_dv_prepare(struct rte_eth_dev *dev,
 	wks->skip_matcher_reg = 0;
 	wks->policy = NULL;
 	wks->final_policy = NULL;
+	wks->vport_meta_tag = 0;
 	/* In case of corrupting the memory. */
 	if (wks->flow_idx >= MLX5_NUM_MAX_DEV_FLOWS) {
 		rte_flow_error_set(error, ENOSPC,
@@ -8815,10 +8816,12 @@ flow_dv_translate_item_port_id(struct rte_eth_dev *dev, void *key,
 {
 	const struct rte_flow_item_port_id *pid_m = item ? item->mask : NULL;
 	const struct rte_flow_item_port_id *pid_v = item ? item->spec : NULL;
+	struct mlx5_flow_workspace *wks = mlx5_flow_get_thread_workspace();
 	struct mlx5_priv *priv;
 	uint16_t mask, id;
 	uint32_t vport_meta;
 
+	MLX5_ASSERT(wks);
 	if (pid_v && pid_v->id == MLX5_PORT_ESW_MGR) {
 		flow_dv_translate_item_source_vport(key,
 				key_type & MLX5_SET_MATCHER_V ?
@@ -8836,6 +8839,7 @@ flow_dv_translate_item_port_id(struct rte_eth_dev *dev, void *key,
 	} else {
 		id = priv->vport_id;
 		vport_meta = priv->vport_meta_tag;
+		wks->vport_meta_tag = vport_meta;
 	}
 	/*
 	 * Translate to vport field or to metadata, depending on mode.
@@ -8922,10 +8926,12 @@ flow_dv_translate_item_represented_port(struct rte_eth_dev *dev, void *key,
 {
 	const struct rte_flow_item_ethdev *pid_m = item ? item->mask : NULL;
 	const struct rte_flow_item_ethdev *pid_v = item ? item->spec : NULL;
+	struct mlx5_flow_workspace *wks = mlx5_flow_get_thread_workspace();
 	struct mlx5_priv *priv;
 	uint16_t mask, id;
 	uint32_t vport_meta;
 
+	MLX5_ASSERT(wks);
 	if (!pid_m && !pid_v)
 		return 0;
 	if (pid_v && pid_v->port_id == 0xffff) {
@@ -8945,6 +8951,7 @@ flow_dv_translate_item_represented_port(struct rte_eth_dev *dev, void *key,
 	} else {
 		id = priv->vport_id;
 		vport_meta = priv->vport_meta_tag;
+		wks->vport_meta_tag = vport_meta;
 	}
 	/*
 	 * Translate to vport field or to metadata, depending on mode.
@@ -11347,6 +11354,8 @@ flow_dv_translate_action_sample(struct rte_eth_dev *dev,
 			uint32_t action_in[MLX5_ST_SZ_DW(set_action_in)];
 			uint64_t set_action;
 		} action_ctx = { .set_action = 0 };
+		uint32_t vport_meta_tag = wks->vport_meta_tag ?
+					  wks->vport_meta_tag : priv->vport_meta_tag;
 
 		res->ft_type = MLX5DV_FLOW_TABLE_TYPE_FDB;
 		MLX5_SET(set_action_in, action_ctx.action_in, action_type,
@@ -11354,7 +11363,7 @@ flow_dv_translate_action_sample(struct rte_eth_dev *dev,
 		MLX5_SET(set_action_in, action_ctx.action_in, field,
 			 MLX5_MODI_META_REG_C_0);
 		MLX5_SET(set_action_in, action_ctx.action_in, data,
-			 priv->vport_meta_tag);
+			 vport_meta_tag);
 		res->set_action = action_ctx.set_action;
 	} else if (attr->ingress) {
 		res->ft_type = MLX5DV_FLOW_TABLE_TYPE_NIC_RX;
