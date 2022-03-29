@@ -2239,14 +2239,22 @@ flow_hw_validate_action_represented_port(struct rte_eth_dev *dev,
 
 static int
 flow_hw_action_validate(struct rte_eth_dev *dev,
+			const struct rte_flow_actions_template_attr *attr,
 			const struct rte_flow_action actions[],
 			const struct rte_flow_action masks[],
 			struct rte_flow_error *error)
 {
+	struct mlx5_priv *priv = dev->data->dev_private;
 	int i;
 	bool actions_end = false;
 	int ret;
 
+	/* FDB actions are only valid to proxy port. */
+	if (attr->transfer && (!priv->sh->config.dv_esw_en || !priv->master))
+		return rte_flow_error_set(error, EINVAL,
+					  RTE_FLOW_ERROR_TYPE_UNSPECIFIED,
+					  NULL,
+					  "transfer actions are only valid to proxy port");
 	for (i = 0; !actions_end; ++i) {
 		const struct rte_flow_action *action = &actions[i];
 		const struct rte_flow_action *mask = &masks[i];
@@ -2349,7 +2357,7 @@ flow_hw_actions_template_create(struct rte_eth_dev *dev,
 	int len, act_len, mask_len, i;
 	struct rte_flow_actions_template *at;
 
-	if (flow_hw_action_validate(dev, actions, masks, error))
+	if (flow_hw_action_validate(dev, attr, actions, masks, error))
 		return NULL;
 	act_len = rte_flow_conv(RTE_FLOW_CONV_OP_ACTIONS,
 				NULL, 0, actions, error);
