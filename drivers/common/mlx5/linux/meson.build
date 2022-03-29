@@ -16,7 +16,7 @@ if dlopen_ibverbs
 	]
 endif
 
-libnames = [ 'mlx5', 'ibverbs', 'mtcr_ul' ]
+libnames = [ 'mlx5', 'ibverbs', 'mtcr_ul_wa' ]
 libs = []
 libmtcr_ul_found = false
 foreach libname:libnames
@@ -35,7 +35,7 @@ foreach libname:libnames
             		ext_deps += lib
         	endif
 	else
-        	if libname != 'mtcr_ul'
+        	if libname != 'mtcr_ul_wa'
 			build = false
 			reason = 'missing dependency, "' + libname + '"'
 			subdir_done()
