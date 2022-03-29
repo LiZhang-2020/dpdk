@@ -2438,9 +2438,9 @@ static const struct rte_mtr_ops mlx5_flow_mtr_hws_ops = {
 	.meter_policy_delete = mlx5_flow_meter_policy_hws_delete,
 	.create = mlx5_flow_meter_hws_create,
 	.destroy = mlx5_flow_meter_hws_destroy,
-	.meter_enable = NULL,
-	.meter_disable = NULL,
-	.meter_profile_update = NULL,
+	.meter_enable = mlx5_flow_meter_enable,
+	.meter_disable = mlx5_flow_meter_disable,
+	.meter_profile_update = mlx5_flow_meter_profile_update,
 	.meter_dscp_table_update = NULL,
 	.stats_update = NULL,
 	.stats_read = NULL,
@@ -2494,6 +2494,12 @@ mlx5_flow_meter_find(struct mlx5_priv *priv, uint32_t meter_id,
 	union mlx5_l3t_data data;
 	uint16_t n_valid;
 
+	if (priv->mtr_bulk.aso) {
+		if (mtr_idx)
+			*mtr_idx = meter_id;
+		aso_mtr = priv->mtr_bulk.aso + meter_id;
+		return &aso_mtr->fm;
+	}
 	if (priv->sh->meter_aso_en) {
 		rte_rwlock_read_lock(&pools_mng->resize_mtrwl);
 		n_valid = pools_mng->n_valid;
