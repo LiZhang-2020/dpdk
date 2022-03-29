@@ -57,7 +57,7 @@ mlx5_vdpa_steer_unset(struct mlx5_vdpa_priv *priv)
  * -1 on error.
  */
 static int
-mlx5_vdpa_rqt_prepare(struct mlx5_vdpa_priv *priv)
+mlx5_vdpa_rqt_prepare(struct mlx5_vdpa_priv *priv, bool is_dummy)
 {
 	int i;
 	uint32_t rqt_n = RTE_MIN(MLX5_VDPA_DEFAULT_RQT_SIZE,
@@ -67,15 +67,18 @@ mlx5_vdpa_rqt_prepare(struct mlx5_vdpa_priv *priv)
 						      sizeof(uint32_t), 0);
 	uint32_t k = 0, j;
 	int ret = 0, num;
+	uint16_t nr_vring = is_dummy ? priv->queues * 2 : priv->nr_virtqs;
 
 	if (!attr) {
 		DRV_LOG(ERR, "Failed to allocate RQT attributes memory.");
 		rte_errno = ENOMEM;
 		return -ENOMEM;
 	}
-	for (i = 0; i < priv->nr_virtqs; i++) {
+	for (i = 0; i < nr_vring; i++) {
 		if (is_virtq_recvq(i, priv->nr_virtqs) &&
-		    priv->virtqs[i].enable && priv->virtqs[i].virtq) {
+			(is_dummy || (priv->virtqs[i].enable &&
+			priv->virtqs[i].configured)) &&
+			priv->virtqs[i].virtq) {
 			attr->rq_list[k] = priv->virtqs[i].virtq->id;
 			k++;
 		}
@@ -235,12 +238,12 @@ error:
 }
 
 int
-mlx5_vdpa_steer_update(struct mlx5_vdpa_priv *priv)
+mlx5_vdpa_steer_update(struct mlx5_vdpa_priv *priv, bool is_dummy)
 {
 	int ret;
 
 	pthread_mutex_lock(&priv->steer_update_lock);
-	ret = mlx5_vdpa_rqt_prepare(priv);
+	ret = mlx5_vdpa_rqt_prepare(priv, is_dummy);
 	if (ret == 0) {
 		mlx5_vdpa_steer_unset(priv);
 	} else if (ret < 0) {
@@ -262,7 +265,7 @@ int
 mlx5_vdpa_steer_setup(struct mlx5_vdpa_priv *priv)
 {
 #ifdef HAVE_MLX5DV_DR
-	if (mlx5_vdpa_steer_update(priv))
+	if (mlx5_vdpa_steer_update(priv, false))
 		goto error;
 	return 0;
 error:
