@@ -359,6 +359,20 @@ struct mlx5_ifc_header_vxlan_bits {
 	u8 reserved2[0x8];
 };
 
+struct mlx5_ifc_header_gre_bits {
+	union {
+		u8 c_rsvd0_ver[0x10];
+		struct {
+			u8 gre_c_present[0x1];
+			u8 reserved_at_1[0xc];
+			u8 version[0x3];
+		};
+	};
+	u8 gre_protocol[0x10];
+	u8 checksum[0x10];
+	u8 reserved_at_30[0x10];
+};
+
 struct mlx5dr_definer {
 	enum mlx5dr_definer_type type;
 	uint8_t dw_selector[DW_SELECTORS];
