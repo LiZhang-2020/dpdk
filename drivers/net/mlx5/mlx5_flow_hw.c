@@ -2474,6 +2474,61 @@ flow_hw_copy_prepend_port_item(const struct rte_flow_item *items,
 	return copied_items;
 }
 
+static int
+flow_hw_pattern_validate(struct rte_eth_dev *dev,
+			 const struct rte_flow_pattern_template_attr *attr,
+			 const struct rte_flow_item items[],
+			 struct rte_flow_error *error)
+{
+	int i;
+	bool items_end = false;
+	RTE_SET_USED(dev);
+	RTE_SET_USED(attr);
+
+	for (i = 0; !items_end; i++) {
+		int type = items[i].type;
+
+		switch (type) {
+		case RTE_FLOW_ITEM_TYPE_TAG:
+		{
+			int reg;
+			const struct rte_flow_item_tag *tag =
+				(const struct rte_flow_item_tag *)items[i].spec;
+
+			reg = flow_hw_get_reg_id(RTE_FLOW_ITEM_TYPE_TAG, tag->index);
+			if (reg == REG_NON)
+				return rte_flow_error_set(error, EINVAL,
+							  RTE_FLOW_ERROR_TYPE_UNSPECIFIED,
+							  NULL,
+							  "Unsupported tag index");
+			break;
+		}
+		case RTE_FLOW_ITEM_TYPE_VOID:
+		case RTE_FLOW_ITEM_TYPE_ETH:
+		case RTE_FLOW_ITEM_TYPE_IPV4:
+		case RTE_FLOW_ITEM_TYPE_IPV6:
+		case RTE_FLOW_ITEM_TYPE_UDP:
+		case RTE_FLOW_ITEM_TYPE_TCP:
+		case RTE_FLOW_ITEM_TYPE_GTP:
+		case RTE_FLOW_ITEM_TYPE_GTP_PSC:
+		case RTE_FLOW_ITEM_TYPE_REPRESENTED_PORT:
+		case RTE_FLOW_ITEM_TYPE_VXLAN:
+		case MLX5_RTE_FLOW_ITEM_TYPE_TX_QUEUE:
+		case RTE_FLOW_ITEM_TYPE_META:
+			break;
+		case RTE_FLOW_ITEM_TYPE_END:
+			items_end = true;
+			break;
+		default:
+			return rte_flow_error_set(error, EINVAL,
+						  RTE_FLOW_ERROR_TYPE_UNSPECIFIED,
+						  NULL,
+						  "Unsupported item type");
+		}
+	}
+	return 0;
+}
+
 /**
  * Create flow item template.
  *
@@ -2500,6 +2555,8 @@ flow_hw_pattern_template_create(struct rte_eth_dev *dev,
 	struct rte_flow_item *copied_items = NULL;
 	const struct rte_flow_item *tmpl_items;
 
+	if (flow_hw_pattern_validate(dev, attr, items, error))
+		return NULL;
 	if (priv->sh->config.dv_esw_en && attr->ingress) {
 		/*
 		 * Disallow pattern template with ingress and egress/transfer
