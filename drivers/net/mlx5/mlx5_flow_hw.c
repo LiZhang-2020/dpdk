@@ -4245,7 +4245,7 @@ flow_hw_create_ctrl_flow(struct rte_eth_dev *owner_dev,
 			 uint8_t action_template_idx)
 {
 	struct mlx5_priv *priv = proxy_dev->data->dev_private;
-	uint32_t queue = flow_hw_get_ctrl_queue(priv);
+	uint32_t queue = CTRL_QUEUE_ID(priv);
 	struct rte_flow_op_attr op_attr = {
 		.postpone = 0,
 	};
@@ -4320,7 +4320,7 @@ static int
 flow_hw_destroy_ctrl_flow(struct rte_eth_dev *dev, struct rte_flow *flow)
 {
 	struct mlx5_priv *priv = dev->data->dev_private;
-	uint32_t queue = flow_hw_get_ctrl_queue(priv);
+	uint32_t queue = CTRL_QUEUE_ID(priv);
 	struct rte_flow_op_attr op_attr = {
 		.postpone = 0,
 	};

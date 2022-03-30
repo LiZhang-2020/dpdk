@@ -363,6 +363,9 @@ struct mlx5_hw_q {
 	struct mlx5_hw_q_job **job; /* LIFO pointer. */
 } __rte_cache_aligned;
 
+
+
+
 #define MLX5_COUNTERS_PER_POOL 512
 #define MLX5_MAX_PENDING_QUERIES 4
 #define MLX5_CNT_CONTAINER_RESIZE 64
@@ -1630,6 +1633,7 @@ struct mlx5_priv {
 
 #define PORT_ID(priv) ((priv)->dev_data->port_id)
 #define ETH_DEV(priv) (&rte_eth_devices[PORT_ID(priv)])
+#define CTRL_QUEUE_ID(priv) ((priv)->nb_queue - 1)
 
 struct rte_hairpin_peer_info {
 	uint32_t qp_id;
