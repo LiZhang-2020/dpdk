@@ -1003,7 +1003,9 @@ flow_hw_actions_translate(struct rte_eth_dev *dev,
 				priv->hw_drop[!!attr->group];
 			break;
 		case RTE_FLOW_ACTION_TYPE_JUMP:
-			if (masks->conf) {
+			if (masks->conf &&
+			    ((const struct rte_flow_action_jump *)
+			     masks->conf)->group) {
 				uint32_t jump_group =
 					((const struct rte_flow_action_jump *)
 					actions->conf)->group;
@@ -1022,7 +1024,9 @@ flow_hw_actions_translate(struct rte_eth_dev *dev,
 			i++;
 			break;
 		case RTE_FLOW_ACTION_TYPE_QUEUE:
-			if (masks->conf) {
+			if (masks->conf &&
+			    ((const struct rte_flow_action_queue *)
+			     masks->conf)->index) {
 				acts->tir = flow_hw_tir_action_register
 				(dev,
 				 mlx5_hw_act_flag[!!attr->group][type],
