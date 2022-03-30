@@ -16,9 +16,8 @@ if dlopen_ibverbs
 	]
 endif
 
-libnames = [ 'mlx5', 'ibverbs', 'mtcr_ul_wa' ]
+libnames = [ 'mlx5', 'ibverbs']
 libs = []
-libmtcr_ul_found = false
 foreach libname:libnames
 	lib = dependency('lib' + libname, static:static_ibverbs,
 			required:false, method: 'pkg-config')
@@ -30,16 +29,10 @@ foreach libname:libnames
 		if not static_ibverbs and not dlopen_ibverbs
 			ext_deps += lib
 		endif
-        	if libname == 'mtcr_ul'
-            		libmtcr_ul_found = true
-            		ext_deps += lib
-        	endif
 	else
-        	if libname != 'mtcr_ul_wa'
-			build = false
-			reason = 'missing dependency, "' + libname + '"'
-			subdir_done()
-		endif
+		build = false
+		reason = 'missing dependency, "' + libname + '"'
+		subdir_done()
 	endif
 endforeach
 if static_ibverbs or dlopen_ibverbs
@@ -51,6 +44,13 @@ if static_ibverbs
 	# Add static deps ldflags to internal apps and Libs.private
 	ibv_ldflags = run_command(ldflags_ibverbs_static, check:true).stdout()
 	ext_deps += declare_dependency(link_args:ibv_ldflags.split())
+endif
+
+libmtcr_ul_found = false
+lib = cc.find_library('mtcr_ul', required:false)
+if lib.found() and run_command('meson', '--version').stdout().version_compare('>= 0.49.2')
+	libmtcr_ul_found = true
+	ext_deps += lib
 endif
 
 sources += files('mlx5_nl.c')
