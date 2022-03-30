@@ -8956,9 +8956,13 @@ flow_dv_translate_item_represented_port(struct rte_eth_dev *dev, void *key,
 		 * Provide the hint for SW steering library
 		 * to insert the flow into ingress domain and
 		 * save the extra vport match.
+		 *
+		 * This hint is not required in HW steering, because
+		 * matching is done on vport's metadata tag.
 		 */
 		if (mask == 0xffff && priv->vport_id == 0xffff &&
-		    priv->pf_bond < 0 && attr->transfer)
+		    priv->pf_bond < 0 && attr->transfer &&
+		    priv->sh->config.dv_flow_en != 2)
 			flow_dv_translate_item_source_vport(key, id);
 		/*
 		 * We should always set the vport metadata register,
