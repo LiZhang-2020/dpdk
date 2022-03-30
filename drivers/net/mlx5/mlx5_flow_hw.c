@@ -2626,6 +2626,19 @@ flow_hw_pattern_validate(struct rte_eth_dev *dev,
 							  "Unsupported tag index");
 			break;
 		}
+		case MLX5_RTE_FLOW_ITEM_TYPE_TAG:
+		{
+			const struct rte_flow_item_tag *tag =
+				(const struct rte_flow_item_tag *)items[i].spec;
+			struct mlx5_priv *priv = dev->data->dev_private;
+			uint8_t regcs = (uint8_t)priv->sh->cdev->config.hca_attr.set_reg_c;
+
+			if (!((1 << (tag->index - REG_C_0)) & regcs))
+				return rte_flow_error_set(error, EINVAL,
+							  RTE_FLOW_ERROR_TYPE_UNSPECIFIED,
+							  NULL,
+							  "Unsupported internal tag index");
+		}
 		case RTE_FLOW_ITEM_TYPE_VOID:
 		case RTE_FLOW_ITEM_TYPE_ETH:
 		case RTE_FLOW_ITEM_TYPE_IPV4:
