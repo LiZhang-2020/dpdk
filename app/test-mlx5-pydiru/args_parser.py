@@ -17,6 +17,8 @@ class ArgsParser:
         parser = argparse.ArgumentParser()
         parser.add_argument('--dev',
                             help='RDMA device to run the tests on')
+        parser.add_argument('--vf',
+                            help='Second RDMA device (VF) for FDB tests')
         parser.add_argument('-a',
                             help='PCI device to run the tests on.\n'
                                  'Passed to the DPDK RTE initialization.')
