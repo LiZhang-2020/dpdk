@@ -78,15 +78,23 @@ static bool mlx5dr_action_fixup_stc_attr(struct mlx5dr_cmd_stc_modify_attr *stc_
 		return false;
 
 	fw_tbl_type = mlx5dr_table_get_res_fw_ft_type(table_type, is_mirror);
-	if (fw_tbl_type == FS_FT_FDB_RX &&
-	    stc_attr->action_type == MLX5_IFC_STC_ACTION_TYPE_JUMP_TO_VPORT &&
+
+	if (stc_attr->action_type == MLX5_IFC_STC_ACTION_TYPE_JUMP_TO_VPORT &&
 	    stc_attr->vport.vport_num == WIRE_PORT) {
-		/*The FW doesn't allow to go back to wire in the RX side, so change it to DROP*/
+		if (fw_tbl_type == FS_FT_FDB_RX) {
+			/*The FW doesn't allow to go back to wire in the RX side, so change it to DROP*/
 			fixup_stc_attr->action_type = MLX5_IFC_STC_ACTION_TYPE_DROP;
 			fixup_stc_attr->action_offset = MLX5DR_ACTION_OFFSET_HIT;
 			fixup_stc_attr->stc_offset = stc_attr->stc_offset;
-
-			return true;
+		} else if (fw_tbl_type == FS_FT_FDB_TX) {
+			/*The FW doesn't allow to go to wire in the TX by JUMP_TO_VPORT*/
+			fixup_stc_attr->action_type = MLX5_IFC_STC_ACTION_TYPE_JUMP_TO_UPLINK;
+			fixup_stc_attr->action_offset = stc_attr->action_offset;
+			fixup_stc_attr->stc_offset = stc_attr->stc_offset;
+			fixup_stc_attr->vport.vport_num = 0;
+			fixup_stc_attr->vport.esw_owner_vhca_id = stc_attr->vport.esw_owner_vhca_id;
+		}
+		return true;
 	}
 
 	return false;

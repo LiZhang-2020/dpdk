@@ -399,6 +399,7 @@ mlx5dr_cmd_stc_modify_set_stc_param(struct mlx5dr_cmd_stc_modify_attr *stc_attr,
 			 stc_attr->modify_action.src_field);
 		break;
 	case MLX5_IFC_STC_ACTION_TYPE_JUMP_TO_VPORT:
+	case MLX5_IFC_STC_ACTION_TYPE_JUMP_TO_UPLINK:
 		MLX5_SET(stc_ste_param_vport, stc_parm, vport_number,
 			 stc_attr->vport.vport_num);
 		MLX5_SET(stc_ste_param_vport, stc_parm, eswitch_owner_vhca_id,

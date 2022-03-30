@@ -3143,6 +3143,7 @@ enum mlx5_ifc_stc_action_type {
 	MLX5_IFC_STC_ACTION_TYPE_DROP = 0x83,
 	MLX5_IFC_STC_ACTION_TYPE_ALLOW = 0x84,
 	MLX5_IFC_STC_ACTION_TYPE_JUMP_TO_VPORT = 0x85,
+	MLX5_IFC_STC_ACTION_TYPE_JUMP_TO_UPLINK = 0x86,
 };
 
 struct mlx5_ifc_stc_ste_param_ste_table_bits {
