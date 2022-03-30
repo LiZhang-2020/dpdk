@@ -2794,15 +2794,27 @@ flow_hw_pattern_template_destroy(struct rte_eth_dev *dev __rte_unused,
  *   0 on success, a negative errno value otherwise and rte_errno is set.
  */
 static int
-flow_hw_info_get(struct rte_eth_dev *dev __rte_unused,
-		 struct rte_flow_port_info *port_info __rte_unused,
-		 struct rte_flow_queue_info *queue_info __rte_unused,
+flow_hw_info_get(struct rte_eth_dev *dev,
+		 struct rte_flow_port_info *port_info,
+		 struct rte_flow_queue_info *queue_info,
 		 struct rte_flow_error *error __rte_unused)
 {
-	/* Nothing to be updated currently. */
+	uint16_t port_id = dev->data->port_id;
+	struct rte_mtr_capabilities mtr_cap;
+	int ret;
+
 	memset(port_info, 0, sizeof(*port_info));
 	/* Queue size is unlimited from low-level. */
+	port_info->max_nb_queues = UINT32_MAX;
 	queue_info->max_size = UINT32_MAX;
+
+	memset(&mtr_cap, 0, sizeof(struct rte_mtr_capabilities));
+	ret = rte_mtr_capabilities_get(port_id, &mtr_cap, NULL);
+	if (!ret) {
+		port_info->max_nb_meters = mtr_cap.n_max;
+		port_info->max_nb_meter_profiles = UINT32_MAX;
+		port_info->max_nb_meter_policies = UINT32_MAX;
+	}
 	return 0;
 }
 
