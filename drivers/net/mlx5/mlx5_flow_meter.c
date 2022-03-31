@@ -1371,7 +1371,8 @@ mlx5_flow_meter_policy_hws_add(struct rte_eth_dev *dev,
 		.index = 0xff};
 	struct rte_flow_item pattern[] = {
 		[0] = {
-			.type = MLX5_RTE_FLOW_ITEM_TYPE_TAG,
+			.type = (enum rte_flow_item_type)
+				MLX5_RTE_FLOW_ITEM_TYPE_TAG,
 			.spec = &tag_spec,
 			.mask = &tag_mask,
 		},
