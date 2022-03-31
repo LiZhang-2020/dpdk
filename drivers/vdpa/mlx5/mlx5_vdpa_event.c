@@ -86,12 +86,13 @@ mlx5_vdpa_cq_arm(struct mlx5_vdpa_priv *priv, struct mlx5_vdpa_cq *cq)
 
 static int
 mlx5_vdpa_cq_create(struct mlx5_vdpa_priv *priv, uint16_t log_desc_n,
-		    int callfd, struct mlx5_vdpa_cq *cq)
+		int callfd, struct mlx5_vdpa_virtq *virtq)
 {
 	struct mlx5_devx_cq_attr attr = {
 		.use_first_only = 1,
 		.uar_page_id = mlx5_os_get_devx_uar_page_id(priv->uar.obj),
 	};
+	struct mlx5_vdpa_cq *cq = &virtq->eqp.cq;
 	uint16_t event_nums[1] = {0};
 	int ret;
 
@@ -107,7 +108,7 @@ mlx5_vdpa_cq_create(struct mlx5_vdpa_priv *priv, uint16_t log_desc_n,
 							cq->cq_obj.cq->obj,
 						   sizeof(event_nums),
 						   event_nums,
-						   (uint64_t)(uintptr_t)cq);
+						   (uint64_t)(uintptr_t)virtq);
 	if (ret) {
 		DRV_LOG(ERR, "Failed to subscribe CQE event.");
 		rte_errno = errno;
@@ -169,13 +170,17 @@ mlx5_vdpa_cq_poll(struct mlx5_vdpa_cq *cq)
 static void
 mlx5_vdpa_arm_all_cqs(struct mlx5_vdpa_priv *priv)
 {
+	struct mlx5_vdpa_virtq *virtq;
 	struct mlx5_vdpa_cq *cq;
 	int i;
 
 	for (i = 0; i < priv->nr_virtqs; i++) {
+		virtq = &priv->virtqs[i];
+		pthread_mutex_lock(&virtq->virtq_lock);
 		cq = &priv->virtqs[i].eqp.cq;
 		if (cq->cq_obj.cq && !cq->armed)
 			mlx5_vdpa_cq_arm(priv, cq);
+		pthread_mutex_unlock(&virtq->virtq_lock);
 	}
 }
 
@@ -222,13 +227,18 @@ mlx5_vdpa_queue_complete(struct mlx5_vdpa_cq *cq)
 static uint32_t
 mlx5_vdpa_queues_complete(struct mlx5_vdpa_priv *priv)
 {
-	int i;
+	struct mlx5_vdpa_virtq *virtq;
+	struct mlx5_vdpa_cq *cq;
 	uint32_t max = 0;
+	uint32_t comp;
+	int i;
 
 	for (i = 0; i < priv->nr_virtqs; i++) {
-		struct mlx5_vdpa_cq *cq = &priv->virtqs[i].eqp.cq;
-		uint32_t comp = mlx5_vdpa_queue_complete(cq);
-
+		virtq = &priv->virtqs[i];
+		pthread_mutex_lock(&virtq->virtq_lock);
+		cq = &virtq->eqp.cq;
+		comp = mlx5_vdpa_queue_complete(cq);
+		pthread_mutex_unlock(&virtq->virtq_lock);
 		if (comp > max)
 			max = comp;
 	}
@@ -255,7 +265,7 @@ mlx5_vdpa_drain_cq(struct mlx5_vdpa_priv *priv)
 }
 
 /* Wait on all CQs channel for completion event. */
-static struct mlx5_vdpa_cq *
+static struct mlx5_vdpa_virtq *
 mlx5_vdpa_event_wait(struct mlx5_vdpa_priv *priv __rte_unused)
 {
 #ifdef HAVE_IBV_DEVX_EVENT
@@ -267,7 +277,8 @@ mlx5_vdpa_event_wait(struct mlx5_vdpa_priv *priv __rte_unused)
 					    sizeof(out.buf));
 
 	if (ret >= 0)
-		return (struct mlx5_vdpa_cq *)(uintptr_t)out.event_resp.cookie;
+		return (struct mlx5_vdpa_virtq *)
+				(uintptr_t)out.event_resp.cookie;
 	DRV_LOG(INFO, "Got error in devx_get_event, ret = %d, errno = %d.",
 		ret, errno);
 #endif
@@ -278,17 +289,16 @@ static void *
 mlx5_vdpa_event_handle(void *arg)
 {
 	struct mlx5_vdpa_priv *priv = arg;
-	struct mlx5_vdpa_cq *cq;
 	uint32_t max;
 	uint64_t max_tics = (rte_get_tsc_hz() / 1000000) * priv->no_traffic_max;
 	uint64_t first_tic = 0;
+	struct mlx5_vdpa_virtq *virtq;
 
 	switch (priv->event_mode) {
 	case MLX5_VDPA_EVENT_MODE_DYNAMIC_TIMER:
 	case MLX5_VDPA_EVENT_MODE_FIXED_TIMER:
 		priv->timer_delay_us = priv->event_us;
 		while (1) {
-			pthread_mutex_lock(&priv->vq_config_lock);
 			max = mlx5_vdpa_queues_complete(priv);
 			if (max == 0) {
 				uint64_t tic = rte_get_tsc_cycles();
@@ -303,31 +313,36 @@ mlx5_vdpa_event_handle(void *arg)
 					priv->vdev->device->name);
 				mlx5_vdpa_arm_all_cqs(priv);
 				do {
-					pthread_mutex_unlock
-							(&priv->vq_config_lock);
-					cq = mlx5_vdpa_event_wait(priv);
-					pthread_mutex_lock
-							(&priv->vq_config_lock);
-					if (cq == NULL ||
-					       mlx5_vdpa_queue_complete(cq) > 0)
+					virtq = mlx5_vdpa_event_wait(priv);
+					if (virtq == NULL)
 						break;
+					pthread_mutex_lock(
+						&virtq->virtq_lock);
+					if (mlx5_vdpa_queue_complete(
+						&virtq->eqp.cq) > 0) {
+						pthread_mutex_unlock(
+							&virtq->virtq_lock);
+						break;
+					}
+					pthread_mutex_unlock(
+						&virtq->virtq_lock);
 				} while (1);
 				priv->timer_delay_us = priv->event_us;
 			}
 			first_tic = 0;
 unlock:
-			pthread_mutex_unlock(&priv->vq_config_lock);
 			mlx5_vdpa_timer_sleep(priv, max);
 		}
 		return NULL;
 	case MLX5_VDPA_EVENT_MODE_ONLY_INTERRUPT:
 		do {
-			cq = mlx5_vdpa_event_wait(priv);
-			if (cq != NULL) {
-				pthread_mutex_lock(&priv->vq_config_lock);
-				if (mlx5_vdpa_queue_complete(cq) > 0)
-					mlx5_vdpa_cq_arm(priv, cq);
-				pthread_mutex_unlock(&priv->vq_config_lock);
+			virtq = mlx5_vdpa_event_wait(priv);
+			if (virtq != NULL) {
+				pthread_mutex_lock(&virtq->virtq_lock);
+				if (mlx5_vdpa_queue_complete(
+					&virtq->eqp.cq) > 0)
+					mlx5_vdpa_cq_arm(priv, &virtq->eqp.cq);
+				pthread_mutex_unlock(&virtq->virtq_lock);
 			}
 		} while (1);
 		return NULL;
@@ -349,7 +364,6 @@ mlx5_vdpa_err_interrupt_handler(void *cb_arg __rte_unused)
 	struct mlx5_vdpa_virtq *virtq;
 	uint64_t sec;
 
-	pthread_mutex_lock(&priv->vq_config_lock);
 	while (mlx5_glue->devx_get_event(priv->err_chnl, &out.event_resp,
 					 sizeof(out.buf)) >=
 				       (ssize_t)sizeof(out.event_resp.cookie)) {
@@ -361,10 +375,11 @@ mlx5_vdpa_err_interrupt_handler(void *cb_arg __rte_unused)
 			continue;
 		}
 		virtq = &priv->virtqs[vq_index];
+		pthread_mutex_lock(&virtq->virtq_lock);
 		if (!virtq->enable || virtq->version != version)
-			continue;
+			goto unlock;
 		if (rte_rdtsc() / rte_get_tsc_hz() < MLX5_VDPA_ERROR_TIME_SEC)
-			continue;
+			goto unlock;
 		virtq->stopped = true;
 		/* Query error info. */
 		if (mlx5_vdpa_virtq_query(priv, vq_index))
@@ -383,7 +398,7 @@ mlx5_vdpa_err_interrupt_handler(void *cb_arg __rte_unused)
 					vq_index);
 			else
 				DRV_LOG(WARNING, "Recover virtq %d: %u.",
-					vq_index, ++virtq->n_retry);
+					vq_index, ++virtq->cov_retry);
 		} else {
 			/* Retry timeout, give up. */
 			DRV_LOG(ERR, "Device %s virtq %d failed to recover.",
@@ -394,8 +409,9 @@ log:
 		for (i = 1; i < RTE_DIM(virtq->err_time); i++)
 			virtq->err_time[i - 1] = virtq->err_time[i];
 		virtq->err_time[RTE_DIM(virtq->err_time) - 1] = rte_rdtsc();
+unlock:
+		pthread_mutex_unlock(&virtq->virtq_lock);
 	}
-	pthread_mutex_unlock(&priv->vq_config_lock);
 #endif
 }
 
@@ -535,11 +551,18 @@ mlx5_vdpa_cqe_event_setup(struct mlx5_vdpa_priv *priv)
 void
 mlx5_vdpa_cqe_event_unset(struct mlx5_vdpa_priv *priv)
 {
+	struct mlx5_vdpa_virtq *virtq;
 	void *status;
+	int i;
 
 	if (priv->timer_tid) {
 		pthread_cancel(priv->timer_tid);
 		pthread_join(priv->timer_tid, &status);
+		/* Need unlock to let other wait thread run. */
+		for (i = 0; i < priv->nr_virtqs; i++) {
+			virtq = &priv->virtqs[i];
+			pthread_mutex_init(&virtq->virtq_lock, NULL);
+		}
 	}
 	priv->timer_tid = 0;
 }
@@ -616,8 +639,9 @@ mlx5_vdpa_qps2rst2rts(struct mlx5_vdpa_event_qp *eqp)
 
 int
 mlx5_vdpa_event_qp_prepare(struct mlx5_vdpa_priv *priv, uint16_t desc_n,
-			  int callfd, struct mlx5_vdpa_event_qp *eqp)
+	int callfd, struct mlx5_vdpa_virtq *virtq)
 {
+	struct mlx5_vdpa_event_qp *eqp = &virtq->eqp;
 	struct mlx5_devx_qp_attr attr = {0};
 	uint16_t log_desc_n = rte_log2_u32(desc_n);
 	uint32_t ret;
@@ -634,7 +658,8 @@ mlx5_vdpa_event_qp_prepare(struct mlx5_vdpa_priv *priv, uint16_t desc_n,
 	}
 	if (eqp->fw_qp)
 		mlx5_vdpa_event_qp_destroy(eqp);
-	if (mlx5_vdpa_cq_create(priv, log_desc_n, callfd, &eqp->cq))
+	if (mlx5_vdpa_cq_create(priv, log_desc_n, callfd, virtq) ||
+		!eqp->cq.cq_obj.cq)
 		return -1;
 	attr.pd = priv->cdev->pdn;
 	attr.ts_format =
