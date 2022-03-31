@@ -2550,10 +2550,8 @@ mlx5_os_dev_shared_handler_install(struct mlx5_dev_ctx_shared *sh)
 	ret = mlx5_os_interrupt_handler_setup
 		(&sh->intr_handle, true,
 		 ctx->async_fd, mlx5_dev_interrupt_handler, sh);
-	if (ret) {
-		DRV_LOG(ERR, "Failed to initialize intr_handle.");
-		return;
-	}
+	if (ret)
+		DRV_LOG(INFO, "Failed to initialize intr_handle.");
 	if (sh->cdev->config.devx) {
 #ifdef HAVE_IBV_DEVX_ASYNC
 		struct mlx5dv_devx_cmd_comp *devx_comp;
@@ -2568,11 +2566,9 @@ mlx5_os_dev_shared_handler_install(struct mlx5_dev_ctx_shared *sh)
 			(&sh->intr_handle_devx,
 			 true, devx_comp->fd,
 			 mlx5_dev_interrupt_handler_devx, sh);
-		if (ret) {
-			DRV_LOG(ERR, "Failed to install the devx shared"
+		if (ret)
+			DRV_LOG(INFO, "Failed to install the devx shared"
 				" interrupt.");
-			return;
-		}
 #endif /* HAVE_IBV_DEVX_ASYNC */
 	}
 }

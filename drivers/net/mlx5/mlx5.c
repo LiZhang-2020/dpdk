@@ -1469,6 +1469,9 @@ mlx5_alloc_shared_dev_ctx(const struct mlx5_dev_spawn_data *spawn,
 		rte_errno = ENOMEM;
 		goto exit;
 	}
+	sh->intr_handle.fd = -1;
+	sh->intr_handle_devx.fd = -1;
+	sh->intr_handle_lwm.fd = -1;
 	pthread_mutex_init(&sh->txpp.mutex, NULL);
 	sh->numa_node = spawn->cdev->dev->numa_node;
 	sh->cdev = spawn->cdev;

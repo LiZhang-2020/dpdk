@@ -527,6 +527,7 @@ mlx5_vdpa_virtq_setup(struct mlx5_vdpa_priv *priv, int index, bool reg_kick)
 	rte_spinlock_unlock(&priv->db_lock);
 	/* Setup doorbell mapping. */
 	if (reg_kick) {
+		virtq->intr_handle.fd = -1;
 		ret = mlx5_os_interrupt_handler_setup
 			(&virtq->intr_handle, false,
 			 vq.kickfd, mlx5_vdpa_virtq_kick_handler,

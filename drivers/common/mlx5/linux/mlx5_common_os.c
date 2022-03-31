@@ -974,11 +974,12 @@ mlx5_os_interrupt_handler_setup(struct rte_intr_handle *intr_handle,
 {
 	int ret, flags;
 
-	if (!intr_handle) {
+	if (!intr_handle || fd < 0) {
 		rte_errno = EINVAL;
 		return -rte_errno;
 	}
 	memset(intr_handle, 0, sizeof(*intr_handle));
+	intr_handle->fd = -1;
 	if (set_fd_nonblock) {
 		flags = fcntl(fd, F_GETFL);
 		ret = fcntl(fd, F_SETFL, flags | O_NONBLOCK);
