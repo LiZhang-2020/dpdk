@@ -2535,16 +2535,34 @@ flow_hw_actions_template_create(struct rte_eth_dev *dev,
 		},
 		.width = 32,
 	};
+	const struct rte_flow_action_modify_field rx_mreg_mask = {
+		.operation = RTE_FLOW_MODIFY_SET,
+		.dst = {
+			.field = (enum rte_flow_field_id)MLX5_RTE_FLOW_FIELD_META_REG,
+			.level = UINT32_MAX,
+			.offset = UINT32_MAX,
+		},
+		.src = {
+			.field = (enum rte_flow_field_id)MLX5_RTE_FLOW_FIELD_META_REG,
+			.level = UINT32_MAX,
+			.offset = UINT32_MAX,
+		},
+		.width = UINT32_MAX,
+	};
 	const struct rte_flow_action rx_cpy = {
 		.type = RTE_FLOW_ACTION_TYPE_MODIFY_FIELD,
 		.conf = &rx_mreg,
+	};
+	const struct rte_flow_action rx_cpy_mask = {
+		.type = RTE_FLOW_ACTION_TYPE_MODIFY_FIELD,
+		.conf = &rx_mreg_mask,
 	};
 
 	if (flow_hw_action_validate(dev, attr, actions, masks, error))
 		return NULL;
 	if (priv->sh->config.dv_xmeta_en == MLX5_XMETA_MODE_META32_HWS &&
 	    priv->sh->config.dv_esw_en) {
-		if (flow_hw_action_meta_copy_insert(actions, masks, &rx_cpy, &rx_cpy,
+		if (flow_hw_action_meta_copy_insert(actions, masks, &rx_cpy, &rx_cpy_mask,
 						    tmp_action, tmp_mask, &pos)) {
 			rte_flow_error_set(error, EINVAL,
 					   RTE_FLOW_ERROR_TYPE_ACTION, NULL,
@@ -4159,7 +4177,7 @@ flow_hw_create_tx_default_mreg_copy(struct rte_eth_dev *dev,
 		},
 	};
 	struct rte_flow_pattern_template *pt;
-	struct rte_flow_action_modify_field mreg = {
+	const struct rte_flow_action_modify_field mreg_action = {
 		.operation = RTE_FLOW_MODIFY_SET,
 		.dst = {
 			.field = (enum rte_flow_field_id)MLX5_RTE_FLOW_FIELD_META_REG,
@@ -4171,10 +4189,33 @@ flow_hw_create_tx_default_mreg_copy(struct rte_eth_dev *dev,
 		},
 		.width = 32,
 	};
-	struct rte_flow_action copy_reg[] = {
+	const struct rte_flow_action_modify_field mreg_mask = {
+		.operation = RTE_FLOW_MODIFY_SET,
+		.dst = {
+			.field = (enum rte_flow_field_id)MLX5_RTE_FLOW_FIELD_META_REG,
+			.level = UINT32_MAX,
+			.offset = UINT32_MAX,
+		},
+		.src = {
+			.field = (enum rte_flow_field_id)MLX5_RTE_FLOW_FIELD_META_REG,
+			.level = UINT32_MAX,
+			.offset = UINT32_MAX,
+		},
+		.width = UINT32_MAX,
+	};
+	const struct rte_flow_action copy_reg_action[] = {
 		[0] = {
 			.type = RTE_FLOW_ACTION_TYPE_MODIFY_FIELD,
-			.conf = &mreg,
+			.conf = &mreg_action,
+		},
+		[1] = {
+			.type = RTE_FLOW_ACTION_TYPE_END,
+		},
+	};
+	const struct rte_flow_action copy_reg_mask[] = {
+		[0] = {
+			.type = RTE_FLOW_ACTION_TYPE_MODIFY_FIELD,
+			.conf = &mreg_mask,
 		},
 		[1] = {
 			.type = RTE_FLOW_ACTION_TYPE_END,
@@ -4212,15 +4253,15 @@ flow_hw_create_tx_default_mreg_copy(struct rte_eth_dev *dev,
 	pt = flow_hw_pattern_template_create(dev, &tx_pa_attr, eth_all, error);
 	if (!pt)
 		goto err_exit;
-	at = flow_hw_actions_template_create(dev, &tx_act_attr, copy_reg,
-					     copy_reg, error);
+	at = flow_hw_actions_template_create(dev, &tx_act_attr, copy_reg_action,
+					     copy_reg_mask, error);
 	if (!at)
 		goto err_exit;
 	tx_tbl = flow_hw_table_create(dev, &tx_tbl_attr, &pt, 1, &at, 1, error);
 	if (!tx_tbl)
 		goto err_exit;
 	tx_cpy_flow = flow_hw_async_flow_create(dev, ctrl_q, &q_ops,
-						tx_tbl, eth_all, 0, copy_reg,
+						tx_tbl, eth_all, 0, copy_reg_action,
 						0, NULL, error);
 	if (!tx_cpy_flow)
 		goto err_exit;
