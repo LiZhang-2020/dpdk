@@ -34,11 +34,14 @@
 /* Default queue to flush the flows. */
 #define MLX5_DEFAULT_FLUSH_QUEUE 0
 
-/* Maximum number of rules in control flow tables */
+/* Maximum number of rules in control flow tables. */
 #define MLX5_HW_CTRL_FLOW_NB_RULES (4096)
 
-/* Flow group for SQ miss default flows/ */
+/* Flow group for SQ miss default flows. */
 #define MLX5_HW_SQ_MISS_GROUP (UINT32_MAX)
+
+/* Lowest priority for HW root table. */
+#define MLX5_HW_LOWEST_PRIO_ROOT 15
 
 static int flow_hw_flush_all_ctrl_flows(struct rte_eth_dev *dev);
 
@@ -3531,7 +3534,7 @@ flow_hw_create_ctrl_jump_table(struct rte_eth_dev *dev,
 	struct rte_flow_template_table_attr attr = {
 		.flow_attr = {
 			.group = 0,
-			.priority = 15, /* TODO: Flow priority discovery. */
+			.priority = MLX5_HW_LOWEST_PRIO_ROOT,
 			.ingress = 0,
 			.egress = 0,
 			.transfer = 1,
@@ -4225,7 +4228,7 @@ flow_hw_create_tx_default_mreg_copy(struct rte_eth_dev *dev,
 	struct rte_flow_template_table_attr tx_tbl_attr = {
 		.flow_attr = {
 			.group = 0,
-			.priority = (UINT16_MAX - 1), /* Lowest priority is UINT32_MAX */
+			.priority = MLX5_HW_LOWEST_PRIO_ROOT,
 			.egress = 1,
 		},
 		.nb_flows = 1,
