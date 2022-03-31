@@ -992,6 +992,7 @@ flow_dv_validate_item_port_id(struct rte_eth_dev *dev,
 			      const struct rte_flow_item *item,
 			      const struct rte_flow_attr *attr,
 			      uint64_t item_flags,
+			      struct mlx5_priv **act_priv,
 			      struct rte_flow_error *error)
 {
 	const struct rte_flow_item_port_id *spec = item->spec;
@@ -1050,6 +1051,7 @@ flow_dv_validate_item_port_id(struct rte_eth_dev *dev,
 					  RTE_FLOW_ERROR_TYPE_ITEM_SPEC, spec,
 					  "cannot match on a port from a"
 					  " different E-Switch");
+	*act_priv = esw_priv;
 	return 0;
 }
 
@@ -1075,6 +1077,7 @@ flow_dv_validate_item_represented_port(struct rte_eth_dev *dev,
 				       const struct rte_flow_item *item,
 				       const struct rte_flow_attr *attr,
 				       uint64_t item_flags,
+				       struct mlx5_priv **act_priv,
 				       struct rte_flow_error *error)
 {
 	const struct rte_flow_item_ethdev *spec = item->spec;
@@ -1123,6 +1126,7 @@ flow_dv_validate_item_represented_port(struct rte_eth_dev *dev,
 		return rte_flow_error_set(error, EINVAL,
 					  RTE_FLOW_ERROR_TYPE_ITEM_SPEC, spec,
 					  "cannot match on a port from a different E-Switch");
+	*act_priv = esw_priv;
 	return 0;
 }
 
@@ -1650,30 +1654,12 @@ flow_dv_validate_action_pop_vlan(struct rte_eth_dev *dev,
 				 struct rte_flow_error *error)
 {
 	const struct mlx5_priv *priv = dev->data->dev_private;
-	struct mlx5_dev_ctx_shared *sh = priv->sh;
-	bool direction_error = false;
 
 	if (!priv->sh->pop_vlan_action)
 		return rte_flow_error_set(error, ENOTSUP,
 					  RTE_FLOW_ERROR_TYPE_UNSPECIFIED,
 					  NULL,
 					  "pop vlan action is not supported");
-	/* Pop VLAN is not supported in egress except for CX6 FDB mode. */
-	if (attr->transfer) {
-		bool fdb_tx = priv->representor_id != UINT16_MAX;
-		bool is_cx5 = sh->steering_format_version ==
-		    MLX5_STEERING_LOGIC_FORMAT_CONNECTX_5;
-
-		if (fdb_tx && is_cx5)
-			direction_error = true;
-	} else if (attr->egress) {
-		direction_error = true;
-	}
-	if (direction_error)
-		return rte_flow_error_set(error, ENOTSUP,
-					  RTE_FLOW_ERROR_TYPE_ATTR_EGRESS,
-					  NULL,
-					  "pop vlan action not supported for egress");
 	if (action_flags & MLX5_FLOW_VLAN_ACTIONS)
 		return rte_flow_error_set(error, ENOTSUP,
 					  RTE_FLOW_ERROR_TYPE_ACTION, action,
@@ -4394,6 +4380,7 @@ flow_dv_validate_action_sample(uint64_t *action_flags,
 			       const struct rte_flow_action_count **count,
 			       int *fdb_mirror_limit,
 			       bool root,
+			       struct mlx5_priv *act_priv,
 			       struct rte_flow_error *error)
 {
 	struct mlx5_priv *priv = dev->data->dev_private;
@@ -4583,7 +4570,7 @@ flow_dv_validate_action_sample(uint64_t *action_flags,
 						  "E-Switch must has a dest "
 						  "port for mirroring");
 		if (!priv->sh->cdev->config.hca_attr.reg_c_preserve &&
-		     priv->representor_id != UINT16_MAX)
+		     flow_source_vport_representor(priv, act_priv))
 			*fdb_mirror_limit = 1;
 	}
 	/* Continue validation for Xcap actions.*/
@@ -5830,6 +5817,7 @@ flow_dv_validate(struct rte_eth_dev *dev, const struct rte_flow_attr *attr,
 	uint32_t tag_id = 0;
 	const struct rte_flow_action_age *non_shared_age = NULL;
 	const struct rte_flow_action_count *count = NULL;
+	struct mlx5_priv *act_priv = NULL;
 
 	if (items == NULL)
 		return -1;
@@ -5879,7 +5867,7 @@ flow_dv_validate(struct rte_eth_dev *dev, const struct rte_flow_attr *attr,
 			break;
 		case RTE_FLOW_ITEM_TYPE_PORT_ID:
 			ret = flow_dv_validate_item_port_id
-					(dev, items, attr, item_flags, error);
+					(dev, items, attr, item_flags, &act_priv, error);
 			if (ret < 0)
 				return ret;
 			last_item = MLX5_FLOW_ITEM_PORT_ID;
@@ -5887,7 +5875,7 @@ flow_dv_validate(struct rte_eth_dev *dev, const struct rte_flow_attr *attr,
 			break;
 		case RTE_FLOW_ITEM_TYPE_REPRESENTED_PORT:
 			ret = flow_dv_validate_item_represented_port
-					(dev, items, attr, item_flags, error);
+					(dev, items, attr, item_flags, &act_priv, error);
 			if (ret < 0)
 				return ret;
 			last_item = MLX5_FLOW_ITEM_REPRESENTED_PORT;
@@ -6803,6 +6791,7 @@ flow_dv_validate(struct rte_eth_dev *dev, const struct rte_flow_attr *attr,
 							     &sample_count,
 							     &fdb_mirror_limit,
 							     is_root,
+							     act_priv,
 							     error);
 			if (ret < 0)
 				return ret;
@@ -6992,7 +6981,7 @@ flow_dv_validate(struct rte_eth_dev *dev, const struct rte_flow_attr *attr,
 			bool direction_error = false;
 
 			if (attr->transfer) {
-				bool fdb_tx = priv->representor_id != UINT16_MAX;
+				bool fdb_tx = flow_source_vport_representor(priv, act_priv);
 				bool is_cx5 = sh->steering_format_version ==
 				    MLX5_STEERING_LOGIC_FORMAT_CONNECTX_5;
 
@@ -7023,6 +7012,27 @@ flow_dv_validate(struct rte_eth_dev *dev, const struct rte_flow_attr *attr,
 						 NULL, "no support for "
 						 "multiple VLAN actions");
 		}
+	}
+	/* Pop VLAN is not supported in egress except for NICs newer than CX5. */
+	if (action_flags & MLX5_FLOW_ACTION_OF_POP_VLAN) {
+		struct mlx5_dev_ctx_shared *sh = priv->sh;
+		bool direction_error = false;
+
+		if (attr->transfer) {
+			bool fdb_tx = flow_source_vport_representor(priv, act_priv);
+			bool is_cx5 = sh->steering_format_version ==
+					MLX5_STEERING_LOGIC_FORMAT_CONNECTX_5;
+
+			if (fdb_tx && is_cx5)
+				direction_error = true;
+		} else if (attr->egress) {
+			direction_error = true;
+		}
+		if (direction_error)
+			return rte_flow_error_set(error, ENOTSUP,
+						RTE_FLOW_ERROR_TYPE_ATTR_EGRESS,
+						NULL,
+						"pop vlan action not supported for egress");
 	}
 	if (action_flags & MLX5_FLOW_ACTION_METER_WITH_TERMINATED_POLICY) {
 		if ((action_flags & (MLX5_FLOW_FATE_ACTIONS &

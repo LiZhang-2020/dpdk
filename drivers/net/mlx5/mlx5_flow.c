@@ -6799,9 +6799,8 @@ flow_create_split_sample(struct rte_eth_dev *dev,
 			}
 		}
 		/* The representor_id is UINT16_MAX for uplink. */
-		fdb_tx = (attr->transfer && (!item_port_priv ?
-			  (priv->representor_id != UINT16_MAX) :
-			  (item_port_priv->representor_id != UINT16_MAX)));
+		fdb_tx = (attr->transfer &&
+			  flow_source_vport_representor(priv, item_port_priv));
 		/*
 		 * When reg_c_preserve is set, metadata registers Cx preserve
 		 * their value even through packet duplication.
