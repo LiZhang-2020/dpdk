@@ -345,12 +345,14 @@ static void mlx5dr_send_engine_poll_cq(struct mlx5dr_send_engine *queue,
 	uint32_t cq_idx = cq->cons_index & (cq->ncqe_mask);
 	struct mlx5dr_send_ring_priv *priv;
 	struct mlx5_cqe64 *cqe;
+	uint32_t offset_cqe64;
 	uint8_t cqe_opcode;
 	uint8_t cqe_owner;
 	uint16_t wqe_cnt;
 	uint8_t sw_own;
 
-	cqe = (void *)(cq->buf + (cq_idx << cq->cqe_log_sz));
+	offset_cqe64 = RTE_CACHE_LINE_SIZE - sizeof(struct mlx5_cqe64);
+	cqe = (void *)(cq->buf + (cq_idx << cq->cqe_log_sz) + offset_cqe64);
 
 	sw_own = (cq->cons_index & cq->ncqe) ? 1 : 0;
 	cqe_opcode = mlx5dv_get_cqe_opcode(cqe);
