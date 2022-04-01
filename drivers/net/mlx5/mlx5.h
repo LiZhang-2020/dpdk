@@ -2102,7 +2102,10 @@ int mlx5_aso_ct_query_by_wqe(struct mlx5_dev_ctx_shared *sh,
 int mlx5_aso_ct_available(struct mlx5_dev_ctx_shared *sh,
 			  struct mlx5_aso_ct_action *ct);
 void mlx5_sft_deactivate(struct rte_eth_dev *dev);
-
+int mlx5_aso_cnt_queue_init(struct mlx5_dev_ctx_shared *sh);
+void mlx5_aso_cnt_queue_uninit(struct mlx5_dev_ctx_shared *sh);
+int mlx5_aso_cnt_query(struct mlx5_dev_ctx_shared *sh,
+		struct mlx5_hws_cnt_pool *cpool);
 
 /* mlx5_sft.c */
 

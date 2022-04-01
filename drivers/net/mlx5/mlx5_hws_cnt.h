@@ -399,6 +399,23 @@ mlx5_hws_cnt_pool_get_action_offset(struct mlx5_hws_cnt_pool *cpool,
 	return -1;
 }
 
+static __always_inline int
+mlx5_hws_cnt_get_dcs_id(struct mlx5_hws_cnt_pool *cpool, cnt_id_t cnt_id)
+{
+	struct mlx5_hws_cnt_dcs_mng *dcs_mng = &cpool->dcs_mng;
+	uint16_t idx;
+	uint32_t offset;
+
+	offset = cnt_id & ((1 << MLX5_INDIRECT_ACTION_TYPE_OFFSET) - 1);
+	for (idx = 0; idx < dcs_mng->batch_total; idx++) {
+		if (dcs_mng->dcs[idx].batch_sz <= offset)
+			offset -= dcs_mng->dcs[idx].batch_sz;
+		else
+			return (dcs_mng->dcs[idx].obj->id + offset);
+	}
+	return -1;
+}
+
 /* init HWS counter pool. */
 struct mlx5_hws_cnt_pool *
 mlx5_hws_cnt_pool_init(const struct mlx5_hws_cnt_pool_cfg *pcfg,
@@ -414,21 +431,11 @@ void
 mlx5_hws_cnt_service_thread_destroy(struct mlx5_dev_ctx_shared *sh);
 
 int
-mlx5_hws_cnt_pool_aso_query(struct mlx5_dev_ctx_shared *sh,
-			    struct mlx5_hws_cnt_pool *cpool);
-
-int
 mlx5_hws_cnt_pool_dcs_alloc(struct mlx5_dev_ctx_shared *sh,
 		struct mlx5_hws_cnt_pool *cpool);
 void
 mlx5_hws_cnt_pool_dcs_free(struct mlx5_dev_ctx_shared *sh,
 		struct mlx5_hws_cnt_pool *cpool);
-
-int
-mlx5_hws_cnt_aso_access_alloc(struct mlx5_dev_ctx_shared *sh);
-
-void
-mlx5_hws_cnt_aso_free(struct mlx5_dev_ctx_shared *sh);
 
 int
 mlx5_hws_cnt_pool_action_create(struct mlx5_priv *priv,
