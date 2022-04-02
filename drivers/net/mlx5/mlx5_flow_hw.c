@@ -1955,9 +1955,7 @@ flow_hw_pull(struct rte_eth_dev *dev,
 				mlx5_hrxq_obj_release(dev, job->flow->hrxq);
 			else if (job->flow->fate_type == MLX5_FLOW_FATE_JUMP)
 				flow_hw_jump_release(dev, job->flow->jump);
-			if (job->flow->cnt_id >= (uint32_t)
-					(MLX5_INDIRECT_ACTION_TYPE_COUNT <<
-					 MLX5_INDIRECT_ACTION_TYPE_OFFSET)) {
+			if (mlx5_hws_cnt_id_valid(job->flow->cnt_id)) {
 				mlx5_hws_cnt_pool_put(priv->hws_cpool, &queue,
 						&job->flow->cnt_id);
 				job->flow->cnt_id = 0;
@@ -4651,11 +4649,10 @@ flow_hw_query_counter(const struct rte_eth_dev *dev, uint32_t counter,
 	struct mlx5_priv *priv = dev->data->dev_private;
 	struct mlx5_hws_cnt *cnt;
 	struct rte_flow_query_count *qc = data;
-	uint32_t iidx = counter & ((1 << MLX5_INDIRECT_ACTION_TYPE_OFFSET) - 1);
+	uint32_t iidx = mlx5_hws_cnt_iidx(counter);
 	uint64_t pkts, bytes;
 
-	if ((counter >> MLX5_INDIRECT_ACTION_TYPE_OFFSET) !=
-	    MLX5_INDIRECT_ACTION_TYPE_COUNT)
+	if (!mlx5_hws_cnt_id_valid(counter))
 		return rte_flow_error_set(error, EINVAL,
 				RTE_FLOW_ERROR_TYPE_UNSPECIFIED, NULL,
 				"counter are not available");

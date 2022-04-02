@@ -31,8 +31,7 @@ __hws_cnt_id_load(struct mlx5_hws_cnt_pool *cpool)
 	preload = RTE_MIN(cpool->cache->preload_sz, cnt_num / q_num);
 	for (qidx = 0; qidx < q_num; qidx++) {
 		for (; iidx < preload * (qidx + 1); iidx++) {
-			cnt_id = (MLX5_INDIRECT_ACTION_TYPE_COUNT <<
-				  MLX5_INDIRECT_ACTION_TYPE_OFFSET) | iidx;
+			cnt_id = mlx5_hws_cnt_id_gen(iidx);
 			qcache = cpool->cache->qcache[qidx];
 			if (qcache)
 				rte_ring_enqueue_elem(qcache, &cnt_id,
@@ -40,8 +39,7 @@ __hws_cnt_id_load(struct mlx5_hws_cnt_pool *cpool)
 		}
 	}
 	for (; iidx < cnt_num; iidx++) {
-		cnt_id = (MLX5_INDIRECT_ACTION_TYPE_COUNT <<
-			  MLX5_INDIRECT_ACTION_TYPE_OFFSET) | iidx;
+		cnt_id = mlx5_hws_cnt_id_gen(iidx);
 		rte_ring_enqueue_elem(cpool->free_list, &cnt_id,
 				sizeof(cnt_id));
 	}

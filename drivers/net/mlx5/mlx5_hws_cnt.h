@@ -92,6 +92,47 @@ struct mlx5_hws_cnt_pool {
 	struct mlx5_hws_cnt_pool_caches *cache;
 } __rte_cache_aligned;
 
+/**
+ * Translate counter id into internal index (start from 0), which can be used
+ * as index of raw/cnt pool.
+ *
+ * @param cnt_id
+ *   The external counter id
+ * @return
+ *   Internal index
+ */
+static __rte_always_inline cnt_id_t
+mlx5_hws_cnt_iidx(cnt_id_t cnt_id)
+{
+	return (cnt_id & ((1UL << MLX5_INDIRECT_ACTION_TYPE_OFFSET) - 1));
+}
+
+/**
+ * Check if it's valid counter id.
+ */
+static __rte_always_inline bool
+mlx5_hws_cnt_id_valid(cnt_id_t cnt_id)
+{
+	return (cnt_id >> MLX5_INDIRECT_ACTION_TYPE_OFFSET) ==
+		MLX5_INDIRECT_ACTION_TYPE_COUNT ? true : false;
+}
+
+/**
+ * Generate Counter id from internal index.
+ *
+ * @param index
+ *   The internal counter index.
+ *
+ * @return
+ *   Counter id
+ */
+static __rte_always_inline cnt_id_t
+mlx5_hws_cnt_id_gen(cnt_id_t iidx)
+{
+	return (MLX5_INDIRECT_ACTION_TYPE_COUNT <<
+			MLX5_INDIRECT_ACTION_TYPE_OFFSET) | iidx;
+}
+
 static __rte_always_inline void
 __hws_cnt_query_raw(struct mlx5_hws_cnt_pool *cpool, cnt_id_t cnt_id,
 		uint64_t *raw_pkts, uint64_t *raw_bytes)
@@ -100,7 +141,7 @@ __hws_cnt_query_raw(struct mlx5_hws_cnt_pool *cpool, cnt_id_t cnt_id,
 	struct flow_counter_stats s[2];
 	uint8_t i = 0x1;
 	size_t stat_sz = sizeof(s[0]);
-	uint32_t iidx = cnt_id & ((1 << MLX5_INDIRECT_ACTION_TYPE_OFFSET) - 1);
+	uint32_t iidx = mlx5_hws_cnt_iidx(cnt_id);
 
 	memcpy(&s[0], &raw_mng->raw[iidx], stat_sz);
 	do {
@@ -266,7 +307,7 @@ mlx5_hws_cnt_pool_put(struct mlx5_hws_cnt_pool *cpool,
 	unsigned int wb_num = 0; /* cache write-back number. */
 	cnt_id_t iidx;
 
-	iidx = *cnt_id & ((1 << MLX5_INDIRECT_ACTION_TYPE_OFFSET) - 1);
+	iidx = mlx5_hws_cnt_iidx(*cnt_id);
 	cpool->pool[iidx].query_gen_when_free =
 		__atomic_load_n(&cpool->query_gen, __ATOMIC_RELAXED);
 	if (likely(queue != NULL))
@@ -334,7 +375,7 @@ mlx5_hws_cnt_pool_get(struct mlx5_hws_cnt_pool *cpool,
 			return -ENOENT;
 		}
 		*cnt_id = tmp_cid;
-		iidx = *cnt_id & ((1 << MLX5_INDIRECT_ACTION_TYPE_OFFSET) - 1);
+		iidx = mlx5_hws_cnt_iidx(*cnt_id);
 		__hws_cnt_query_raw(cpool, *cnt_id,
 				    &cpool->pool[iidx].reset.hits,
 				    &cpool->pool[iidx].reset.bytes);
@@ -353,7 +394,7 @@ mlx5_hws_cnt_pool_get(struct mlx5_hws_cnt_pool *cpool,
 	}
 	/* get one from local cache. */
 	*cnt_id = (*(cnt_id_t *)zcdc.ptr1);
-	iidx = *cnt_id & ((1 << MLX5_INDIRECT_ACTION_TYPE_OFFSET) - 1);
+	iidx = mlx5_hws_cnt_iidx(*cnt_id);
 	query_gen = cpool->pool[iidx].query_gen_when_free;
 	if (cpool->query_gen == query_gen) { /* counter is waiting to reset. */
 		rte_ring_dequeue_zc_elem_finish(qcache, 0);
@@ -385,8 +426,7 @@ mlx5_hws_cnt_pool_get_action_offset(struct mlx5_hws_cnt_pool *cpool,
 		uint32_t *offset)
 {
 	uint32_t idx;
-	uint32_t iidx = (cnt_id) &
-			((1 << MLX5_INDIRECT_ACTION_TYPE_OFFSET) - 1);
+	uint32_t iidx = mlx5_hws_cnt_iidx(cnt_id);
 
 	for (idx = 0; idx < cpool->dcs_mng.batch_total; idx++) {
 		if (cpool->dcs_mng.dcs[idx].batch_sz > iidx) {
@@ -406,7 +446,7 @@ mlx5_hws_cnt_get_dcs_id(struct mlx5_hws_cnt_pool *cpool, cnt_id_t cnt_id)
 	uint16_t idx;
 	uint32_t offset;
 
-	offset = cnt_id & ((1 << MLX5_INDIRECT_ACTION_TYPE_OFFSET) - 1);
+	offset = mlx5_hws_cnt_iidx(cnt_id);
 	for (idx = 0; idx < dcs_mng->batch_total; idx++) {
 		if (dcs_mng->dcs[idx].batch_sz <= offset)
 			offset -= dcs_mng->dcs[idx].batch_sz;
