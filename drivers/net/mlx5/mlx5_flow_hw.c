@@ -4649,7 +4649,7 @@ flow_hw_query_counter(const struct rte_eth_dev *dev, uint32_t counter,
 	struct mlx5_priv *priv = dev->data->dev_private;
 	struct mlx5_hws_cnt *cnt;
 	struct rte_flow_query_count *qc = data;
-	uint32_t iidx = mlx5_hws_cnt_iidx(counter);
+	uint32_t iidx = mlx5_hws_cnt_iidx(priv->hws_cpool, counter);
 	uint64_t pkts, bytes;
 
 	if (!mlx5_hws_cnt_id_valid(counter))

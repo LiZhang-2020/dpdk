@@ -31,7 +31,7 @@ __hws_cnt_id_load(struct mlx5_hws_cnt_pool *cpool)
 	preload = RTE_MIN(cpool->cache->preload_sz, cnt_num / q_num);
 	for (qidx = 0; qidx < q_num; qidx++) {
 		for (; iidx < preload * (qidx + 1); iidx++) {
-			cnt_id = mlx5_hws_cnt_id_gen(iidx);
+			cnt_id = mlx5_hws_cnt_id_gen(cpool, iidx);
 			qcache = cpool->cache->qcache[qidx];
 			if (qcache)
 				rte_ring_enqueue_elem(qcache, &cnt_id,
@@ -39,7 +39,7 @@ __hws_cnt_id_load(struct mlx5_hws_cnt_pool *cpool)
 		}
 	}
 	for (; iidx < cnt_num; iidx++) {
-		cnt_id = mlx5_hws_cnt_id_gen(iidx);
+		cnt_id = mlx5_hws_cnt_id_gen(cpool, iidx);
 		rte_ring_enqueue_elem(cpool->free_list, &cnt_id,
 				sizeof(cnt_id));
 	}
@@ -304,6 +304,7 @@ mlx5_hws_cnt_pool_dcs_alloc(struct mlx5_dev_ctx_shared *sh,
 	cpool->dcs_mng.dcs[idx].batch_sz = (1 << log_bulk_sz);
 	cpool->dcs_mng.batch_total++;
 	idx++;
+	cpool->dcs_mng.dcs[0].iidx = 0;
 	alloced = cpool->dcs_mng.dcs[0].batch_sz;
 	if (cnt_num > cpool->dcs_mng.dcs[0].batch_sz) {
 		for (; idx < MLX5_HWS_CNT_DCS_NUM; idx++) {
@@ -315,6 +316,7 @@ mlx5_hws_cnt_pool_dcs_alloc(struct mlx5_dev_ctx_shared *sh,
 			cpool->dcs_mng.dcs[idx].obj = dcs;
 			cpool->dcs_mng.dcs[idx].batch_sz =
 				(1 << max_log_bulk_sz);
+			cpool->dcs_mng.dcs[idx].iidx = alloced;
 			alloced += cpool->dcs_mng.dcs[idx].batch_sz;
 			cpool->dcs_mng.batch_total++;
 		}
@@ -328,6 +330,7 @@ error:
 		mlx5_devx_cmd_destroy(cpool->dcs_mng.dcs[idx].obj);
 		cpool->dcs_mng.dcs[idx].obj = NULL;
 		cpool->dcs_mng.dcs[idx].batch_sz = 0;
+		cpool->dcs_mng.dcs[idx].iidx = 0;
 	}
 	cpool->dcs_mng.batch_total = 0;
 	return -1;
