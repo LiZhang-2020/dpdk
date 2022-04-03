@@ -275,6 +275,7 @@ mlx5_hws_cnt_pool_put(struct mlx5_hws_cnt_pool *cpool,
 		ret = rte_ring_enqueue_elem(cpool->wait_reset_list, cnt_id,
 				sizeof(cnt_id_t));
 		MLX5_ASSERT(ret == 0);
+		return ret;
 	}
 	ret = rte_ring_enqueue_burst_elem(qcache, cnt_id, sizeof(cnt_id_t), 1,
 					  NULL);
