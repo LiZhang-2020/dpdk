@@ -457,6 +457,42 @@ mlx5_hws_cnt_pool_get_action_offset(struct mlx5_hws_cnt_pool *cpool,
 	return 0;
 }
 
+static __rte_always_inline int
+mlx5_hws_cnt_shared_get(struct mlx5_hws_cnt_pool *cpool, cnt_id_t *cnt_id)
+{
+	int ret;
+	uint32_t iidx;
+
+	ret = mlx5_hws_cnt_pool_get(cpool, NULL, cnt_id);
+	if (ret != 0)
+		return ret;
+	iidx = mlx5_hws_cnt_iidx(cpool, *cnt_id);
+	MLX5_ASSERT(cpool->pool[iidx].share == 0);
+	cpool->pool[iidx].share = 1;
+	return 0;
+}
+
+static __rte_always_inline int
+mlx5_hws_cnt_shared_put(struct mlx5_hws_cnt_pool *cpool, cnt_id_t *cnt_id)
+{
+	int ret;
+	uint32_t iidx = mlx5_hws_cnt_iidx(cpool, *cnt_id);
+
+	cpool->pool[iidx].share = 0;
+	ret = mlx5_hws_cnt_pool_put(cpool, NULL, cnt_id);
+	if (unlikely(ret != 0))
+		cpool->pool[iidx].share = 1; /* fail to release, restore. */
+	return ret;
+}
+
+static __rte_always_inline bool
+mlx5_hws_cnt_is_shared(struct mlx5_hws_cnt_pool *cpool, cnt_id_t cnt_id)
+{
+	uint32_t iidx = mlx5_hws_cnt_iidx(cpool, cnt_id);
+
+	return cpool->pool[iidx].share ? true : false;
+}
+
 /* init HWS counter pool. */
 struct mlx5_hws_cnt_pool *
 mlx5_hws_cnt_pool_init(const struct mlx5_hws_cnt_pool_cfg *pcfg,

@@ -330,6 +330,10 @@ __flow_hw_action_template_destroy(struct rte_eth_dev *dev,
 			mlx5dr_action_destroy(acts->mhdr->action);
 		mlx5_free(acts->mhdr);
 	}
+	if (mlx5_hws_cnt_id_valid(acts->cnt_id)) {
+		mlx5_hws_cnt_shared_put(priv->hws_cpool, &acts->cnt_id);
+		acts->cnt_id = 0;
+	}
 }
 
 /**
@@ -910,6 +914,29 @@ flow_hw_meter_compile(struct rte_eth_dev *dev,
 	return 0;
 }
 
+static __rte_always_inline int
+flow_hw_cnt_compile(struct rte_eth_dev *dev, uint32_t  start_pos,
+		      struct mlx5_hw_actions *acts)
+{
+	struct mlx5_priv *priv = dev->data->dev_private;
+	uint32_t pos = start_pos;
+	cnt_id_t cnt_id;
+	int ret;
+
+	ret = mlx5_hws_cnt_shared_get(priv->hws_cpool, &cnt_id);
+	if (ret != 0)
+		return ret;
+	ret = mlx5_hws_cnt_pool_get_action_offset
+				(priv->hws_cpool,
+				 cnt_id,
+				 &acts->rule_acts[pos].action,
+				 &acts->rule_acts[pos].counter.offset);
+	if (ret != 0)
+		return ret;
+	acts->cnt_id = cnt_id;
+	return 0;
+}
+
 /**
  * Translate rte_flow actions to DR action.
  *
@@ -1167,7 +1194,13 @@ __flow_hw_actions_translate(struct rte_eth_dev *dev,
 			i++;
 			break;
 		case RTE_FLOW_ACTION_TYPE_COUNT:
-			if (__flow_hw_act_data_general_append
+			if (masks->conf &&
+			    ((const struct rte_flow_action_count *)
+			     masks->conf)->id) {
+				ret = flow_hw_cnt_compile(dev, i, acts);
+				if (ret)
+					goto err;
+			} else if (__flow_hw_act_data_general_append
 					(priv, acts, actions->type,
 					 actions - action_start, i)) {
 				goto err;
@@ -1686,6 +1719,8 @@ flow_hw_actions_construct(struct rte_eth_dev *dev,
 				job->flow->idx - 1;
 		rule_acts[hw_acts->encap_decap_pos].reformat.data = buf;
 	}
+	if (mlx5_hws_cnt_id_valid(hw_acts->cnt_id))
+		job->flow->cnt_id = hw_acts->cnt_id;
 	return 0;
 }
 
@@ -1955,7 +1990,9 @@ flow_hw_pull(struct rte_eth_dev *dev,
 				mlx5_hrxq_obj_release(dev, job->flow->hrxq);
 			else if (job->flow->fate_type == MLX5_FLOW_FATE_JUMP)
 				flow_hw_jump_release(dev, job->flow->jump);
-			if (mlx5_hws_cnt_id_valid(job->flow->cnt_id)) {
+			if (mlx5_hws_cnt_id_valid(job->flow->cnt_id) &&
+			    mlx5_hws_cnt_is_shared
+				(priv->hws_cpool, job->flow->cnt_id) == false) {
 				mlx5_hws_cnt_pool_put(priv->hws_cpool, &queue,
 						&job->flow->cnt_id);
 				job->flow->cnt_id = 0;

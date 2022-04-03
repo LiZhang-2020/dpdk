@@ -1266,6 +1266,7 @@ struct mlx5_hw_actions {
 	uint16_t encap_decap_pos; /* Encap/Decap action position. */
 	uint32_t acts_num:4; /* Total action number. */
 	uint32_t mark:1; /* Indicate the mark action. */
+	uint32_t cnt_id; /* Counter id. */
 	/* Translated DR action array from action template. */
 	struct mlx5dr_rule_action rule_acts[MLX5_HW_MAX_ACTS];
 };
