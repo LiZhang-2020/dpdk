@@ -40,6 +40,9 @@
 /* Flow group for SQ miss default flows. */
 #define MLX5_HW_SQ_MISS_GROUP (UINT32_MAX)
 
+/* Maximum group index usable by user applications for transfer flows. */
+#define MLX5_HW_MAX_TRANSFER_GROUP (MLX5_HW_SQ_MISS_GROUP - 2)
+
 /* Lowest priority for HW root table. */
 #define MLX5_HW_LOWEST_PRIO_ROOT 15
 
@@ -2203,6 +2206,93 @@ error:
 			  RTE_FLOW_ERROR_TYPE_UNSPECIFIED, NULL,
 			  "fail to create rte table");
 	return NULL;
+}
+
+/**
+ * Translates group index specified by the user in @p attr to internal
+ * group index.
+ *
+ * Translation is done by incrementing group index, so group n becomes n + 1.
+ *
+ * @param[in] dev
+ *   Pointer to Ethernet device.
+ * @param[in] attr
+ *   Pointer to the table attributes.
+ * @param[out] table_group
+ *   Pointer to output group index.
+ * @param[out] error
+ *   Pointer to error structure.
+ *
+ * @return
+ *   0 on success. Otherwise, returns negative error code, rte_errno is set
+ *   and error structure is filled.
+ */
+static int
+flow_hw_translate_group(struct rte_eth_dev *dev,
+			const struct rte_flow_template_table_attr *attr,
+			uint32_t *table_group,
+			struct rte_flow_error *error)
+{
+	struct mlx5_priv *priv = dev->data->dev_private;
+	const struct rte_flow_attr *flow_attr = &attr->flow_attr;
+
+	if (priv->sh->config.dv_esw_en && flow_attr->transfer) {
+		if (flow_attr->group > MLX5_HW_MAX_TRANSFER_GROUP)
+			return rte_flow_error_set(error, EINVAL,
+						  RTE_FLOW_ERROR_TYPE_ATTR_GROUP,
+						  NULL,
+						  "group index not supported");
+		*table_group = flow_attr->group + 1;
+	} else {
+		*table_group = flow_attr->group;
+	}
+	return 0;
+}
+
+/**
+ * Create flow table.
+ *
+ * This function is a wrapper over @ref flow_hw_table_create(), which translates parameters
+ * provided by user to proper internal values.
+ *
+ * @param[in] dev
+ *   Pointer to Ethernet device.
+ * @param[in] attr
+ *   Pointer to the table attributes.
+ * @param[in] item_templates
+ *   Item template array to be binded to the table.
+ * @param[in] nb_item_templates
+ *   Number of item templates.
+ * @param[in] action_templates
+ *   Action template array to be binded to the table.
+ * @param[in] nb_action_templates
+ *   Number of action templates.
+ * @param[out] error
+ *   Pointer to error structure.
+ *
+ * @return
+ *   Table on success, Otherwise, returns negative error code, rte_errno is set
+ *   and error structure is filled.
+ */
+static struct rte_flow_template_table *
+flow_hw_template_table_create(struct rte_eth_dev *dev,
+			      const struct rte_flow_template_table_attr *attr,
+			      struct rte_flow_pattern_template *item_templates[],
+			      uint8_t nb_item_templates,
+			      struct rte_flow_actions_template *action_templates[],
+			      uint8_t nb_action_templates,
+			      struct rte_flow_error *error)
+{
+	struct rte_flow_template_table_attr table_attr = {
+		.flow_attr = { 0 },
+		.nb_flows = 0,
+	};
+
+	rte_memcpy(&table_attr, attr, sizeof(table_attr));
+	if (flow_hw_translate_group(dev, attr, &table_attr.flow_attr.group, error))
+		return NULL;
+	return flow_hw_table_create(dev, &table_attr, item_templates, nb_item_templates,
+				    action_templates, nb_action_templates, error);
 }
 
 /**
@@ -4382,7 +4472,7 @@ const struct mlx5_flow_driver_ops mlx5_flow_hw_drv_ops = {
 	.pattern_template_destroy = flow_hw_pattern_template_destroy,
 	.actions_template_create = flow_hw_actions_template_create,
 	.actions_template_destroy = flow_hw_actions_template_destroy,
-	.template_table_create = flow_hw_table_create,
+	.template_table_create = flow_hw_template_table_create,
 	.template_table_destroy = flow_hw_table_destroy,
 	.async_flow_create = flow_hw_async_flow_create,
 	.async_flow_destroy = flow_hw_async_flow_destroy,
