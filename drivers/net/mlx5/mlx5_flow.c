@@ -83,8 +83,6 @@ tunnel_flow_group_to_flow_table(struct rte_eth_dev *dev,
 				uint32_t group, uint32_t *table,
 				struct rte_flow_error *error);
 
-static struct mlx5_flow_workspace *mlx5_flow_push_thread_workspace(void);
-static void mlx5_flow_pop_thread_workspace(void);
 static int
 mlx5_flow_drv_query(struct rte_eth_dev *dev,
 		    struct rte_flow *flow,
@@ -7772,7 +7770,7 @@ err:
  *
  * @return pointer to thread specific flow workspace data, NULL on error.
  */
-static struct mlx5_flow_workspace*
+struct mlx5_flow_workspace*
 mlx5_flow_push_thread_workspace(void)
 {
 	struct mlx5_flow_workspace *curr;
@@ -7813,7 +7811,7 @@ mlx5_flow_push_thread_workspace(void)
  *
  * @return pointer to thread specific flow workspace data, NULL on error.
  */
-static void
+void
 mlx5_flow_pop_thread_workspace(void)
 {
 	struct mlx5_flow_workspace *data = mlx5_flow_get_thread_workspace();

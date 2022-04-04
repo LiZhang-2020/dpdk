@@ -12648,6 +12648,7 @@ flow_dv_translate_items_hws(const struct rte_flow_item *items,
 			    uint8_t *match_criteria,
 			    struct rte_flow_error *error)
 {
+	struct mlx5_flow_workspace *flow_wks = mlx5_flow_push_thread_workspace();
 	struct mlx5_flow_rss_desc rss_desc = { .level = attr->rss_level };
 	struct rte_flow_attr rattr = {
 		.group = attr->group,
@@ -12665,17 +12666,20 @@ flow_dv_translate_items_hws(const struct rte_flow_item *items,
 		.rss_desc = &rss_desc,
 	};
 	const struct rte_flow_item *gre_item = NULL;
-	int ret;
+	int ret = 0;
 
+	RTE_SET_USED(flow_wks);
 	for (; items->type != RTE_FLOW_ITEM_TYPE_END; items++) {
-		if (!mlx5_flow_os_item_supported(items->type))
-			return rte_flow_error_set(error, ENOTSUP,
-						  RTE_FLOW_ERROR_TYPE_ITEM,
-						  NULL, "item not supported");
+		if (!mlx5_flow_os_item_supported(items->type)) {
+			ret = rte_flow_error_set(error, ENOTSUP,
+						 RTE_FLOW_ERROR_TYPE_ITEM,
+						 NULL, "item not supported");
+			goto exit;
+		}
 		ret = flow_dv_translate_items(&rte_eth_devices[attr->port_id],
 			items, &wks, key, key_type,  NULL);
 		if (ret)
-			return ret;
+			goto exit;
 		if (items->type == RTE_FLOW_ITEM_TYPE_GRE)
 			gre_item = items;
 	}
@@ -12715,7 +12719,9 @@ flow_dv_translate_items_hws(const struct rte_flow_item *items,
 		*match_criteria = flow_dv_matcher_enable(key);
 	if (item_flags)
 		*item_flags = wks.item_flags;
-	return 0;
+exit:
+	mlx5_flow_pop_thread_workspace();
+	return ret;
 }
 
 /**
