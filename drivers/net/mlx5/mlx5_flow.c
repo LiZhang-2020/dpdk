@@ -12731,7 +12731,14 @@ mlx5_flow_field_id_to_modify_info
 	case RTE_FLOW_FIELD_TAG:
 		{
 			MLX5_ASSERT(data->offset + width <= 32);
-			int reg = flow_hw_get_reg_id(RTE_FLOW_ITEM_TYPE_TAG, data->level);
+			int reg;
+
+			if (priv->sh->config.dv_flow_en == 2)
+				reg = flow_hw_get_reg_id(RTE_FLOW_ITEM_TYPE_TAG,
+							 data->level);
+			else
+				reg = mlx5_flow_get_reg_id(dev, MLX5_APP_TAG,
+							   data->level, error);
 			if (reg < 0)
 				return;
 			MLX5_ASSERT(reg != REG_NON);
