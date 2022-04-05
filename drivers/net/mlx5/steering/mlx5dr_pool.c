@@ -220,6 +220,12 @@ static int mlx5dr_pool_buddy_get_mem_chunk(struct mlx5dr_pool *pool,
 			if (*seg != -1)
 				goto found;
 
+			if (pool->flags & MLX5DR_POOL_FLAGS_ONE_RESOURCE) {
+				DR_LOG(ERR, "Fail to allocate seg for one resource pool");
+				err = rte_errno;
+				goto out;
+			}
+
 			if (new_mem) {
 				/* We have new memory pool, should be place for us */
 				assert(false);
@@ -275,10 +281,19 @@ static int mlx5dr_pool_buddy_db_init(struct mlx5dr_pool *pool, uint32_t log_rang
 {
 	pool->db.buddy_manager = simple_calloc(1, sizeof(*pool->db.buddy_manager));
 	if (!pool->db.buddy_manager) {
-		DR_LOG(ERR, "No mem for buddy_manager with log_range: %d",
-			log_range);
+		DR_LOG(ERR, "No mem for buddy_manager with log_range: %d", log_range);
 		rte_errno = ENOMEM;
 		return rte_errno;
+	}
+
+	if (pool->flags & MLX5DR_POOL_FLAGS_ALLOC_MEM_ON_CREATE) {
+		bool new_buddy;
+
+		if (!mlx5dr_pool_buddy_get_next_buddy(pool, 0, log_range, &new_buddy)) {
+			DR_LOG(ERR, "Failed allocating memory on create log_sz: %d", log_range);
+			simple_free(pool->db.buddy_manager);
+			return rte_errno;
+		}
 	}
 
 	pool->p_db_uninit = &mlx5dr_pool_buddy_db_uninit;
@@ -616,11 +631,11 @@ mlx5dr_pool_create(struct mlx5dr_context *ctx, struct mlx5dr_pool_attr *pool_att
 	pthread_spin_init(&pool->lock, PTHREAD_PROCESS_PRIVATE);
 
 	/* support general db */
-	if (pool->flags & (MLX5DR_POOL_FLAGS_RELEASE_FREE_RESOURCE |
-			   MLX5DR_POOL_FLAGS_RESOURCE_PER_CHUNK))
+	if (pool->flags == (MLX5DR_POOL_FLAGS_RELEASE_FREE_RESOURCE |
+			    MLX5DR_POOL_FLAGS_RESOURCE_PER_CHUNK))
 		res_db_type = MLX5DR_POOL_DB_TYPE_GENERAL_SIZE;
-	else if (pool->flags & (MLX5DR_POOL_FLAGS_ONE_RESOURCE |
-				MLX5DR_POOL_FLAGS_FIXED_SIZE_OBJECTS))
+	else if (pool->flags == (MLX5DR_POOL_FLAGS_ONE_RESOURCE |
+				 MLX5DR_POOL_FLAGS_FIXED_SIZE_OBJECTS))
 		res_db_type = MLX5DR_POOL_DB_TYPE_ONE_SIZE_RESOURCE;
 	else
 		res_db_type = MLX5DR_POOL_DB_TYPE_BUDDY;
