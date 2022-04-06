@@ -47,6 +47,11 @@
 #define MLX5_HW_LOWEST_PRIO_ROOT 15
 
 static int flow_hw_flush_all_ctrl_flows(struct rte_eth_dev *dev);
+static int flow_hw_translate_group(struct rte_eth_dev *dev,
+				   const struct mlx5_flow_template_table_cfg *cfg,
+				   uint32_t group,
+				   uint32_t *table_group,
+				   struct rte_flow_error *error);
 
 const struct mlx5_flow_driver_ops mlx5_flow_hw_drv_ops;
 
@@ -188,12 +193,12 @@ flow_hw_get_ctrl_queue(struct mlx5_priv *priv)
  */
 static struct mlx5_hw_jump_action *
 flow_hw_jump_action_register(struct rte_eth_dev *dev,
-			     const struct rte_flow_attr *attr,
+			     const struct mlx5_flow_template_table_cfg *cfg,
 			     uint32_t dest_group,
 			     struct rte_flow_error *error)
 {
 	struct mlx5_priv *priv = dev->data->dev_private;
-	struct rte_flow_attr jattr = *attr;
+	struct rte_flow_attr jattr = cfg->attr.flow_attr;
 	struct mlx5_flow_group *grp;
 	struct mlx5_flow_cb_ctx ctx = {
 		.dev = dev,
@@ -201,9 +206,13 @@ flow_hw_jump_action_register(struct rte_eth_dev *dev,
 		.data = &jattr,
 	};
 	struct mlx5_list_entry *ge;
+	uint32_t target_group;
 
-	jattr.group = dest_group;
-	ge = mlx5_hlist_register(priv->sh->flow_tbls, dest_group, &ctx);
+	target_group = dest_group;
+	if (flow_hw_translate_group(dev, cfg, dest_group, &target_group, error))
+		return NULL;
+	jattr.group = target_group;
+	ge = mlx5_hlist_register(priv->sh->flow_tbls, target_group, &ctx);
 	if (!ge)
 		return NULL;
 	grp = container_of(ge, struct mlx5_flow_group, entry);
@@ -843,7 +852,8 @@ flow_hw_represented_port_compile(struct rte_eth_dev *dev,
 }
 
 static __rte_always_inline int
-flow_hw_meter_compile(struct rte_eth_dev *dev, const struct rte_flow_attr *attr,
+flow_hw_meter_compile(struct rte_eth_dev *dev,
+		      const struct mlx5_flow_template_table_cfg *cfg,
 		      uint32_t  start_pos, const struct rte_flow_action *action,
 		      struct mlx5_hw_actions *acts, uint32_t *end_pos,
 		      struct rte_flow_error *error)
@@ -852,17 +862,18 @@ flow_hw_meter_compile(struct rte_eth_dev *dev, const struct rte_flow_attr *attr,
 	struct mlx5_aso_mtr *aso_mtr;
 	const struct rte_flow_action_meter *meter = action->conf;
 	uint32_t pos = start_pos;
+	uint32_t group = cfg->attr.flow_attr.group;
 
 	aso_mtr = mlx5_aso_meter_by_idx(priv, meter->mtr_id);
 	acts->rule_acts[pos].action = priv->mtr_bulk.action;
 	acts->rule_acts[pos].aso.offset = aso_mtr->offset;
-		acts->jump = flow_hw_jump_action_register
-		(dev, attr, aso_mtr->fm.group, error);
+	acts->jump = flow_hw_jump_action_register
+		(dev, cfg, aso_mtr->fm.group, error);
 	if (!acts->jump) {
 		*end_pos = start_pos;
 		return -ENOMEM;
 	}
-	acts->rule_acts[++pos].action = (!!attr->group) ?
+	acts->rule_acts[++pos].action = (!!group) ?
 				    acts->jump->hws_action :
 				    acts->jump->root_action;
 	*end_pos = pos;
@@ -883,8 +894,8 @@ flow_hw_meter_compile(struct rte_eth_dev *dev, const struct rte_flow_attr *attr,
  *
  * @param[in] dev
  *   Pointer to the rte_eth_dev structure.
- * @param[in] table_attr
- *   Pointer to the table attributes.
+ * @param[in] cfg
+ *   Pointer to the table configuration.
  * @param[in] item_templates
  *   Item template array to be binded to the table.
  * @param[in/out] acts
@@ -899,12 +910,13 @@ flow_hw_meter_compile(struct rte_eth_dev *dev, const struct rte_flow_attr *attr,
  */
 static int
 flow_hw_actions_translate(struct rte_eth_dev *dev,
-			  const struct rte_flow_template_table_attr *table_attr,
+			  const struct mlx5_flow_template_table_cfg *cfg,
 			  struct mlx5_hw_actions *acts,
 			  struct rte_flow_actions_template *at,
 			  struct rte_flow_error *error)
 {
 	struct mlx5_priv *priv = dev->data->dev_private;
+	const struct rte_flow_template_table_attr *table_attr = &cfg->attr;
 	const struct rte_flow_attr *attr = &table_attr->flow_attr;
 	struct rte_flow_action *actions = at->actions;
 	struct rte_flow_action *masks = at->masks;
@@ -982,7 +994,7 @@ flow_hw_actions_translate(struct rte_eth_dev *dev,
 					((const struct rte_flow_action_jump *)
 					actions->conf)->group;
 				acts->jump = flow_hw_jump_action_register
-						(dev, attr, jump_group, error);
+						(dev, cfg, jump_group, error);
 				if (!acts->jump)
 					goto err;
 				acts->rule_acts[i].action = (!!attr->group) ?
@@ -1116,7 +1128,7 @@ flow_hw_actions_translate(struct rte_eth_dev *dev,
 			if (actions->conf && masks->conf &&
 			    ((const struct rte_flow_action_meter *)
 			     masks->conf)->mtr_id) {
-				ret = flow_hw_meter_compile(dev, attr,
+				ret = flow_hw_meter_compile(dev, cfg,
 						i, actions, acts, &i, error);
 				if (ret)
 					goto err;
@@ -1491,7 +1503,7 @@ flow_hw_actions_construct(struct rte_eth_dev *dev,
 			jump_group = ((const struct rte_flow_action_jump *)
 						action->conf)->group;
 			jump = flow_hw_jump_action_register
-				(dev, &attr, jump_group, NULL);
+				(dev, &table->cfg, jump_group, NULL);
 			if (!jump)
 				return -1;
 			rule_acts[act_data->action_dst].action =
@@ -1559,7 +1571,7 @@ flow_hw_actions_construct(struct rte_eth_dev *dev,
 			rule_acts[act_data->action_dst].aso.offset =
 								mtr->offset;
 			jump = flow_hw_jump_action_register
-				(dev, &attr, mtr->fm.group, NULL);
+				(dev, &table->cfg, mtr->fm.group, NULL);
 			if (!jump)
 				return -1;
 			MLX5_ASSERT
@@ -2045,8 +2057,8 @@ flow_hw_q_flow_flush(struct rte_eth_dev *dev,
  *
  * @param[in] dev
  *   Pointer to the rte_eth_dev structure.
- * @param[in] attr
- *   Pointer to the table attributes.
+ * @param[in] table_cfg
+ *   Pointer to the table configuration.
  * @param[in] item_templates
  *   Item template array to be binded to the table.
  * @param[in] nb_item_templates
@@ -2063,7 +2075,7 @@ flow_hw_q_flow_flush(struct rte_eth_dev *dev,
  */
 static struct rte_flow_template_table *
 flow_hw_table_create(struct rte_eth_dev *dev,
-		     const struct rte_flow_template_table_attr *attr,
+		     const struct mlx5_flow_template_table_cfg *table_cfg,
 		     struct rte_flow_pattern_template *item_templates[],
 		     uint8_t nb_item_templates,
 		     struct rte_flow_actions_template *action_templates[],
@@ -2075,6 +2087,7 @@ flow_hw_table_create(struct rte_eth_dev *dev,
 	struct rte_flow_template_table *tbl = NULL;
 	struct mlx5_flow_group *grp;
 	struct mlx5dr_match_template *mt[MLX5_HW_TBL_MAX_ITEM_TEMPLATE];
+	const struct rte_flow_template_table_attr *attr = &table_cfg->attr;
 	struct rte_flow_attr flow_attr = attr->flow_attr;
 	struct mlx5_flow_cb_ctx ctx = {
 		.dev = dev,
@@ -2121,6 +2134,7 @@ flow_hw_table_create(struct rte_eth_dev *dev,
 	tbl = mlx5_malloc(MLX5_MEM_ZERO, sizeof(*tbl), 0, rte_socket_id());
 	if (!tbl)
 		goto error;
+	tbl->cfg = *table_cfg;
 	/* Allocate flow indexed pool. */
 	tbl->flow = mlx5_ipool_create(&cfg);
 	if (!tbl->flow)
@@ -2164,7 +2178,7 @@ flow_hw_table_create(struct rte_eth_dev *dev,
 			goto at_error;
 		}
 		LIST_INIT(&tbl->ats[i].acts.act_list);
-		err = flow_hw_actions_translate(dev, attr,
+		err = flow_hw_actions_translate(dev, &tbl->cfg,
 						&tbl->ats[i].acts,
 						action_templates[i], error);
 		if (err) {
@@ -2216,8 +2230,10 @@ error:
  *
  * @param[in] dev
  *   Pointer to Ethernet device.
- * @param[in] attr
- *   Pointer to the table attributes.
+ * @param[in] cfg
+ *   Pointer to the template table configuration.
+ * @param[in] group
+ *   Currently used group index (table group or jump destination).
  * @param[out] table_group
  *   Pointer to output group index.
  * @param[out] error
@@ -2229,22 +2245,23 @@ error:
  */
 static int
 flow_hw_translate_group(struct rte_eth_dev *dev,
-			const struct rte_flow_template_table_attr *attr,
+			const struct mlx5_flow_template_table_cfg *cfg,
+			uint32_t group,
 			uint32_t *table_group,
 			struct rte_flow_error *error)
 {
 	struct mlx5_priv *priv = dev->data->dev_private;
-	const struct rte_flow_attr *flow_attr = &attr->flow_attr;
+	const struct rte_flow_attr *flow_attr = &cfg->attr.flow_attr;
 
-	if (priv->sh->config.dv_esw_en && flow_attr->transfer) {
-		if (flow_attr->group > MLX5_HW_MAX_TRANSFER_GROUP)
+	if (priv->sh->config.dv_esw_en && cfg->external && flow_attr->transfer) {
+		if (group > MLX5_HW_MAX_TRANSFER_GROUP)
 			return rte_flow_error_set(error, EINVAL,
 						  RTE_FLOW_ERROR_TYPE_ATTR_GROUP,
 						  NULL,
 						  "group index not supported");
-		*table_group = flow_attr->group + 1;
+		*table_group = group + 1;
 	} else {
-		*table_group = flow_attr->group;
+		*table_group = group;
 	}
 	return 0;
 }
@@ -2283,15 +2300,15 @@ flow_hw_template_table_create(struct rte_eth_dev *dev,
 			      uint8_t nb_action_templates,
 			      struct rte_flow_error *error)
 {
-	struct rte_flow_template_table_attr table_attr = {
-		.flow_attr = { 0 },
-		.nb_flows = 0,
+	struct mlx5_flow_template_table_cfg cfg = {
+		.attr = *attr,
+		.external = true,
 	};
+	uint32_t group = attr->flow_attr.group;
 
-	rte_memcpy(&table_attr, attr, sizeof(table_attr));
-	if (flow_hw_translate_group(dev, attr, &table_attr.flow_attr.group, error))
+	if (flow_hw_translate_group(dev, &cfg, group, &cfg.attr.flow_attr.group, error))
 		return NULL;
-	return flow_hw_table_create(dev, &table_attr, item_templates, nb_item_templates,
+	return flow_hw_table_create(dev, &cfg, item_templates, nb_item_templates,
 				    action_templates, nb_action_templates, error);
 }
 
@@ -3563,8 +3580,12 @@ flow_hw_create_ctrl_sq_miss_root_table(struct rte_eth_dev *dev,
 		},
 		.nb_flows = MLX5_HW_CTRL_FLOW_NB_RULES,
 	};
+	struct mlx5_flow_template_table_cfg cfg = {
+		.attr = attr,
+		.external = false,
+	};
 
-	return flow_hw_table_create(dev, &attr, &it, 1, &at, 1, NULL);
+	return flow_hw_table_create(dev, &cfg, &it, 1, &at, 1, NULL);
 }
 
 
@@ -3598,8 +3619,12 @@ flow_hw_create_ctrl_sq_miss_table(struct rte_eth_dev *dev,
 		},
 		.nb_flows = MLX5_HW_CTRL_FLOW_NB_RULES,
 	};
+	struct mlx5_flow_template_table_cfg cfg = {
+		.attr = attr,
+		.external = false,
+	};
 
-	return flow_hw_table_create(dev, &attr, &it, 1, &at, 1, NULL);
+	return flow_hw_table_create(dev, &cfg, &it, 1, &at, 1, NULL);
 }
 
 /**
@@ -3632,8 +3657,12 @@ flow_hw_create_ctrl_jump_table(struct rte_eth_dev *dev,
 		},
 		.nb_flows = MLX5_HW_CTRL_FLOW_NB_RULES,
 	};
+	struct mlx5_flow_template_table_cfg cfg = {
+		.attr = attr,
+		.external = false,
+	};
 
-	return flow_hw_table_create(dev, &attr, &it, 1, &at, 1, NULL);
+	return flow_hw_table_create(dev, &cfg, &it, 1, &at, 1, NULL);
 }
 
 /**
@@ -4323,6 +4352,10 @@ flow_hw_create_tx_default_mreg_copy(struct rte_eth_dev *dev,
 		},
 		.nb_flows = 1,
 	};
+	struct mlx5_flow_template_table_cfg tx_tbl_cfg = {
+		.attr = tx_tbl_attr,
+		.external = false,
+	};
 	struct rte_flow_template_table *tx_tbl = NULL;
 	struct rte_flow_op_attr q_ops = {
 		.postpone = 1,
@@ -4350,7 +4383,7 @@ flow_hw_create_tx_default_mreg_copy(struct rte_eth_dev *dev,
 					     copy_reg_mask, error);
 	if (!at)
 		goto err_exit;
-	tx_tbl = flow_hw_table_create(dev, &tx_tbl_attr, &pt, 1, &at, 1, error);
+	tx_tbl = flow_hw_table_create(dev, &tx_tbl_cfg, &pt, 1, &at, 1, error);
 	if (!tx_tbl)
 		goto err_exit;
 	tx_cpy_flow = flow_hw_async_flow_create(dev, ctrl_q, &q_ops,

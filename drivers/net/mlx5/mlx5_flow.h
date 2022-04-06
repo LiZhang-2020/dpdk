@@ -1291,6 +1291,11 @@ struct mlx5_flow_group {
 #define MLX5_HW_TBL_MAX_ITEM_TEMPLATE 2
 #define MLX5_HW_TBL_MAX_ACTION_TEMPLATE 32
 
+struct mlx5_flow_template_table_cfg {
+	struct rte_flow_template_table_attr attr; /* Table attributes passed through flow API. */
+	bool external; /* True if created by flow API, false if table is internal to PMD. */
+};
+
 struct rte_flow_template_table {
 	LIST_ENTRY(rte_flow_template_table) next;
 	/* The group rte_flow_template_table uses. */
@@ -1301,6 +1306,7 @@ struct rte_flow_template_table {
 	/* Action templates bind to the table. */
 	struct mlx5_hw_action_template ats[MLX5_HW_TBL_MAX_ACTION_TEMPLATE];
 	struct mlx5_indexed_pool *flow; /* The table's flow ipool. */
+	struct mlx5_flow_template_table_cfg cfg;
 	uint32_t type; /* Flow table type RX/TX/FDB. */
 	uint8_t nb_item_templates; /* Item template number. */
 	uint8_t nb_action_templates; /* Action template number. */
