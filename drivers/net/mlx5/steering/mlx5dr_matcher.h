@@ -34,6 +34,21 @@ struct mlx5dr_match_template {
 	uint32_t refcount;
 };
 
+struct mlx5dr_matcher_match_ste {
+	struct mlx5dr_pool_chunk ste;
+	struct mlx5dr_devx_obj *rtc_0;
+	struct mlx5dr_devx_obj *rtc_1;
+};
+
+struct mlx5dr_matcher_action_ste {
+	struct mlx5dr_pool_chunk ste;
+	struct mlx5dr_pool_chunk stc;
+	struct mlx5dr_devx_obj *rtc_0;
+	struct mlx5dr_devx_obj *rtc_1;
+	struct mlx5dr_pool *pool;
+	uint8_t max_stes;
+};
+
 struct mlx5dr_matcher {
 	struct mlx5dr_table *tbl;
 	struct mlx5dr_matcher_attr attr;
@@ -41,10 +56,9 @@ struct mlx5dr_matcher {
 	struct mlx5dr_match_template *mt[MLX5DR_MATCHER_MAX_MT];
 	uint8_t num_of_mt;
 	struct mlx5dr_devx_obj *end_ft;
-	struct mlx5dr_devx_obj *rtc_0;
-	struct mlx5dr_devx_obj *rtc_1;
-	struct mlx5dr_pool_chunk ste;
 	struct mlx5dr_matcher *col_matcher;
+	struct mlx5dr_matcher_match_ste match_ste;
+	struct mlx5dr_matcher_action_ste action_ste;
 	LIST_ENTRY(mlx5dr_matcher) next;
 };
 

@@ -111,13 +111,15 @@ static int mlx5dr_debug_dump_matcher(FILE *f, struct mlx5dr_matcher *matcher)
 	enum mlx5dr_table_type tbl_type = matcher->tbl->type;
 	struct mlx5dr_context *ctx = matcher->tbl->ctx;
 	struct mlx5dr_devx_obj *ste_0, *ste_1 = NULL;
+	struct mlx5dr_pool_chunk *ste;
 	struct mlx5dr_pool *ste_pool;
 	int ret;
 
+	ste = &matcher->match_ste.ste;
 	ste_pool = ctx->ste_pool[tbl_type];
-	ste_0 = mlx5dr_pool_chunk_get_base_devx_obj(ste_pool, &matcher->ste);
+	ste_0 = mlx5dr_pool_chunk_get_base_devx_obj(ste_pool, ste);
 	if (tbl_type == MLX5DR_TABLE_TYPE_FDB)
-		ste_1 = mlx5dr_pool_chunk_get_base_devx_obj_mirror(ste_pool, &matcher->ste);
+		ste_1 = mlx5dr_pool_chunk_get_base_devx_obj_mirror(ste_pool, ste);
 
 	ret = fprintf(f, "%d,0x%" PRIx64 ",0x%" PRIx64 ",%d,%d,0x%" PRIx64 ",%d,%d,%d,%d\n",
 		      MLX5DR_DEBUG_RES_TYPE_MATCHER,
@@ -126,9 +128,10 @@ static int mlx5dr_debug_dump_matcher(FILE *f, struct mlx5dr_matcher *matcher)
 		      matcher->num_of_mt,
 		      is_root ? 0 : matcher->end_ft->id,
 		      matcher->col_matcher ? (uint64_t)(uintptr_t)matcher->col_matcher : 0,
-		      matcher->rtc_0 ? matcher->rtc_0->id : 0,
+		      matcher->match_ste.rtc_0 ?
+		      matcher->match_ste.rtc_0->id : 0,
 		      ste_0 ? ste_0->id : 0,
-		      matcher->rtc_1 ? matcher->rtc_1->id : 0,
+		      matcher->match_ste.rtc_1 ? matcher->match_ste.rtc_1->id : 0,
 		      ste_1 ? ste_1->id : 0);
 	if (ret < 0) {
 		rte_errno = EINVAL;

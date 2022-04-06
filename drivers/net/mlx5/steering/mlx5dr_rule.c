@@ -47,9 +47,9 @@ static void mlx5dr_rule_init_dep_wqe(struct mlx5dr_send_ring_dep_wqe *dep_wqe,
 	switch (tbl->type) {
 	case MLX5DR_TABLE_TYPE_NIC_RX:
 	case MLX5DR_TABLE_TYPE_NIC_TX:
-		dep_wqe->rtc_0 = matcher->rtc_0->id;
+		dep_wqe->rtc_0 = matcher->match_ste.rtc_0->id;
 		dep_wqe->retry_rtc_0 = matcher->col_matcher ?
-				       matcher->col_matcher->rtc_0->id : 0;
+				       matcher->col_matcher->match_ste.rtc_0->id : 0;
 		dep_wqe->rtc_1 = 0;
 		dep_wqe->retry_rtc_1 = 0;
 		break;
@@ -58,15 +58,15 @@ static void mlx5dr_rule_init_dep_wqe(struct mlx5dr_send_ring_dep_wqe *dep_wqe,
 		mlx5dr_rule_skip(matcher->mt[0], items, &skip_rx, &skip_tx);
 
 		if (!skip_rx) {
-			dep_wqe->rtc_0 = matcher->rtc_0->id;
+			dep_wqe->rtc_0 = matcher->match_ste.rtc_0->id;
 			dep_wqe->retry_rtc_0 = matcher->col_matcher ?
-					       matcher->col_matcher->rtc_0->id : 0;
+					       matcher->col_matcher->match_ste.rtc_0->id : 0;
 		}
 
 		if (!skip_tx) {
-			dep_wqe->rtc_1 = matcher->rtc_1->id;
+			dep_wqe->rtc_1 = matcher->match_ste.rtc_1->id;
 			dep_wqe->retry_rtc_1 = matcher->col_matcher ?
-					       matcher->col_matcher->rtc_1->id : 0;
+					       matcher->col_matcher->match_ste.rtc_1->id : 0;
 		}
 
 		break;
