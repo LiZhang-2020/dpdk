@@ -130,6 +130,19 @@ cdef class RteFlowItemEthdev(PydiruCM):
         self.item.port_id = port_id
 
 
+cdef class RteFlowItemVxlan(PydiruCM):
+     def __init__(self, flags=0, vni=0):
+        """
+        Initializes a RteFlowItemVxlan object representing rte_flow_item_vxlan
+        C struct.
+        :param flags: VXLAN flags
+        :param vni: VXLAN identifier
+        """
+        for i, b in enumerate(vni.to_bytes(3, 'big')):
+            self.item.vni[i] = b
+        self.item.flags = flags
+
+
 cdef class RteFlowItem(PydiruCM):
     def __init__(self, flow_item_type, spec=None, mask=None, last=None):
         self.item.type = flow_item_type
@@ -154,6 +167,8 @@ cdef class RteFlowItem(PydiruCM):
         if flow_item_type in [e.RTE_FLOW_ITEM_TYPE_PORT_REPRESENTOR,
                               e.RTE_FLOW_ITEM_TYPE_REPRESENTED_PORT]:
             size = sizeof(pdr.rte_flow_item_ethdev)
+        if flow_item_type == e.RTE_FLOW_ITEM_TYPE_VXLAN:
+            size = sizeof(pdr.rte_flow_item_vxlan)
         if spec:
             self.item.spec = calloc(1, size)
             memcpy(self.item.spec, <void *>&((<RteFlowItem>spec).item), size)
