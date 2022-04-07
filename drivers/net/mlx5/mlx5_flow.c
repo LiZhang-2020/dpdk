@@ -3872,6 +3872,8 @@ flow_get_drv_type(struct rte_eth_dev *dev, const struct rte_flow_attr *attr)
 	 */
 	if (priv->sh->config.dv_flow_en == 2)
 		return MLX5_FLOW_TYPE_HW;
+	if (!attr)
+		return MLX5_FLOW_TYPE_MIN;
 	/* If no OS specific type - continue with DV/VERBS selection */
 	if (attr->transfer && priv->sh->config.dv_esw_en)
 		type = MLX5_FLOW_TYPE_DV;
@@ -8648,8 +8650,9 @@ mlx5_flow_info_get(struct rte_eth_dev *dev,
 		   struct rte_flow_error *error)
 {
 	const struct mlx5_flow_driver_ops *fops;
+	struct rte_flow_attr attr = {0};
 
-	if (flow_get_drv_type(dev, NULL) != MLX5_FLOW_TYPE_HW)
+	if (flow_get_drv_type(dev, &attr) != MLX5_FLOW_TYPE_HW)
 		return rte_flow_error_set(error, ENOTSUP,
 				RTE_FLOW_ERROR_TYPE_UNSPECIFIED,
 				NULL,
@@ -8683,8 +8686,9 @@ mlx5_flow_port_configure(struct rte_eth_dev *dev,
 			 struct rte_flow_error *error)
 {
 	const struct mlx5_flow_driver_ops *fops;
+	struct rte_flow_attr attr = {0};
 
-	if (flow_get_drv_type(dev, NULL) != MLX5_FLOW_TYPE_HW)
+	if (flow_get_drv_type(dev, &attr) != MLX5_FLOW_TYPE_HW)
 		return rte_flow_error_set(error, ENOTSUP,
 				RTE_FLOW_ERROR_TYPE_UNSPECIFIED,
 				NULL,
@@ -8715,8 +8719,9 @@ mlx5_flow_pattern_template_create(struct rte_eth_dev *dev,
 		struct rte_flow_error *error)
 {
 	const struct mlx5_flow_driver_ops *fops;
+	struct rte_flow_attr fattr = {0};
 
-	if (flow_get_drv_type(dev, NULL) != MLX5_FLOW_TYPE_HW) {
+	if (flow_get_drv_type(dev, &fattr) != MLX5_FLOW_TYPE_HW) {
 		rte_flow_error_set(error, ENOTSUP,
 				RTE_FLOW_ERROR_TYPE_UNSPECIFIED,
 				NULL,
@@ -8746,8 +8751,9 @@ mlx5_flow_pattern_template_destroy(struct rte_eth_dev *dev,
 				   struct rte_flow_error *error)
 {
 	const struct mlx5_flow_driver_ops *fops;
+	struct rte_flow_attr attr = {0};
 
-	if (flow_get_drv_type(dev, NULL) != MLX5_FLOW_TYPE_HW)
+	if (flow_get_drv_type(dev, &attr) != MLX5_FLOW_TYPE_HW)
 		return rte_flow_error_set(error, ENOTSUP,
 				RTE_FLOW_ERROR_TYPE_UNSPECIFIED,
 				NULL,
@@ -8781,8 +8787,9 @@ mlx5_flow_actions_template_create(struct rte_eth_dev *dev,
 			struct rte_flow_error *error)
 {
 	const struct mlx5_flow_driver_ops *fops;
+	struct rte_flow_attr fattr = {0};
 
-	if (flow_get_drv_type(dev, NULL) != MLX5_FLOW_TYPE_HW) {
+	if (flow_get_drv_type(dev, &fattr) != MLX5_FLOW_TYPE_HW) {
 		rte_flow_error_set(error, ENOTSUP,
 				RTE_FLOW_ERROR_TYPE_UNSPECIFIED,
 				NULL,
@@ -8812,8 +8819,9 @@ mlx5_flow_actions_template_destroy(struct rte_eth_dev *dev,
 				   struct rte_flow_error *error)
 {
 	const struct mlx5_flow_driver_ops *fops;
+	struct rte_flow_attr attr = {0};
 
-	if (flow_get_drv_type(dev, NULL) != MLX5_FLOW_TYPE_HW)
+	if (flow_get_drv_type(dev, &attr) != MLX5_FLOW_TYPE_HW)
 		return rte_flow_error_set(error, ENOTSUP,
 				RTE_FLOW_ERROR_TYPE_UNSPECIFIED,
 				NULL,
@@ -8853,8 +8861,9 @@ mlx5_flow_table_create(struct rte_eth_dev *dev,
 		       struct rte_flow_error *error)
 {
 	const struct mlx5_flow_driver_ops *fops;
+	struct rte_flow_attr fattr = {0};
 
-	if (flow_get_drv_type(dev, NULL) != MLX5_FLOW_TYPE_HW) {
+	if (flow_get_drv_type(dev, &fattr) != MLX5_FLOW_TYPE_HW) {
 		rte_flow_error_set(error, ENOTSUP,
 				RTE_FLOW_ERROR_TYPE_UNSPECIFIED,
 				NULL,
@@ -8890,8 +8899,9 @@ mlx5_flow_table_destroy(struct rte_eth_dev *dev,
 			struct rte_flow_error *error)
 {
 	const struct mlx5_flow_driver_ops *fops;
+	struct rte_flow_attr attr = {0};
 
-	if (flow_get_drv_type(dev, NULL) != MLX5_FLOW_TYPE_HW)
+	if (flow_get_drv_type(dev, &attr) != MLX5_FLOW_TYPE_HW)
 		return rte_flow_error_set(error, ENOTSUP,
 				RTE_FLOW_ERROR_TYPE_UNSPECIFIED,
 				NULL,
@@ -8938,8 +8948,9 @@ mlx5_flow_async_flow_create(struct rte_eth_dev *dev,
 			    struct rte_flow_error *error)
 {
 	const struct mlx5_flow_driver_ops *fops;
+	struct rte_flow_attr fattr = {0};
 
-	if (flow_get_drv_type(dev, NULL) != MLX5_FLOW_TYPE_HW) {
+	if (flow_get_drv_type(dev, &fattr) != MLX5_FLOW_TYPE_HW) {
 		rte_flow_error_set(error, ENOTSUP,
 				RTE_FLOW_ERROR_TYPE_UNSPECIFIED,
 				NULL,
@@ -8981,8 +8992,9 @@ mlx5_flow_async_flow_destroy(struct rte_eth_dev *dev,
 			     struct rte_flow_error *error)
 {
 	const struct mlx5_flow_driver_ops *fops;
+	struct rte_flow_attr fattr = {0};
 
-	if (flow_get_drv_type(dev, NULL) != MLX5_FLOW_TYPE_HW)
+	if (flow_get_drv_type(dev, &fattr) != MLX5_FLOW_TYPE_HW)
 		return rte_flow_error_set(error, ENOTSUP,
 				RTE_FLOW_ERROR_TYPE_UNSPECIFIED,
 				NULL,
@@ -9017,8 +9029,9 @@ mlx5_flow_pull(struct rte_eth_dev *dev,
 	       struct rte_flow_error *error)
 {
 	const struct mlx5_flow_driver_ops *fops;
+	struct rte_flow_attr attr = {0};
 
-	if (flow_get_drv_type(dev, NULL) != MLX5_FLOW_TYPE_HW)
+	if (flow_get_drv_type(dev, &attr) != MLX5_FLOW_TYPE_HW)
 		return rte_flow_error_set(error, ENOTSUP,
 				RTE_FLOW_ERROR_TYPE_UNSPECIFIED,
 				NULL,
@@ -9046,8 +9059,9 @@ mlx5_flow_push(struct rte_eth_dev *dev,
 	       struct rte_flow_error *error)
 {
 	const struct mlx5_flow_driver_ops *fops;
+	struct rte_flow_attr attr = {0};
 
-	if (flow_get_drv_type(dev, NULL) != MLX5_FLOW_TYPE_HW)
+	if (flow_get_drv_type(dev, &attr) != MLX5_FLOW_TYPE_HW)
 		return rte_flow_error_set(error, ENOTSUP,
 				RTE_FLOW_ERROR_TYPE_UNSPECIFIED,
 				NULL,
