@@ -119,6 +119,8 @@ def gen_outer_headers(msg_size, tunnel=TunnelType.GTP_U, **kwargs):
                 QFI (QoS flow identifier) field to use in the GTP PSC header.
             * *ttl*
                 Time to live value to use in the packet.
+            * *vxlan_vni*
+                VXLAN VNI value to use in the packet.
     :return: Outer headers
     """
 
@@ -217,6 +219,8 @@ def gen_packet(msg_size, l2=True, l3=PacketConsts.IP_V4, l4=PacketConsts.UDP_PRO
                 Source L4 port to use in the packet.
             * *gtp_psc_qfi*
                 QFI (QoS flow identifier) field to use in the GTP PSC header.
+            * *vni*
+                VXLAN VNI value to use in the packet.
     :return: Bytes of the generated packet
     """
     if tunnel:
