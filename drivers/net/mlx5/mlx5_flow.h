@@ -2534,4 +2534,6 @@ int mlx5_flow_hw_esw_create_mgr_sq_miss_flow(struct rte_eth_dev *dev);
 int mlx5_flow_hw_esw_create_sq_miss_flow(struct rte_eth_dev *dev,
 					 uint32_t txq);
 int mlx5_flow_hw_esw_create_default_jump_flow(struct rte_eth_dev *dev);
+int flow_hw_table_update(struct rte_eth_dev *dev,
+			 struct rte_flow_error *error);
 #endif /* RTE_PMD_MLX5_FLOW_H_ */

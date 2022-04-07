@@ -1670,6 +1670,8 @@ struct mlx5_priv {
 	/**< HW steering queue polling mechanism job descriptor LIFO. */
 	LIST_HEAD(flow_hw_tbl, rte_flow_template_table) flow_hw_tbl;
 	/**< HW steering rte flow table list header. */
+	LIST_HEAD(flow_hw_tbl_ongo, rte_flow_template_table) flow_hw_tbl_ongo;
+	/**< HW steering create ongoing rte flow table list header. */
 	struct mlx5_indexed_pool *acts_ipool; /* Action data indexed pool. */
 	struct mlx5_hws_cnt_pool *hws_cpool; /* HW steering's counter pool. */
 };

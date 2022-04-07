@@ -883,6 +883,7 @@ flow_hw_meter_compile(struct rte_eth_dev *dev,
 	}
 	return 0;
 }
+
 /**
  * Translate rte_flow actions to DR action.
  *
@@ -909,11 +910,11 @@ flow_hw_meter_compile(struct rte_eth_dev *dev,
  *    Table on success, NULL otherwise and rte_errno is set.
  */
 static int
-flow_hw_actions_translate(struct rte_eth_dev *dev,
-			  const struct mlx5_flow_template_table_cfg *cfg,
-			  struct mlx5_hw_actions *acts,
-			  struct rte_flow_actions_template *at,
-			  struct rte_flow_error *error)
+__flow_hw_actions_translate(struct rte_eth_dev *dev,
+			    const struct mlx5_flow_template_table_cfg *cfg,
+			    struct mlx5_hw_actions *acts,
+			    struct rte_flow_actions_template *at,
+			    struct rte_flow_error *error)
 {
 	struct mlx5_priv *priv = dev->data->dev_private;
 	const struct rte_flow_template_table_attr *table_attr = &cfg->attr;
@@ -1231,6 +1232,40 @@ err:
 	return rte_flow_error_set(error, err,
 				  RTE_FLOW_ERROR_TYPE_UNSPECIFIED, NULL,
 				  "fail to create rte table");
+}
+
+/**
+ * Translate rte_flow actions to DR action.
+ *
+ * @param[in] dev
+ *   Pointer to the rte_eth_dev structure.
+ * @param[in] tbl
+ *   Pointer to the flow template table.
+ * @param[out] error
+ *   Pointer to error structure.
+ *
+ * @return
+ *    0 on success, negative value otherwise and rte_errno is set.
+ */
+static int
+flow_hw_actions_translate(struct rte_eth_dev *dev,
+			  struct rte_flow_template_table *tbl,
+			  struct rte_flow_error *error)
+{
+	uint32_t i;
+
+	for (i = 0; i < tbl->nb_action_templates; i++) {
+		if (__flow_hw_actions_translate(dev, &tbl->cfg,
+						&tbl->ats[i].acts,
+						tbl->ats[i].action_template,
+						error))
+			goto err;
+	}
+	return 0;
+err:
+	while (i--)
+		__flow_hw_action_template_destroy(dev, &tbl->ats[i].acts);
+	return -1;
 }
 
 /**
@@ -1713,6 +1748,10 @@ flow_hw_async_flow_create(struct rte_eth_dev *dev,
 	uint32_t acts_num, flow_idx;
 	int ret;
 
+	if (unlikely((!dev->data->dev_started))) {
+		rte_errno = EINVAL;
+		goto error;
+	}
 	if (unlikely(!priv->hw_q[queue].job_idx)) {
 		rte_errno = ENOMEM;
 		goto error;
@@ -2107,6 +2146,7 @@ flow_hw_table_create(struct rte_eth_dev *dev,
 	struct mlx5_list_entry *ge;
 	uint32_t i, max_tpl = MLX5_HW_TBL_MAX_ITEM_TEMPLATE;
 	uint32_t nb_flows = rte_align32pow2(attr->nb_flows);
+	bool port_started = !!dev->data->dev_started;
 	int err;
 
 	/* HWS layer accepts only 1 item template with root table. */
@@ -2177,21 +2217,26 @@ flow_hw_table_create(struct rte_eth_dev *dev,
 			rte_errno = EINVAL;
 			goto at_error;
 		}
+		tbl->ats[i].action_template = action_templates[i];
 		LIST_INIT(&tbl->ats[i].acts.act_list);
-		err = flow_hw_actions_translate(dev, &tbl->cfg,
-						&tbl->ats[i].acts,
-						action_templates[i], error);
+		if (!port_started)
+			continue;
+		err = __flow_hw_actions_translate(dev, &tbl->cfg,
+						  &tbl->ats[i].acts,
+						  action_templates[i], error);
 		if (err) {
 			i++;
 			goto at_error;
 		}
-		tbl->ats[i].action_template = action_templates[i];
 	}
 	tbl->nb_action_templates = nb_action_templates;
 	tbl->type = attr->flow_attr.transfer ? MLX5DR_TABLE_TYPE_FDB :
 		    (attr->flow_attr.egress ? MLX5DR_TABLE_TYPE_NIC_TX :
 		    MLX5DR_TABLE_TYPE_NIC_RX);
-	LIST_INSERT_HEAD(&priv->flow_hw_tbl, tbl, next);
+	if (port_started)
+		LIST_INSERT_HEAD(&priv->flow_hw_tbl, tbl, next);
+	else
+		LIST_INSERT_HEAD(&priv->flow_hw_tbl_ongo, tbl, next);
 	return tbl;
 at_error:
 	while (i--) {
@@ -2220,6 +2265,33 @@ error:
 			  RTE_FLOW_ERROR_TYPE_UNSPECIFIED, NULL,
 			  "fail to create rte table");
 	return NULL;
+}
+
+/**
+ * Update flow template table.
+ *
+ * @param[in] dev
+ *   Pointer to the rte_eth_dev structure.
+ * @param[out] error
+ *   Pointer to error structure.
+ *
+ * @return
+ *    0 on success, negative value otherwise and rte_errno is set.
+ */
+int
+flow_hw_table_update(struct rte_eth_dev *dev,
+		     struct rte_flow_error *error)
+{
+	struct mlx5_priv *priv = dev->data->dev_private;
+	struct rte_flow_template_table *tbl;
+
+	while ((tbl = LIST_FIRST(&priv->flow_hw_tbl_ongo)) != NULL) {
+		if (flow_hw_actions_translate(dev, tbl, error))
+			return -1;
+		LIST_REMOVE(tbl, next);
+		LIST_INSERT_HEAD(&priv->flow_hw_tbl, tbl, next);
+	}
+	return 0;
 }
 
 /**
@@ -4029,6 +4101,10 @@ flow_hw_resource_release(struct rte_eth_dev *dev)
 	if (priv->sh->config.dv_esw_en &&
 	    priv->sh->config.dv_xmeta_en == MLX5_XMETA_MODE_META32_HWS) {
 		flow_hw_destroy_tx_default_mreg_copy(dev, NULL);
+	}
+	while (!LIST_EMPTY(&priv->flow_hw_tbl_ongo)) {
+		tbl = LIST_FIRST(&priv->flow_hw_tbl_ongo);
+		flow_hw_table_destroy(dev, tbl, NULL);
 	}
 	while (!LIST_EMPTY(&priv->flow_hw_tbl)) {
 		tbl = LIST_FIRST(&priv->flow_hw_tbl);
