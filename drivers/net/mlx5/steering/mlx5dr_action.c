@@ -276,7 +276,7 @@ static void mlx5dr_action_fill_stc_attr(struct mlx5dr_action *action,
 		attr->modify_action.dst_offset =
 			action->modify_action.dst_offset;
 		break;
-	case MLX5DR_ACTION_TYP_ASO_FLOW_METER:
+	case MLX5DR_ACTION_TYP_ASO_METER:
 		attr->action_offset = MLX5DR_ACTION_OFFSET_DW6;
 		attr->action_type = MLX5_IFC_STC_ACTION_TYPE_ASO;
 		attr->aso.devx_obj_id = obj->id;
@@ -566,10 +566,10 @@ free_action:
 	return NULL;
 }
 struct mlx5dr_action *
-mlx5dr_action_create_aso_flow_meter(struct mlx5dr_context *ctx,
-				    struct mlx5dr_devx_obj *devx_obj,
-				    uint8_t return_reg_id,
-				    uint32_t flags)
+mlx5dr_action_create_aso_meter(struct mlx5dr_context *ctx,
+			       struct mlx5dr_devx_obj *devx_obj,
+			       uint8_t return_reg_id,
+			       uint32_t flags)
 {
 	struct mlx5dr_action *action;
 	int ret;
@@ -580,7 +580,7 @@ mlx5dr_action_create_aso_flow_meter(struct mlx5dr_context *ctx,
 		return NULL;
 	}
 
-	action = mlx5dr_action_create_generic(ctx, flags, MLX5DR_ACTION_TYP_ASO_FLOW_METER);
+	action = mlx5dr_action_create_generic(ctx, flags, MLX5DR_ACTION_TYP_ASO_METER);
 	if (!action)
 		return NULL;
 
@@ -1368,7 +1368,7 @@ static void mlx5dr_action_destroy_hws(struct mlx5dr_action *action)
 	case MLX5DR_ACTION_TYP_MH_SET:
 	case MLX5DR_ACTION_TYP_MH_ADD:
 	case MLX5DR_ACTION_TYP_MH_COPY:
-	case MLX5DR_ACTION_TYP_ASO_FLOW_METER:
+	case MLX5DR_ACTION_TYP_ASO_METER:
 		mlx5dr_action_destroy_stcs(action);
 		break;
 	case MLX5DR_ACTION_TYP_TNL_L3_TO_L2:
@@ -1688,16 +1688,16 @@ int mlx5dr_actions_quick_apply(struct mlx5dr_send_engine *queue,
 			stc_arr[MLX5DR_ACTION_STC_IDX_DW6] = stc_idx;
 			require_double = true;
 			break;
-		case MLX5DR_ACTION_TYP_ASO_FLOW_METER:
+		case MLX5DR_ACTION_TYP_ASO_METER:
 			/* exe_aso_ctrl format:
 			 * [STC only and reserved bits 29b][init_color 2b][meter_id 1b]
 			 */
-			exe_aso_ctrl = rule_actions[i].aso.offset % MLX5_ASO_FLOW_METER_NUM_PER_OBJ;
-			exe_aso_ctrl |= rule_actions[i].aso.flow_meter.init_color <<
+			exe_aso_ctrl = rule_actions[i].aso_meter.offset % MLX5_ASO_METER_NUM_PER_OBJ;
+			exe_aso_ctrl |= rule_actions[i].aso_meter.init_color <<
 				MLX5DR_ACTION_ASO_METER_INIT_COLOR_OFFSET;
 			/* aso_object_offset format: [24B] */
-			raw_wqe[MLX5DR_ACTION_OFFSET_DW6] = htobe32(rule_actions[i].aso.offset /
-				MLX5_ASO_FLOW_METER_NUM_PER_OBJ);
+			raw_wqe[MLX5DR_ACTION_OFFSET_DW6] = htobe32(rule_actions[i].aso_meter.offset /
+				MLX5_ASO_METER_NUM_PER_OBJ);
 			raw_wqe[MLX5DR_ACTION_OFFSET_DW7] = htobe32(exe_aso_ctrl);
 			stc_arr[MLX5DR_ACTION_STC_IDX_DW6] = stc_idx;
 			require_double = true;

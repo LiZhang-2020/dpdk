@@ -3170,7 +3170,7 @@ struct mlx5_ifc_stc_ste_param_flow_counter_bits {
 };
 
 enum {
-	MLX5_ASO_FLOW_METER_NUM_PER_OBJ = 2,
+	MLX5_ASO_METER_NUM_PER_OBJ = 2,
 };
 
 struct mlx5_ifc_stc_ste_param_execute_aso_bits {

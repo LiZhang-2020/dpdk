@@ -101,7 +101,7 @@ mlx5_flow_meter_init(struct rte_eth_dev *dev,
 					NULL, "Meter register is not available.");
 		goto err;
 	}
-	priv->mtr_bulk.action = mlx5dr_action_create_aso_flow_meter
+	priv->mtr_bulk.action = mlx5dr_action_create_aso_meter
 			(priv->dr_ctx, (struct mlx5dr_devx_obj *)dcs,
 				reg_id - REG_C_0, MLX5DR_ACTION_FLAG_HWS_RX |
 				MLX5DR_ACTION_FLAG_HWS_TX |

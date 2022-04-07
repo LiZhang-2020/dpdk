@@ -46,11 +46,11 @@ enum mlx5dr_action_reformat_type {
 	MLX5DR_ACTION_REFORMAT_TYPE_L2_TO_TNL_L3,
 };
 
-enum mlx5dr_action_aso_flow_meter_init_color {
-	MLX5DR_ACTION_ASO_FLOW_METER_INIT_COLOR_RED = 0x0,
-	MLX5DR_ACTION_ASO_FLOW_METER_INIT_COLOR_YELLOW = 0x1,
-	MLX5DR_ACTION_ASO_FLOW_METER_INIT_COLOR_GREEN = 0x2,
-	MLX5DR_ACTION_ASO_FLOW_METER_INIT_COLOR_UNDEFINED = 0x3,
+enum mlx5dr_action_aso_meter_color {
+	MLX5DR_ACTION_ASO_METER_COLOR_RED = 0x0,
+	MLX5DR_ACTION_ASO_METER_COLOR_YELLOW = 0x1,
+	MLX5DR_ACTION_ASO_METER_COLOR_GREEN = 0x2,
+	MLX5DR_ACTION_ASO_METER_COLOR_UNDEFINED = 0x3,
 };
 
 enum mlx5dr_match_template_flags {
@@ -132,12 +132,8 @@ struct mlx5dr_rule_action {
 
 		struct {
 			uint32_t offset;
-			union {
-				struct {
-					enum mlx5dr_action_aso_flow_meter_init_color init_color;
-				} flow_meter;
-			};
-		} aso;
+			enum mlx5dr_action_aso_meter_color init_color;
+		} aso_meter;
 	};
 };
 
@@ -430,10 +426,10 @@ mlx5dr_action_create_modify_header(struct mlx5dr_context *ctx,
  * @return pointer to mlx5dr_action on success NULL otherwise.
  */
 struct mlx5dr_action *
-mlx5dr_action_create_aso_flow_meter(struct mlx5dr_context *ctx,
-				    struct mlx5dr_devx_obj *devx_obj,
-				    uint8_t return_reg_c,
-				    uint32_t flags);
+mlx5dr_action_create_aso_meter(struct mlx5dr_context *ctx,
+			       struct mlx5dr_devx_obj *devx_obj,
+			       uint8_t return_reg_c,
+			       uint32_t flags);
 
 /* Destroy direct rule action.
  *

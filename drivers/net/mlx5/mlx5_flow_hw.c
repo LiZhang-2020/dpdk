@@ -866,7 +866,7 @@ flow_hw_meter_compile(struct rte_eth_dev *dev,
 
 	aso_mtr = mlx5_aso_meter_by_idx(priv, meter->mtr_id);
 	acts->rule_acts[pos].action = priv->mtr_bulk.action;
-	acts->rule_acts[pos].aso.offset = aso_mtr->offset;
+	acts->rule_acts[pos].aso_meter.offset = aso_mtr->offset;
 	acts->jump = flow_hw_jump_action_register
 		(dev, cfg, aso_mtr->fm.group, error);
 	if (!acts->jump) {
@@ -1568,7 +1568,7 @@ flow_hw_actions_construct(struct rte_eth_dev *dev,
 			mtr = mlx5_aso_meter_by_idx(priv, mtr_id);
 			rule_acts[act_data->action_dst].action =
 				priv->mtr_bulk.action;
-			rule_acts[act_data->action_dst].aso.offset =
+			rule_acts[act_data->action_dst].aso_meter.offset =
 								mtr->offset;
 			jump = flow_hw_jump_action_register
 				(dev, &table->cfg, mtr->fm.group, NULL);
