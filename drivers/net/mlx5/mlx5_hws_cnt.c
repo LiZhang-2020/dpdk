@@ -524,7 +524,8 @@ static int
 __hws_cnt_get_dcs_id(struct mlx5_hws_cnt_pool *cpool, cnt_id_t cnt_id)
 {
 	struct mlx5_hws_cnt_dcs_mng *dcs_mng = &cpool->dcs_mng;
-	uint16_t idx, offset;
+	uint16_t idx;
+	uint32_t offset;
 
 	offset = cnt_id & ((1 << MLX5_INDIRECT_ACTION_TYPE_OFFSET) - 1);
 	for (idx = 0; idx < dcs_mng->batch_total; idx++) {
@@ -552,15 +553,17 @@ mlx5_hws_cnt_aso_sq_enqueue_burst(struct mlx5_hws_cnt_pool *cpool,
 	uint32_t ctrl_gen_id = 0;
 	uint8_t opcmod = sh->cdev->config.hca_attr.flow_access_aso_opc_mod;
 	rte_be32_t lkey = rte_cpu_to_be_32(cpool->raw_mng->mr.lkey);
+	uint32_t ccntid;
 
-	max = RTE_MIN(size - (uint16_t)(sq->head - sq->tail), n);
+	max = RTE_MIN(size - (uint16_t)(sq->head - sq->tail),
+			RTE_ALIGN_CEIL(n, 4) / 4);
 	if (unlikely(!max))
 		return 0;
-	max = RTE_ALIGN_CEIL(max, 4);
-	upper_offset += max;
-	sq->elts[start_head & mask].burst_size = max / 4;
+	upper_offset += (max * 4);
+	sq->elts[start_head & mask].burst_size = max;
 	do {
-		ctrl_gen_id = __hws_cnt_get_dcs_id(cpool, upper_offset - max);
+		ccntid = upper_offset - max * 4;
+		ctrl_gen_id = __hws_cnt_get_dcs_id(cpool, ccntid);
 		ctrl_gen_id /= 4;
 		wqe = &sq->sq_obj.aso_wqes[sq->head & mask];
 		rte_prefetch0(&sq->sq_obj.aso_wqes[(sq->head + 1) & mask]);
@@ -574,15 +577,14 @@ mlx5_hws_cnt_aso_sq_enqueue_burst(struct mlx5_hws_cnt_pool *cpool,
 						 (sq->pi <<
 						  WQE_CSEG_WQE_INDEX_OFFSET));
 		addr = (uint64_t)RTE_PTR_ADD(cpool->raw_mng->raw,
-				(upper_offset - max) *
-				sizeof(struct flow_counter_stats));
+				ccntid * sizeof(struct flow_counter_stats));
 		wqe->aso_cseg.va_h = rte_cpu_to_be_32((uint32_t)(addr >> 32));
 		wqe->aso_cseg.va_l_r = rte_cpu_to_be_32((uint32_t)addr | 1u);
 		wqe->aso_cseg.lkey = lkey;
 		sq->pi += 2; /* Each WQE contains 2 WQEBB's. */
 		sq->head++;
 		sq->next++;
-		max -= 4;
+		max--;
 	} while (max);
 	wqe->general_cseg.flags = RTE_BE32(MLX5_COMP_ALWAYS <<
 							 MLX5_COMP_MODE_OFFSET);
@@ -608,6 +610,7 @@ mlx5_hws_cnt_pool_aso_query(struct mlx5_dev_ctx_shared *sh,
 
 	left = cnt_num;
 	while (left) {
+		mask = 0;
 		for (sq_idx = 0; sq_idx < sh->cnt_svc->aso_mng.sq_num;
 				sq_idx++) {
 			if (left == 0) {
