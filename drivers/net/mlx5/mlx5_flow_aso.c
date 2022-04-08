@@ -1474,7 +1474,7 @@ static uint16_t
 mlx5_aso_cnt_sq_enqueue_burst(struct mlx5_hws_cnt_pool *cpool,
 		struct mlx5_dev_ctx_shared *sh,
 		struct mlx5_aso_sq *sq, uint32_t n,
-		uint32_t offset)
+		uint32_t offset, uint32_t dcs_id_base)
 {
 	volatile struct mlx5_aso_wqe *wqe;
 	uint16_t size = 1 << sq->log_desc_n;
@@ -1494,10 +1494,10 @@ mlx5_aso_cnt_sq_enqueue_burst(struct mlx5_hws_cnt_pool *cpool,
 	upper_offset += (max * 4);
 	/* Because only one burst at one time, we can use the same elt. */
 	sq->elts[0].burst_size = max;
+	ctrl_gen_id = dcs_id_base;
+	ctrl_gen_id /= 4;
 	do {
 		ccntid = upper_offset - max * 4;
-		ctrl_gen_id = mlx5_hws_cnt_get_dcs_id(cpool, ccntid);
-		ctrl_gen_id /= 4;
 		wqe = &sq->sq_obj.aso_wqes[sq->head & mask];
 		rte_prefetch0(&sq->sq_obj.aso_wqes[(sq->head + 1) & mask]);
 		wqe->general_cseg.misc = rte_cpu_to_be_32(ctrl_gen_id);
@@ -1517,6 +1517,7 @@ mlx5_aso_cnt_sq_enqueue_burst(struct mlx5_hws_cnt_pool *cpool,
 		sq->pi += 2; /* Each WQE contains 2 WQEBB's. */
 		sq->head++;
 		sq->next++;
+		ctrl_gen_id++;
 		max--;
 	} while (max);
 	wqe->general_cseg.flags = RTE_BE32(MLX5_COMP_ALWAYS <<
@@ -1567,6 +1568,54 @@ mlx5_aso_cnt_completion_handle(struct mlx5_aso_sq *sq)
 	return i;
 }
 
+static uint16_t
+mlx5_aso_cnt_query_one_dcs(struct mlx5_dev_ctx_shared *sh,
+			   struct mlx5_hws_cnt_pool *cpool,
+			   uint8_t dcs_idx, uint32_t num)
+{
+	uint32_t dcs_id = cpool->dcs_mng.dcs[dcs_idx].obj->id;
+	uint64_t cnt_num = cpool->dcs_mng.dcs[dcs_idx].batch_sz;
+	uint64_t left;
+	uint32_t iidx = cpool->dcs_mng.dcs[dcs_idx].iidx;
+	uint32_t offset;
+	uint16_t mask;
+	uint16_t sq_idx;
+	uint64_t burst_sz = (uint64_t)(1 << MLX5_ASO_CNT_QUEUE_LOG_DESC) * 4 *
+		sh->cnt_svc->aso_mng.sq_num;
+	uint64_t qburst_sz = burst_sz / sh->cnt_svc->aso_mng.sq_num;
+	uint64_t n;
+	struct mlx5_aso_sq *sq;
+
+	cnt_num = RTE_MIN(num, cnt_num);
+	left = cnt_num;
+	while (left) {
+		mask = 0;
+		for (sq_idx = 0; sq_idx < sh->cnt_svc->aso_mng.sq_num;
+				sq_idx++) {
+			if (left == 0) {
+				mask |= (1 << sq_idx);
+				continue;
+			}
+			n = RTE_MIN(left, qburst_sz);
+			offset = cnt_num - left;
+			offset += iidx;
+			mlx5_aso_cnt_sq_enqueue_burst(cpool, sh,
+					&sh->cnt_svc->aso_mng.sqs[sq_idx], n,
+					offset, dcs_id);
+			left -= n;
+		}
+		do {
+			for (sq_idx = 0; sq_idx < sh->cnt_svc->aso_mng.sq_num;
+					sq_idx++) {
+				sq = &sh->cnt_svc->aso_mng.sqs[sq_idx];
+				if (mlx5_aso_cnt_completion_handle(sq))
+					mask |= (1 << sq_idx);
+			}
+		} while (mask < ((1 << sh->cnt_svc->aso_mng.sq_num) - 1));
+	}
+	return cnt_num;
+}
+
 /*
  * Query FW counter via ASO WQE.
  *
@@ -1588,39 +1637,16 @@ int
 mlx5_aso_cnt_query(struct mlx5_dev_ctx_shared *sh,
 		   struct mlx5_hws_cnt_pool *cpool)
 {
+	uint32_t idx;
+	uint32_t num;
 	uint32_t cnt_num = mlx5_hws_cnt_pool_get_size(cpool);
-	uint64_t burst_sz = (uint64_t)(1 << MLX5_ASO_CNT_QUEUE_LOG_DESC) * 4 *
-		sh->cnt_svc->aso_mng.sq_num;
-	uint16_t sq_idx;
-	uint64_t left;
-	uint64_t qburst_sz = burst_sz / sh->cnt_svc->aso_mng.sq_num;
-	uint64_t n;
-	uint16_t mask = 0;
-	struct mlx5_aso_sq *sq;
 
-	left = cnt_num;
-	while (left) {
-		mask = 0;
-		for (sq_idx = 0; sq_idx < sh->cnt_svc->aso_mng.sq_num;
-				sq_idx++) {
-			if (left == 0) {
-				mask |= (1 << sq_idx);
-				continue;
-			}
-			n = RTE_MIN(left, qburst_sz);
-			mlx5_aso_cnt_sq_enqueue_burst(cpool, sh,
-					&sh->cnt_svc->aso_mng.sqs[sq_idx], n,
-					cnt_num - left);
-			left -= n;
-		}
-		do {
-			for (sq_idx = 0; sq_idx < sh->cnt_svc->aso_mng.sq_num;
-					sq_idx++) {
-				sq = &sh->cnt_svc->aso_mng.sqs[sq_idx];
-				if (mlx5_aso_cnt_completion_handle(sq))
-					mask |= (1 << sq_idx);
-			}
-		} while (mask < ((1 << sh->cnt_svc->aso_mng.sq_num) - 1));
+	for (idx = 0; idx < cpool->dcs_mng.batch_total; idx++) {
+		num = RTE_MIN(cnt_num, cpool->dcs_mng.dcs[idx].batch_sz);
+		mlx5_aso_cnt_query_one_dcs(sh, cpool, idx, num);
+		cnt_num -= num;
+		if (cnt_num == 0)
+			break;
 	}
 	return 0;
 }

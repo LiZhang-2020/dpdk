@@ -457,23 +457,6 @@ mlx5_hws_cnt_pool_get_action_offset(struct mlx5_hws_cnt_pool *cpool,
 	return 0;
 }
 
-static __always_inline int
-mlx5_hws_cnt_get_dcs_id(struct mlx5_hws_cnt_pool *cpool, cnt_id_t cnt_id)
-{
-	struct mlx5_hws_cnt_dcs_mng *dcs_mng = &cpool->dcs_mng;
-	uint16_t idx;
-	uint32_t offset;
-
-	offset = mlx5_hws_cnt_iidx(cpool, cnt_id);
-	for (idx = 0; idx < dcs_mng->batch_total; idx++) {
-		if (dcs_mng->dcs[idx].batch_sz <= offset)
-			offset -= dcs_mng->dcs[idx].batch_sz;
-		else
-			return (dcs_mng->dcs[idx].obj->id + offset);
-	}
-	return -1;
-}
-
 /* init HWS counter pool. */
 struct mlx5_hws_cnt_pool *
 mlx5_hws_cnt_pool_init(const struct mlx5_hws_cnt_pool_cfg *pcfg,
