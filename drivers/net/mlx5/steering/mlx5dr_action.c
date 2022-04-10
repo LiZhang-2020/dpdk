@@ -1349,7 +1349,8 @@ mlx5dr_action_create_modify_header(struct mlx5dr_context *ctx,
 	return action;
 
 free_mh_obj:
-	mlx5dr_pat_arg_destroy_modify_header(ctx, action);
+	if (action->modify_header.num_of_actions > 1)
+		mlx5dr_pat_arg_destroy_modify_header(ctx, action);
 free_action:
 	simple_free(action);
 	return NULL;
