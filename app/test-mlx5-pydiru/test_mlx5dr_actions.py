@@ -12,7 +12,8 @@ import pydiru.pydiru_enums as p
 from .utils import raw_traffic, gen_packet, PacketConsts, create_sipv4_rte_items, TunnelType, gen_outer_headers, \
     get_l2_header, create_dipv4_rte_items, create_devx_counter, query_counter, BULK_512, \
     create_eth_ipv4_l4_rte_items, create_tunneled_gtp_flags_rte_items, create_eth_ipv4_rte_items, \
-    create_tunneled_gtp_teid_rte_items, is_cx6dx, ModifyFieldId, ModifyFieldLen
+    create_tunneled_gtp_teid_rte_items, is_cx6dx, ModifyFieldId, ModifyFieldLen, \
+    SET_ACTION, NEW_MAC_STR
 from .base import BaseDrResources, PydiruTrafficTestCase
 
 from .prm_structs import SetActionIn, CopyActionIn, AddActionIn
@@ -21,7 +22,6 @@ import socket
 import time
 
 
-SET_ACTION = 0x1
 TAG_VALUE_1 = 0x1234
 TAG_VALUE_2 = 0x5678
 
@@ -74,7 +74,6 @@ class Mlx5drTrafficTest(PydiruTrafficTestCase):
         self.server.init_steering_resources(rte_items=rte_items)
         smac_47_16 = 0x88888888
         smac_15_0 = 0x8888
-        str_smac = "88:88:88:88:88:88"
         actions = []
         if not smac_15_0_only:
             actions.append(SetActionIn(action_type=SET_ACTION, field=ModifyFieldId.OUT_SMAC_47_16,
@@ -88,8 +87,7 @@ class Mlx5drTrafficTest(PydiruTrafficTestCase):
                                       rule_actions=[self.modify_ra, tir_ra], num_of_actions=2,
                                       rule_attr_create=Mlx5drRuleAttr(user_data=bytes(8)),
                                       dr_ctx=self.server.dr_ctx)
-        if smac_15_0_only:
-            str_smac = PacketConsts.SRC_MAC[:12] + str_smac[12:]
+        str_smac = PacketConsts.SRC_MAC[:12] + NEW_MAC_STR[12:] if smac_15_0_only else NEW_MAC_STR
         exp_src_mac = struct.pack('!6s', bytes.fromhex(str_smac.replace(':', '')))
         exp_packet = gen_packet(self.server.msg_size, src_mac=exp_src_mac)
         packet = gen_packet(self.server.msg_size)
@@ -122,7 +120,6 @@ class Mlx5drTrafficTest(PydiruTrafficTestCase):
         self.server.matcher3 = self.server.create_matcher(self.server.table,
                                                           [Mlx5drMacherTemplate(items[2])], prio=3)
         matchers = [self.server.matcher, self.server.matcher2, self.server.matcher3]
-        str_smac = "88:88:88:88:88:88"
         action1 = SetActionIn(action_type=SET_ACTION, field=ModifyFieldId.OUT_SMAC_47_16,
                               length=ModifyFieldLen.OUT_SMAC_47_16, data=0x88888888)
         action2 = SetActionIn(action_type=SET_ACTION, field=ModifyFieldId.OUT_SMAC_15_0,
@@ -138,7 +135,7 @@ class Mlx5drTrafficTest(PydiruTrafficTestCase):
             modify_rules.append(Mlx5drRule(matcher=matchers[i], mt_idx=0, rte_items=items[i],
                                            rule_actions=[self.modify_ra, tir_ra], num_of_actions=2,
                                            rule_attr_create=dr_rule_attr, dr_ctx=self.server.dr_ctx))
-        exp_src_mac = struct.pack('!6s', bytes.fromhex(str_smac.replace(':', '')))
+        exp_src_mac = struct.pack('!6s', bytes.fromhex(NEW_MAC_STR.replace(':', '')))
         for i in range(1, 4):
             sip = f'{i}.{i}.{i}.{i}'
             exp_packet = gen_packet(self.server.msg_size, src_ip=sip, src_mac=exp_src_mac)

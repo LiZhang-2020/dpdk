@@ -21,6 +21,7 @@ pydiru_python_tests = [
     'test_mlx5dr_actions.py',
     'test_mlx5dr_control_path.py',
     'test_mlx5dr_matchers.py',
+    'test_mlx5dr_rules.py',
     'utils.py'
 ]
 

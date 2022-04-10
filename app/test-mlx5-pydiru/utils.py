@@ -27,6 +27,9 @@ BULK_512 = 0b100
 
 MELLANOX_VENDOR_ID = 0x02c9
 
+SET_ACTION = 0x1
+NEW_MAC_STR = '88:88:88:88:88:88'
+
 
 class VendorPartID:
     CX6DX = 0x101d
@@ -106,6 +109,11 @@ class PacketConsts:
     GTP_PSC_TYPE = 0x85
     GTP_PSC_PDU_TYPE = 1
     GTP_PSC_QFI = 3
+    # Modify Action consts
+    OUT_SMAC_47_16_FIELD_ID = 0x1
+    OUT_SMAC_47_16_FIELD_LENGTH = 32
+    OUT_SMAC_15_0_FIELD_ID = 0x2
+    OUT_SMAC_15_0_FIELD_LENGTH = 16
 
 
 def gen_outer_headers(msg_size, tunnel=TunnelType.GTP_U, **kwargs):
