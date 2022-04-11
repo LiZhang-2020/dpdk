@@ -15,6 +15,9 @@
 #define ETH_TYPE_IPV6_VXLAN	0x86DD
 #define ETH_VXLAN_DEFAULT_PORT	4789
 
+#define STE_SVLAN 0x1
+#define STE_CVLAN 0x2
+
 #define DR_CALC_FNAME(field, inner) \
 	((inner) ? MLX5DR_DEFINER_FNAME_##field##_I : \
 		   MLX5DR_DEFINER_FNAME_##field##_O)
@@ -84,6 +87,10 @@ enum mlx5dr_definer_fname {
 	MLX5DR_DEFINER_FNAME_ETH_DMAC_15_0_I,
 	MLX5DR_DEFINER_FNAME_ETH_TYPE_O,
 	MLX5DR_DEFINER_FNAME_ETH_TYPE_I,
+	MLX5DR_DEFINER_FNAME_VLAN_TYPE_O,
+	MLX5DR_DEFINER_FNAME_VLAN_TYPE_I,
+	MLX5DR_DEFINER_FNAME_VLAN_TCI_O,
+	MLX5DR_DEFINER_FNAME_VLAN_TCI_I,
 	MLX5DR_DEFINER_FNAME_IPV4_IHL_O,
 	MLX5DR_DEFINER_FNAME_IPV4_IHL_I,
 	MLX5DR_DEFINER_FNAME_IP_TTL_O,
@@ -202,6 +209,9 @@ struct mlx5dr_definer_conv_data {
 	X(SET_BE16P,	eth_smac_15_0,		&v->src.addr_bytes[4],	rte_flow_item_eth) \
 	X(SET_BE32P,	eth_dmac_47_16,		&v->dst.addr_bytes[0],	rte_flow_item_eth) \
 	X(SET_BE16P,	eth_dmac_15_0,		&v->dst.addr_bytes[4],	rte_flow_item_eth) \
+	X(SET_BE16,	tci,			v->tci,			rte_flow_item_vlan) \
+	X(SET,		first_vlan_q,		v->has_more_vlan ? STE_SVLAN : STE_CVLAN, rte_flow_item_vlan) \
+	X(SET,		eth_first_vlan_q,	v->has_vlan ? STE_CVLAN : 0, rte_flow_item_eth) \
 	X(SET,		ipv4_ihl,		v->ihl,			rte_ipv4_hdr) \
 	X(SET,		ipv4_time_to_live,	v->time_to_live,	rte_ipv4_hdr) \
 	X(SET_BE32,	ipv4_dst_addr,		v->dst_addr,		rte_ipv4_hdr) \
@@ -354,7 +364,7 @@ mlx5dr_definer_conv_item_eth(struct mlx5dr_definer_conv_data *cd,
 	if (!m)
 		return 0;
 
-	if (m->has_vlan || m->reserved) {
+	if (m->reserved) {
 		rte_errno = ENOTSUP;
 		return rte_errno;
 	}
@@ -396,6 +406,58 @@ mlx5dr_definer_conv_item_eth(struct mlx5dr_definer_conv_data *cd,
 		fc->item_idx = item_idx;
 		fc->tag_set = &mlx5dr_definer_eth_dmac_15_0_set;
 		DR_CALC_SET(fc, eth_l2, dmac_15_0, inner);
+	}
+
+	if (m->has_vlan) {
+		/* mark packet as tagged (CVLAN) */
+		fc = &cd->fc[DR_CALC_FNAME(VLAN_TYPE, inner)];
+		fc->item_idx = item_idx;
+		fc->tag_mask_set = &mlx5dr_definer_ones_set;
+		fc->tag_set = &mlx5dr_definer_eth_first_vlan_q_set;
+		DR_CALC_SET(fc, eth_l2, first_vlan_qualifier, inner);
+	}
+
+	return 0;
+}
+
+static int
+mlx5dr_definer_conv_item_vlan(struct mlx5dr_definer_conv_data *cd,
+			      struct rte_flow_item *item,
+			      int item_idx)
+{
+	const struct rte_flow_item_vlan *m = item->mask;
+	struct mlx5dr_definer_fc *fc;
+	bool inner = cd->tunnel;
+
+	if (!m)
+		return 0;
+
+	if (m->reserved) {
+		rte_errno = ENOTSUP;
+		return rte_errno;
+	}
+
+	if (!cd->relaxed || m->has_more_vlan) {
+		/* mark packet as tagged (CVLAN or SVLAN) even if TCI is not specified.*/
+		fc = &cd->fc[DR_CALC_FNAME(VLAN_TYPE, inner)];
+		fc->item_idx = item_idx;
+		fc->tag_mask_set = &mlx5dr_definer_ones_set;
+		fc->tag_set = &mlx5dr_definer_first_vlan_q_set;
+		DR_CALC_SET(fc, eth_l2, first_vlan_qualifier, inner);
+	}
+
+	if (m->tci) {
+		fc = &cd->fc[DR_CALC_FNAME(VLAN_TCI, inner)];
+		fc->item_idx = item_idx;
+		fc->tag_set = &mlx5dr_definer_tci_set;
+		DR_CALC_SET(fc, eth_l2, tci, inner);
+	}
+
+	if (m->inner_type) {
+		fc = &cd->fc[DR_CALC_FNAME(ETH_TYPE, inner)];
+		fc->item_idx = item_idx;
+		fc->tag_set = &mlx5dr_definer_eth_type_set;
+		DR_CALC_SET(fc, eth_l2, l3_ethertype, inner);
 	}
 
 	return 0;
@@ -1212,6 +1274,12 @@ mlx5dr_definer_conv_items_to_hl(struct mlx5dr_context *ctx,
 			ret = mlx5dr_definer_conv_item_eth(&cd, items, i);
 			item_flags |= cd.tunnel ? MLX5_FLOW_LAYER_INNER_L2 :
 						  MLX5_FLOW_LAYER_OUTER_L2;
+			break;
+		case RTE_FLOW_ITEM_TYPE_VLAN:
+			ret = mlx5dr_definer_conv_item_vlan(&cd, items, i);
+			item_flags |= cd.tunnel ?
+				(MLX5_FLOW_LAYER_INNER_VLAN | MLX5_FLOW_LAYER_INNER_L2) :
+				(MLX5_FLOW_LAYER_OUTER_VLAN | MLX5_FLOW_LAYER_OUTER_L2);
 			break;
 		case RTE_FLOW_ITEM_TYPE_IPV4:
 			ret = mlx5dr_definer_conv_item_ipv4(&cd, items, i);

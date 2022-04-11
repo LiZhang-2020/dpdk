@@ -30,9 +30,7 @@ struct mlx5_ifc_definer_hl_eth_l2_bits {
 	u8 l3_type[0x2];
 	u8 l4_type_bwc[0x2];
 	u8 first_vlan_qualifier[0x2];
-	u8 first_priority[0x3];
-	u8 first_cfi[0x1];
-	u8 first_vlan_id[0xc];
+	u8 tci[0x10]; /* contains first_priority[0x3] + first_cfi[0x1] + first_vlan_id[0xc] */
 	u8 l4_type[0x4];
 	u8 reserved_at_64[0x2];
 	u8 ipsec_layer[0x2];
