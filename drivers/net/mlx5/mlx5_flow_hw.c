@@ -2937,6 +2937,9 @@ flow_hw_pattern_validate(struct rte_eth_dev *dev,
 		case RTE_FLOW_ITEM_TYPE_VXLAN:
 		case MLX5_RTE_FLOW_ITEM_TYPE_TX_QUEUE:
 		case RTE_FLOW_ITEM_TYPE_META:
+		case RTE_FLOW_ITEM_TYPE_GRE:
+		case RTE_FLOW_ITEM_TYPE_GRE_KEY:
+		case RTE_FLOW_ITEM_TYPE_GRE_OPTION:
 			break;
 		case RTE_FLOW_ITEM_TYPE_END:
 			items_end = true;
