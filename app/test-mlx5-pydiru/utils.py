@@ -40,6 +40,9 @@ class TunnelType:
 class ModifyFieldId:
     OUT_SMAC_47_16 = 0x1
     OUT_SMAC_15_0 = 0x2
+    OUT_IPV4_TTL = 0xa
+    OUT_UDP_SPORT = 0xb
+    OUT_UDP_DPORT = 0xc
 
 
 class ModifyFieldLen:

@@ -1,8 +1,6 @@
 # SPDX-License-Identifier: BSD-3-Clause
 # Copyright (c) 2021, Nvidia Inc. All rights reserved.
 
-from pydiru.providers.mlx5.steering.mlx5dr_action import Mlx5drRuleAction, Mlx5drActionModify, \
-    Mlx5drActionDestTable
 from pydiru.rte_flow import RteFlowItem, RteFlowItemEth, RteFlowItemEnd
 from pydiru.providers.mlx5.steering.mlx5dr_rule import Mlx5drRuleAttr, Mlx5drRule
 from pydiru.providers.mlx5.steering.mlx5dr_matcher import Mlx5drMacherTemplate
@@ -17,7 +15,7 @@ from .utils import raw_traffic, gen_packet, PacketConsts, create_sipv4_rte_items
     create_tunneled_gtp_teid_rte_items, is_cx6dx, ModifyFieldId, ModifyFieldLen
 from .base import BaseDrResources, PydiruTrafficTestCase
 
-from .prm_structs import SetActionIn
+from .prm_structs import SetActionIn, CopyActionIn, AddActionIn
 import struct
 import socket
 import time
@@ -146,6 +144,50 @@ class Mlx5drTrafficTest(PydiruTrafficTestCase):
             exp_packet = gen_packet(self.server.msg_size, src_ip=sip, src_mac=exp_src_mac)
             packet = gen_packet(self.server.msg_size, src_ip=sip)
             raw_traffic(self.client, self.server, self.server.num_msgs, [packet], exp_packet)
+
+    def modify_rule_traffic(self, rte_items, modify_actions, exp_packet):
+        """
+        Create modify action on RX with modify actions to change the packet, send
+        packet and verify using TIR action.
+        :param rte_items: RTE flow items to match on
+        :param modify_actions: Actions that modify packets
+        :param exp_packet: Expected packet after modifications
+        """
+
+        self.server.init_steering_resources(rte_items=rte_items)
+
+        _, self.modify_ra = self.server.create_rule_action('modify', log_bulk_size=12, offset=0,
+                                                           actions=modify_actions)
+        _, tir_ra = self.server.create_rule_action('tir')
+        self.modify_rule = Mlx5drRule(matcher=self.server.matcher, mt_idx=0, rte_items=rte_items,
+                                      rule_actions=[self.modify_ra, tir_ra], num_of_actions=2,
+                                      rule_attr_create=Mlx5drRuleAttr(user_data=bytes(8)),
+                                      dr_ctx=self.server.dr_ctx)
+
+        packet = gen_packet(self.server.msg_size)
+        raw_traffic(self.client, self.server, self.server.num_msgs, [packet], exp_packet,
+                    skip_idxs=[24, 25])  # Skipping IP checksum
+
+    def test_mlx5dr_modify_copy(self):
+        """
+        Verify modify action copy by copying UDP dst port to src port.
+        """
+        copy_action = CopyActionIn(src_field=ModifyFieldId.OUT_UDP_DPORT,
+                                   dst_field=ModifyFieldId.OUT_UDP_SPORT,
+                                   length=16)
+        exp_packet = gen_packet(self.server.msg_size, src_port=PacketConsts.DST_PORT)
+        rte_items = create_sipv4_rte_items(PacketConsts.SRC_IP)
+        self.modify_rule_traffic(rte_items, [copy_action],  exp_packet)
+
+    def test_mlx5dr_modify_add(self):
+        """
+        Verify modify action add by increasing TTL by 1.
+        """
+        inc = 1
+        add_action = AddActionIn(field=ModifyFieldId.OUT_IPV4_TTL, data=inc)
+        exp_packet = gen_packet(self.server.msg_size, ttl=PacketConsts.TTL_HOP_LIMIT + inc)
+        rte_items = create_sipv4_rte_items(PacketConsts.SRC_IP)
+        self.modify_rule_traffic(rte_items, [add_action],  exp_packet)
 
     @staticmethod
     def create_miss_rule(agr_obj, rte_items, rule_actions):
