@@ -4758,6 +4758,7 @@ exit:
 int
 mlx5_flow_hw_flush_ctrl_flows(struct rte_eth_dev *owner_dev)
 {
+	struct mlx5_priv *owner_priv = owner_dev->data->dev_private;
 	struct rte_eth_dev *proxy_dev;
 	struct mlx5_priv *proxy_priv;
 	struct mlx5_hw_ctrl_flow *cf;
@@ -4766,14 +4767,19 @@ mlx5_flow_hw_flush_ctrl_flows(struct rte_eth_dev *owner_dev)
 	uint16_t proxy_port_id = owner_dev->data->port_id;
 	int ret;
 
-	if (rte_flow_pick_transfer_proxy(owner_port_id, &proxy_port_id, NULL)) {
-		DRV_LOG(ERR, "Unable to find proxy port for port %u",
-			owner_port_id);
-		rte_errno = EINVAL;
-		return -rte_errno;
+	if (owner_priv->sh->config.dv_esw_en) {
+		if (rte_flow_pick_transfer_proxy(owner_port_id, &proxy_port_id, NULL)) {
+			DRV_LOG(ERR, "Unable to find proxy port for port %u",
+				owner_port_id);
+			rte_errno = EINVAL;
+			return -rte_errno;
+		}
+		proxy_dev = &rte_eth_devices[proxy_port_id];
+		proxy_priv = proxy_dev->data->dev_private;
+	} else {
+		proxy_dev = owner_dev;
+		proxy_priv = owner_priv;
 	}
-	proxy_dev = &rte_eth_devices[proxy_port_id];
-	proxy_priv = proxy_dev->data->dev_private;
 	cf = LIST_FIRST(&proxy_priv->hw_ctrl_flows);
 	while (cf != NULL) {
 		cf_next = LIST_NEXT(cf, next);
