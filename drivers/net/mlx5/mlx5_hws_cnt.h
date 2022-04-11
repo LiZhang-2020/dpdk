@@ -92,6 +92,28 @@ struct mlx5_hws_cnt_pool {
 	struct mlx5_hws_cnt_pool_caches *cache;
 } __rte_cache_aligned;
 
+static __rte_always_inline void
+__hws_cnt_query_raw(struct mlx5_hws_cnt_pool *cpool, cnt_id_t cnt_id,
+		uint64_t *raw_pkts, uint64_t *raw_bytes)
+{
+	struct mlx5_hws_cnt_raw_data_mng *raw_mng = cpool->raw_mng;
+	struct flow_counter_stats s[2];
+	uint8_t i = 0x1;
+	size_t stat_sz = sizeof(s[0]);
+	uint32_t iidx = cnt_id & ((1 << MLX5_INDIRECT_ACTION_TYPE_OFFSET) - 1);
+
+	memcpy(&s[0], &raw_mng->raw[iidx], stat_sz);
+	do {
+		memcpy(&s[i & 1], &raw_mng->raw[iidx], stat_sz);
+		if (memcmp(&s[0], &s[1], stat_sz) == 0) {
+			*raw_pkts = rte_be_to_cpu_64(s[0].hits);
+			*raw_bytes = rte_be_to_cpu_64(s[0].bytes);
+			break;
+		}
+		i = ~i;
+	} while (1);
+}
+
 /**
  * Copy elems from one zero-copy ring to zero-copy ring in place.
  *
@@ -116,28 +138,6 @@ struct mlx5_hws_cnt_pool {
  * @param n
  *   Number of elems to copy.
  */
-static __rte_always_inline void
-__hws_cnt_query_raw(struct mlx5_hws_cnt_pool *cpool, cnt_id_t cnt_id,
-		uint64_t *raw_pkts, uint64_t *raw_bytes)
-{
-	struct mlx5_hws_cnt_raw_data_mng *raw_mng = cpool->raw_mng;
-	struct flow_counter_stats s[2];
-	uint8_t i = 0x1;
-	size_t stat_sz = sizeof(s[0]);
-	uint32_t iidx = cnt_id & ((1 << MLX5_INDIRECT_ACTION_TYPE_OFFSET) - 1);
-
-	memcpy(&s[0], &raw_mng->raw[iidx], stat_sz);
-	do {
-		memcpy(&s[i & 1], &raw_mng->raw[iidx], stat_sz);
-		if (memcmp(&s[0], &s[1], stat_sz) == 0) {
-			*raw_pkts = rte_be_to_cpu_64(s[0].hits);
-			*raw_bytes = rte_be_to_cpu_64(s[0].bytes);
-			break;
-		}
-		i = ~i;
-	} while (1);
-}
-
 static __rte_always_inline void
 __hws_cnt_r2rcpy(struct rte_ring_zc_data *zcdd, struct rte_ring_zc_data *zcds,
 		unsigned int n)
