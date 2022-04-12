@@ -122,7 +122,8 @@ mlx5_hws_cnt_svc(void *opaque)
 {
 	struct mlx5_dev_ctx_shared *sh =
 		(struct mlx5_dev_ctx_shared *)opaque;
-	uint32_t interval = sh->cnt_svc->query_interval;
+	uint64_t interval =
+		(uint64_t)sh->cnt_svc->query_interval * (US_PER_S / MS_PER_S);
 	uint16_t port_id;
 	uint64_t start_cycle, query_cycle = 0;
 	uint64_t query_us;
