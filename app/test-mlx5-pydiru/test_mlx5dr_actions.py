@@ -5,6 +5,9 @@ from pydiru.providers.mlx5.steering.mlx5dr_matcher import Mlx5drMacherTemplate, 
     Mlx5drMatcher
 from pydiru.rte_flow import RteFlowItem, RteFlowItemEth, RteFlowItemEnd
 from pydiru.providers.mlx5.steering.mlx5dr_rule import Mlx5drRuleAttr, Mlx5drRule
+from pydiru.providers.mlx5.steering.mlx5dr_matcher import Mlx5drMacherTemplate
+from pydiru.providers.mlx5.steering.mlx5dr_action import Mlx5drActionTemplate
+from pydiru.providers.mlx5.steering.mlx5dr_devx_objects import Mlx5drDevxObj
 import pydiru.providers.mlx5.steering.mlx5dr_enums as me
 from pyverbs.pyverbs_error import PyverbsError
 import pydiru.pydiru_enums as p
@@ -49,16 +52,17 @@ class Mlx5drTrafficTest(PydiruTrafficTestCase):
                        it's expected to hit the new rules.
         """
         for player in agr_objs:
+            at = [Mlx5drActionTemplate([me.MLX5DR_ACTION_TYP_CTR, me.MLX5DR_ACTION_TYP_LAST])]
             template_relaxed_match = me.MLX5DR_MATCH_TEMPLATE_FLAG_RELAXED_MATCH
             final_matcher_templates = [Mlx5drMacherTemplate(rte_item, flags=template_relaxed_match)]
             attr = Mlx5drMatcherAttr(priority=99, mode=me.MLX5DR_MATCHER_RESOURCE_MODE_RULE,
                                      rule_log=2)
             player.final_matcher = Mlx5drMatcher(player.table, final_matcher_templates,
-                                                 len(final_matcher_templates), attr)
+                                                 len(final_matcher_templates), attr, at)
             flag = me.MLX5DR_ACTION_FLAG_HWS_TX if player == self.client \
                 else me.MLX5DR_ACTION_FLAG_HWS_RX
             player.devx_counter = create_counter_action(self, player, flags=flag, bulk=BULK_512)
-            player.final_rule = Mlx5drRule(player.final_matcher, 0, rte_item,
+            player.final_rule = Mlx5drRule(player.final_matcher, 0, rte_item, 0,
                                            [player.devx_counter[2]], 1,
                                            Mlx5drRuleAttr(user_data=bytes(8)), player.dr_ctx)
         # Remove the test rules and verify that the packet flow skip those rules.
@@ -76,9 +80,10 @@ class Mlx5drTrafficTest(PydiruTrafficTestCase):
         Create TIR and recv packets using TIR action.
         """
         tir_rte_items = create_sipv4_rte_items(PacketConsts.SRC_IP)
-        self.server.init_steering_resources(rte_items=tir_rte_items)
+        actions_types = [[me.MLX5DR_ACTION_TYP_TIR, me.MLX5DR_ACTION_TYP_LAST]]
+        self.server.init_steering_resources(rte_items=tir_rte_items, action_types_list=actions_types)
         tir_a, tir_ra = self.server.create_rule_action('tir')
-        self.hws_rules.append(Mlx5drRule(self.server.matcher, 0, tir_rte_items, [tir_ra], 1,
+        self.hws_rules.append(Mlx5drRule(self.server.matcher, 0, tir_rte_items, 0, [tir_ra], 1,
                               Mlx5drRuleAttr(user_data=bytes(8)), self.server.dr_ctx))
         packet = gen_packet(self.server.msg_size)
         raw_traffic(self.client, self.server, self.server.num_msgs, [packet])
@@ -89,14 +94,15 @@ class Mlx5drTrafficTest(PydiruTrafficTestCase):
         Use Tag action on the recv packets and verify that the packets is tagged.
         """
         rte_items = create_sipv4_rte_items(PacketConsts.SRC_IP)
-        self.server.init_steering_resources(rte_items)
+        actions_types = [[me.MLX5DR_ACTION_TYP_TAG, me.MLX5DR_ACTION_TYP_TIR, me.MLX5DR_ACTION_TYP_LAST]]
+        self.server.init_steering_resources(rte_items, action_types_list=actions_types)
         _, tag_ra = self.server.create_rule_action('tag')
         tag_ra.tag_value = 0x1234
         _, tir_ra = self.server.create_rule_action('tir')
         self.hws_rules.append(Mlx5drRule(self.server.matcher, mt_idx=0, rte_items=rte_items,
-                                         rule_actions=[tag_ra, tir_ra], num_of_actions=2,
-                                         rule_attr_create=Mlx5drRuleAttr(user_data=bytes(8)),
-                                         dr_ctx=self.server.dr_ctx))
+                                   at_idx=0, rule_actions=[tag_ra, tir_ra], num_of_actions=2,
+                                   rule_attr_create=Mlx5drRuleAttr(user_data=bytes(8)),
+                                   dr_ctx=self.server.dr_ctx))
         packet = gen_packet(self.server.msg_size)
         raw_traffic(self.client, self.server, self.server.num_msgs, [packet],
                     tag_value=0x1234)
@@ -109,7 +115,9 @@ class Mlx5drTrafficTest(PydiruTrafficTestCase):
         :param smac_15_0_only: If True modify only the last 2 bytes of smac
         """
         rte_items = create_sipv4_rte_items(PacketConsts.SRC_IP)
-        self.server.init_steering_resources(rte_items=rte_items)
+        actions_types = [[me.MLX5DR_ACTION_TYP_MODIFY_HDR, me.MLX5DR_ACTION_TYP_TIR,
+                    me.MLX5DR_ACTION_TYP_LAST]]
+        self.server.init_steering_resources(rte_items=rte_items, action_types_list=actions_types)
         smac_47_16 = 0x88888888
         smac_15_0 = 0x8888
         actions = []
@@ -121,10 +129,11 @@ class Mlx5drTrafficTest(PydiruTrafficTestCase):
         _, self.modify_ra = self.server.create_rule_action('modify', log_bulk_size=12, offset=0,
                                                            actions=actions)
         _, tir_ra = self.server.create_rule_action('tir')
-        self.hws_rules.append(Mlx5drRule(matcher=self.server.matcher, mt_idx=0, rte_items=rte_items,
-                                         rule_actions=[self.modify_ra, tir_ra], num_of_actions=2,
-                                         rule_attr_create=Mlx5drRuleAttr(user_data=bytes(8)),
-                                         dr_ctx=self.server.dr_ctx))
+        self.hws_rules.append(Mlx5drRule(matcher=self.server.matcher, mt_idx=0,
+                                      rte_items=rte_items, at_idx=0,
+                                      rule_actions=[self.modify_ra, tir_ra], num_of_actions=2,
+                                      rule_attr_create=Mlx5drRuleAttr(user_data=bytes(8)),
+                                      dr_ctx=self.server.dr_ctx))
         str_smac = PacketConsts.SRC_MAC[:12] + NEW_MAC_STR[12:] if smac_15_0_only else NEW_MAC_STR
         exp_src_mac = struct.pack('!6s', bytes.fromhex(str_smac.replace(':', '')))
         exp_packet = gen_packet(self.server.msg_size, src_mac=exp_src_mac)
@@ -153,11 +162,18 @@ class Mlx5drTrafficTest(PydiruTrafficTestCase):
         """
         items = [create_sipv4_rte_items(f'{i}.{i}.{i}.{i}') for i in range(1, 4)]
         dip_rte = create_dipv4_rte_items()
-        self.server.init_steering_resources(rte_items=items[0], root_rte_items=dip_rte)
+        actions_types = [[me.MLX5DR_ACTION_TYP_MODIFY_HDR, me.MLX5DR_ACTION_TYP_TIR,
+                    me.MLX5DR_ACTION_TYP_LAST]]
+        self.server.init_steering_resources(rte_items=items[0], root_rte_items=dip_rte,
+                                            action_types_list=actions_types)
         self.server.matcher2 = self.server.create_matcher(self.server.table,
-                                                          [Mlx5drMacherTemplate(items[1])], prio=2)
+                                                          [Mlx5drMacherTemplate(items[1])],
+                                                          [Mlx5drActionTemplate(actions_types[0])],
+                                                          prio=2)
         self.server.matcher3 = self.server.create_matcher(self.server.table,
-                                                          [Mlx5drMacherTemplate(items[2])], prio=3)
+                                                          [Mlx5drMacherTemplate(items[2])],
+                                                          [Mlx5drActionTemplate(actions_types[0])],
+                                                          prio=3)
         matchers = [self.server.matcher, self.server.matcher2, self.server.matcher3]
         action1 = SetActionIn(action_type=SET_ACTION, field=ModifyFieldId.OUT_SMAC_47_16,
                               length=ModifyFieldLen.OUT_SMAC_47_16, data=0x88888888)
@@ -171,8 +187,8 @@ class Mlx5drTrafficTest(PydiruTrafficTestCase):
         dr_rule_attr = Mlx5drRuleAttr(user_data=bytes(8))
         for i in range(len(matchers)):
             self.hws_rules.append(Mlx5drRule(matcher=matchers[i], mt_idx=0, rte_items=items[i],
-                                             rule_actions=[self.modify_ra, tir_ra],
-                                             num_of_actions=2, rule_attr_create=dr_rule_attr,
+                                             at_idx=0, rule_actions=[self.modify_ra, tir_ra],
+                                             num_of_actions=2,rule_attr_create=dr_rule_attr,
                                              dr_ctx=self.server.dr_ctx))
         exp_src_mac = struct.pack('!6s', bytes.fromhex(NEW_MAC_STR.replace(':', '')))
         for i in range(1, 4):
@@ -190,16 +206,18 @@ class Mlx5drTrafficTest(PydiruTrafficTestCase):
         :param modify_actions: Actions that modify packets
         :param exp_packet: Expected packet after modifications
         """
-
-        self.server.init_steering_resources(rte_items=rte_items)
+        actions_types = [[me.MLX5DR_ACTION_TYP_MODIFY_HDR, me.MLX5DR_ACTION_TYP_TIR,
+                    me.MLX5DR_ACTION_TYP_LAST]]
+        self.server.init_steering_resources(rte_items=rte_items, action_types_list=actions_types)
 
         _, self.modify_ra = self.server.create_rule_action('modify', log_bulk_size=12, offset=0,
                                                            actions=modify_actions)
         _, tir_ra = self.server.create_rule_action('tir')
-        self.hws_rules.append(Mlx5drRule(matcher=self.server.matcher, mt_idx=0, rte_items=rte_items,
-                                         rule_actions=[self.modify_ra, tir_ra], num_of_actions=2,
+        self.hws_rules.append(Mlx5drRule(matcher=self.server.matcher, mt_idx=0,
+                                         rte_items=rte_items, at_idx=0,
+                                         rule_actions=[self.modify_ra, tir_ra],
                                          rule_attr_create=Mlx5drRuleAttr(user_data=bytes(8)),
-                                         dr_ctx=self.server.dr_ctx))
+                                         num_of_actions=2, dr_ctx=self.server.dr_ctx))
         packet = gen_packet(self.server.msg_size)
         raw_traffic(self.client, self.server, self.server.num_msgs, [packet], exp_packet,
                     skip_idxs=[24, 25])  # Skipping IP checksum
@@ -229,7 +247,7 @@ class Mlx5drTrafficTest(PydiruTrafficTestCase):
 
     @staticmethod
     def create_miss_rule(agr_obj, rte_items, rule_actions):
-        return Mlx5drRule(matcher=agr_obj.matcher, mt_idx=0, rte_items=rte_items,
+        return Mlx5drRule(matcher=agr_obj.matcher, mt_idx=0, rte_items=rte_items, at_idx=0,
                           rule_actions=rule_actions, num_of_actions=len(rule_actions),
                           rule_attr_create=Mlx5drRuleAttr(user_data=bytes(8)), dr_ctx=agr_obj.dr_ctx)
 
@@ -251,8 +269,11 @@ class Mlx5drTrafficTest(PydiruTrafficTestCase):
         sip_miss_rte = create_sipv4_rte_items(sip_miss)
         dip_rte = create_dipv4_rte_items()
         sip_rte = create_sipv4_rte_items()
+        tx_actions_types = [[me.MLX5DR_ACTION_TYP_CTR, me.MLX5DR_ACTION_TYP_MISS,
+                             me.MLX5DR_ACTION_TYP_LAST]]
+        rx_actions_types = [[me.MLX5DR_ACTION_TYP_MISS, me.MLX5DR_ACTION_TYP_LAST]]
         # TX
-        self.client.init_steering_resources(rte_items=sip_rte,
+        self.client.init_steering_resources(rte_items=sip_rte, action_types_list=tx_actions_types,
                                             table_type=me.MLX5DR_TABLE_TYPE_NIC_TX)
         _, miss_tx_ra = self.client.create_rule_action('def_miss',
                                                        flags=me.MLX5DR_ACTION_FLAG_HWS_TX)
@@ -261,18 +282,21 @@ class Mlx5drTrafficTest(PydiruTrafficTestCase):
         self.miss_tx_rule = self.create_miss_rule(self.client, rte_items=sip_rte,
                                                   rule_actions=[counter_tx_ra, miss_tx_ra])
         # RX
-        self.server.init_steering_resources(rte_items=sip_rte, root_rte_items=dip_rte)
+        self.server.init_steering_resources(rte_items=sip_rte, root_rte_items=dip_rte,
+                                            action_types_list=rx_actions_types)
         _, miss_rx_ra = self.server.create_rule_action('def_miss')
         self.miss_rx_rule = self.create_miss_rule(self.server, rte_items=sip_miss_rte,
                                                   rule_actions=[miss_rx_ra])
         # Second RX matcher
         mt_2 = Mlx5drMacherTemplate(dip_rte)
-        self.server.dip_matcher = self.server.create_matcher(self.server.table, [mt_2],
-                                                             mode=me.MLX5DR_MATCHER_RESOURCE_MODE_RULE,
-                                                             prio=9, log_row=2)
+        at = [Mlx5drActionTemplate([me.MLX5DR_ACTION_TYP_TIR, me.MLX5DR_ACTION_TYP_LAST])]
+        self.server.dip_matcher = \
+            self.server.create_matcher(self.server.table, [mt_2], at,
+                                       mode=me.MLX5DR_MATCHER_RESOURCE_MODE_RULE,
+                                       prio=9, log_row=2)
         _, tir_ra = self.server.create_rule_action('tir')
         self.hws_rules.append(Mlx5drRule(matcher=self.server.dip_matcher, mt_idx=0,
-                                         rte_items=dip_rte, rule_actions=[tir_ra],
+                                         rte_items=dip_rte, at_idx=0, rule_actions=[tir_ra],
                                          num_of_actions=1,
                                          rule_attr_create=Mlx5drRuleAttr(user_data=bytes(8)),
                                          dr_ctx=self.server.dr_ctx))
@@ -293,9 +317,9 @@ class Mlx5drTrafficTest(PydiruTrafficTestCase):
         change of a FLEX parser is needed to decap VXLAN.
         """
         tir_rte_items = create_sipv4_rte_items(PacketConsts.SRC_IP)
-        self.server.init_steering_resources(rte_items=tir_rte_items)
         _, tir_ra = self.server.create_rule_action('tir')
         if decap_type == me.MLX5DR_ACTION_REFORMAT_TYPE_TNL_L3_TO_L2:
+            action_enum = me.MLX5DR_ACTION_TYP_TNL_L3_TO_L2
             outer = gen_outer_headers(self.server.msg_size, tunnel=TunnelType.GTP_U)
             l2_hdr = get_l2_header()
             inner_len = self.server.msg_size - len(outer) - len(l2_hdr)
@@ -305,14 +329,18 @@ class Mlx5drTrafficTest(PydiruTrafficTestCase):
                                                                bulk_size=12)
             exp_packet = l2_hdr + inner
         else:
+            action_enum = me.MLX5DR_ACTION_TYP_TNL_L2_TO_L2
             outer = gen_outer_headers(self.server.msg_size, tunnel=TunnelType.VXLAN)
             inner_len = self.server.msg_size - len(outer)
             inner = gen_packet(inner_len)
             decap_a, decap_ra = self.server.create_rule_action('reformat')
             exp_packet = inner
         packet = outer + inner
-        self.hws_rules.append(Mlx5drRule(self.server.matcher, 0, tir_rte_items, [decap_ra, tir_ra],
-                                         2, Mlx5drRuleAttr(user_data=bytes(8)), self.server.dr_ctx))
+        actions_types = [[action_enum, me.MLX5DR_ACTION_TYP_TIR, me.MLX5DR_ACTION_TYP_LAST]]
+        self.server.init_steering_resources(rte_items=tir_rte_items, action_types_list=actions_types)
+        self.hws_rules.append(Mlx5drRule(self.server.matcher, 0, tir_rte_items, 0,
+                                         [decap_ra, tir_ra], 2, Mlx5drRuleAttr(user_data=bytes(8)),
+                                         self.server.dr_ctx))
         raw_traffic(self.client, self.server, self.server.num_msgs, [packet], exp_packet)
         self.verify_rule_removal(tir_rte_items, [self.server], packet)
 
@@ -322,17 +350,21 @@ class Mlx5drTrafficTest(PydiruTrafficTestCase):
         """
         tir_rte_items = create_sipv4_rte_items(PacketConsts.SRC_IP)
         self.server.init_steering_resources(rte_items=tir_rte_items)
-        self.client.init_steering_resources(rte_items=tir_rte_items,
+        action_enum = me.MLX5DR_ACTION_TYP_L2_TO_TNL_L2
+        if encap_type != me.MLX5DR_ACTION_REFORMAT_TYPE_L2_TO_TNL_L2:
+            action_enum = me.MLX5DR_ACTION_TYP_L2_TO_TNL_L3
+        actions_types = [[action_enum, me.MLX5DR_ACTION_TYP_LAST]]
+        self.client.init_steering_resources(rte_items=tir_rte_items, action_types_list=actions_types,
                                             table_type=me.MLX5DR_TABLE_TYPE_NIC_TX)
         encap_data = gen_outer_headers(self.server.msg_size, tunnel=TunnelType.VXLAN)
         _, tir_ra = self.server.create_rule_action('tir')
         _, encap_ra = self.client.create_rule_action('reformat', me.MLX5DR_ACTION_FLAG_HWS_TX,
                                                      ref_type=encap_type, data=encap_data,
                                                      data_sz=len(encap_data), log_bulk_size=12)
-        self.hws_rules.append(Mlx5drRule(self.client.matcher, 0, tir_rte_items, [encap_ra], 1,
-                                         Mlx5drRuleAttr(user_data=bytes(8)), self.client.dr_ctx))
-        self.hws_rules.append(Mlx5drRule(self.server.matcher, 0, tir_rte_items, [tir_ra], 1,
-                                         Mlx5drRuleAttr(user_data=bytes(8)), self.server.dr_ctx))
+        self.hws_rules.append(Mlx5drRule(self.client.matcher, 0, tir_rte_items, 0, [encap_ra], 1,
+                                  Mlx5drRuleAttr(user_data=bytes(8)), self.client.dr_ctx))
+        self.hws_rules.append(Mlx5drRule(self.server.matcher, 0, tir_rte_items, 0, [tir_ra], 1,
+                                  Mlx5drRuleAttr(user_data=bytes(8)), self.server.dr_ctx))
         # Build packets
         send_packet = gen_packet(self.server.msg_size - len(encap_data))
         l3_packet_len = self.server.msg_size - len(encap_data) - PacketConsts.ETHER_HEADER_SIZE
@@ -387,23 +419,27 @@ class Mlx5drTrafficTest(PydiruTrafficTestCase):
         rx_items = create_sipv4_rte_items('3.3.3.3')
 
         dip_rte_items = create_dipv4_rte_items(PacketConsts.DST_IP)
-        self.server.init_steering_resources(rte_items=sip_rte_items, root_rte_items=dip_rte_items)
+        actions_types = [[me.MLX5DR_ACTION_TYP_DROP, me.MLX5DR_ACTION_TYP_LAST]]
+        self.server.init_steering_resources(rte_items=sip_rte_items, root_rte_items=dip_rte_items,
+                                            action_types_list=actions_types)
         self.client.init_steering_resources(rte_items=sip_rte_items, root_rte_items=dip_rte_items,
-                                            table_type=me.MLX5DR_TABLE_TYPE_NIC_TX)
+                                            table_type=me.MLX5DR_TABLE_TYPE_NIC_TX,
+                                            action_types_list=actions_types)
         _, rx_ra = self.server.create_rule_action('drop')
         _, tx_ra = self.client.create_rule_action('drop', me.MLX5DR_ACTION_FLAG_HWS_TX)
         _, tir_ra = self.server.create_rule_action('tir')
 
         template_relaxed_match = me.MLX5DR_MATCH_TEMPLATE_FLAG_RELAXED_MATCH
         matcher_templates = [Mlx5drMacherTemplate(dip_rte_items, flags=template_relaxed_match)]
-        tir_matcher = self.server.create_matcher(self.server.table, matcher_templates,
+        tir_temp = [Mlx5drActionTemplate([me.MLX5DR_ACTION_TYP_TIR, me.MLX5DR_ACTION_TYP_LAST])]
+        tir_matcher = self.server.create_matcher(self.server.table, matcher_templates, tir_temp,
                                                  mode=me.MLX5DR_MATCHER_RESOURCE_MODE_HTABLE,
                                                  prio=2)
-        self.hws_rules.append(Mlx5drRule(tir_matcher, 0, dip_rte_items, [tir_ra], 1,
+        self.hws_rules.append(Mlx5drRule(tir_matcher, 0, dip_rte_items, 0, [tir_ra], 1,
                                          Mlx5drRuleAttr(user_data=bytes(8)), self.server.dr_ctx))
-        self.hws_rules.append(Mlx5drRule(self.server.matcher, 0, rx_items, [rx_ra], 1,
+        self.hws_rules.append(Mlx5drRule(self.server.matcher, 0, rx_items, 0, [rx_ra], 1,
                                          Mlx5drRuleAttr(user_data=bytes(8)), self.server.dr_ctx))
-        self.hws_rules.append(Mlx5drRule(self.client.matcher, 0, tx_items, [tx_ra], 1,
+        self.hws_rules.append(Mlx5drRule(self.client.matcher, 0, tx_items, 0, [tx_ra], 1,
                                          Mlx5drRuleAttr(user_data=bytes(8)), self.client.dr_ctx))
         packets = []
         for i in [3, 2, 1]:
@@ -418,8 +454,11 @@ class Mlx5drTrafficTest(PydiruTrafficTestCase):
         and verify counters.
         """
         rte_items = create_sipv4_rte_items(PacketConsts.SRC_IP)
-        self.server.init_steering_resources(rte_items=rte_items)
-        self.client.init_steering_resources(rte_items=rte_items,
+        tx_actions_types = [[me.MLX5DR_ACTION_TYP_CTR, me.MLX5DR_ACTION_TYP_LAST]]
+        rx_actions_types = [[me.MLX5DR_ACTION_TYP_CTR, me.MLX5DR_ACTION_TYP_TIR,
+                       me.MLX5DR_ACTION_TYP_LAST]]
+        self.server.init_steering_resources(rte_items=rte_items, action_types_list=rx_actions_types)
+        self.client.init_steering_resources(rte_items=rte_items, action_types_list=tx_actions_types,
                                             table_type=me.MLX5DR_TABLE_TYPE_NIC_TX)
         _, tir_ra = self.server.create_rule_action('tir')
         # Set const values for counters' offsets for easier debug
@@ -431,11 +470,11 @@ class Mlx5drTrafficTest(PydiruTrafficTestCase):
         rx_devx_counter, rx_counter_id, counter_rx_ra = \
             create_counter_action(self, self.server, flags=me.MLX5DR_ACTION_FLAG_HWS_RX,
                                        bulk=BULK_512, offset=rx_offset)
-        self.rx_rule = Mlx5drRule(self.server.matcher, 0, rte_items,
+        self.rx_rule = Mlx5drRule(self.server.matcher, 0, rte_items, 0,
                                   [counter_rx_ra, tir_ra], 2,
                                   Mlx5drRuleAttr(user_data=bytes(8)),
                                   self.server.dr_ctx)
-        self.tx_rule = Mlx5drRule(self.client.matcher, 0, rte_items,
+        self.tx_rule = Mlx5drRule(self.client.matcher, 0, rte_items, 0,
                                   [counter_tx_ra], 1,
                                   Mlx5drRuleAttr(user_data=bytes(8)),
                                   self.client.dr_ctx)
@@ -457,25 +496,30 @@ class Mlx5drTrafficTest(PydiruTrafficTestCase):
         eth_ipv4_ttl0 = create_eth_ipv4_rte_items(ttl=0)
         eth_ipv4_ttl1 = create_eth_ipv4_rte_items(ttl=1)
         agr_obj.root_matcher_template_0 = [Mlx5drMacherTemplate(eth_ipv4_ttl0)]
+        drop_temp = [Mlx5drActionTemplate([me.MLX5DR_ACTION_TYP_DROP, me.MLX5DR_ACTION_TYP_LAST])]
         agr_obj.root_matcher_0 = agr_obj.create_matcher(agr_obj.root_table,
                                                         agr_obj.root_matcher_template_0,
-                                                        prio=0)
+                                                        drop_temp, prio=0)
         _, drop_ra = agr_obj.create_rule_action('drop', flags=me.MLX5DR_ACTION_FLAG_ROOT_RX)
-        agr_obj.drop0 = Mlx5drRule(agr_obj.root_matcher_0, 0, eth_ipv4_ttl0, [drop_ra], 1,
+        agr_obj.drop0 = Mlx5drRule(agr_obj.root_matcher_0, 0, eth_ipv4_ttl0, 0, [drop_ra], 1,
                                    Mlx5drRuleAttr(user_data=bytes(8)), agr_obj.dr_ctx)
-        agr_obj.drop1 = Mlx5drRule(agr_obj.root_matcher_0, 0, eth_ipv4_ttl1, [drop_ra], 1,
+        agr_obj.drop1 = Mlx5drRule(agr_obj.root_matcher_0, 0, eth_ipv4_ttl1, 0, [drop_ra], 1,
                                    Mlx5drRuleAttr(user_data=bytes(8)), agr_obj.dr_ctx)
 
     @staticmethod
-    def create_templates_and_matcher(agr_obj, rte_items, flags=0, table=None):
+    def create_templates_and_matcher(agr_obj, rte_items, flags=0, table=None, actions=None):
         """
         Creates matcher templates for each rte_item and a matcher from those templates.
         """
+        action_templates = []
+        if actions is None:
+            actions = [[me.MLX5DR_ACTION_TYP_TIR, me.MLX5DR_ACTION_TYP_LAST] * len(rte_items)]
         matcher_templates = []
-        for items in rte_items:
-            matcher_templates.append(Mlx5drMacherTemplate(items, flags))
+        for i in range(len(rte_items)):
+            action_templates.append(Mlx5drActionTemplate(actions[i]))
+            matcher_templates.append(Mlx5drMacherTemplate(rte_items[i], flags))
         return agr_obj.create_matcher(table if table else agr_obj.table, matcher_templates,
-                                      prio=0)
+                                      action_templates, prio=0)
 
     @staticmethod
     def create_rules(agr_obj, matcher, rte_items, actions):
@@ -485,7 +529,7 @@ class Mlx5drTrafficTest(PydiruTrafficTestCase):
         assert(len(rte_items) == len(actions))
         rules = []
         for i in range(0, len(actions)):
-            rules.append(Mlx5drRule(matcher, i, rte_items[i], actions[i], len(actions[i]),
+            rules.append(Mlx5drRule(matcher, i, rte_items[i], i, actions[i], len(actions[i]),
                          Mlx5drRuleAttr(user_data=bytes(8)), agr_obj.dr_ctx))
         return rules
 
@@ -504,10 +548,12 @@ class Mlx5drTrafficTest(PydiruTrafficTestCase):
         dmac_ipv4_rte_items = create_eth_ipv4_rte_items(dmac=dmac)
 
         # Root
+        actions = [me.MLX5DR_ACTION_TYP_TAG, me.MLX5DR_ACTION_TYP_TIR, me.MLX5DR_ACTION_TYP_LAST]
         self.server.init_steering_resources(rte_items=dmac_ipv4_rte_items)
         self.root_ttl_drops(self.server)
         # Non root
-        matcher = self.create_templates_and_matcher(self.server, [udp_rte_items, tcp_rte_items])
+        matcher = self.create_templates_and_matcher(self.server, [udp_rte_items, tcp_rte_items],
+                                                    actions=[actions, actions])
         _, tag_ra1 = self.server.create_rule_action('tag')
         tag_ra1.tag_value = TAG_VALUE_1
         _, tir_ra = self.server.create_rule_action('tir')
@@ -534,7 +580,7 @@ class Mlx5drTrafficTest(PydiruTrafficTestCase):
         _, decap_ra = agr_obj.create_rule_action('reformat',
                                                  ref_type=me.MLX5DR_ACTION_REFORMAT_TYPE_TNL_L3_TO_L2,
                                                  data=inner_l2, data_sz=len(inner_l2), log_bulk_size=12)
-        return [decap_ra, tag_ra, tir_ra]
+        return [tag_ra, decap_ra, tir_ra]
 
     def def_34_test_traffic(self, outer, un_exp_outer, tag_val):
         l2_hdr = get_l2_header()
@@ -590,13 +636,15 @@ class Mlx5drTrafficTest(PydiruTrafficTestCase):
         gtp_teid_udp_rte_items = create_tunneled_gtp_teid_rte_items(with_qfi=False,
                                                                     inner_l4=socket.IPPROTO_UDP)
         # Matchers
+        actions = [me.MLX5DR_ACTION_TYP_TAG, me.MLX5DR_ACTION_TYP_TNL_L3_TO_L2,
+                   me.MLX5DR_ACTION_TYP_TIR, me.MLX5DR_ACTION_TYP_LAST]
         relaxed_flag = me.MLX5DR_MATCH_TEMPLATE_FLAG_RELAXED_MATCH
         matcher1= self.create_templates_and_matcher(self.server, [gtp_teid_qfi_tcp_rte_items,
                                                     gtp_teid_qfi_udp_rte_items], relaxed_flag,
-                                                    self.server.tables[0])
+                                                    self.server.tables[0], [actions, actions])
         matcher2= self.create_templates_and_matcher(self.server, [gtp_teid_tcp_rte_items,
                                                     gtp_teid_udp_rte_items], relaxed_flag,
-                                                    self.server.tables[1])
+                                                    self.server.tables[1], [actions, actions])
         # Actions
         self.server.rule_actions = self.create_actions_decap_tag_tir(self.server, TAG_VALUE_1)
         # Rules
@@ -604,7 +652,7 @@ class Mlx5drTrafficTest(PydiruTrafficTestCase):
         self.server.rules.append(self.create_rules(self.server, matcher1,
                                                    [gtp_teid_qfi_tcp_rte_items, gtp_teid_qfi_udp_rte_items],
                                                    [self.server.rule_actions] * 2))
-        self.server.rule_actions[1].tag_value = TAG_VALUE_2
+        self.server.rule_actions[0].tag_value = TAG_VALUE_2
         self.server.rules.append(self.create_rules(self.server, matcher2,
                                                    [gtp_teid_tcp_rte_items, gtp_teid_udp_rte_items],
                                                    [self.server.rule_actions] * 2))
@@ -632,15 +680,18 @@ class Mlx5drTrafficTest(PydiruTrafficTestCase):
                      RteFlowItemEnd()]
         udp_rte_items = create_eth_ipv4_l4_rte_items(next_proto=socket.IPPROTO_UDP)
         tcp_rte_items = create_eth_ipv4_l4_rte_items(next_proto=socket.IPPROTO_TCP)
+        tx_actions = [me.MLX5DR_ACTION_TYP_L2_TO_TNL_L3, me.MLX5DR_ACTION_TYP_LAST]
         self.server.init_steering_resources(rte_items=rte_items)
         self.client.init_steering_resources(rte_items=rte_items,
-                                            table_type=me.MLX5DR_TABLE_TYPE_NIC_TX)
+                                            table_type=me.MLX5DR_TABLE_TYPE_NIC_TX,
+                                            action_types_list=[tx_actions])
         # Override matcher_templates and matcher on TX
         self.client.matcher_templates =  [Mlx5drMacherTemplate(udp_rte_items),
                                           Mlx5drMacherTemplate(tcp_rte_items)]
+        tx_at = [Mlx5drActionTemplate(tx_actions)]
         self.client.matcher = self.client.create_matcher(self.client.table,
                                                          self.client.matcher_templates,
-                                                         prio=0)
+                                                         tx_at, prio=0)
         encap_data = gen_outer_headers(self.server.msg_size, tunnel=TunnelType.GTP_U,
                                        gtp_psc_qfi=PacketConsts.GTP_PSC_QFI)
         _, tir_ra = self.server.create_rule_action('tir')
@@ -648,11 +699,11 @@ class Mlx5drTrafficTest(PydiruTrafficTestCase):
                                                      ref_type=me.MLX5DR_ACTION_REFORMAT_TYPE_L2_TO_TNL_L3,
                                                      data=encap_data,
                                                      data_sz=len(encap_data), log_bulk_size=12)
-        self.tx_rule_udp = Mlx5drRule(self.client.matcher, 0, udp_rte_items, [encap_ra], 1,
+        self.tx_rule_udp = Mlx5drRule(self.client.matcher, 0, udp_rte_items, 0, [encap_ra], 1,
                                       Mlx5drRuleAttr(user_data=bytes(8)), self.client.dr_ctx)
-        self.tx_rule_tcp = Mlx5drRule(self.client.matcher, 1, tcp_rte_items, [encap_ra], 1,
+        self.tx_rule_tcp = Mlx5drRule(self.client.matcher, 1, tcp_rte_items, 0, [encap_ra], 1,
                                       Mlx5drRuleAttr(user_data=bytes(8)), self.client.dr_ctx)
-        self.rx_rule = Mlx5drRule(self.server.matcher, 0, rte_items, [tir_ra], 1,
+        self.rx_rule = Mlx5drRule(self.server.matcher, 0, rte_items, 0, [tir_ra], 1,
                                   Mlx5drRuleAttr(user_data=bytes(8)), self.server.dr_ctx)
         # Build packets
         send_packet = gen_packet(self.server.msg_size - len(encap_data))
@@ -675,8 +726,10 @@ class Mlx5drTrafficTest(PydiruTrafficTestCase):
         tir_rte_items = create_sipv4_rte_items(PacketConsts.SRC_IP)
         _, tir_ra = self.server.create_rule_action('tir')
         packet = gen_packet(self.server.msg_size)
-        self.server.init_steering_resources(rte_items=tir_rte_items)
-        self.tir_rule1 = Mlx5drRule(self.server.matcher, 0, tir_rte_items, [tir_ra], 1,
+        action_types = [[me.MLX5DR_ACTION_TYP_TIR, me.MLX5DR_ACTION_TYP_LAST],
+                        [me.MLX5DR_ACTION_TYP_TAG, me.MLX5DR_ACTION_TYP_LAST]]
+        self.server.init_steering_resources(rte_items=tir_rte_items, action_types_list=action_types)
+        self.tir_rule1 = Mlx5drRule(self.server.matcher, 0, tir_rte_items, 0, [tir_ra], 1,
                                     Mlx5drRuleAttr(user_data=bytes(8), burst=1))
         try:
             raw_traffic(self.client, self.server, self.server.num_msgs, [packet])
@@ -688,7 +741,7 @@ class Mlx5drTrafficTest(PydiruTrafficTestCase):
             _, tag_ra = self.server.create_rule_action('tag')
             tag_ra.tag_value = 0x1234
             self.tir_rule2 = Mlx5drRule(self.server.matcher, 0,
-                                        create_sipv4_rte_items(PacketConsts.DST_IP), [tag_ra], 1,
+                                        create_sipv4_rte_items(PacketConsts.DST_IP), 1, [tag_ra], 1,
                                         Mlx5drRuleAttr(user_data=bytes(8)), self.server.dr_ctx)
         else:
             self.server.dr_ctx.send_queue_action(0, me.MLX5DR_SEND_QUEUE_ACTION_DRAIN)

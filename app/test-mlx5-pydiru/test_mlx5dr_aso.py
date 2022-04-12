@@ -8,6 +8,7 @@ from pydiru.providers.mlx5.steering.mlx5dr_action import Mlx5drRuleAction, Mlx5d
 from pydiru.providers.mlx5.steering.mlx5dr_action import Mlx5drRuleAction, Mlx5drAsoFlowMeter
 from pydiru.providers.mlx5.steering.mlx5dr_rule import Mlx5drRuleAttr, Mlx5drRule
 from pydiru.providers.mlx5.steering.mlx5dr_matcher import Mlx5drMacherTemplate
+from pydiru.providers.mlx5.steering.mlx5dr_action import Mlx5drActionTemplate
 from pydiru.providers.mlx5.steering.mlx5dr_devx_objects import Mlx5drDevxObj
 from .base import BaseDrResources, PydiruTrafficTestCase, AsoResources
 from .prm_structs import FlowMeterAsoObj, FlowMeterParams
@@ -101,21 +102,23 @@ class Mlx5drAsoTest(PydiruTrafficTestCase):
     def create_aso_rules(self, agr_obj, flag, rte_items, fm_ra, counter_green_ra, counter_red_ra, reg_c):
         table_type = me.MLX5DR_TABLE_TYPE_NIC_RX if flag == me.MLX5DR_ACTION_FLAG_HWS_RX \
                 else me.MLX5DR_TABLE_TYPE_NIC_TX
+        at = [Mlx5drActionTemplate(
+            [me.MLX5DR_ACTION_TYP_CTR, me.MLX5DR_ACTION_TYP_LAST])]
         agr_obj.tbl2 = agr_obj.create_table(level=2, table_type=table_type)
         agr_obj.table2_a = Mlx5drActionDestTable(agr_obj.dr_ctx, agr_obj.tbl2, flag)
         agr_obj.t_ra = Mlx5drRuleAction(agr_obj.table2_a)
         # Create rule with aso flow meter and forward actions
-        agr_obj.aso_rule = Mlx5drRule(agr_obj.matcher, 0, rte_items, [fm_ra, agr_obj.t_ra], 2,
+        agr_obj.aso_rule = Mlx5drRule(agr_obj.matcher, 0, rte_items, 0, [fm_ra, agr_obj.t_ra], 2,
                                       Mlx5drRuleAttr(user_data=bytes(8)), agr_obj.dr_ctx)
         # Create counter rules on table 2
         green_rte = u.create_reg_c_rte_items(me.MLX5DR_ACTION_ASO_METER_COLOR_GREEN, reg_c + 3)
         reg_c_matcher_template = [Mlx5drMacherTemplate(green_rte,
                                                        flags=me.MLX5DR_MATCH_TEMPLATE_FLAG_RELAXED_MATCH)]
-        agr_obj.matcher2 = agr_obj.create_matcher(agr_obj.tbl2, reg_c_matcher_template)
-        agr_obj.green_rule = Mlx5drRule(agr_obj.matcher2, 0, green_rte, [counter_green_ra], 1,
+        agr_obj.matcher2 = agr_obj.create_matcher(agr_obj.tbl2, reg_c_matcher_template, at)
+        agr_obj.green_rule = Mlx5drRule(agr_obj.matcher2, 0, green_rte, 0, [counter_green_ra], 1,
                                         Mlx5drRuleAttr(user_data=bytes(8)), agr_obj.dr_ctx)
         red_rte = u.create_reg_c_rte_items(me.MLX5DR_ACTION_ASO_METER_COLOR_RED, reg_c + 3)
-        agr_obj.red_rule = Mlx5drRule(agr_obj.matcher2, 0, red_rte, [counter_red_ra], 1,
+        agr_obj.red_rule = Mlx5drRule(agr_obj.matcher2, 0, red_rte, 0, [counter_red_ra], 1,
                                       Mlx5drRuleAttr(user_data=bytes(8)), agr_obj.dr_ctx)
 
     def test_mlx5dr_aso_flow_meter(self):
@@ -124,9 +127,11 @@ class Mlx5drAsoTest(PydiruTrafficTestCase):
         Create rules with counters to calculate RED and Green packets. Send traffic with rate above
         30Mbps and check green and red packets rates on TX nad RX.
         """
+        actions_types = [[me.MLX5DR_ACTION_TYP_ASO_METER, me.MLX5DR_ACTION_TYP_FT,
+                    me.MLX5DR_ACTION_TYP_LAST]]
         rte_items = u.create_sipv4_rte_items(u.PacketConsts.SRC_IP)
         # RX
-        self.server.init_steering_resources(rte_items=rte_items)
+        self.server.init_steering_resources(rte_items=rte_items, action_types_list=actions_types)
         regs = self.get_flow_meter_reg_id(self.server.dv_ctx)
         reg_c_rx=regs[0]
         rx_fm_ra = self.create_aso_flow_meter_ra(me.MLX5DR_ACTION_FLAG_HWS_RX, reg_c=reg_c_rx)
@@ -137,7 +142,7 @@ class Mlx5drAsoTest(PydiruTrafficTestCase):
         self.create_aso_rules(self.server, me.MLX5DR_ACTION_FLAG_HWS_RX, rte_items, rx_fm_ra,
                               counter_green_ra_rx, counter_red_ra_rx, reg_c_rx)
         # TX
-        self.client.init_steering_resources(rte_items=rte_items,
+        self.client.init_steering_resources(rte_items=rte_items, action_types_list=actions_types,
                                     table_type=me.MLX5DR_TABLE_TYPE_NIC_TX)
         reg_c_tx=regs[1]
         tx_fm_ra = self.create_aso_flow_meter_ra(me.MLX5DR_ACTION_FLAG_HWS_TX, reg_c=reg_c_tx)

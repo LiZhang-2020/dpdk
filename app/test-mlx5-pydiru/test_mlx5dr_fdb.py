@@ -57,14 +57,14 @@ class Mlx5drFDBTest(PydiruTrafficTestCase):
         return self.vport_to_ib_port(vport_num)
 
     @staticmethod
-    def create_fdb_rule(agr_obj, rte_item, actions):
+    def create_fdb_rule(agr_obj, rte_item, actions, actions_temp):
         rte_items = [rte_item, RteFlowItemEnd()]
         mask = RteFlowItemIpv4(src_addr=bytes(4 * [0xff]), dst_addr=bytes(4 * [0xff]))
         val = RteFlowItemIpv4(src_addr=PacketConsts.SRC_IP, dst_addr=PacketConsts.DST_IP)
         root_rte_items = [RteFlowItem(p.RTE_FLOW_ITEM_TYPE_IPV4, val, mask),  RteFlowItemEnd()]
         agr_obj.init_steering_resources(rte_items=rte_items, table_type=me.MLX5DR_TABLE_TYPE_FDB,
-                                        root_rte_items=root_rte_items)
-        agr_obj.rule = Mlx5drRule(agr_obj.matcher, 0, rte_items, actions, len(actions),
+                                        root_rte_items=root_rte_items, actions=actions_temp)
+        agr_obj.rule = Mlx5drRule(agr_obj.matcher, 0, rte_items, 0, actions, len(actions),
                                   Mlx5drRuleAttr(user_data=bytes(8)), agr_obj.dr_ctx)
 
     def reg_c_to_port_id(self, reg_c):
@@ -93,18 +93,22 @@ class Mlx5drFDBTest(PydiruTrafficTestCase):
         val = Mlx5RteFlowItemTxQueue(qp_num=self.client.qp.qp_num)
         rte_flow_item = [RteFlowItem(me.MLX5_RTE_FLOW_ITEM_TYPE_TX_QUEUE, val, mask),
                          RteFlowItemEnd()]
+        vf_actions = [[me.MLX5DR_ACTION_TYP_TIR, me.MLX5DR_ACTION_TYP_LAST]]
+        pf_actions = [[me.MLX5DR_ACTION_TYP_VPORT, me.MLX5DR_ACTION_TYP_LAST]]
         self.server.init_steering_resources(rte_items=rte_flow_item,
                                             table_type=me.MLX5DR_TABLE_TYPE_FDB,
-                                            root_rte_items=ip_rte_items)
+                                            root_rte_items=ip_rte_items,
+                                            action_types_list=pf_actions)
         vport_a, vport_ra = self.server.create_rule_action('vport',
                                                            flags=me.MLX5DR_ACTION_FLAG_HWS_FDB,
                                                            vport=ib_port)
-        self.vport_rule = Mlx5drRule(self.server.matcher, 0, rte_flow_item, [vport_ra], 1,
+        self.vport_rule = Mlx5drRule(self.server.matcher, 0, rte_flow_item, 0, [vport_ra], 1,
                                      Mlx5drRuleAttr(user_data=bytes(8)), self.server.dr_ctx)
         # Create TIR rule on VF
-        self.vf.init_steering_resources(rte_items=rte_flow_item, root_rte_items=ip_rte_items)
+        self.vf.init_steering_resources(rte_items=rte_flow_item, root_rte_items=ip_rte_items,
+                                        action_types_list=vf_actions)
         tir_a, tir_ra = self.vf.create_rule_action('tir')
-        self.vf.tir_rule = Mlx5drRule(self.vf.matcher, 0, rte_flow_item, [tir_ra], 1,
+        self.vf.tir_rule = Mlx5drRule(self.vf.matcher, 0, rte_flow_item, 0, [tir_ra], 1,
                                       Mlx5drRuleAttr(user_data=bytes(8)), self.vf.dr_ctx)
         packet = gen_packet(self.server.msg_size)
         raw_traffic(self.client, self.vf, self.server.num_msgs, [packet])
@@ -124,7 +128,8 @@ class Mlx5drFDBTest(PydiruTrafficTestCase):
         rte_flow_item = RteFlowItem(p.RTE_FLOW_ITEM_TYPE_REPRESENTED_PORT, val, mask)
         devx_counter, counter_id, counter_ra = \
             create_counter_action(self, self.client, flags=me.MLX5DR_ACTION_FLAG_HWS_FDB)
-        self.create_fdb_rule(self.client, rte_flow_item, [counter_ra])
+        actions_temp = [[me.MLX5DR_ACTION_TYP_CTR, me.MLX5DR_ACTION_TYP_LAST]]
+        self.create_fdb_rule(self.client, rte_flow_item, [counter_ra], actions_temp)
 
         # Send traffic from VF
         packet = gen_packet(self.server.msg_size)

@@ -21,7 +21,7 @@ from pyverbs.pd import PD
 from pyverbs.mr import MR
 
 from pydiru.providers.mlx5.steering.mlx5dr_matcher import Mlx5drMacherTemplate, Mlx5drMatcherAttr, Mlx5drMatcher
-from pydiru.providers.mlx5.steering.mlx5dr_action import Mlx5drRuleAction, \
+from pydiru.providers.mlx5.steering.mlx5dr_action import Mlx5drRuleAction, Mlx5drActionTemplate, \
     Mlx5drActionDestTable, Mlx5drActionDestTir, Mlx5drActionTag, Mlx5drActionDefaultMiss, \
     Mlx5drActionReformat, Mlx5drActionCounter, Mlx5drActionDrop, Mlx5drActionModify, Mlx5drActionDestVport
 from pydiru.providers.mlx5.steering.mlx5dr_context import Mlx5drContextAttr, Mlx5drContext
@@ -208,39 +208,46 @@ class BaseDrResources(object):
         attr = Mlx5drTableAttr(table_type, level)
         return Mlx5drTable(self.dr_ctx, attr)
 
-    def create_matcher(self, table, matcher_templates,
+    def create_matcher(self, table, matcher_templates, action_templates,
                        mode=me.MLX5DR_MATCHER_RESOURCE_MODE_RULE,
                        prio=1, log_row=0, log_col=0, log_rules=2):
         attr = Mlx5drMatcherAttr(prio, mode, log_row, log_col, log_rules)
-        return Mlx5drMatcher(table, matcher_templates, len(matcher_templates), attr)
+        return Mlx5drMatcher(table, matcher_templates, len(matcher_templates), attr, action_templates)
 
     def create_root_fwd_rule(self, rte_items, level=1, table_type=me.MLX5DR_TABLE_TYPE_NIC_RX,
                              prio=1, action_flag=me.MLX5DR_ACTION_FLAG_ROOT_RX):
+        action_temp = [Mlx5drActionTemplate([me.MLX5DR_ACTION_TYP_FT, me.MLX5DR_ACTION_TYP_LAST])]
         self.root_matcher_templates.append([Mlx5drMacherTemplate(rte_items)])
         root_matcher = self.create_matcher(self.root_table, self.root_matcher_templates[-1],
-                                           prio=prio)
+                                           action_temp, prio=prio)
         table = self.create_table(table_type=table_type, level=level)
         tbl_action = Mlx5drActionDestTable(self.dr_ctx, table, action_flag)
         root_ra = Mlx5drRuleAction(tbl_action)
-        rule = Mlx5drRule(root_matcher, 0, rte_items, [root_ra], 1,
-                                        Mlx5drRuleAttr(user_data=bytes(8)), self.dr_ctx)
+        rule = Mlx5drRule(root_matcher, 0, rte_items, 0, [root_ra], 1,
+                          Mlx5drRuleAttr(user_data=bytes(8)), self.dr_ctx)
         return root_matcher, table, rule
 
     def init_steering_resources(self, rte_items=None, table_type=me.MLX5DR_TABLE_TYPE_NIC_RX,
-                                root_rte_items=None):
+                                root_rte_items=None, action_types_list=None):
         """
         Init the basic steering resources.
         :param rte_items: The rte_items to use in the matchers. If not set, use sipv4 rte item.
         :param table_type: The tables type.
         :param root_rte_items: rte_items to use in the root matcher. If not set,
                                use rte_items for both root and non-root matchers
+        :param action_types_list: List of lists of action types to create ActionTemplates
         """
+        if action_types_list is None:
+            action_types_list = [[me.MLX5DR_ACTION_TYP_TIR, me.MLX5DR_ACTION_TYP_LAST]]
         if rte_items is None:
             rte_items = self.create_sipv4_rte_item()
         self.root_table = self.create_table(0, table_type=table_type)
         self.table = self.create_table(table_type=table_type)
         root_rte_items = root_rte_items if root_rte_items is not None else rte_items
         # Create root rule.
+        action_templates = []
+        for action_types in action_types_list:
+            action_templates.append(Mlx5drActionTemplate(action_types))
         self.root_matcher_templates = []
         self.root_matcher, self.table, self.root_dest_tbl_rule = \
             self.create_root_fwd_rule(root_rte_items, level=1, table_type=table_type)
@@ -248,15 +255,9 @@ class BaseDrResources(object):
         template_relaxed_match = me.MLX5DR_MATCH_TEMPLATE_FLAG_RELAXED_MATCH
         # Create table 1 matcher.
         self.matcher_templates = [Mlx5drMacherTemplate(rte_items, flags=template_relaxed_match)]
-        self.matcher = self.create_matcher(self.table, self.matcher_templates, log_row=MATCHER_ROW,
+        self.matcher = self.create_matcher(self.table, self.matcher_templates, action_templates,
+                                           log_row=MATCHER_ROW,
                                            mode=me.MLX5DR_MATCHER_RESOURCE_MODE_HTABLE)
-
-    def create_second_matcher(self, rte_items):
-        template_relaxed_match = me.MLX5DR_MATCH_TEMPLATE_FLAG_RELAXED_MATCH
-        self.second_matcher_templates = [Mlx5drMacherTemplate(rte_items, flags=template_relaxed_match)]
-        self.second_matcher = \
-            self.create_matcher(self.table, self.second_matcher_templates, log_row=MATCHER_ROW,
-                                mode=me.MLX5DR_MATCHER_RESOURCE_MODE_HTABLE, prio=1)
 
     def create_rule_action(self, action_str, flags=me.MLX5DR_ACTION_FLAG_HWS_RX, **kwargs):
         if action_str == 'tir':

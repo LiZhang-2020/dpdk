@@ -104,7 +104,7 @@ class Mlx5drMatcherTest(PydiruTrafficTestCase):
         self.server.init_steering_resources(rte_items=rte_items,
                                             root_rte_items=root_rte_items)
         _, tir_ra = self.server.create_rule_action('tir')
-        self.tir_rule = Mlx5drRule(self.server.matcher, 0, rte_items, [tir_ra], 1,
+        self.tir_rule = Mlx5drRule(self.server.matcher, 0, rte_items, 0, [tir_ra], 1,
                                    Mlx5drRuleAttr(user_data=bytes(8)), self.server.dr_ctx)
 
     def test_mlx5dr_matcher_ipv4(self):

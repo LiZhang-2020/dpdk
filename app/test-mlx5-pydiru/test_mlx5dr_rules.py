@@ -35,9 +35,12 @@ class Mlx5drTrafficTest(PydiruTrafficTestCase):
         Create shared modify action and NUM_OF_QUEUES RX matchers,
         use this action on all matchers and validate with traffic.
         """
+        actions_types = [[me.MLX5DR_ACTION_TYP_MODIFY_HDR, me.MLX5DR_ACTION_TYP_TIR,
+                    me.MLX5DR_ACTION_TYP_LAST]]
         items = [create_sipv4_rte_items(f'{i}.{i}.{i}.{i}') for i in range(1, NUM_OF_QUEUES+1)]
         dip_rte = create_dipv4_rte_items()
-        self.server.init_steering_resources(rte_items=items[0], root_rte_items=dip_rte)
+        self.server.init_steering_resources(rte_items=items[0], root_rte_items=dip_rte,
+                                            action_types_list=actions_types)
         _, self.modify_ra = self.server.create_rule_action('modify', flags=me.MLX5DR_ACTION_FLAG_HWS_RX,
                                                            log_bulk_size=0, offset=0,
                                                            actions=self.create_src_mac_set_action())
@@ -46,8 +49,9 @@ class Mlx5drTrafficTest(PydiruTrafficTestCase):
         for i in range(NUM_OF_QUEUES):
             dr_rule_attr = Mlx5drRuleAttr(queue_id=i, user_data=bytes(8))
             modify_rules.append(Mlx5drRule(matcher=self.server.matcher, mt_idx=0, rte_items=items[i],
-                                           rule_actions=[self.modify_ra, tir_ra], num_of_actions=2,
-                                           rule_attr_create=dr_rule_attr, dr_ctx=self.server.dr_ctx))
+                                           at_idx=0, rule_actions=[self.modify_ra, tir_ra],
+                                           num_of_actions=2, rule_attr_create=dr_rule_attr,
+                                           dr_ctx=self.server.dr_ctx))
         exp_src_mac = struct.pack('!6s', bytes.fromhex(NEW_MAC_STR.replace(':', '')))
         for i in range(1, NUM_OF_QUEUES+1):
             src_ip = f'{i}.{i}.{i}.{i}'

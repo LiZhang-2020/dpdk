@@ -7,6 +7,7 @@ import time
 import os
 
 from pydiru.providers.mlx5.steering.mlx5dr_rule import Mlx5drRuleAttr, Mlx5drRule
+from pydiru.providers.mlx5.steering.mlx5dr_action import Mlx5drActionTemplate
 import pydiru.providers.mlx5.steering.mlx5dr_enums as me
 from pydiru.pydiru_error import PydiruError
 import pydiru.pydiru_enums as p
@@ -29,14 +30,15 @@ class Mlx5drMatcherTest(PydiruAPITestCase):
         one must return completion with error.
         """
         rte_items = create_sipv4_rte_items(PacketConsts.SRC_IP)
+        at = [Mlx5drActionTemplate([me.MLX5DR_ACTION_TYP_TIR, me.MLX5DR_ACTION_TYP_LAST])]
         self.resources.init_steering_resources(rte_items=rte_items)
         if mode == me.MLX5DR_MATCHER_RESOURCE_MODE_RULE:
             matcher = self.resources.create_matcher(self.resources.table,
                                                     self.resources.matcher_templates,
-                                                    log_rules=1)
+                                                    at, log_rules=1)
         else:
             matcher = self.resources.create_matcher(self.resources.table,
-                                                    self.resources.matcher_templates,
+                                                    self.resources.matcher_templates, at,
                                                     mode=me.MLX5DR_MATCHER_RESOURCE_MODE_HTABLE,
                                                     log_row=1, log_col=1)
         # Override the matcher
@@ -48,7 +50,7 @@ class Mlx5drMatcherTest(PydiruAPITestCase):
         sip = struct.unpack("!I", socket.inet_aton(PacketConsts.SRC_IP))[0]
         for i in range(num_of_rules):
             item = create_sipv4_rte_items(socket.inet_ntoa(struct.pack("!I", sip + i)))
-            rule = Mlx5drRule(self.resources.matcher, 0, item, [tir_ra], 1, rule_attr)
+            rule = Mlx5drRule(self.resources.matcher, 0, item, 0, [tir_ra], 1, rule_attr)
             self.rules.append(rule)
             res = []
             # Poll for 1 completion
