@@ -2575,7 +2575,7 @@ flow_hw_action_meta_copy_insert(const struct rte_flow_action actions[],
 }
 
 static int
-flow_hw_action_validate(struct rte_eth_dev *dev,
+flow_hw_actions_validate(struct rte_eth_dev *dev,
 			const struct rte_flow_actions_template_attr *attr,
 			const struct rte_flow_action actions[],
 			const struct rte_flow_action masks[],
@@ -2740,7 +2740,7 @@ flow_hw_actions_template_create(struct rte_eth_dev *dev,
 		.conf = &rx_mreg_mask,
 	};
 
-	if (flow_hw_action_validate(dev, attr, actions, masks, error))
+	if (flow_hw_actions_validate(dev, attr, actions, masks, error))
 		return NULL;
 	if (priv->sh->config.dv_xmeta_en == MLX5_XMETA_MODE_META32_HWS &&
 	    priv->sh->config.dv_esw_en) {
@@ -4584,8 +4584,10 @@ flow_hw_query(const struct rte_eth_dev *dev,
 const struct mlx5_flow_driver_ops mlx5_flow_hw_drv_ops = {
 	.info_get = flow_hw_info_get,
 	.configure = flow_hw_configure,
+	.pattern_validate = flow_hw_pattern_validate,
 	.pattern_template_create = flow_hw_pattern_template_create,
 	.pattern_template_destroy = flow_hw_pattern_template_destroy,
+	.actions_validate = flow_hw_actions_validate,
 	.actions_template_create = flow_hw_actions_template_create,
 	.actions_template_destroy = flow_hw_actions_template_destroy,
 	.template_table_create = flow_hw_template_table_create,
