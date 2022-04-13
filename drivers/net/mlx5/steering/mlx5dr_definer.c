@@ -156,6 +156,9 @@ enum mlx5dr_definer_fname {
 	MLX5DR_DEFINER_FNAME_REG_7,
 	MLX5DR_DEFINER_FNAME_GRE_C_VER,
 	MLX5DR_DEFINER_FNAME_GRE_PROTOCOL,
+	MLX5DR_DEFINER_FNAME_GRE_OPT_KEY,
+	MLX5DR_DEFINER_FNAME_GRE_OPT_SEQ,
+	MLX5DR_DEFINER_FNAME_GRE_OPT_CHECKSUM,
 	MLX5DR_DEFINER_FNAME_MAX,
 };
 
@@ -240,7 +243,10 @@ struct mlx5dr_definer_conv_data {
 	X(SET,		metadata,		v->data,		rte_flow_item_meta) \
 	X(SET_BE16,	gre_c_ver,		v->c_rsvd0_ver,		rte_flow_item_gre) \
 	X(SET_BE16,	gre_protocol_type,	v->protocol,		rte_flow_item_gre) \
-	X(SET,		ipv4_protocol_gre,	IPPROTO_GRE,		rte_flow_item_gre)
+	X(SET,		ipv4_protocol_gre,	IPPROTO_GRE,		rte_flow_item_gre) \
+	X(SET_BE32,	gre_opt_key,		v->key.key,		rte_flow_item_gre_opt) \
+	X(SET_BE32,	gre_opt_seq,		v->sequence.sequence,	rte_flow_item_gre_opt) \
+	X(SET_BE16,	gre_opt_checksum,	v->checksum_rsvd.checksum,rte_flow_item_gre_opt)
 
 /* Item set function format */
 #define X(set_type, func_name, value, itme_type) \
@@ -1092,6 +1098,56 @@ mlx5dr_definer_conv_item_gre(struct mlx5dr_definer_conv_data *cd,
 }
 
 static int
+mlx5dr_definer_conv_item_gre_opt(struct mlx5dr_definer_conv_data *cd,
+				 struct rte_flow_item *item,
+				 int item_idx)
+{
+	const struct rte_flow_item_gre_opt *m = item->mask;
+	struct mlx5dr_definer_fc *fc;
+	bool inner = cd->tunnel;
+
+	if (inner) {
+		DR_LOG(ERR, "Inner GRE OPT item not supported");
+		rte_errno = ENOTSUP;
+		return rte_errno;
+	}
+
+	if (!cd->relaxed) {
+		fc = &cd->fc[DR_CALC_FNAME(IP_PROTOCOL, inner)];
+		fc->item_idx = item_idx;
+		fc->tag_mask_set = &mlx5dr_definer_ones_set;
+		fc->tag_set = &mlx5dr_definer_ipv4_protocol_gre_set;
+		DR_CALC_SET(fc, eth_l3, protocol_next_header, inner);
+	}
+
+	if (!m)
+		return 0;
+
+	if (m->checksum_rsvd.checksum) {
+		fc = &cd->fc[MLX5DR_DEFINER_FNAME_GRE_OPT_CHECKSUM];
+		fc->item_idx = item_idx;
+		fc->tag_set = &mlx5dr_definer_gre_opt_checksum_set;
+		DR_CALC_SET_HDR(fc, tunnel_header, tunnel_header_1);
+	}
+
+	if (m->key.key) {
+		fc = &cd->fc[MLX5DR_DEFINER_FNAME_GRE_OPT_KEY];
+		fc->item_idx = item_idx;
+		fc->tag_set = &mlx5dr_definer_gre_opt_key_set;
+		DR_CALC_SET_HDR(fc, tunnel_header, tunnel_header_2);
+	}
+
+	if (m->sequence.sequence) {
+		fc = &cd->fc[MLX5DR_DEFINER_FNAME_GRE_OPT_SEQ];
+		fc->item_idx = item_idx;
+		fc->tag_set = &mlx5dr_definer_gre_opt_seq_set;
+		DR_CALC_SET_HDR(fc, tunnel_header, tunnel_header_3);
+	}
+
+	return 0;
+}
+
+static int
 mlx5dr_definer_conv_items_to_hl(struct mlx5dr_context *ctx,
 				struct mlx5dr_match_template *mt,
 				uint8_t *hl)
@@ -1171,6 +1227,10 @@ mlx5dr_definer_conv_items_to_hl(struct mlx5dr_context *ctx,
 			break;
 		case RTE_FLOW_ITEM_TYPE_GRE:
 			ret = mlx5dr_definer_conv_item_gre(&cd, items, i);
+			item_flags |= MLX5_FLOW_LAYER_GRE;
+			break;
+		case RTE_FLOW_ITEM_TYPE_GRE_OPTION:
+			ret = mlx5dr_definer_conv_item_gre_opt(&cd, items, i);
 			item_flags |= MLX5_FLOW_LAYER_GRE;
 			break;
 		default:
