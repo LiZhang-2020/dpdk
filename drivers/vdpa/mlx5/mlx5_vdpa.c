@@ -86,7 +86,7 @@ mlx5_vdpa_get_queue_num(struct rte_vdpa_device *vdev, uint32_t *queue_num)
 		DRV_LOG(ERR, "Invalid vDPA device: %s.", vdev->device->name);
 		return -1;
 	}
-	*queue_num = priv->caps.max_num_virtio_queues;
+	*queue_num = priv->caps.max_num_virtio_queues / 2;
 	return 0;
 }
 
@@ -144,7 +144,7 @@ mlx5_vdpa_set_vring_state(int vid, int vring, int state)
 		DRV_LOG(ERR, "Invalid vDPA device: %s.", vdev->device->name);
 		return -EINVAL;
 	}
-	if (vring >= (int)priv->caps.max_num_virtio_queues * 2) {
+	if (vring >= (int)priv->caps.max_num_virtio_queues) {
 		DRV_LOG(ERR, "Too big vring id: %d.", vring);
 		return -E2BIG;
 	}
@@ -450,7 +450,7 @@ mlx5_vdpa_get_stats(struct rte_vdpa_device *vdev, int qid,
 		DRV_LOG(ERR, "Invalid device: %s.", vdev->device->name);
 		return -ENODEV;
 	}
-	if (qid >= (int)priv->caps.max_num_virtio_queues * 2) {
+	if (qid >= (int)priv->caps.max_num_virtio_queues) {
 		DRV_LOG(ERR, "Too big vring id: %d for device %s.", qid,
 				vdev->device->name);
 		return -E2BIG;
@@ -473,7 +473,7 @@ mlx5_vdpa_reset_stats(struct rte_vdpa_device *vdev, int qid)
 		DRV_LOG(ERR, "Invalid device: %s.", vdev->device->name);
 		return -ENODEV;
 	}
-	if (qid >= (int)priv->caps.max_num_virtio_queues * 2) {
+	if (qid >= (int)priv->caps.max_num_virtio_queues) {
 		DRV_LOG(ERR, "Too big vring id: %d for device %s.", qid,
 				vdev->device->name);
 		return -E2BIG;
@@ -633,17 +633,18 @@ static int
 mlx5_vdpa_virtq_resource_prepare(struct mlx5_vdpa_priv *priv)
 {
 	uint32_t remaining_cnt = 0, err_cnt = 0, task_num = 0;
-	uint32_t max_queues = priv->queues * 2;
-	uint32_t index, thrd_idx, data[1];
+	uint32_t max_queues, index, thrd_idx, data[1];
 	struct mlx5_vdpa_virtq *virtq;
 
-	for (index = 0; index < priv->caps.max_num_virtio_queues * 2;
+	for (index = 0; index < priv->caps.max_num_virtio_queues;
 		index++) {
 		virtq = &priv->virtqs[index];
 		pthread_mutex_init(&virtq->virtq_lock, NULL);
 	}
 	if (!priv->queues || !priv->queue_size)
 		return 0;
+	max_queues = ((priv->queues * 2) < priv->caps.max_num_virtio_queues) ?
+		(priv->queues * 2) : (priv->caps.max_num_virtio_queues);
 	if (priv->use_c_thread) {
 		uint32_t main_task_idx[max_queues];
 
@@ -799,7 +800,7 @@ mlx5_vdpa_dev_probe(struct mlx5_common_device *cdev,
 		DRV_LOG(DEBUG, "No capability to support virtq statistics.");
 	priv = rte_zmalloc("mlx5 vDPA device private", sizeof(*priv) +
 			   sizeof(struct mlx5_vdpa_virtq) *
-			   attr->vdpa.max_num_virtio_queues * 2,
+			   attr->vdpa.max_num_virtio_queues,
 			   RTE_CACHE_LINE_SIZE);
 	if (!priv) {
 		DRV_LOG(ERR, "Failed to allocate private memory.");
@@ -871,7 +872,7 @@ mlx5_vdpa_release_dev_resources(struct mlx5_vdpa_priv *priv)
 	if (priv->queues)
 		mlx5_vdpa_virtqs_cleanup(priv);
 	mlx5_vdpa_dev_cache_clean(priv);
-	for (i = 0; i < priv->caps.max_num_virtio_queues * 2; i++) {
+	for (i = 0; i < priv->caps.max_num_virtio_queues; i++) {
 		if (!priv->virtqs[i].counters)
 			continue;
 		claim_zero(mlx5_devx_cmd_destroy(priv->virtqs[i].counters));

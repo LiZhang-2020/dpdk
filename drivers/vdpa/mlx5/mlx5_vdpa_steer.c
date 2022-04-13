@@ -67,7 +67,10 @@ mlx5_vdpa_rqt_prepare(struct mlx5_vdpa_priv *priv, bool is_dummy)
 						      sizeof(uint32_t), 0);
 	uint32_t k = 0, j;
 	int ret = 0, num;
-	uint16_t nr_vring = is_dummy ? priv->queues * 2 : priv->nr_virtqs;
+	uint16_t nr_vring = is_dummy ?
+	(((priv->queues * 2) < priv->caps.max_num_virtio_queues) ?
+	(priv->queues * 2) : priv->caps.max_num_virtio_queues) :
+	priv->nr_virtqs;
 
 	if (!attr) {
 		DRV_LOG(ERR, "Failed to allocate RQT attributes memory.");

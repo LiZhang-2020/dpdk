@@ -129,7 +129,7 @@ mlx5_vdpa_virtqs_cleanup(struct mlx5_vdpa_priv *priv)
 {
 	unsigned int i, j;
 
-	for (i = 0; i < priv->caps.max_num_virtio_queues * 2; i++) {
+	for (i = 0; i < priv->caps.max_num_virtio_queues; i++) {
 		struct mlx5_vdpa_virtq *virtq = &priv->virtqs[i];
 
 		if (virtq->index != i)
@@ -176,16 +176,18 @@ mlx5_vdpa_virtqs_release(struct mlx5_vdpa_priv *priv,
 	bool release_resource)
 {
 	struct mlx5_vdpa_virtq *virtq;
-	uint32_t i, max_virtq;
+	uint32_t i, max_virtq, valid_vq_num;
 
+	valid_vq_num = ((priv->queues * 2) < priv->caps.max_num_virtio_queues) ?
+		(priv->queues * 2) : priv->caps.max_num_virtio_queues;
 	max_virtq = (release_resource &&
-		(priv->queues * 2) > priv->nr_virtqs) ?
-		(priv->queues * 2) : priv->nr_virtqs;
+		(valid_vq_num) > priv->nr_virtqs) ?
+		(valid_vq_num) : priv->nr_virtqs;
 	for (i = 0; i < max_virtq; i++) {
 		virtq = &priv->virtqs[i];
 		pthread_mutex_lock(&virtq->virtq_lock);
 		mlx5_vdpa_virtq_unset(virtq);
-		if (!release_resource && i < (priv->queues * 2))
+		if (!release_resource && i < valid_vq_num)
 			mlx5_vdpa_virtq_single_resource_prepare(
 					priv, i);
 		pthread_mutex_unlock(&virtq->virtq_lock);
@@ -637,9 +639,9 @@ mlx5_vdpa_virtqs_prepare(struct mlx5_vdpa_priv *priv)
 		DRV_LOG(INFO, "TSO is enabled without CSUM, force CSUM.");
 		priv->features |= (1ULL << VIRTIO_NET_F_CSUM);
 	}
-	if (nr_vring > priv->caps.max_num_virtio_queues * 2) {
+	if (nr_vring > priv->caps.max_num_virtio_queues) {
 		DRV_LOG(ERR, "Do not support more than %d virtqs(%d).",
-			(int)priv->caps.max_num_virtio_queues * 2,
+			(int)priv->caps.max_num_virtio_queues,
 			(int)nr_vring);
 		return -1;
 	}

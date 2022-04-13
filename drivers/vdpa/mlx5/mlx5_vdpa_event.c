@@ -250,7 +250,7 @@ mlx5_vdpa_drain_cq(struct mlx5_vdpa_priv *priv)
 {
 	unsigned int i;
 
-	for (i = 0; i < priv->caps.max_num_virtio_queues * 2; i++) {
+	for (i = 0; i < priv->caps.max_num_virtio_queues; i++) {
 		struct mlx5_vdpa_cq *cq = &priv->virtqs[i].eqp.cq;
 
 		mlx5_vdpa_queue_complete(cq);
