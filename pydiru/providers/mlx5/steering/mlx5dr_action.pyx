@@ -5,6 +5,7 @@ from pydiru.providers.mlx5.steering.mlx5dr_context cimport Mlx5drContext
 from pydiru.providers.mlx5.steering.mlx5dr_table cimport Mlx5drTable
 from pydiru.providers.mlx5.steering.mlx5dr_rule cimport Mlx5drRule
 from pydiru.pydiru_error import PydiruError
+cimport pydiru.providers.mlx5.mlx5 as mlx5
 from pydiru.base cimport close_weakrefs
 from libc.stdlib cimport free, calloc
 from pydiru.base import PydiruErrno
@@ -35,7 +36,7 @@ cdef class Mlx5drAction(PydiruCM):
         if self.action != NULL:
             self.logger.debug('Closing Mlx5drAction.')
             close_weakrefs([self.mlx5dr_rules])
-            rc = dr.mlx5dr_action_destroy(self.action)
+            rc = mlx5._action_destroy(self.action)
             if rc:
                 raise PydiruError('Failed to destroy Mlx5drAction.', rc)
             self.action = NULL
@@ -50,7 +51,7 @@ cdef class Mlx5drActionDrop(Mlx5drAction):
         :param flags: Action flags
         """
         super().__init__(ctx)
-        self.action = dr.mlx5dr_action_create_dest_drop(ctx.context, flags)
+        self.action = mlx5._action_create_dest_drop(ctx.context, flags)
         if self.action == NULL:
             raise PydiruErrno('Mlx5drActionDrop creation failed.')
 
@@ -63,7 +64,7 @@ cdef class Mlx5drActionTag(Mlx5drAction):
         :param flags: Action flags
         """
         super().__init__(ctx)
-        self.action = dr.mlx5dr_action_create_tag(ctx.context, flags)
+        self.action = mlx5._action_create_tag(ctx.context, flags)
         if self.action == NULL:
             raise PydiruErrno('Mlx5drActionTag creation failed.')
 
@@ -77,7 +78,7 @@ cdef class Mlx5drActionDestTable(Mlx5drAction):
         :param flags: Action flags
         """
         super().__init__(ctx)
-        self.action = dr.mlx5dr_action_create_dest_table(ctx.context, table.table, flags)
+        self.action = mlx5._action_create_dest_table(ctx.context, table.table, flags)
         if self.action == NULL:
             raise PydiruErrno('Mlx5drActionDestTable creation failed.')
 
@@ -91,7 +92,7 @@ cdef class Mlx5drActionDestTir(Mlx5drAction):
         :param flags: Action flags
         """
         super().__init__(ctx)
-        self.action = dr.mlx5dr_action_create_dest_tir(ctx.context, &tir.dr_devx_obj, flags)
+        self.action = mlx5._action_create_dest_tir(ctx.context, &tir.dr_devx_obj, flags)
         if self.action == NULL:
             raise PydiruErrno('Mlx5drActionDestTir creation failed.')
         self.tir = tir
@@ -118,9 +119,8 @@ cdef class Mlx5drActionReformat(Mlx5drAction):
                 raise MemoryError('Memory allocation failed.')
             for i in range(data_sz):
                 c_data[i] = arr[i]
-        self.action = dr.mlx5dr_action_create_reformat(ctx.context, ref_type, data_sz,
-                                                       c_data if data else NULL,
-                                                       bulk_size, flags)
+        self.action = mlx5._action_create_reformat(ctx.context, ref_type, data_sz,
+                                                   c_data if data else NULL, bulk_size, flags)
         if c_data != NULL:
             free(c_data)
         if self.action == NULL:
@@ -146,8 +146,8 @@ cdef class Mlx5drActionModify(Mlx5drAction):
                                 f' num of actions {len(actions)} * 8')
         for i in range(len(actions)):
             buf[i] = be64toh(bytes(actions[i]))
-        self.action = dr.mlx5dr_action_create_modify_header(ctx.context, pattern_sz, buf,
-                                                            log_bulk_size, flags)
+        self.action = mlx5._action_create_modify_header(ctx.context, pattern_sz, buf,
+                                                        log_bulk_size, flags)
         free(buf)
         if self.action == NULL:
             raise PydiruErrno('Mlx5drActionModify creation failed.')
@@ -161,7 +161,7 @@ cdef class Mlx5drActionDefaultMiss(Mlx5drAction):
         :param flags: Action flags
         """
         super().__init__(ctx)
-        self.action = dr.mlx5dr_action_create_default_miss(ctx.context, flags)
+        self.action = mlx5._action_create_default_miss(ctx.context, flags)
         if self.action == NULL:
             raise PydiruErrno('Mlx5drActionDefaultMiss creation failed.')
 
@@ -175,7 +175,7 @@ cdef class Mlx5drActionCounter(Mlx5drAction):
         :param flags: Action flags
         """
         super().__init__(ctx)
-        self.action = dr.mlx5dr_action_create_counter(ctx.context, &counter.dr_devx_obj, flags)
+        self.action = mlx5._action_create_counter(ctx.context, &counter.dr_devx_obj, flags)
         if self.action == NULL:
             raise PydiruErrno('Mlx5drActionCounter creation failed.')
         self.counter = counter

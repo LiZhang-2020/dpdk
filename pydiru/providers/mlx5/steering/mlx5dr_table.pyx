@@ -1,9 +1,9 @@
 # SPDX-License-Identifier: BSD-3-Clause
 # Copyright (c) 2021, Nvidia Inc. All rights reserved.
 
-
 from pydiru.providers.mlx5.steering.mlx5dr_context cimport Mlx5drContext
 from pydiru.providers.mlx5.steering.mlx5dr_matcher import Mlx5drMatcher
+cimport pydiru.providers.mlx5.mlx5 as mlx5
 from pydiru.pydiru_error import PydiruError
 from pydiru.base cimport close_weakrefs
 from pydiru.base import PydiruErrno
@@ -29,8 +29,8 @@ cdef class Mlx5drTable(PydiruCM):
         :param attr: Attributes for creating Mlx5drTable
         """
         super().__init__()
-        self.table = dr.mlx5dr_table_create(context.context,
-                                            <dr.mlx5dr_table_attr *>&(attr.attr))
+        self.table = mlx5._table_create(context.context,
+                                        <dr.mlx5dr_table_attr *>&(attr.attr))
         if self.table == NULL:
             raise PydiruErrno('Failed creating Mlx5drTable')
         self.mlx5dr_context = context
@@ -50,7 +50,7 @@ cdef class Mlx5drTable(PydiruCM):
         if self.table != NULL:
             self.logger.debug('Closing Mlx5drTable.')
             close_weakrefs([self.mlx5dr_matchers])
-            rc = dr.mlx5dr_table_destroy(<dr.mlx5dr_table *>(self.table))
+            rc = mlx5._table_destroy(<dr.mlx5dr_table *>(self.table))
             if rc:
                 raise PydiruError('Failed to destroy Mlx5drTable.', rc)
             self.table = NULL
