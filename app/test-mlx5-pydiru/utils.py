@@ -37,6 +37,16 @@ class TunnelType:
     VXLAN = 'VXLAN'
 
 
+class ModifyFieldId:
+    OUT_SMAC_47_16 = 0x1
+    OUT_SMAC_15_0 = 0x2
+
+
+class ModifyFieldLen:
+    OUT_SMAC_47_16 = 32
+    OUT_SMAC_15_0 = 16
+
+
 class PacketConsts:
     """
     Class to hold constant packets' values.

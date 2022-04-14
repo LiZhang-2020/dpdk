@@ -14,7 +14,7 @@ import pydiru.pydiru_enums as p
 from .utils import raw_traffic, gen_packet, PacketConsts, create_sipv4_rte_items, TunnelType, gen_outer_headers, \
     get_l2_header, create_dipv4_rte_items, create_devx_counter, query_counter, BULK_512, \
     create_eth_ipv4_l4_rte_items, create_tunneled_gtp_flags_rte_items, create_eth_ipv4_rte_items, \
-    create_tunneled_gtp_teid_rte_items, is_cx6dx
+    create_tunneled_gtp_teid_rte_items, is_cx6dx, ModifyFieldId, ModifyFieldLen
 from .base import BaseDrResources, PydiruTrafficTestCase
 
 from .prm_structs import SetActionIn
@@ -23,10 +23,6 @@ import socket
 import time
 
 
-OUT_SMAC_47_16_FIELD_ID = 0x1
-OUT_SMAC_47_16_FIELD_LENGTH = 32
-OUT_SMAC_15_0_FIELD_ID = 0x2
-OUT_SMAC_15_0_FIELD_LENGTH = 16
 SET_ACTION = 0x1
 TAG_VALUE_1 = 0x1234
 TAG_VALUE_2 = 0x5678
@@ -83,10 +79,10 @@ class Mlx5drTrafficTest(PydiruTrafficTestCase):
         str_smac = "88:88:88:88:88:88"
         actions = []
         if not smac_15_0_only:
-            actions.append(SetActionIn(action_type=SET_ACTION, field=OUT_SMAC_47_16_FIELD_ID,
-                                       length=OUT_SMAC_47_16_FIELD_LENGTH, data=smac_47_16))
-        actions.append(SetActionIn(action_type=SET_ACTION, field=OUT_SMAC_15_0_FIELD_ID,
-                                   length=OUT_SMAC_15_0_FIELD_LENGTH, data=smac_15_0))
+            actions.append(SetActionIn(action_type=SET_ACTION, field=ModifyFieldId.OUT_SMAC_47_16,
+                                       length=ModifyFieldLen.OUT_SMAC_47_16, data=smac_47_16))
+        actions.append(SetActionIn(action_type=SET_ACTION, field=ModifyFieldId.OUT_SMAC_15_0,
+                                   length=ModifyFieldLen.OUT_SMAC_15_0, data=smac_15_0))
         _, self.modify_ra = self.server.create_rule_action('modify', log_bulk_size=12, offset=0,
                                                            actions=actions)
         _, tir_ra = self.server.create_rule_action('tir')
@@ -129,10 +125,10 @@ class Mlx5drTrafficTest(PydiruTrafficTestCase):
                                                           [Mlx5drMacherTemplate(items[2])], prio=3)
         matchers = [self.server.matcher, self.server.matcher2, self.server.matcher3]
         str_smac = "88:88:88:88:88:88"
-        action1 = SetActionIn(action_type=SET_ACTION, field=OUT_SMAC_47_16_FIELD_ID,
-                              length=OUT_SMAC_47_16_FIELD_LENGTH, data=0x88888888)
-        action2 = SetActionIn(action_type=SET_ACTION, field=OUT_SMAC_15_0_FIELD_ID,
-                              length=OUT_SMAC_15_0_FIELD_LENGTH, data=0x8888)
+        action1 = SetActionIn(action_type=SET_ACTION, field=ModifyFieldId.OUT_SMAC_47_16,
+                              length=ModifyFieldLen.OUT_SMAC_47_16, data=0x88888888)
+        action2 = SetActionIn(action_type=SET_ACTION, field=ModifyFieldId.OUT_SMAC_15_0,
+                              length=ModifyFieldLen.OUT_SMAC_15_0, data=0x8888)
         modify_flags = me.MLX5DR_ACTION_FLAG_SHARED | me.MLX5DR_ACTION_FLAG_HWS_RX
         _, self.modify_ra = self.server.create_rule_action('modify', flags=modify_flags,
                                                            log_bulk_size=0, offset=0,
