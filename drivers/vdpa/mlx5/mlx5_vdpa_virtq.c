@@ -693,6 +693,7 @@ mlx5_vdpa_virtqs_prepare(struct mlx5_vdpa_priv *priv)
 		for (i = 0; i < nr_vring; i++) {
 			/* Setup doorbell mapping in order for Qume. */
 			virtq = &priv->virtqs[i];
+			pthread_mutex_lock(&virtq->virtq_lock);
 			if (!virtq->enable || !virtq->configured) {
 				pthread_mutex_unlock(&virtq->virtq_lock);
 				continue;
@@ -710,19 +711,20 @@ mlx5_vdpa_virtqs_prepare(struct mlx5_vdpa_priv *priv)
 				"Fail to initialize virtrq %d intr_handle", i);
 				goto error;
 			}
+			pthread_mutex_unlock(&virtq->virtq_lock);
 		}
 	} else {
 		for (i = 0; i < nr_vring; i++) {
 			virtq = &priv->virtqs[i];
+			pthread_mutex_lock(&virtq->virtq_lock);
 			if (virtq->enable) {
-				pthread_mutex_lock(&virtq->virtq_lock);
 				if (mlx5_vdpa_virtq_setup(priv, i, true)) {
 					pthread_mutex_unlock(
 						&virtq->virtq_lock);
 					goto error;
 				}
-				pthread_mutex_unlock(&virtq->virtq_lock);
 			}
+			pthread_mutex_unlock(&virtq->virtq_lock);
 		}
 	}
 	return 0;

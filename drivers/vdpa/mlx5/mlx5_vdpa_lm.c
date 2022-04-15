@@ -106,11 +106,8 @@ mlx5_vdpa_lm_log(struct mlx5_vdpa_priv *priv)
 
 		for (i = 0; i < priv->nr_virtqs; i++) {
 			virtq = &priv->virtqs[i];
-			if (!virtq->configured) {
-				DRV_LOG(DEBUG,
-				"virtq %d is invalid for LM log.", i);
+			if (!virtq->configured)
 				continue;
-			}
 			thrd_idx = i % (conf_thread_mng.max_thrds + 1);
 			if (!thrd_idx) {
 				main_task_idx[task_num] = i;
@@ -157,11 +154,8 @@ mlx5_vdpa_lm_log(struct mlx5_vdpa_priv *priv)
 	} else {
 		for (i = 0; i < priv->nr_virtqs; i++) {
 			virtq = &priv->virtqs[i];
-			if (!virtq->configured) {
-				DRV_LOG(DEBUG,
-				"virtq %d is invalid for LM log.", i);
+			if (!virtq->configured)
 				continue;
-			}
 			pthread_mutex_lock(&virtq->virtq_lock);
 			ret = mlx5_vdpa_virtq_stop(priv, i);
 			if (ret) {
