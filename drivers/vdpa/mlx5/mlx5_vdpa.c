@@ -629,6 +629,28 @@ mlx5_vdpa_config_get(struct mlx5_kvargs_ctrl *mkvlist,
 		priv->queue_size);
 }
 
+void
+mlx5_vdpa_prepare_virtq_destroy(struct mlx5_vdpa_priv *priv)
+{
+	uint32_t max_queues, index;
+	struct mlx5_vdpa_virtq *virtq;
+
+	if (!priv->queues || !priv->queue_size)
+		return;
+	max_queues = ((priv->queues * 2) < priv->caps.max_num_virtio_queues) ?
+		(priv->queues * 2) : (priv->caps.max_num_virtio_queues);
+	if (mlx5_vdpa_is_modify_virtq_supported(priv))
+		mlx5_vdpa_steer_unset(priv);
+	for (index = 0; index < max_queues; ++index) {
+		virtq = &priv->virtqs[index];
+		if (virtq->virtq) {
+			pthread_mutex_lock(&virtq->virtq_lock);
+			mlx5_vdpa_virtq_unset(virtq);
+			pthread_mutex_unlock(&virtq->virtq_lock);
+		}
+	}
+}
+
 static int
 mlx5_vdpa_virtq_resource_prepare(struct mlx5_vdpa_priv *priv)
 {
@@ -649,7 +671,6 @@ mlx5_vdpa_virtq_resource_prepare(struct mlx5_vdpa_priv *priv)
 		uint32_t main_task_idx[max_queues];
 
 		for (index = 0; index < max_queues; ++index) {
-			virtq = &priv->virtqs[index];
 			thrd_idx = index % (conf_thread_mng.max_thrds + 1);
 			if (!thrd_idx) {
 				main_task_idx[task_num] = index;
@@ -692,16 +713,7 @@ mlx5_vdpa_virtq_resource_prepare(struct mlx5_vdpa_priv *priv)
 			goto error;
 	return 0;
 error:
-	for (index = 0; index < max_queues; ++index) {
-		virtq = &priv->virtqs[index];
-		if (virtq->virtq) {
-			pthread_mutex_lock(&virtq->virtq_lock);
-			mlx5_vdpa_virtq_unset(virtq);
-			pthread_mutex_unlock(&virtq->virtq_lock);
-		}
-	}
-	if (mlx5_vdpa_is_modify_virtq_supported(priv))
-		mlx5_vdpa_steer_unset(priv);
+	mlx5_vdpa_prepare_virtq_destroy(priv);
 	return -1;
 }
 

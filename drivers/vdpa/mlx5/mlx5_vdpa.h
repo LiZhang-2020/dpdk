@@ -129,6 +129,9 @@ struct mlx5_vdpa_virtq {
 	uint32_t configured:1;
 	uint32_t enable:1;
 	uint32_t stopped:1;
+	uint32_t rx_csum:1;
+	uint32_t virtio_version_1_0:1;
+	uint32_t event_mode:3;
 	uint32_t version;
 	pthread_mutex_t virtq_lock;
 	struct mlx5_vdpa_priv *priv;
@@ -599,4 +602,6 @@ int
 mlx5_vdpa_qps2rst2rts(struct mlx5_vdpa_event_qp *eqp);
 void
 mlx5_vdpa_virtq_unset(struct mlx5_vdpa_virtq *virtq);
+void
+mlx5_vdpa_prepare_virtq_destroy(struct mlx5_vdpa_priv *priv);
 #endif /* RTE_PMD_MLX5_VDPA_H_ */

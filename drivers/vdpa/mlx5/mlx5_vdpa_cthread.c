@@ -156,6 +156,7 @@ mlx5_vdpa_c_thread_handle(void *arg)
 				__atomic_fetch_add(
 					task.err_cnt, 1, __ATOMIC_RELAXED);
 			}
+			virtq->enable = 1;
 			pthread_mutex_unlock(&virtq->virtq_lock);
 			break;
 		case MLX5_VDPA_TASK_STOP_VIRTQ:

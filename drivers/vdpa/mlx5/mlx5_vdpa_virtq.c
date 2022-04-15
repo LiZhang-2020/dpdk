@@ -166,8 +166,8 @@ mlx5_vdpa_virtq_unset(struct mlx5_vdpa_virtq *virtq)
 		if (ret)
 			DRV_LOG(WARNING, "Failed to stop virtq %d.",
 				virtq->index);
-		mlx5_vdpa_vq_destroy(virtq);
 	}
+	mlx5_vdpa_vq_destroy(virtq);
 	virtq->notifier_state = MLX5_VDPA_NOTIFIER_STATE_DISABLED;
 }
 
@@ -471,6 +471,9 @@ mlx5_vdpa_virtq_single_resource_prepare(struct mlx5_vdpa_priv *priv,
 		virtq->priv = priv;
 		if (!virtq->virtq)
 			return true;
+		virtq->rx_csum = attr.rx_csum;
+		virtq->virtio_version_1_0 = attr.virtio_version_1_0;
+		virtq->event_mode = attr.event_mode;
 	}
 	return false;
 }
@@ -523,6 +526,9 @@ mlx5_vdpa_virtq_setup(struct mlx5_vdpa_priv *priv, int index, bool reg_kick)
 		goto error;
 	}
 	claim_zero(rte_vhost_enable_guest_notification(priv->vid, index, 1));
+	virtq->rx_csum = attr.rx_csum;
+	virtq->virtio_version_1_0 = attr.virtio_version_1_0;
+	virtq->event_mode = attr.event_mode;
 	virtq->configured = 1;
 	rte_spinlock_lock(&priv->db_lock);
 	rte_write32(virtq->index, priv->virtq_db_addr);
@@ -618,6 +624,31 @@ mlx5_vdpa_features_validate(struct mlx5_vdpa_priv *priv)
 	return 0;
 }
 
+static bool
+mlx5_vdpa_is_pre_created_vq_mismatch(struct mlx5_vdpa_priv *priv,
+		struct mlx5_vdpa_virtq *virtq)
+{
+	struct rte_vhost_vring vq;
+	uint32_t event_mode;
+
+	if (virtq->rx_csum !=
+		!!(priv->features & (1ULL << VIRTIO_NET_F_GUEST_CSUM)))
+		return true;
+	if (virtq->virtio_version_1_0 !=
+		!!(priv->features & (1ULL << VIRTIO_F_VERSION_1)))
+		return true;
+	if (rte_vhost_get_vhost_vring(priv->vid, virtq->index, &vq))
+		return true;
+	if (vq.size != virtq->vq_size)
+		return true;
+	event_mode = vq.callfd != -1 || !(priv->caps.event_mode &
+		(1 << MLX5_VIRTQ_EVENT_MODE_NO_MSIX)) ?
+		MLX5_VIRTQ_EVENT_MODE_QP : MLX5_VIRTQ_EVENT_MODE_NO_MSIX;
+	if (virtq->event_mode != event_mode)
+		return true;
+	return false;
+}
+
 int
 mlx5_vdpa_virtqs_prepare(struct mlx5_vdpa_priv *priv)
 {
@@ -653,6 +684,11 @@ mlx5_vdpa_virtqs_prepare(struct mlx5_vdpa_priv *priv)
 			virtq = &priv->virtqs[i];
 			if (!virtq->enable)
 				continue;
+			if (priv->queues && virtq->virtq)
+				if (mlx5_vdpa_is_pre_created_vq_mismatch(priv,
+					virtq))
+					mlx5_vdpa_prepare_virtq_destroy(
+					priv);
 			thrd_idx = i % (conf_thread_mng.max_thrds + 1);
 			if (!thrd_idx) {
 				main_task_idx[task_num] = i;
@@ -682,6 +718,7 @@ mlx5_vdpa_virtqs_prepare(struct mlx5_vdpa_priv *priv)
 				pthread_mutex_unlock(&virtq->virtq_lock);
 				goto error;
 			}
+			virtq->enable = 1;
 			pthread_mutex_unlock(&virtq->virtq_lock);
 		}
 		if (mlx5_vdpa_c_thread_wait_bulk_tasks_done(&remaining_cnt,
@@ -716,14 +753,20 @@ mlx5_vdpa_virtqs_prepare(struct mlx5_vdpa_priv *priv)
 	} else {
 		for (i = 0; i < nr_vring; i++) {
 			virtq = &priv->virtqs[i];
+			if (!virtq->enable)
+				continue;
+			if (priv->queues && virtq->virtq)
+				if (mlx5_vdpa_is_pre_created_vq_mismatch(
+					priv, virtq))
+					mlx5_vdpa_prepare_virtq_destroy(
+					priv);
 			pthread_mutex_lock(&virtq->virtq_lock);
-			if (virtq->enable) {
-				if (mlx5_vdpa_virtq_setup(priv, i, true)) {
-					pthread_mutex_unlock(
+			if (mlx5_vdpa_virtq_setup(priv, i, true)) {
+				pthread_mutex_unlock(
 						&virtq->virtq_lock);
-					goto error;
-				}
+				goto error;
 			}
+			virtq->enable = 1;
 			pthread_mutex_unlock(&virtq->virtq_lock);
 		}
 	}
@@ -786,6 +829,11 @@ mlx5_vdpa_virtq_enable(struct mlx5_vdpa_priv *priv, int index, int enable)
 					"for virtq %d.", index);
 		}
 		mlx5_vdpa_virtq_unset(virtq);
+	} else {
+		if (virtq->virtq &&
+			mlx5_vdpa_is_pre_created_vq_mismatch(priv, virtq))
+			DRV_LOG(WARNING,
+			"Configuration mismatch dummy virtq %d.", index);
 	}
 	if (enable) {
 		ret = mlx5_vdpa_virtq_setup(priv, index, true);
