@@ -270,6 +270,16 @@ mlx5dr_definer_ones_set(struct mlx5dr_definer_fc *fc,
 }
 
 static void
+mlx5dr_definer_gre_key_set(struct mlx5dr_definer_fc *fc,
+			   const void *item_spec,
+			   uint8_t *tag)
+{
+	const rte_be32_t *v = item_spec;
+
+	DR_SET_BE32(tag, *v, fc->byte_off, fc->bit_off, fc->bit_mask);
+}
+
+static void
 mlx5dr_definer_vxlan_vni_set(struct mlx5dr_definer_fc *fc,
 			     const void *item_spec,
 			     uint8_t *tag)
@@ -1148,6 +1158,38 @@ mlx5dr_definer_conv_item_gre_opt(struct mlx5dr_definer_conv_data *cd,
 }
 
 static int
+mlx5dr_definer_conv_item_gre_key(struct mlx5dr_definer_conv_data *cd,
+				 struct rte_flow_item *item,
+				 int item_idx)
+{
+	const rte_be32_t *m = item->mask;
+	struct mlx5dr_definer_fc *fc;
+	bool inner = cd->tunnel;
+
+	if (!cd->relaxed) {
+		fc = &cd->fc[DR_CALC_FNAME(IP_PROTOCOL, inner)];
+		if(!fc->tag_set) {
+			fc->item_idx = item_idx;
+			fc->tag_mask_set = &mlx5dr_definer_ones_set;
+			fc->tag_set = &mlx5dr_definer_ipv4_protocol_gre_set;
+			DR_CALC_SET(fc, eth_l3, protocol_next_header, inner);
+		}
+	}
+
+	if (!m)
+		return 0;
+
+	if (*m) {
+		fc = &cd->fc[MLX5DR_DEFINER_FNAME_GRE_OPT_KEY];
+		fc->item_idx = item_idx;
+		fc->tag_set = &mlx5dr_definer_gre_key_set;
+		DR_CALC_SET_HDR(fc, tunnel_header, tunnel_header_2);
+	}
+
+	return 0;
+}
+
+static int
 mlx5dr_definer_conv_items_to_hl(struct mlx5dr_context *ctx,
 				struct mlx5dr_match_template *mt,
 				uint8_t *hl)
@@ -1232,6 +1274,10 @@ mlx5dr_definer_conv_items_to_hl(struct mlx5dr_context *ctx,
 		case RTE_FLOW_ITEM_TYPE_GRE_OPTION:
 			ret = mlx5dr_definer_conv_item_gre_opt(&cd, items, i);
 			item_flags |= MLX5_FLOW_LAYER_GRE;
+			break;
+		case RTE_FLOW_ITEM_TYPE_GRE_KEY:
+			ret = mlx5dr_definer_conv_item_gre_key(&cd, items, i);
+			item_flags |= MLX5_FLOW_LAYER_GRE_KEY;
 			break;
 		default:
 			DR_LOG(ERR, "Unsupported item type %d", items->type);
