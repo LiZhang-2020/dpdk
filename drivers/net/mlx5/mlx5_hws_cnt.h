@@ -68,7 +68,7 @@ struct mlx5_hws_cache_param {
 };
 
 struct mlx5_hws_cnt_pool_cfg {
-	const char *name;
+	char *name;
 	uint32_t request_num;
 	uint32_t alloc_factor;
 };

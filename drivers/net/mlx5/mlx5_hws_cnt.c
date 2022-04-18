@@ -716,6 +716,7 @@ mlx5_hws_cnt_pool_create(struct rte_eth_dev *dev,
 	struct mlx5_priv *priv = dev->data->dev_private;
 	struct mlx5_hws_cache_param cparam = {0};
 	struct mlx5_hws_cnt_pool_cfg pcfg = {0};
+	char *mp_name;
 	int ret = 0;
 	size_t sz;
 
@@ -731,7 +732,13 @@ mlx5_hws_cnt_pool_create(struct rte_eth_dev *dev,
 	cparam.threshold = HWS_CNT_CACHE_THRESHOLD_DEFAULT;
 	cparam.size = HWS_CNT_CACHE_SZ_DEFAULT;
 	pcfg.alloc_factor = HWS_CNT_ALLOC_FACTOR_DEFAULT;
-	pcfg.name = "MLX5_HWS_CNT_POOL";
+	mp_name = mlx5_malloc(MLX5_MEM_ZERO, RTE_MEMZONE_NAMESIZE, 0,
+			SOCKET_ID_ANY);
+	if (mp_name == NULL)
+		goto error;
+	snprintf(mp_name, RTE_MEMZONE_NAMESIZE, "MLX5_HWS_CNT_POOL_%u",
+			dev->data->port_id);
+	pcfg.name = mp_name;
 	pcfg.request_num = pattr->nb_counters;
 	cpool = mlx5_hws_cnt_pool_init(&pcfg, &cparam);
 	if (cpool == NULL)
@@ -765,6 +772,7 @@ mlx5_hws_cnt_pool_destroy(struct mlx5_dev_ctx_shared *sh,
 	mlx5_hws_cnt_pool_action_destroy(cpool);
 	mlx5_hws_cnt_pool_dcs_free(sh, cpool);
 	mlx5_hws_cnt_raw_data_free(sh, cpool->raw_mng);
+	mlx5_free((void *)cpool->cfg.name);
 	mlx5_hws_cnt_pool_deinit(cpool);
 }
 
