@@ -6681,9 +6681,9 @@ flow_create_split_meter(struct rte_eth_dev *dev,
 			goto exit;
 		}
 		/* Setting the sfx group atrr. */
-		sfx_attr.group = sfx_attr.transfer ?
-				(MLX5_FLOW_TABLE_LEVEL_METER - 1) :
-				 MLX5_FLOW_TABLE_LEVEL_METER;
+		sfx_attr.group = ((sfx_attr.transfer && priv->fdb_def_rule) ?
+				 (MLX5_FLOW_TABLE_LEVEL_METER - 1) :
+				 MLX5_FLOW_TABLE_LEVEL_METER);
 		flow_split_info->prefix_layers =
 				flow_get_prefix_layer_flags(dev_flow);
 		flow_split_info->prefix_mark |= wks->mark;
