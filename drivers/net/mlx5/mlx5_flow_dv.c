@@ -8619,9 +8619,13 @@ flow_dv_translate_item_mark(struct rte_eth_dev *dev, void *key,
 		mark = item->mask ? (const void *)item->mask :
 				    &rte_flow_item_mark_mask;
 		mask = mark->id;
-		mark = (const void *)item->spec;
-		MLX5_ASSERT(mark);
-		value = mark->id;
+		if (key_type == MLX5_SET_MATCHER_SW_M) {
+			value = mask;
+		} else {
+			mark = (const void *)item->spec;
+			MLX5_ASSERT(mark);
+			value = mark->id;
+		}
 	} else {
 		mark = (key_type == MLX5_SET_MATCHER_HS_V) ?
 			(const void *)item->spec : (const void *)item->mask;
