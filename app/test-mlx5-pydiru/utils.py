@@ -20,7 +20,7 @@ import pydiru.pydiru_enums as p
 from pyverbs import enums as v
 
 from .prm_structs import AllocFlowCounterIn, AllocFlowCounterOut, QueryFlowCounterIn, \
-    QueryFlowCounterOut, TrafficCounter
+    QueryFlowCounterOut, TrafficCounter, QueryHcaCapIn, QueryQosCapOut, HcaCapOpMod
 
 MAX_DIFF_PACKETS = 5
 BULK_COUNTER_SIZE = 512
@@ -593,3 +593,21 @@ def verify_counter(test, agr_obj, devx_counter, counter_id, offset=0):
     test.assertEqual(packets, agr_obj.num_msgs, 'Counter packets number is wrong.')
     test.assertEqual(octets, agr_obj.num_msgs * agr_obj.msg_size,
                      'Counter octets number is wrong.')
+
+
+def get_qos_caps(dv_ctx):
+    """
+    Queries HCA caps.
+    :param dv_ctx: DevX context
+    :return: QoS caps
+    """
+    # From the PRM: op_mod's LSB indicates whether we want to query the
+    # maximum or the current capabilities (0 for max). While bits[15:1]
+    # indicates the capability type.
+    query_cap_in = QueryHcaCapIn(op_mod=HcaCapOpMod.QOS_CAPS << 1 | 0x0)
+    cmd_res = dv_ctx.devx_general_cmd(query_cap_in, len(QueryQosCapOut()))
+    query_cap_out = QueryQosCapOut(cmd_res)
+    if query_cap_out.status:
+        raise PyverbsError(f'QUERY_HCA_CAP has failed with status ({query_cap_out.status}) and'
+                           f'syndrome ({query_cap_out.syndrome})')
+    return query_cap_out
