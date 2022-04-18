@@ -230,6 +230,9 @@ vdpa_sample_quit(void)
 		if (vports[i].ifname[0] != '\0')
 			close_vdpa(&vports[i]);
 	}
+
+	/* clean up the EAL */
+	rte_eal_cleanup();
 }
 
 static int quit;
@@ -602,13 +605,6 @@ main(int argc, char *argv[])
 		}
 		vdpa_sample_quit();
 	}
-
-	RTE_DEV_FOREACH(dev, "class=vdpa", &dev_iter) {
-		rte_dev_remove(dev);
-	}
-
-	/* clean up the EAL */
-	rte_eal_cleanup();
 
 	return 0;
 }
