@@ -753,6 +753,13 @@ mlx5_hws_cnt_pool_create(struct rte_eth_dev *dev,
 	if (cpool->raw_mng == NULL)
 		goto error;
 	__hws_cnt_id_load(cpool);
+	/*
+	 * Bump query gen right after pool create so the
+	 * pre-loaded counters can be used directly
+	 * because they already have init value no need
+	 * to wait for query.
+	 */
+	cpool->query_gen = 1;
 	ret = mlx5_hws_cnt_pool_action_create(priv, cpool);
 	if (ret != 0)
 		goto error;
