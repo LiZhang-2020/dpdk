@@ -189,7 +189,7 @@ mlx5_hws_cnt_pool_cache_flush(struct mlx5_hws_cnt_pool *cpool,
 	reset_list = cpool->wait_reset_list;
 	rte_ring_enqueue_zc_burst_elem_start(reset_list,
 			sizeof(cnt_id_t), ret, &zcdr, NULL);
-	__hws_cnt_r2rcpy(&zcdc, &zcdr, ret);
+	__hws_cnt_r2rcpy(&zcdr, &zcdc, ret);
 	rte_ring_enqueue_zc_elem_finish(reset_list, ret);
 	rte_ring_dequeue_zc_elem_finish(qcache, ret);
 	return 0;
