@@ -6110,9 +6110,11 @@ flow_sample_split_prep(struct rte_eth_dev *dev,
 				break;
 			case RTE_FLOW_ACTION_TYPE_OF_PUSH_VLAN:
 			case RTE_FLOW_ACTION_TYPE_OF_SET_VLAN_VID:
-				push_vlan_idx = action_idx;
-				if (push_vlan_idx < sample_action_pos)
+				if (action_idx < sample_action_pos &&
+				    push_vlan_idx == -1) {
 					set_tag_idx = action_idx;
+					push_vlan_idx = action_idx;
+				}
 				break;
 			default:
 				break;
