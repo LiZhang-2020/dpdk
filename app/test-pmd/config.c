@@ -2829,15 +2829,15 @@ port_queue_action_handle_create(portid_t port_id, uint32_t queue_id,
 	int ret;
 	struct rte_flow_error error;
 
-	ret = action_alloc(port_id, id, &pia);
-	if (ret)
-		return ret;
-
 	port = &ports[port_id];
 	if (queue_id >= port->queue_nb) {
 		printf("Queue #%u is invalid\n", queue_id);
 		return -EINVAL;
 	}
+
+	ret = action_alloc(port_id, id, &pia);
+	if (ret)
+		return ret;
 
 	if (action->type == RTE_FLOW_ACTION_TYPE_AGE) {
 		struct rte_flow_action_age *age =
