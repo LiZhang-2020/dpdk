@@ -73,7 +73,7 @@ mlx5_flow_meter_init(struct rte_eth_dev *dev,
 					NULL, "Meter ASO is not supported.");
 		goto err;
 	}
-	priv->mtr_config.nb_meters = rte_log2_u32(nb_meters);
+	priv->mtr_config.nb_meters = nb_meters;
 	if (mlx5_aso_queue_init(priv->sh, ASO_OPC_MOD_POLICER)) {
 		ret = ENOMEM;
 		rte_mtr_error_set(&error, ENOMEM,
@@ -114,8 +114,7 @@ mlx5_flow_meter_init(struct rte_eth_dev *dev,
 		goto err;
 	}
 	priv->mtr_bulk.aso = mlx5_malloc(MLX5_MEM_ZERO,
-						sizeof(struct mlx5_aso_mtr) *
-						rte_log2_u32(nb_meters),
+						sizeof(struct mlx5_aso_mtr) * nb_meters,
 						RTE_CACHE_LINE_SIZE,
 						SOCKET_ID_ANY);
 	if (!priv->mtr_bulk.aso) {
@@ -125,7 +124,7 @@ mlx5_flow_meter_init(struct rte_eth_dev *dev,
 					NULL, "Meter bulk ASO allocation failed.");
 		goto err;
 	}
-	priv->mtr_bulk.size = rte_log2_u32(nb_meters);
+	priv->mtr_bulk.size = nb_meters;
 	aso = priv->mtr_bulk.aso;
 	for (i = 0; i < priv->mtr_bulk.size; i++) {
 		aso->type = ASO_METER_DIRECT;
