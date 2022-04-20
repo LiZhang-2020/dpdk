@@ -58,6 +58,7 @@ mlx5_flow_meter_init(struct rte_eth_dev *dev,
 	struct mlx5_aso_mtr *aso;
 	uint32_t i;
 	struct rte_mtr_error error;
+	uint32_t flags;
 
 	if (!nb_meters || !nb_meter_profiles || !nb_meter_policies) {
 		ret = ENOTSUP;
@@ -101,11 +102,12 @@ mlx5_flow_meter_init(struct rte_eth_dev *dev,
 					NULL, "Meter register is not available.");
 		goto err;
 	}
+	flags = MLX5DR_ACTION_FLAG_HWS_RX | MLX5DR_ACTION_FLAG_HWS_TX;
+	if (priv->sh->config.dv_esw_en && priv->master)
+		flags |= MLX5DR_ACTION_FLAG_HWS_FDB;
 	priv->mtr_bulk.action = mlx5dr_action_create_aso_meter
 			(priv->dr_ctx, (struct mlx5dr_devx_obj *)dcs,
-				reg_id - REG_C_0, MLX5DR_ACTION_FLAG_HWS_RX |
-				MLX5DR_ACTION_FLAG_HWS_TX |
-				MLX5DR_ACTION_FLAG_HWS_FDB);
+				reg_id - REG_C_0, flags);
 	if (!priv->mtr_bulk.action) {
 		ret = ENOMEM;
 		rte_mtr_error_set(&error, ENOMEM,
