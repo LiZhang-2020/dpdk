@@ -4535,7 +4535,11 @@ flow_hw_query_counter(const struct rte_eth_dev *dev, uint32_t counter,
 	uint32_t iidx = counter & ((1 << MLX5_INDIRECT_ACTION_TYPE_OFFSET) - 1);
 	uint64_t pkts, bytes;
 
-	RTE_SET_USED(error);
+	if ((counter >> MLX5_INDIRECT_ACTION_TYPE_OFFSET) !=
+	    MLX5_INDIRECT_ACTION_TYPE_COUNT)
+		return rte_flow_error_set(error, EINVAL,
+				RTE_FLOW_ERROR_TYPE_UNSPECIFIED, NULL,
+				"counter are not available");
 	cnt = &priv->hws_cpool->pool[iidx];
 	__hws_cnt_query_raw(priv->hws_cpool, counter, &pkts, &bytes);
 	qc->hits_set = 1;
