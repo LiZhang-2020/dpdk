@@ -21,6 +21,7 @@ from .base import BaseDrResources, PydiruTrafficTestCase
 
 from .prm_structs import SetActionIn, CopyActionIn, AddActionIn
 import struct
+import random
 import socket
 import time
 
@@ -772,3 +773,89 @@ class Mlx5drTrafficTest(PydiruTrafficTestCase):
         Resend the packet to check the rule was created.
         """
         self.create_burst_rules_without_polling(is_burst=False)
+
+    @staticmethod
+    def create_set_action_smac_idx(idx):
+        str_smac = "88:88:88:88:88:8" + str(idx)
+        action1 = SetActionIn(action_type=SET_ACTION,
+                              field=PacketConsts.OUT_SMAC_47_16_FIELD_ID,
+                              length=PacketConsts.OUT_SMAC_47_16_FIELD_LENGTH,
+                              data=0x88888888)
+        action2 = SetActionIn(action_type=SET_ACTION,
+                              field=PacketConsts.OUT_SMAC_15_0_FIELD_ID,
+                              length=PacketConsts.OUT_SMAC_15_0_FIELD_LENGTH,
+                              data=0x8880 + idx)
+        return [action1, action2], str_smac
+
+    def test_mlx5dr_complex_rule_decap_modify(self):
+        """
+        Complex Rule RX with decap + modify smac + tir.
+        """
+        tir_rte_items = create_sipv4_rte_items(PacketConsts.SRC_IP)
+        action_types = [me.MLX5DR_ACTION_TYP_TNL_L2_TO_L2, me.MLX5DR_ACTION_TYP_MODIFY_HDR,
+                        me.MLX5DR_ACTION_TYP_TIR, me.MLX5DR_ACTION_TYP_LAST]
+        self.server.init_steering_resources(rte_items=tir_rte_items,
+                                            action_types_list=[action_types] * 4)
+        outer = gen_outer_headers(self.server.msg_size, tunnel=TunnelType.VXLAN)
+        inner_len = self.server.msg_size - len(outer)
+        inner = gen_packet(inner_len)
+        packet = outer + inner
+        decap_a, decap_ra = self.server.create_rule_action('reformat')
+        at_idx = random.choice(range(4))
+        smac_actions, str_smac = self.create_set_action_smac_idx(at_idx)
+        modify_flags = me.MLX5DR_ACTION_FLAG_SHARED | me.MLX5DR_ACTION_FLAG_HWS_RX
+        _, modify_ra = self.server.create_rule_action('modify', flags=modify_flags,
+                                                      log_bulk_size=0, offset=0,
+                                                      actions=smac_actions)
+        _, tir_ra = self.server.create_rule_action('tir')
+        exp_src_mac = struct.pack('!6s',
+                                  bytes.fromhex(str_smac.replace(':', '')))
+        exp_packet = gen_packet(inner_len, src_mac=exp_src_mac)
+        self.tir_rule = Mlx5drRule(self.server.matcher, 0, tir_rte_items, at_idx,
+                                   [decap_ra, modify_ra, tir_ra], 3,
+                                   Mlx5drRuleAttr(user_data=bytes(8)),
+                                   self.server.dr_ctx)
+        raw_traffic(self.client, self.server, self.server.num_msgs, [packet], exp_packet)
+
+    def test_mlx5dr_complex_rule_modify_encap(self):
+        """
+        Complex Rule TX with modify smac + encap.
+        """
+        tir_rte_items = create_sipv4_rte_items(PacketConsts.SRC_IP)
+        action_types = [me.MLX5DR_ACTION_TYP_MODIFY_HDR, me.MLX5DR_ACTION_TYP_L2_TO_TNL_L2,
+                        me.MLX5DR_ACTION_TYP_LAST]
+        self.server.init_steering_resources(rte_items=tir_rte_items)
+        self.client.init_steering_resources(rte_items=tir_rte_items,
+                                            table_type=me.MLX5DR_TABLE_TYPE_NIC_TX,
+                                            action_types_list=[action_types] * 4)
+        encap_data = gen_outer_headers(self.server.msg_size, tunnel=TunnelType.VXLAN)
+        send_packet = gen_packet(self.server.msg_size - len(encap_data))
+        _, encap_ra = self.client.create_rule_action('reformat',
+                                                     me.MLX5DR_ACTION_FLAG_HWS_TX,
+                                                     ref_type=me.MLX5DR_ACTION_REFORMAT_TYPE_L2_TO_TNL_L2,
+                                                     data=encap_data,
+                                                     data_sz=len(encap_data),
+                                                     log_bulk_size=12)
+        at_idx = random.choice(range(4))
+        smac_actions, str_smac = self.create_set_action_smac_idx(at_idx)
+        modify_flags = me.MLX5DR_ACTION_FLAG_SHARED | me.MLX5DR_ACTION_FLAG_HWS_TX
+        _, modify_ra = self.client.create_rule_action('modify', flags=modify_flags,
+                                                      log_bulk_size=0, offset=0,
+                                                      actions=smac_actions)
+        _, tir_ra = self.server.create_rule_action('tir')
+        exp_src_mac = struct.pack('!6s',
+                                  bytes.fromhex(str_smac.replace(':', '')))
+        exp_packet = gen_packet(self.server.msg_size - len(encap_data), src_mac=exp_src_mac)
+        exp_packet = encap_data + exp_packet
+        self.tx_rule = Mlx5drRule(self.client.matcher, 0, tir_rte_items, at_idx,
+                                   [modify_ra, encap_ra], 2,
+                                   Mlx5drRuleAttr(user_data=bytes(8)),
+                                   self.client.dr_ctx)
+        self.rx_rule = Mlx5drRule(self.server.matcher, 0, tir_rte_items, 0,
+                                  [tir_ra], 1,
+                                  Mlx5drRuleAttr(user_data=bytes(8)),
+                                  self.server.dr_ctx)
+        # Skip indexes which are offloaded by HW (UDP source port and len,
+        # ipv4 id, checksum and total len)
+        raw_traffic(self.client, self.server, self.server.num_msgs, [send_packet],
+                    exp_packet, skip_idxs=[16, 17, 18, 19, 24, 25, 34, 35, 38, 39, 53, 75])
