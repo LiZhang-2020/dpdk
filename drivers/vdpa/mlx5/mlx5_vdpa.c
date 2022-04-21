@@ -275,21 +275,12 @@ mlx5_vdpa_wait_dev_close_tasks_done(struct mlx5_vdpa_priv *priv)
 }
 
 static int
-_internal_mlx5_vdpa_dev_close(int vid, bool release_resource)
+_internal_mlx5_vdpa_dev_close(struct mlx5_vdpa_priv *priv,
+		bool release_resource)
 {
-	struct rte_vdpa_device *vdev = rte_vhost_get_vdpa_device(vid);
-	struct mlx5_vdpa_priv *priv;
 	int ret = 0;
+	int vid = priv->vid;
 
-	if (!vdev) {
-		DRV_LOG(ERR, "Invalid vDPA device.");
-		return -1;
-	}
-	priv = mlx5_vdpa_find_priv_resource_by_vdev(vdev);
-	if (priv == NULL) {
-		DRV_LOG(ERR, "Invalid vDPA device: %s.", vdev->device->name);
-		return -1;
-	}
 	mlx5_vdpa_cqe_event_unset(priv);
 	if (priv->state == MLX5_VDPA_STATE_CONFIGURED) {
 		ret |= mlx5_vdpa_lm_log(priv);
@@ -336,7 +327,19 @@ single_thrd:
 static int
 mlx5_vdpa_dev_close(int vid)
 {
-	return _internal_mlx5_vdpa_dev_close(vid, false);
+	struct rte_vdpa_device *vdev = rte_vhost_get_vdpa_device(vid);
+	struct mlx5_vdpa_priv *priv;
+
+	if (!vdev) {
+		DRV_LOG(ERR, "Invalid vDPA device.");
+		return -1;
+	}
+	priv = mlx5_vdpa_find_priv_resource_by_vdev(vdev);
+	if (priv == NULL) {
+		DRV_LOG(ERR, "Invalid vDPA device: %s.", vdev->device->name);
+		return -1;
+	}
+	return _internal_mlx5_vdpa_dev_close(priv, false);
 }
 
 static int
@@ -913,7 +916,7 @@ static void
 mlx5_vdpa_dev_release(struct mlx5_vdpa_priv *priv)
 {
 	if (priv->state == MLX5_VDPA_STATE_CONFIGURED)
-		_internal_mlx5_vdpa_dev_close(priv->vid, true);
+		_internal_mlx5_vdpa_dev_close(priv, true);
 	if (priv->use_c_thread)
 		mlx5_vdpa_wait_dev_close_tasks_done(priv);
 	mlx5_vdpa_release_dev_resources(priv);
