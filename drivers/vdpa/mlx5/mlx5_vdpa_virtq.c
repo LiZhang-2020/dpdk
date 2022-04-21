@@ -129,11 +129,10 @@ mlx5_vdpa_virtqs_cleanup(struct mlx5_vdpa_priv *priv)
 {
 	unsigned int i, j;
 
+	mlx5_vdpa_steer_unset(priv);
 	for (i = 0; i < priv->caps.max_num_virtio_queues; i++) {
 		struct mlx5_vdpa_virtq *virtq = &priv->virtqs[i];
 
-		if (virtq->index != i)
-			continue;
 		pthread_mutex_lock(&virtq->virtq_lock);
 		if (virtq->virtq)
 			mlx5_vdpa_vq_destroy(virtq);
@@ -187,6 +186,7 @@ mlx5_vdpa_virtqs_release(struct mlx5_vdpa_priv *priv,
 		virtq = &priv->virtqs[i];
 		pthread_mutex_lock(&virtq->virtq_lock);
 		mlx5_vdpa_virtq_unset(virtq);
+		virtq->enable = 0;
 		if (!release_resource && i < valid_vq_num)
 			mlx5_vdpa_virtq_single_resource_prepare(
 					priv, i);
@@ -684,11 +684,15 @@ mlx5_vdpa_virtqs_prepare(struct mlx5_vdpa_priv *priv)
 			virtq = &priv->virtqs[i];
 			if (!virtq->enable)
 				continue;
-			if (priv->queues && virtq->virtq)
-				if (mlx5_vdpa_is_pre_created_vq_mismatch(priv,
-					virtq))
-					mlx5_vdpa_prepare_virtq_destroy(
-					priv);
+			if (priv->queues && virtq->virtq) {
+				if (mlx5_vdpa_is_pre_created_vq_mismatch(priv, virtq)) {
+					mlx5_vdpa_prepare_virtq_destroy(priv);
+					i = 0;
+					virtq = &priv->virtqs[i];
+					if (!virtq->enable)
+						continue;
+				}
+			}
 			thrd_idx = i % (conf_thread_mng.max_thrds + 1);
 			if (!thrd_idx) {
 				main_task_idx[task_num] = i;
@@ -755,11 +759,17 @@ mlx5_vdpa_virtqs_prepare(struct mlx5_vdpa_priv *priv)
 			virtq = &priv->virtqs[i];
 			if (!virtq->enable)
 				continue;
-			if (priv->queues && virtq->virtq)
-				if (mlx5_vdpa_is_pre_created_vq_mismatch(
-					priv, virtq))
+			if (priv->queues && virtq->virtq) {
+				if (mlx5_vdpa_is_pre_created_vq_mismatch(priv,
+					virtq)) {
 					mlx5_vdpa_prepare_virtq_destroy(
 					priv);
+					i = 0;
+					virtq = &priv->virtqs[i];
+					if (!virtq->enable)
+						continue;
+				}
+			}
 			pthread_mutex_lock(&virtq->virtq_lock);
 			if (mlx5_vdpa_virtq_setup(priv, i, true)) {
 				pthread_mutex_unlock(
