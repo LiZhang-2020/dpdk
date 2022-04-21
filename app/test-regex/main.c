@@ -329,8 +329,12 @@ run_regex(struct rte_mempool *mbuf_mp, uint32_t nb_jobs,
 	char *buf = NULL;
 	long buf_len;
 	long job_len;
+	long remainder;
+	long act_job_len = 0;
+	bool last_job = false;
 	uint32_t actual_jobs = 0;
-	uint32_t i, job_id;
+	uint32_t i;
+	uint32_t job_id;
 	struct rte_regex_ops **ops;
 	uint16_t dev_id = 0;
 	uint16_t qp_id = 0;
@@ -383,8 +387,15 @@ run_regex(struct rte_mempool *mbuf_mp, uint32_t nb_jobs,
 	}
 
 	/* Assign each mbuf with the data to handle. */
+	remainder = buf_len % nb_jobs;
+
 	for (i = 0; (pos < buf_len) && (i < nb_jobs) ; i++) {
-		long act_job_len = RTE_MIN(job_len, buf_len - pos);
+		act_job_len = RTE_MIN(job_len, buf_len - pos);
+
+		if (i == (nb_jobs - 1)) {
+			last_job = true;
+			act_job_len += remainder;
+		}
 
 		ops[i] = rte_malloc(NULL, sizeof(*ops[0]) + nb_max_matches *
 				    sizeof(struct rte_regexdev_match), 0);
@@ -402,7 +413,10 @@ run_regex(struct rte_mempool *mbuf_mp, uint32_t nb_jobs,
 			if (ops[i]->mbuf) {
 				rte_pktmbuf_attach_extbuf(ops[i]->mbuf,
 				&buf[pos], 0, act_job_len, &shinfo);
-				ops[i]->mbuf->data_len = job_len;
+				if (!last_job)
+					ops[i]->mbuf->data_len = job_len;
+				else
+					ops[i]->mbuf->data_len = act_job_len;
 				ops[i]->mbuf->pkt_len = act_job_len;
 			}
 		}
@@ -443,10 +457,11 @@ run_regex(struct rte_mempool *mbuf_mp, uint32_t nb_jobs,
 	}
 	end = rte_rdtsc_precise();
 	time = ((double)end - start) / rte_get_timer_hz();
-	printf("Job len = %ld Bytes\n",  job_len);
+	printf("Job len = %ld Bytes Last Job=%ld Bytes\n", job_len,
+		act_job_len);
 	printf("Time = %lf sec\n",  time);
 	printf("Perf = %lf Gbps\n",
-	       (((double)actual_jobs * job_len * nb_iterations * 8) / time) /
+	       (((double)buf_len * nb_iterations * 8) / time) /
 		1000000000.0);
 
 	if (!perf_mode) {
@@ -473,10 +488,9 @@ run_regex(struct rte_mempool *mbuf_mp, uint32_t nb_jobs,
 			total_matches += nb_matches;
 			match = ops[d_ind % actual_jobs]->matches;
 			for (i = 0; i < nb_matches; i++) {
-				printf("start = %ld, len = %d, rule = %d\n",
-				       match->start_offset +
-					   ops[d_ind % actual_jobs]->user_id *
-					   job_len,
+				printf("start = %d, len = %d, rule = %d\n",
+					(int)(ops[d_ind % actual_jobs]->user_id
+					* job_len),
 				       match->len, match->rule_id);
 				match++;
 			}
