@@ -3169,6 +3169,7 @@ flow_hw_grp_create_cb(void *tool_ctx, void *cb_ctx)
 			goto error;
 		grp_data->jump.root_action = jump;
 	}
+	grp_data->dev = dev;
 	grp_data->idx = idx;
 	grp_data->group_id = attr->group;
 	grp_data->type = dr_tbl_attr.type;
@@ -3237,7 +3238,8 @@ flow_hw_grp_match_cb(void *tool_ctx __rte_unused, struct mlx5_list_entry *entry,
 	struct rte_flow_attr *attr =
 			(struct rte_flow_attr *)ctx->data;
 
-	return (grp_data->group_id != attr->group) ||
+	return (grp_data->dev != ctx->dev) ||
+		(grp_data->group_id != attr->group) ||
 		((grp_data->type != MLX5DR_TABLE_TYPE_FDB) &&
 		attr->transfer) ||
 		((grp_data->type != MLX5DR_TABLE_TYPE_NIC_TX) &&

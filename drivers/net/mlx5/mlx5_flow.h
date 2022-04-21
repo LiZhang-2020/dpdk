@@ -1280,6 +1280,7 @@ struct mlx5_hw_action_template {
 /* mlx5 flow group struct. */
 struct mlx5_flow_group {
 	struct mlx5_list_entry entry;
+	struct rte_eth_dev *dev; /* Reference to corresponding device. */
 	struct mlx5dr_table *tbl; /* HWS table object. */
 	struct mlx5_hw_jump_action jump; /* Jump action. */
 	enum mlx5dr_table_type type; /* Table type. */
