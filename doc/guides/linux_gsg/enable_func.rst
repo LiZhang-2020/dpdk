@@ -64,13 +64,45 @@ The application can then determine what action to take, if any, if the HPET is n
 Running DPDK Applications Without Root Privileges
 -------------------------------------------------
 
-In order to run DPDK as non-root, the following Linux filesystem objects'
-permissions should be adjusted to ensure that the Linux account being used to
-run the DPDK application has access to them:
+The following sections describe generic requirements and configuration
+for running DPDK applications as non-root.
+There may be different requirements documented for a specific PMD.
 
-*   All directories which serve as hugepage mount points, for example, ``/dev/hugepages``
+Hugepages
+~~~~~~~~~
 
-*   If the HPET is to be used,  ``/dev/hpet``
+Hugepages must be reserved before runing the application as non-root, e.g.::
+
+  sudo dpdk-hugepages.py --reserve 1G
+
+If multi-process is not required, running with ``--in-memory``
+bypasses the need to access hugepage mount point and files within it.
+Otherwise, hugepage directory must be made accessible
+for writing to the unprivileged user, for example::
+
+  export HUGEDIR=$HOME/huge-1G
+  mkdir -p $HUGEDIR
+  sudo dpdk-hugepages.py --mount --directory $HUGEDIR --owner `id -u`:`id -g`
+
+If the needed device PMD requires using physical addresses (PA),
+the executable file must be granted capabilities:
+
+* ``SYS_ADMIN`` to read ``/proc/self/pagemaps``
+* ``IPC_LOCK`` to lock hugepages in memory
+
+.. code-block:: console
+
+   setcap cap_ipc_lock,cap_sys_admin+ep <executable>
+
+If physical addresses are not accessible,
+the following message will appear during EAL initialization:
+
+  EAL: rte_mem_virt2phy(): cannot open /proc/self/pagemap: Permission denied
+
+It is harmless in case PA are not needed.
+
+Resource Limits
+~~~~~~~~~~~~~~~
 
 When running as non-root user, there may be some additional resource limits
 that are imposed by the system. Specifically, the following resource limits may
@@ -85,7 +117,14 @@ need to be adjusted in order to ensure normal DPDK operation:
 The above limits can usually be adjusted by editing
 ``/etc/security/limits.conf`` file, and rebooting.
 
-Additionally, depending on which kernel driver is in use, the relevant
+See also :ref:`Hugepage Mapping` section to learn how these limits affect EAL.
+
+Device Control
+~~~~~~~~~~~~~~
+
+If the HPET is to be used, ``/dev/hpet`` permissions must be adjusted.
+
+Depending on which kernel driver is in use, the relevant
 resources also should be accessible by the user running the DPDK application.
 
 For ``vfio-pci`` kernel driver, the following Linux file system objects'
