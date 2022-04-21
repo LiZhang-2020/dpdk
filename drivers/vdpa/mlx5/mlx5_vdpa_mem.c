@@ -18,12 +18,14 @@
 void
 mlx5_vdpa_mem_dereg(struct mlx5_vdpa_priv *priv)
 {
+	struct mlx5_vdpa_query_mr *mrs =
+		(struct mlx5_vdpa_query_mr *)priv->mrs;
 	struct mlx5_vdpa_query_mr *entry;
-	uint32_t i;
+	int i;
 
 	if (priv->mrs) {
-		for (i = 0; i < priv->num_mrs; i++) {
-			entry = (struct mlx5_vdpa_query_mr *)&priv->mrs[i];
+		for (i = priv->num_mrs - 1; i >= 0; i--) {
+			entry = &mrs[i];
 			if (entry->is_indirect) {
 				if (entry->mkey)
 					claim_zero(
