@@ -2059,6 +2059,8 @@ flow_hw_q_flow_flush(struct rte_eth_dev *dev,
 	/* Flush flow per-table from MLX5_DEFAULT_FLUSH_QUEUE. */
 	hw_q = &priv->hw_q[MLX5_DEFAULT_FLUSH_QUEUE];
 	LIST_FOREACH(tbl, &priv->flow_hw_tbl, next) {
+		if (!tbl->cfg.external)
+			continue;
 		MLX5_IPOOL_FOREACH(tbl->flow, fidx, flow) {
 			if (flow_hw_async_flow_destroy(dev,
 						MLX5_DEFAULT_FLUSH_QUEUE,
