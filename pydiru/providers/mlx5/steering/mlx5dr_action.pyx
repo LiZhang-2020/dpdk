@@ -182,6 +182,20 @@ cdef class Mlx5drActionCounter(Mlx5drAction):
         counter.add_ref(self)
 
 
+cdef class Mlx5drActionDestVport(Mlx5drAction):
+    def __init__(self, Mlx5drContext ctx, ib_port_num, flags):
+        """
+        Initializes a destination VPort action.
+        :param ctx: Mlx5drContext context
+        :param ib_port_num: IB port number
+        :param flags: Action flags
+        """
+        super().__init__(ctx)
+        self.action = mlx5._action_create_dest_vport(ctx.context, ib_port_num, flags)
+        if self.action == NULL:
+            raise PydiruErrno('Mlx5drActionDestVport creation failed.')
+
+
 cdef class Mlx5drRuleAction(PydiruCM):
     """
     Class Mlx5drRuleAction representing mlx5dr_rule_action struct.

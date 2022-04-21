@@ -38,6 +38,7 @@ cdef dr.mlx5dr_action *_action_create_modify_header(dr.mlx5dr_context *ctx, patt
                                                     uint64_t pattern[], log_bulk_size, flags)
 cdef dr.mlx5dr_action *_action_create_default_miss(dr.mlx5dr_context *ctx, flags)
 cdef dr.mlx5dr_action *_action_create_counter(dr.mlx5dr_context *ctx, dr.mlx5dr_devx_obj *obj, flags)
+cdef dr.mlx5dr_action *_action_create_dest_vport(dr.mlx5dr_context *ctx, ib_port_num, flags)
 cdef _action_destroy(dr.mlx5dr_action *action)
 cdef int _rule_get_handle_size()
 cdef dv.flow_hw_port_info *_flow_hw_conv_port_id(uint16_t port_id)

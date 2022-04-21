@@ -78,6 +78,9 @@ cdef dr.mlx5dr_action *_action_create_default_miss(dr.mlx5dr_context *ctx, flags
 cdef dr.mlx5dr_action *_action_create_counter(dr.mlx5dr_context *ctx, dr.mlx5dr_devx_obj *obj, flags):
     return dr.mlx5dr_action_create_counter(ctx, obj, flags)
 
+cdef dr.mlx5dr_action *_action_create_dest_vport(dr.mlx5dr_context *ctx, ib_port_num, flags):
+    return dr.mlx5dr_action_create_dest_vport(ctx, ib_port_num, flags)
+
 cdef _action_destroy(dr.mlx5dr_action *action):
     return dr.mlx5dr_action_destroy(action)
 
