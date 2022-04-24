@@ -148,39 +148,55 @@ struct mlx5_ifc_definer_hl_ib_l4_bits {
 	u8 deth_source_qp[0x18];
 };
 
+enum mlx5dr_integrity_ok1_bits {
+	MLX5DR_DEFINER_OKS1_FIRST_L4_OK = 24,
+	MLX5DR_DEFINER_OKS1_FIRST_L3_OK = 25,
+	MLX5DR_DEFINER_OKS1_SECOND_L4_OK = 26,
+	MLX5DR_DEFINER_OKS1_SECOND_L3_OK = 27,
+	MLX5DR_DEFINER_OKS1_FIRST_L4_CSUM_OK = 28,
+	MLX5DR_DEFINER_OKS1_FIRST_IPV4_CSUM_OK = 29,
+	MLX5DR_DEFINER_OKS1_SECOND_L4_CSUM_OK = 30,
+	MLX5DR_DEFINER_OKS1_SECOND_IPV4_CSUM_OK = 31,
+};
+
 struct mlx5_ifc_definer_hl_oks1_bits {
-	u8 second_ipv4_checksum_ok[0x1];
-	u8 second_l4_checksum_ok[0x1];
-	u8 first_ipv4_checksum_ok[0x1];
-	u8 first_l4_checksum_ok[0x1];
-	u8 second_l3_ok[0x1];
-	u8 second_l4_ok[0x1];
-	u8 first_l3_ok[0x1];
-	u8 first_l4_ok[0x1];
-	u8 flex_parser7_steering_ok[0x1];
-	u8 flex_parser6_steering_ok[0x1];
-	u8 flex_parser5_steering_ok[0x1];
-	u8 flex_parser4_steering_ok[0x1];
-	u8 flex_parser3_steering_ok[0x1];
-	u8 flex_parser2_steering_ok[0x1];
-	u8 flex_parser1_steering_ok[0x1];
-	u8 flex_parser0_steering_ok[0x1];
-	u8 second_ipv6_extension_header_vld[0x1];
-	u8 first_ipv6_extension_header_vld[0x1];
-	u8 l3_tunneling_ok[0x1];
-	u8 l2_tunneling_ok[0x1];
-	u8 second_tcp_ok[0x1];
-	u8 second_udp_ok[0x1];
-	u8 second_ipv4_ok[0x1];
-	u8 second_ipv6_ok[0x1];
-	u8 second_l2_ok[0x1];
-	u8 vxlan_ok[0x1];
-	u8 gre_ok[0x1];
-	u8 first_tcp_ok[0x1];
-	u8 first_udp_ok[0x1];
-	u8 first_ipv4_ok[0x1];
-	u8 first_ipv6_ok[0x1];
-	u8 first_l2_ok[0x1];
+	union {
+		u32 oks1_bits;
+		struct {
+			u8 second_ipv4_checksum_ok[0x1];
+			u8 second_l4_checksum_ok[0x1];
+			u8 first_ipv4_checksum_ok[0x1];
+			u8 first_l4_checksum_ok[0x1];
+			u8 second_l3_ok[0x1];
+			u8 second_l4_ok[0x1];
+			u8 first_l3_ok[0x1];
+			u8 first_l4_ok[0x1];
+			u8 flex_parser7_steering_ok[0x1];
+			u8 flex_parser6_steering_ok[0x1];
+			u8 flex_parser5_steering_ok[0x1];
+			u8 flex_parser4_steering_ok[0x1];
+			u8 flex_parser3_steering_ok[0x1];
+			u8 flex_parser2_steering_ok[0x1];
+			u8 flex_parser1_steering_ok[0x1];
+			u8 flex_parser0_steering_ok[0x1];
+			u8 second_ipv6_extension_header_vld[0x1];
+			u8 first_ipv6_extension_header_vld[0x1];
+			u8 l3_tunneling_ok[0x1];
+			u8 l2_tunneling_ok[0x1];
+			u8 second_tcp_ok[0x1];
+			u8 second_udp_ok[0x1];
+			u8 second_ipv4_ok[0x1];
+			u8 second_ipv6_ok[0x1];
+			u8 second_l2_ok[0x1];
+			u8 vxlan_ok[0x1];
+			u8 gre_ok[0x1];
+			u8 first_tcp_ok[0x1];
+			u8 first_udp_ok[0x1];
+			u8 first_ipv4_ok[0x1];
+			u8 first_ipv6_ok[0x1];
+			u8 first_l2_ok[0x1];
+		};
+	};
 };
 
 struct mlx5_ifc_definer_hl_oks2_bits {

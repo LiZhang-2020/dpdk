@@ -168,6 +168,8 @@ enum mlx5dr_definer_fname {
 	MLX5DR_DEFINER_FNAME_GRE_OPT_KEY,
 	MLX5DR_DEFINER_FNAME_GRE_OPT_SEQ,
 	MLX5DR_DEFINER_FNAME_GRE_OPT_CHECKSUM,
+	MLX5DR_DEFINER_FNAME_INTEGRITY_O,
+	MLX5DR_DEFINER_FNAME_INTEGRITY_I,
 	MLX5DR_DEFINER_FNAME_MAX,
 };
 
@@ -188,6 +190,7 @@ struct mlx5dr_definer_fc {
 	uint32_t byte_off;
 	uint32_t bit_off;
 	uint32_t bit_mask;
+	enum mlx5dr_definer_fname fname;
 	void (*tag_set)(struct mlx5dr_definer_fc *fc,
 			const void *item_spec,
 			uint8_t *tag);
@@ -279,6 +282,38 @@ mlx5dr_definer_ones_set(struct mlx5dr_definer_fc *fc,
 			__rte_unused uint8_t *tag)
 {
 	DR_SET(tag, -1, fc->byte_off, fc->bit_off, fc->bit_mask);
+}
+
+static void
+mlx5dr_definer_integrity_set(struct mlx5dr_definer_fc *fc,
+			     const void *item_spec,
+			     uint8_t *tag)
+{
+	bool inner = (fc->fname == MLX5DR_DEFINER_FNAME_INTEGRITY_I);
+	const struct rte_flow_item_integrity *v = item_spec;
+	uint32_t ok1_bits = 0;
+
+	if (v->l3_ok)
+		ok1_bits |= inner ? BIT(MLX5DR_DEFINER_OKS1_SECOND_L3_OK) |
+				    BIT(MLX5DR_DEFINER_OKS1_SECOND_IPV4_CSUM_OK) :
+				    BIT(MLX5DR_DEFINER_OKS1_FIRST_L3_OK) |
+				    BIT(MLX5DR_DEFINER_OKS1_FIRST_IPV4_CSUM_OK);
+
+	if (v->ipv4_csum_ok)
+		ok1_bits |= inner ? BIT(MLX5DR_DEFINER_OKS1_SECOND_IPV4_CSUM_OK):
+				    BIT(MLX5DR_DEFINER_OKS1_FIRST_IPV4_CSUM_OK);
+
+	if (v->l4_ok)
+		ok1_bits |= inner ? BIT(MLX5DR_DEFINER_OKS1_SECOND_L4_OK) |
+				    BIT(MLX5DR_DEFINER_OKS1_SECOND_L4_CSUM_OK) :
+				    BIT(MLX5DR_DEFINER_OKS1_FIRST_L4_OK) |
+				    BIT(MLX5DR_DEFINER_OKS1_FIRST_L4_CSUM_OK);
+
+	if (v->l4_csum_ok)
+		ok1_bits |= inner ? BIT(MLX5DR_DEFINER_OKS1_SECOND_L4_CSUM_OK):
+				    BIT(MLX5DR_DEFINER_OKS1_FIRST_L4_CSUM_OK);
+
+	DR_SET(tag, ok1_bits, fc->byte_off, fc->bit_off, fc->bit_mask);
 }
 
 static void
@@ -1258,6 +1293,33 @@ mlx5dr_definer_conv_item_gre_key(struct mlx5dr_definer_conv_data *cd,
 }
 
 static int
+mlx5dr_definer_conv_item_integrity(struct mlx5dr_definer_conv_data *cd,
+				   struct rte_flow_item *item,
+				   int item_idx)
+{
+	const struct rte_flow_item_integrity *m = item->mask;
+	struct mlx5dr_definer_fc *fc;
+	bool inner = cd->tunnel;
+
+	if (!m)
+		return 0;
+
+	if (m->packet_ok || m->l2_ok || m->l2_crc_ok || m->l3_len_ok) {
+		rte_errno = ENOTSUP;
+		return rte_errno;
+	}
+
+	if (m->l3_ok || m->ipv4_csum_ok || m->l4_ok || m->l4_csum_ok) {
+		fc = &cd->fc[DR_CALC_FNAME(INTEGRITY, inner)];
+		fc->item_idx = item_idx;
+		fc->tag_set = &mlx5dr_definer_integrity_set;
+		DR_CALC_SET_HDR(fc, oks1, oks1_bits);
+	}
+
+	return 0;
+}
+
+static int
 mlx5dr_definer_conv_items_to_hl(struct mlx5dr_context *ctx,
 				struct mlx5dr_match_template *mt,
 				uint8_t *hl)
@@ -1353,6 +1415,11 @@ mlx5dr_definer_conv_items_to_hl(struct mlx5dr_context *ctx,
 			ret = mlx5dr_definer_conv_item_gre_key(&cd, items, i);
 			item_flags |= MLX5_FLOW_LAYER_GRE_KEY;
 			break;
+		case RTE_FLOW_ITEM_TYPE_INTEGRITY:
+			ret = mlx5dr_definer_conv_item_integrity(&cd, items, i);
+			item_flags |= cd.tunnel ? MLX5_FLOW_ITEM_INNER_INTEGRITY :
+						  MLX5_FLOW_ITEM_OUTER_INTEGRITY;
+			break;
 		default:
 			DR_LOG(ERR, "Unsupported item type %d", items->type);
 			rte_errno = ENOTSUP;
@@ -1387,6 +1454,7 @@ mlx5dr_definer_conv_items_to_hl(struct mlx5dr_context *ctx,
 	for (i = 0; i < MLX5DR_DEFINER_FNAME_MAX; i++) {
 		if (fc[i].tag_set) {
 			memcpy(&mt->fc[j], &fc[i], sizeof(*mt->fc));
+			mt->fc[j].fname = i;
 			j++;
 		}
 	}
