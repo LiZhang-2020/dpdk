@@ -12447,6 +12447,7 @@ flow_dv_translate_items(struct rte_eth_dev *dev,
 		last_item = tunnel ? MLX5_FLOW_LAYER_INNER_L3_IPV4 :
 				     MLX5_FLOW_LAYER_OUTER_L3_IPV4;
 		if (items->mask != NULL &&
+		    items->spec != NULL &&
 			((const struct rte_flow_item_ipv4 *)
 			 items->mask)->hdr.next_proto_id) {
 			next_protocol =
@@ -12455,6 +12456,14 @@ flow_dv_translate_items(struct rte_eth_dev *dev,
 			next_protocol &=
 				((const struct rte_flow_item_ipv4 *)
 				 (items->mask))->hdr.next_proto_id;
+		} else if (key_type == MLX5_SET_MATCHER_HS_M &&
+			   items->mask != NULL) {
+			next_protocol =  ((const struct rte_flow_item_ipv4 *)
+					(items->mask))->hdr.next_proto_id;
+		} else if (key_type == MLX5_SET_MATCHER_HS_V &&
+			   items->spec != NULL) {
+			next_protocol =  ((const struct rte_flow_item_ipv4 *)
+					(items->spec))->hdr.next_proto_id;
 		} else {
 			/* Reset for inner layer. */
 			next_protocol = 0xff;
@@ -12469,6 +12478,7 @@ flow_dv_translate_items(struct rte_eth_dev *dev,
 		last_item = tunnel ? MLX5_FLOW_LAYER_INNER_L3_IPV6 :
 				     MLX5_FLOW_LAYER_OUTER_L3_IPV6;
 		if (items->mask != NULL &&
+		    items->spec != NULL &&
 			((const struct rte_flow_item_ipv6 *)
 			 items->mask)->hdr.proto) {
 			next_protocol =
@@ -12477,6 +12487,14 @@ flow_dv_translate_items(struct rte_eth_dev *dev,
 			next_protocol &=
 				((const struct rte_flow_item_ipv6 *)
 				 items->mask)->hdr.proto;
+		} else if (key_type == MLX5_SET_MATCHER_HS_M &&
+			   items->mask != NULL) {
+			next_protocol =  ((const struct rte_flow_item_ipv6 *)
+					(items->mask))->hdr.proto;
+		} else if (key_type == MLX5_SET_MATCHER_HS_V &&
+			   items->spec != NULL) {
+			next_protocol =  ((const struct rte_flow_item_ipv6 *)
+					(items->spec))->hdr.proto;
 		} else {
 			/* Reset for inner layer. */
 			next_protocol = 0xff;
@@ -12488,6 +12506,7 @@ flow_dv_translate_items(struct rte_eth_dev *dev,
 		last_item = tunnel ? MLX5_FLOW_LAYER_INNER_L3_IPV6_FRAG_EXT :
 				     MLX5_FLOW_LAYER_OUTER_L3_IPV6_FRAG_EXT;
 		if (items->mask != NULL &&
+		    items->spec != NULL &&
 			((const struct rte_flow_item_ipv6_frag_ext *)
 			 items->mask)->hdr.next_header) {
 			next_protocol =
@@ -12496,6 +12515,14 @@ flow_dv_translate_items(struct rte_eth_dev *dev,
 			next_protocol &=
 			((const struct rte_flow_item_ipv6_frag_ext *)
 			 items->mask)->hdr.next_header;
+		} else if (key_type == MLX5_SET_MATCHER_HS_M &&
+			   items->mask != NULL) {
+			next_protocol =  ((const struct rte_flow_item_ipv6_frag_ext *)
+					(items->mask))->hdr.next_header;
+		} else if (key_type == MLX5_SET_MATCHER_HS_V &&
+			   items->spec != NULL) {
+			next_protocol =  ((const struct rte_flow_item_ipv6_frag_ext *)
+					(items->spec))->hdr.next_header;
 		} else {
 			/* Reset for inner layer. */
 			next_protocol = 0xff;
