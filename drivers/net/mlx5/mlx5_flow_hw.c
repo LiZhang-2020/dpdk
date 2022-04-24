@@ -2406,8 +2406,12 @@ flow_hw_table_destroy(struct rte_eth_dev *dev,
 {
 	struct mlx5_priv *priv = dev->data->dev_private;
 	int i;
+	uint32_t fidx = 1;
 
-	if (table->refcnt) {
+	/* Build ipool allocated object bitmap. */
+	mlx5_ipool_flush_cache(table->flow);
+	/* Check if ipool has allocated objects. */
+	if (table->refcnt || mlx5_ipool_get_next(table->flow, &fidx)) {
 		DRV_LOG(WARNING, "Table %p is still in using.", (void *)table);
 		return rte_flow_error_set(error, EBUSY,
 				   RTE_FLOW_ERROR_TYPE_UNSPECIFIED,
