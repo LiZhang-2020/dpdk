@@ -502,8 +502,11 @@ mlx5_vdpa_dev_clean(int vid)
 		DRV_LOG(ERR, "Invalid vDPA device: %s.", vdev->device->name);
 		return -1;
 	}
-	if (priv->state == MLX5_VDPA_STATE_PROBED)
+	if (priv->state == MLX5_VDPA_STATE_PROBED) {
+		if (priv->use_c_thread)
+			mlx5_vdpa_wait_dev_close_tasks_done(priv);
 		mlx5_vdpa_dev_cache_clean(priv);
+	}
 	priv->connected = false;
 	return 0;
 }
