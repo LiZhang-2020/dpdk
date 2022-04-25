@@ -591,7 +591,7 @@ flow_hw_action_modify_field_is_shared(const struct rte_flow_action *action,
 
 static __rte_always_inline bool
 flow_hw_should_insert_nop(const struct mlx5_hw_modify_header_action *mhdr,
-			  const struct mlx5_flow_dv_modify_hdr_resource *resource)
+			  const struct mlx5_modification_cmd *cmd)
 {
 	struct mlx5_modification_cmd last_cmd = { { 0 } };
 	struct mlx5_modification_cmd new_cmd = { { 0 } };
@@ -605,8 +605,7 @@ flow_hw_should_insert_nop(const struct mlx5_hw_modify_header_action *mhdr,
 	last_cmd.data0 = rte_be_to_cpu_32(last_cmd.data0);
 	last_cmd.data1 = rte_be_to_cpu_32(last_cmd.data1);
 	last_type = last_cmd.action_type;
-	MLX5_ASSERT(resource->actions_num >= 1);
-	new_cmd = *(&resource->actions[0]);
+	new_cmd = *cmd;
 	new_cmd.data0 = rte_be_to_cpu_32(new_cmd.data0);
 	new_cmd.data1 = rte_be_to_cpu_32(new_cmd.data1);
 	switch (new_cmd.action_type) {
@@ -617,6 +616,8 @@ flow_hw_should_insert_nop(const struct mlx5_hw_modify_header_action *mhdr,
 			should_insert = new_cmd.field == last_cmd.field;
 		else if (last_type == MLX5_MODIFICATION_TYPE_COPY)
 			should_insert = new_cmd.field == last_cmd.dst_field;
+		else if (last_type == MLX5_MODIFICATION_TYPE_NOP)
+			should_insert = false;
 		else
 			MLX5_ASSERT(false); /* Other types are not supported. */
 		break;
@@ -628,6 +629,8 @@ flow_hw_should_insert_nop(const struct mlx5_hw_modify_header_action *mhdr,
 		else if (last_type == MLX5_MODIFICATION_TYPE_COPY)
 			should_insert = (new_cmd.field == last_cmd.dst_field ||
 					 new_cmd.dst_field == last_cmd.dst_field);
+		else if (last_type == MLX5_MODIFICATION_TYPE_NOP)
+			should_insert = false;
 		else
 			MLX5_ASSERT(false); /* Other types are not supported. */
 		break;
@@ -657,21 +660,37 @@ flow_hw_mhdr_cmd_nop_append(struct mlx5_hw_modify_header_action *mhdr)
 }
 
 static __rte_always_inline int
+flow_hw_mhdr_cmd_append(struct mlx5_hw_modify_header_action *mhdr,
+			struct mlx5_modification_cmd *cmd)
+{
+	uint32_t num = mhdr->mhdr_cmds_num;
+
+	if (num + 1 >= MLX5_MHDR_MAX_CMD)
+		return -ENOMEM;
+	mhdr->mhdr_cmds[num] = *cmd;
+	mhdr->mhdr_cmds_num = num + 1;
+	return 0;
+}
+
+static __rte_always_inline int
 flow_hw_converted_mhdr_cmds_append(struct mlx5_hw_modify_header_action *mhdr,
 				   struct mlx5_flow_dv_modify_hdr_resource *resource)
 {
-	uint32_t cmds_num = mhdr->mhdr_cmds_num;
-	struct mlx5_modification_cmd *dst;
-	struct mlx5_modification_cmd *src;
-	size_t size;
+	uint32_t idx;
+	int ret;
 
-	if (cmds_num + resource->actions_num >= MLX5_MHDR_MAX_CMD)
-		return -ENOMEM;
-	dst = mhdr->mhdr_cmds + cmds_num;
-	src = &resource->actions[0];
-	size = sizeof(resource->actions[0]) * resource->actions_num;
-	rte_memcpy(dst, src, size);
-	mhdr->mhdr_cmds_num = cmds_num + resource->actions_num;
+	for (idx = 0; idx < resource->actions_num; ++idx) {
+		struct mlx5_modification_cmd *src = &resource->actions[idx];
+
+		if (flow_hw_should_insert_nop(mhdr, src)) {
+			ret = flow_hw_mhdr_cmd_nop_append(mhdr);
+			if (ret)
+				return ret;
+		}
+		ret = flow_hw_mhdr_cmd_append(mhdr, src);
+		if (ret)
+			return ret;
+	}
 	return 0;
 }
 
@@ -755,7 +774,13 @@ flow_hw_modify_field_compile(struct rte_eth_dev *dev,
 	ret = flow_convert_modify_action(&item, field, dcopy, resource, type, error);
 	if (ret)
 		return ret;
-	if (flow_hw_should_insert_nop(mhdr, resource)) {
+	MLX5_ASSERT(resource->actions_num > 0);
+	/*
+	 * If previous modify field action collide with this one, then insert NOP command.
+	 * This NOP command will not be a part of action's command range used to update commands
+	 * on rule creation.
+	 */
+	if (flow_hw_should_insert_nop(mhdr, &resource->actions[0])) {
 		ret = flow_hw_mhdr_cmd_nop_append(mhdr);
 		if (ret)
 			return rte_flow_error_set(error, ret, RTE_FLOW_ERROR_TYPE_UNSPECIFIED,
@@ -1377,6 +1402,17 @@ flow_hw_shared_action_construct(struct rte_eth_dev *dev,
 	return 0;
 }
 
+static __rte_always_inline int
+flow_hw_mhdr_cmd_is_nop(const struct mlx5_modification_cmd *cmd)
+{
+	struct mlx5_modification_cmd cmd_he = {
+		.data0 = rte_be_to_cpu_32(cmd->data0),
+		.data1 = 0,
+	};
+
+	return cmd_he.action_type == MLX5_MODIFICATION_TYPE_NOP;
+}
+
 /**
  * Construct flow action array.
  *
@@ -1440,6 +1476,10 @@ flow_hw_modify_field_construct(struct mlx5_hw_q_job *job,
 
 		if (i >= act_data->modify_header.mhdr_cmds_end)
 			return -1;
+		if (flow_hw_mhdr_cmd_is_nop(&job->mhdr_cmd[i])) {
+			++i;
+			continue;
+		}
 		mask_src = (const uint8_t *)act_data->modify_header.mask;
 		mask = flow_fetch_field(mask_src + field->offset, field->size);
 		if (!mask) {
