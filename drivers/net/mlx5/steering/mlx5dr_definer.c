@@ -1116,18 +1116,14 @@ mlx5dr_definer_conv_item_gre_opt(struct mlx5dr_definer_conv_data *cd,
 	struct mlx5dr_definer_fc *fc;
 	bool inner = cd->tunnel;
 
-	if (inner) {
-		DR_LOG(ERR, "Inner GRE OPT item not supported");
-		rte_errno = ENOTSUP;
-		return rte_errno;
-	}
-
 	if (!cd->relaxed) {
 		fc = &cd->fc[DR_CALC_FNAME(IP_PROTOCOL, inner)];
-		fc->item_idx = item_idx;
-		fc->tag_mask_set = &mlx5dr_definer_ones_set;
-		fc->tag_set = &mlx5dr_definer_ipv4_protocol_gre_set;
-		DR_CALC_SET(fc, eth_l3, protocol_next_header, inner);
+		if(!fc->tag_set) {
+			fc->item_idx = item_idx;
+			fc->tag_mask_set = &mlx5dr_definer_ones_set;
+			fc->tag_set = &mlx5dr_definer_ipv4_protocol_gre_set;
+			DR_CALC_SET(fc, eth_l3, protocol_next_header, inner);
+		}
 	}
 
 	if (!m)
