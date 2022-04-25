@@ -3640,6 +3640,7 @@ enum rte_flow_field_id {
 	RTE_FLOW_FIELD_VALUE,   /**< Immediate value. */
 	RTE_FLOW_FIELD_IPV4_ECN,/**< IPv4 ECN. */
 	RTE_FLOW_FIELD_IPV6_ECN,/**< IPv6 ECN. */
+	RTE_FLOW_FIELD_GTP_PSC_QFI,/**< GTP QFI. */
 };
 
 /**
