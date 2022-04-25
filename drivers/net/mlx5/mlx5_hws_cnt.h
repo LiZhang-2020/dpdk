@@ -92,6 +92,7 @@ struct mlx5_hws_cnt_pool {
 	uint32_t query_gen __rte_cache_aligned;
 	struct mlx5_hws_cnt *pool;
 	struct mlx5_hws_cnt_raw_data_mng *raw_mng;
+	struct rte_ring *reuse_list;
 	struct rte_ring *free_list;
 	struct rte_ring *wait_reset_list;
 	struct mlx5_hws_cnt_pool_caches *cache;
@@ -266,24 +267,38 @@ mlx5_hws_cnt_pool_cache_fetch(struct mlx5_hws_cnt_pool *cpool,
 {
 	struct rte_ring *qcache = cpool->cache->qcache[queue_id];
 	struct rte_ring *free_list = NULL;
+	struct rte_ring *reuse_list = NULL;
+	struct rte_ring *list = NULL;
 	struct rte_ring_zc_data zcdf = {0};
 	struct rte_ring_zc_data zcdc = {0};
+	struct rte_ring_zc_data zcdu = {0};
+	struct rte_ring_zc_data zcds = {0};
 	struct mlx5_hws_cnt_pool_caches *cache = cpool->cache;
 	unsigned int ret;
 
-	free_list = cpool->free_list;
-	ret = rte_ring_dequeue_zc_burst_elem_start(free_list,
-			sizeof(cnt_id_t), cache->fetch_sz, &zcdf, NULL);
-	if (unlikely(ret == 0)) { /* no free counter. */
-		rte_ring_dequeue_zc_elem_finish(free_list, 0);
-		if (rte_ring_count(cpool->wait_reset_list))
-			return -EAGAIN;
-		return -ENOENT;
+	reuse_list = cpool->reuse_list;
+	ret = rte_ring_dequeue_zc_burst_elem_start(reuse_list,
+			sizeof(cnt_id_t), cache->fetch_sz, &zcdu, NULL);
+	zcds = zcdu;
+	list = reuse_list;
+	if (unlikely(ret == 0)) { /* no reuse counter. */
+		rte_ring_dequeue_zc_elem_finish(reuse_list, 0);
+		free_list = cpool->free_list;
+		ret = rte_ring_dequeue_zc_burst_elem_start(free_list,
+				sizeof(cnt_id_t), cache->fetch_sz, &zcdf, NULL);
+		zcds = zcdf;
+		list = free_list;
+		if (unlikely(ret == 0)) { /* no free counter. */
+			rte_ring_dequeue_zc_elem_finish(free_list, 0);
+			if (rte_ring_count(cpool->wait_reset_list))
+				return -EAGAIN;
+			return -ENOENT;
+		}
 	}
 	rte_ring_enqueue_zc_burst_elem_start(qcache, sizeof(cnt_id_t),
 			ret, &zcdc, NULL);
-	__hws_cnt_r2rcpy(&zcdc, &zcdf, ret);
-	rte_ring_dequeue_zc_elem_finish(free_list, ret);
+	__hws_cnt_r2rcpy(&zcdc, &zcds, ret);
+	rte_ring_dequeue_zc_elem_finish(list, ret);
 	rte_ring_enqueue_zc_elem_finish(qcache, ret);
 	return 0;
 }
@@ -391,12 +406,16 @@ mlx5_hws_cnt_pool_get(struct mlx5_hws_cnt_pool *cpool,
 	if (likely(queue != NULL))
 		qcache = cpool->cache->qcache[*queue];
 	if (unlikely(qcache == NULL)) {
-		ret = rte_ring_dequeue_elem(cpool->free_list, &tmp_cid,
+		ret = rte_ring_dequeue_elem(cpool->reuse_list, &tmp_cid,
 				sizeof(cnt_id_t));
 		if (unlikely(ret != 0)) {
-			if (rte_ring_count(cpool->wait_reset_list))
-				return -EAGAIN;
-			return -ENOENT;
+			ret = rte_ring_dequeue_elem(cpool->free_list, &tmp_cid,
+					sizeof(cnt_id_t));
+			if (unlikely(ret != 0)) {
+				if (rte_ring_count(cpool->wait_reset_list))
+					return -EAGAIN;
+				return -ENOENT;
+			}
 		}
 		*cnt_id = tmp_cid;
 		iidx = mlx5_hws_cnt_iidx(cpool, *cnt_id);

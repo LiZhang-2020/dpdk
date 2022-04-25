@@ -1639,7 +1639,8 @@ mlx5_aso_cnt_query(struct mlx5_dev_ctx_shared *sh,
 {
 	uint32_t idx;
 	uint32_t num;
-	uint32_t cnt_num = mlx5_hws_cnt_pool_get_size(cpool);
+	uint32_t cnt_num = mlx5_hws_cnt_pool_get_size(cpool) -
+		rte_ring_count(cpool->free_list);
 
 	for (idx = 0; idx < cpool->dcs_mng.batch_total; idx++) {
 		num = RTE_MIN(cnt_num, cpool->dcs_mng.dcs[idx].batch_sz);

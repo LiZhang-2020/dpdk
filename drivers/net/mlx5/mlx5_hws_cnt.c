@@ -28,6 +28,14 @@ __hws_cnt_id_load(struct mlx5_hws_cnt_pool *cpool)
 	uint32_t qidx;
 	struct rte_ring *qcache = NULL;
 
+	/*
+	 * Counter ID order is important for tracking the max number of in used
+	 * counter for querying, which means counter internal index order must
+	 * be from zero to the number user configured, i.e: 0 - 8000000.
+	 * Need to load counter ID in this order into the cache firstly,
+	 * and then the global free list.
+	 * In the end, user fetch the the counter from minimal to the maximum.
+	 */
 	preload = RTE_MIN(cpool->cache->preload_sz, cnt_num / q_num);
 	for (qidx = 0; qidx < q_num; qidx++) {
 		for (; iidx < preload * (qidx + 1); iidx++) {
@@ -50,27 +58,27 @@ __mlx5_hws_cnt_svc(struct mlx5_dev_ctx_shared *sh,
 		struct mlx5_hws_cnt_pool *cpool)
 {
 	struct rte_ring *reset_list = cpool->wait_reset_list;
-	struct rte_ring *free_list = cpool->free_list;
+	struct rte_ring *reuse_list = cpool->reuse_list;
 	uint32_t reset_cnt_num;
 	struct rte_ring_zc_data zcdr = {0};
-	struct rte_ring_zc_data zcdf = {0};
+	struct rte_ring_zc_data zcdu = {0};
 
 	reset_cnt_num = rte_ring_count(reset_list);
 	do {
 		cpool->query_gen++;
 		mlx5_aso_cnt_query(sh, cpool);
 		zcdr.n1 = 0;
-		zcdf.n1 = 0;
-		rte_ring_enqueue_zc_burst_elem_start(free_list,
-				sizeof(cnt_id_t), reset_cnt_num, &zcdf,
+		zcdu.n1 = 0;
+		rte_ring_enqueue_zc_burst_elem_start(reuse_list,
+				sizeof(cnt_id_t), reset_cnt_num, &zcdu,
 				NULL);
 		rte_ring_dequeue_zc_burst_elem_start(reset_list,
 				sizeof(cnt_id_t), reset_cnt_num, &zcdr,
 				NULL);
-		__hws_cnt_r2rcpy(&zcdf, &zcdr, reset_cnt_num);
+		__hws_cnt_r2rcpy(&zcdu, &zcdr, reset_cnt_num);
 		rte_ring_dequeue_zc_elem_finish(reset_list,
 				reset_cnt_num);
-		rte_ring_enqueue_zc_elem_finish(free_list,
+		rte_ring_enqueue_zc_elem_finish(reuse_list,
 				reset_cnt_num);
 		reset_cnt_num = rte_ring_count(reset_list);
 	} while (reset_cnt_num > 0);
@@ -203,6 +211,14 @@ mlx5_hws_cnt_pool_init(const struct mlx5_hws_cnt_pool_cfg *pcfg,
 		DRV_LOG(ERR, "failed to create free list ring");
 		goto error;
 	}
+	snprintf(mz_name, sizeof(mz_name), "%s_U_RING", pcfg->name);
+	cntp->reuse_list = rte_ring_create_elem(mz_name, sizeof(cnt_id_t),
+			(uint32_t)cnt_num, SOCKET_ID_ANY,
+			RING_F_SP_ENQ | RING_F_MC_HTS_DEQ | RING_F_EXACT_SZ);
+	if (cntp->reuse_list == NULL) {
+		DRV_LOG(ERR, "failed to create reuse list ring");
+		goto error;
+	}
 	for (qidx = 0; qidx < ccfg->q_num; qidx++) {
 		snprintf(mz_name, sizeof(mz_name), "%s_cache/%u", pcfg->name,
 				qidx);
@@ -227,6 +243,7 @@ mlx5_hws_cnt_pool_deinit(struct mlx5_hws_cnt_pool * const cntp)
 		return;
 	rte_ring_free(cntp->free_list);
 	rte_ring_free(cntp->wait_reset_list);
+	rte_ring_free(cntp->reuse_list);
 	if (cntp->cache) {
 		for (qidx = 0; qidx < cntp->cache->q_num; qidx++)
 			rte_ring_free(cntp->cache->qcache[qidx]);
