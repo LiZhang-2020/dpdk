@@ -8788,7 +8788,10 @@ flow_dv_translate_item_tag(struct rte_eth_dev *dev, void *key,
 	/* When set mask, the index should be from spec. */
 	index = tag_vv ? tag_vv->index : tag_v->index;
 	/* Get the metadata register index for the tag. */
-	reg = mlx5_flow_get_reg_id(dev, MLX5_APP_TAG, index, NULL);
+	if (!!(key_type & MLX5_SET_MATCHER_SW))
+		reg = mlx5_flow_get_reg_id(dev, MLX5_APP_TAG, index, NULL);
+	else
+		reg = flow_hw_get_reg_id(RTE_FLOW_ITEM_TYPE_TAG, index);
 	MLX5_ASSERT(reg > 0);
 	flow_dv_match_meta_reg(key, reg, tag_v->data, tag_m->data);
 }
