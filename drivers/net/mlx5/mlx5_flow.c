@@ -12867,6 +12867,16 @@ mlx5_flow_field_id_to_modify_info
 		if (mask)
 			mask[idx] = 0x3 >> (2 - width);
 		break;
+	case RTE_FLOW_FIELD_GTP_PSC_QFI:
+		MLX5_ASSERT(data->offset + width <= 8);
+		off_be = data->offset + 8;
+		info[idx] = (struct field_modify_info){4, 0,
+					MLX5_MODI_GTPU_FIRST_EXT_DW_0};
+		if (mask)
+			mask[idx] = flow_modify_info_mask_32(width, off_be);
+		else
+			info[idx].offset = off_be;
+		break;
 	case MLX5_RTE_FLOW_FIELD_META_REG:
 		{
 			uint32_t meta_mask = priv->sh->dv_meta_mask;

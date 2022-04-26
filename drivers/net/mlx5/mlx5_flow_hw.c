@@ -734,7 +734,7 @@ flow_hw_modify_field_compile(struct rte_eth_dev *dev,
 	struct field_modify_info dcopy[MLX5_ACT_MAX_MOD_FIELDS] = {
 						{0, 0, MLX5_MODI_OUT_NONE} };
 	uint32_t mask[MLX5_ACT_MAX_MOD_FIELDS] = { 0 };
-	uint32_t type, meta = 0;
+	uint32_t type, value = 0;
 	uint16_t cmds_start, cmds_end;
 	bool shared;
 	int ret;
@@ -758,9 +758,17 @@ flow_hw_modify_field_compile(struct rte_eth_dev *dev,
 				(void *)(uintptr_t)&conf->src.value;
 		if (conf->dst.field == RTE_FLOW_FIELD_META ||
 		    conf->dst.field == RTE_FLOW_FIELD_TAG) {
-			meta = *(const unaligned_uint32_t *)item.spec;
-			meta = rte_cpu_to_be_32(meta);
-			item.spec = &meta;
+			value = *(const unaligned_uint32_t *)item.spec;
+			value = rte_cpu_to_be_32(value);
+			item.spec = &value;
+		} else if (conf->dst.field == RTE_FLOW_FIELD_GTP_PSC_QFI) {
+			/*
+			 * QFI is passed as an uint8_t integer, but it is accessed through
+			 * a 2nd least significant byte of a 32-bit field in modify header command.
+			 */
+			value = *(const uint8_t *)item.spec;
+			value = rte_cpu_to_be_32(value << 8);
+			item.spec = &value;
 		}
 	} else {
 		type = MLX5_MODIFICATION_TYPE_COPY;
@@ -1479,7 +1487,7 @@ flow_hw_modify_field_construct(struct mlx5_hw_q_job *job,
 {
 	const struct rte_flow_action_modify_field *mhdr_action = action->conf;
 	uint8_t values[16] = { 0 };
-	unaligned_uint32_t *meta_p;
+	unaligned_uint32_t *value_p;
 	uint32_t i;
 	struct field_modify_info *field;
 
@@ -1498,8 +1506,18 @@ flow_hw_modify_field_construct(struct mlx5_hw_q_job *job,
 		rte_memcpy(values, mhdr_action->src.pvalue, sizeof(values));
 	if (mhdr_action->dst.field == RTE_FLOW_FIELD_META ||
 	    mhdr_action->dst.field == RTE_FLOW_FIELD_TAG) {
-		meta_p = (unaligned_uint32_t *)values;
-		*meta_p = rte_cpu_to_be_32(*meta_p);
+		value_p = (unaligned_uint32_t *)values;
+		*value_p = rte_cpu_to_be_32(*value_p);
+	} else if (mhdr_action->dst.field == RTE_FLOW_FIELD_GTP_PSC_QFI) {
+		uint32_t tmp;
+
+		/*
+		 * QFI is passed as an uint8_t integer, but it is accessed through
+		 * a 2nd least significant byte of a 32-bit field in modify header command.
+		 */
+		tmp = values[0];
+		value_p = (unaligned_uint32_t *)values;
+		*value_p = rte_cpu_to_be_32(tmp << 8);
 	}
 	i = act_data->modify_header.mhdr_cmds_off;
 	field = act_data->modify_header.field;
