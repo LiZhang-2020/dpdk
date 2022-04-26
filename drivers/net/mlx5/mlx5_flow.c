@@ -8184,18 +8184,11 @@ mlx5_flow_query(const struct rte_eth_dev *dev,
 	struct mlx5_priv *priv = dev->data->dev_private;
 	const struct mlx5_flow_driver_ops *fops;
 	struct rte_flow *flow;
-	enum mlx5_flow_drv_type ftype;
-	uint32_t flow_hw_idx;
+	enum mlx5_flow_drv_type ftype = MLX5_FLOW_TYPE_MIN;
 
 	if (priv->sh->config.dv_flow_en == 2) {
-		struct rte_flow_hw *hw_flow;
-		struct rte_flow_template_table *hw_table;
-		hw_flow = (struct rte_flow_hw *)flow_idx;
-		hw_table = hw_flow->table;
-		flow_hw_idx = hw_flow->idx;
-		flow = (struct rte_flow *)mlx5_ipool_get(hw_table->flow,
-				flow_hw_idx);
-		flow->drv_type = MLX5_FLOW_TYPE_HW;
+		flow = (struct rte_flow *)flow_idx;
+		ftype = MLX5_FLOW_TYPE_HW;
 	} else {
 		flow = (struct rte_flow *)mlx5_ipool_get(priv->flows[type],
 				flow_idx);
@@ -8206,7 +8199,8 @@ mlx5_flow_query(const struct rte_eth_dev *dev,
 			  NULL,
 			  "invalid flow handle");
 	}
-	ftype = flow->drv_type;
+	if (ftype != MLX5_FLOW_TYPE_HW)
+		ftype = (enum mlx5_flow_drv_type)flow->drv_type;
 	MLX5_ASSERT(ftype > MLX5_FLOW_TYPE_MIN && ftype < MLX5_FLOW_TYPE_MAX);
 	fops = flow_get_drv_ops(ftype);
 
