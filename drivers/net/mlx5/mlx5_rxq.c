@@ -1595,6 +1595,17 @@ mlx5_mprq_prepare(struct rte_eth_dev *dev, uint16_t idx, uint16_t desc,
 	}
 	MLX5_ASSERT(log_stride_wqe_size >=
 		    dev_cap->mprq.log_min_stride_wqe_size);
+	/* Check if there is a space to for the headroom. */
+	if (RTE_BIT32(*actual_log_stride_size) < RTE_PKTMBUF_HEADROOM) {
+		*actual_log_stride_size = log2above(RTE_PKTMBUF_HEADROOM);
+		if (*actual_log_stride_size > log_max_stride_size)
+			goto unsupported;
+		DRV_LOG(WARNING,
+			"Port %u Rx queue %u size of a stride for Multi-Packet RQ is too small, setting headroom value (stride_num_n=%u, stride_size_n=%u)",
+			dev->data->port_id, idx, RTE_BIT32(*actual_log_stride_num),
+			RTE_BIT32(*actual_log_stride_size));
+		log_stride_wqe_size = *actual_log_stride_num + *actual_log_stride_size;
+	}
 	if (desc <= RTE_BIT32(*actual_log_stride_num))
 		goto unsupported;
 	if (min_mbuf_size > RTE_BIT32(log_stride_wqe_size)) {

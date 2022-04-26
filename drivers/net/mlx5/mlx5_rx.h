@@ -612,6 +612,7 @@ mprq_buf_to_pkt(struct mlx5_rxq_data *rxq, struct rte_mbuf *pkt, uint32_t len,
 		__atomic_add_fetch(&buf->refcnt, 1, __ATOMIC_RELAXED);
 		MLX5_ASSERT(__atomic_load_n(&buf->refcnt,
 			    __ATOMIC_RELAXED) <= strd_n + 1);
+		MLX5_ASSERT(strd_sz >= RTE_PKTMBUF_HEADROOM);
 		buf_addr = RTE_PTR_SUB(addr, RTE_PKTMBUF_HEADROOM);
 		/*
 		 * MLX5 device doesn't use iova but it is necessary in a
