@@ -340,13 +340,14 @@ def post_recv(qp, mr, msg_size, n=1):
         qp.post_recv(recv_wr)
 
 
-def send_packets(agr_obj, packets, tag_value=None):
-    for packet in packets:
-        send_sg = SGE(agr_obj.mr.buf, len(packet), agr_obj.mr.lkey)
-        agr_obj.mr.write(packet, len(packet))
-        send_wr = SendWR(num_sge=1, sg=[send_sg])
-        agr_obj.qp.post_send(send_wr)
-        poll_cq(agr_obj.cq, tag_value=tag_value)
+def send_packets(agr_obj, packets, tag_value=None, iters=1):
+    for _ in range(iters):
+        for packet in packets:
+            send_sg = SGE(agr_obj.mr.buf, len(packet), agr_obj.mr.lkey)
+            agr_obj.mr.write(packet, len(packet))
+            send_wr = SendWR(num_sge=1, sg=[send_sg])
+            agr_obj.qp.post_send(send_wr)
+            poll_cq(agr_obj.cq, tag_value=tag_value)
 
 
 def validate_raw(msg_received, msg_expected, skip_idxs=None):
