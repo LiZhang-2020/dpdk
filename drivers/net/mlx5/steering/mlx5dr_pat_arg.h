@@ -38,8 +38,13 @@ struct mlx5dr_pat_cached_pattern {
 
 enum mlx5dr_arg_chunk_size
 mlx5dr_arg_get_arg_log_size(uint16_t num_of_actions);
+
+uint32_t mlx5dr_arg_get_arg_size(uint16_t num_of_actions);
+
 enum mlx5dr_arg_chunk_size
 mlx5dr_arg_data_size_to_arg_log_size(uint16_t data_size);
+
+uint32_t mlx5dr_arg_data_size_to_arg_size(uint16_t data_size);
 
 int mlx5dr_pat_init_pattern_cache(struct mlx5dr_pattern_cache **cache);
 

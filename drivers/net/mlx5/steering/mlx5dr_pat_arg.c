@@ -21,11 +21,21 @@ mlx5dr_arg_data_size_to_arg_log_size(uint16_t data_size)
 	return MLX5DR_ARG_CHUNK_SIZE_MAX;
 }
 
+uint32_t mlx5dr_arg_data_size_to_arg_size(uint16_t data_size)
+{
+	return BIT(mlx5dr_arg_data_size_to_arg_log_size(data_size));
+}
+
 enum mlx5dr_arg_chunk_size
 mlx5dr_arg_get_arg_log_size(uint16_t num_of_actions)
 {
 	return mlx5dr_arg_data_size_to_arg_log_size(num_of_actions *
 						    MLX5DR_MODIFY_ACTION_SIZE);
+}
+
+uint32_t mlx5dr_arg_get_arg_size(uint16_t num_of_actions)
+{
+	return BIT(mlx5dr_arg_get_arg_log_size(num_of_actions));
 }
 
 /* cache and cache element handling */

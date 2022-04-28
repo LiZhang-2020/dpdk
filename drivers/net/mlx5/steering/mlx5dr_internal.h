@@ -40,6 +40,7 @@
 
 #define DW_SIZE		4
 
+#define BIT(_bit) (1ULL << (_bit))
 #define IS_BIT_SET(_value, _bit) (_value & (1ULL << (_bit)))
 
 #ifdef RTE_LIBRTE_MLX5_DEBUG
