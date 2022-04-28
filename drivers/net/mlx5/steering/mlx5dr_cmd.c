@@ -394,6 +394,14 @@ mlx5dr_cmd_stc_modify_set_stc_param(struct mlx5dr_cmd_stc_modify_attr *stc_attr,
 		MLX5_SET(stc_ste_param_execute_aso, stc_parm, aso_type,
 			 ASO_OPC_MOD_POLICER);
 		break;
+	case MLX5_IFC_STC_ACTION_TYPE_JUMP_TO_STE_TABLE:
+		MLX5_SET(stc_ste_param_ste_table, stc_parm, ste_obj_id,
+			 stc_attr->ste_table.ste_obj_id);
+		MLX5_SET(stc_ste_param_ste_table, stc_parm, match_definer_id,
+			 stc_attr->ste_table.match_definer_id);
+		MLX5_SET(stc_ste_param_ste_table, stc_parm, log_hash_size,
+			 stc_attr->ste_table.log_hash_size);
+		break;
 	default:
 		DR_LOG(ERR, "not supported type %d", stc_attr->action_type);
 		rte_errno = EINVAL;

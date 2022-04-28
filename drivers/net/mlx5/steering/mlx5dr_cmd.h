@@ -86,6 +86,11 @@ struct mlx5dr_cmd_stc_modify_attr {
 			uint16_t vport_num;
 			uint16_t esw_owner_vhca_id;
 		} vport;
+		struct {
+			uint32_t ste_obj_id;
+			uint32_t match_definer_id;
+			uint8_t log_hash_size;
+		} ste_table;
 
 		uint32_t dest_table_id;
 		uint32_t dest_tir_num;

@@ -3140,7 +3140,7 @@ enum mlx5_ifc_stc_action_type {
 	MLX5_IFC_STC_ACTION_TYPE_ACC_MODIFY_LIST = 0x0e,
 	MLX5_IFC_STC_ACTION_TYPE_ASO = 0x12,
 	MLX5_IFC_STC_ACTION_TYPE_COUNTER = 0x14,
-	MLX5_IFC_STC_ACTION_TYPE_JUMP_TO_STE = 0x80,
+	MLX5_IFC_STC_ACTION_TYPE_JUMP_TO_STE_TABLE = 0x80,
 	MLX5_IFC_STC_ACTION_TYPE_JUMP_TO_TIR = 0x81,
 	MLX5_IFC_STC_ACTION_TYPE_JUMP_TO_FT = 0x82,
 	MLX5_IFC_STC_ACTION_TYPE_DROP = 0x83,
@@ -3150,8 +3150,11 @@ enum mlx5_ifc_stc_action_type {
 };
 
 struct mlx5_ifc_stc_ste_param_ste_table_bits {
-	u8 obj_id[0x20];
-	u8 reserved_at_20[0x60];
+	u8 ste_obj_id[0x20];
+	u8 match_definer_id[0x20];
+	u8 reserved_at_40[0x3];
+	u8 log_hash_size[0x5];
+	u8 reserved_at_48[0x38];
 };
 
 struct mlx5_ifc_stc_ste_param_tir_bits {
