@@ -1668,3 +1668,44 @@ int mlx5dr_actions_quick_apply(struct mlx5dr_send_engine *queue,
 
 	return 0;
 }
+
+struct mlx5dr_action_template *
+mlx5dr_action_template_create(const enum mlx5dr_action_type action_type[])
+{
+	struct mlx5dr_action_template *at;
+	uint8_t num_actions = 0;
+	int i;
+
+	at = simple_calloc(1, sizeof(*at));
+	if (!at) {
+		DR_LOG(ERR, "Failed to allocate action template");
+		rte_errno = ENOMEM;
+		return NULL;
+	}
+
+	while (action_type[num_actions++] != MLX5DR_ACTION_TYP_LAST);
+
+	at->num_actions = num_actions - 1;
+	at->action_type_arr = simple_calloc(num_actions, sizeof(*action_type));
+	if (!at->action_type_arr) {
+		DR_LOG(ERR, "Failed to allocate action type array");
+		rte_errno = ENOMEM;
+		goto free_at;
+	}
+
+	for (i = 0; i < num_actions; i++)
+		at->action_type_arr[i] = action_type[i];
+
+	return at;
+
+free_at:
+	simple_free(at);
+	return NULL;
+}
+
+int mlx5dr_action_template_destroy(struct mlx5dr_action_template *at)
+{
+	simple_free(at->action_type_arr);
+	simple_free(at);
+	return 0;
+}

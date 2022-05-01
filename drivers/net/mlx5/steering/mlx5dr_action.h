@@ -4,6 +4,9 @@
 #ifndef MLX5DR_ACTION_H_
 #define MLX5DR_ACTION_H_
 
+/* Max number of STEs needed for a rule (including match) */
+#define MLX5DR_ACTION_MAX_STE 7
+
 enum mlx5dr_action_stc_idx {
 	MLX5DR_ACTION_STC_IDX_CTRL = 0,
 	MLX5DR_ACTION_STC_IDX_HIT = 1,
@@ -52,6 +55,44 @@ struct mlx5dr_action_default_stc {
 struct mlx5dr_action_shared_stc {
 	struct mlx5dr_pool_chunk remove_header;
 	rte_atomic32_t refcount;
+};
+
+struct mlx5dr_actions_apply_data {
+	struct mlx5dr_send_engine *queue;
+	struct mlx5dr_rule_action *rule_action;
+	uint32_t *wqe_data;
+	struct mlx5dr_wqe_gta_ctrl_seg *wqe_ctrl;
+	uint32_t jump_to_action_stc;
+	struct mlx5dr_context_common_res *common_res;
+	enum mlx5dr_table_type tbl_type;
+	uint32_t next_direct_idx;
+	uint8_t require_dep;
+};
+
+struct mlx5dr_actions_setter;
+
+typedef void (*mlx5dr_action_setter_fp)
+	(struct mlx5dr_actions_apply_data *apply,
+	 struct mlx5dr_actions_setter *setter);
+
+struct mlx5dr_actions_setter {
+	mlx5dr_action_setter_fp set_single;
+	mlx5dr_action_setter_fp set_double;
+	mlx5dr_action_setter_fp set_hit;
+	mlx5dr_action_setter_fp set_ctr;
+	uint8_t idx_single;
+	uint8_t idx_double;
+	uint8_t idx_ctr;
+	uint8_t idx_hit;
+	uint8_t flags;
+};
+
+struct mlx5dr_action_template {
+	struct mlx5dr_actions_setter setters[MLX5DR_ACTION_MAX_STE];
+	enum mlx5dr_action_type *action_type_arr;
+	uint8_t num_of_action_stes;
+	uint8_t num_actions;
+	uint8_t only_term;
 };
 
 struct mlx5dr_action {

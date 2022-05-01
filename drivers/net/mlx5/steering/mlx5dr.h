@@ -218,6 +218,26 @@ mlx5dr_match_template_create(const struct rte_flow_item items[],
  */
 int mlx5dr_match_template_destroy(struct mlx5dr_match_template *mt);
 
+/* Create new action template based on action_type array, the action template
+ * will be used for matcher creation.
+ *
+ * @param[in] action_type
+ *	An array of actions based on the order of actions which will be provided
+ *	with rule_actions to mlx5dr_rule_create. The last action is marked
+ *	using MLX5DR_ACTION_TYP_LAST.
+ * @return pointer to mlx5dr_action_template on success NULL otherwise
+ */
+struct mlx5dr_action_template *
+mlx5dr_action_template_create(const enum mlx5dr_action_type action_type[]);
+
+/* Destroy action template.
+ *
+ * @param[in] at
+ *	Action template to destroy.
+ * @return zero on success non zero otherwise.
+ */
+int mlx5dr_action_template_destroy(struct mlx5dr_action_template *at);
+
 /* Create a new direct rule matcher. Each matcher can contain multiple rules.
  * Matchers on the table will be processed by priority. Matching fields and
  * mask are described by the match template. In some cases multiple match
