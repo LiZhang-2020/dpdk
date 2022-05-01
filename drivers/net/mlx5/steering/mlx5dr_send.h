@@ -205,6 +205,8 @@ mlx5dr_uar_write64_relaxed(uint64_t val, void *addr)
 struct mlx5dr_send_ring_dep_wqe *
 mlx5dr_send_add_new_dep_wqe(struct mlx5dr_send_engine *queue);
 
+void mlx5dr_send_abort_new_dep_wqe(struct mlx5dr_send_engine *queue);
+
 void mlx5dr_send_all_dep_wqe(struct mlx5dr_send_engine *queue);
 
 void mlx5dr_send_queues_close(struct mlx5dr_context *ctx);

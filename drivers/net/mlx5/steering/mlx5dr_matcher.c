@@ -178,6 +178,12 @@ static int mlx5dr_matcher_create_rtc(struct mlx5dr_matcher *matcher,
 		rtc_attr.definer_id = mlx5dr_definer_get_id(matcher->mt[0]->definer);
 		rtc_attr.is_jumbo = mlx5dr_definer_is_jumbo(matcher->mt[0]->definer);
 		rtc_attr.miss_ft_id = matcher->end_ft->id;
+		/* Match pool requires implicit allocation */
+		ret = mlx5dr_pool_chunk_alloc(ste_pool, ste);
+		if (ret) {
+			DR_LOG(ERR, "Failed to allocate STE for %s RTC", rtc_type_str);
+			return ret;
+		}
 	} else {
 		rtc_0 = &matcher->action_ste.rtc_0;
 		rtc_1 = &matcher->action_ste.rtc_1;
@@ -192,12 +198,6 @@ static int mlx5dr_matcher_create_rtc(struct mlx5dr_matcher *matcher,
 		rtc_attr.definer_id = ctx->caps->trivial_match_definer;
 		rtc_attr.is_jumbo = false;
 		rtc_attr.miss_ft_id = 0;
-	}
-
-	ret = mlx5dr_pool_chunk_alloc(ste_pool, ste);
-	if (ret) {
-		DR_LOG(ERR, "Failed to allocate STE for %s RTC", rtc_type_str);
-		return ret;
 	}
 
 	devx_obj = mlx5dr_pool_chunk_get_base_devx_obj(ste_pool, ste);
@@ -239,7 +239,8 @@ static int mlx5dr_matcher_create_rtc(struct mlx5dr_matcher *matcher,
 destroy_rtc_0:
 	mlx5dr_cmd_destroy_obj(*rtc_0);
 free_ste:
-	mlx5dr_pool_chunk_free(ste_pool, ste);
+	if (is_match_rtc)
+		mlx5dr_pool_chunk_free(ste_pool, ste);
 	return rte_errno;
 }
 
@@ -267,7 +268,103 @@ static void mlx5dr_matcher_destroy_rtc(struct mlx5dr_matcher *matcher,
 		mlx5dr_cmd_destroy_obj(rtc_1);
 
 	mlx5dr_cmd_destroy_obj(rtc_0);
-	mlx5dr_pool_chunk_free(ste_pool, ste);
+	if (is_match_rtc)
+		mlx5dr_pool_chunk_free(ste_pool, ste);
+}
+
+static int mlx5dr_matcher_bind_at(struct mlx5dr_matcher *matcher)
+{
+	bool is_jumbo = mlx5dr_definer_is_jumbo(matcher->mt[0]->definer);
+	struct mlx5dr_cmd_stc_modify_attr stc_attr = {0};
+	struct mlx5dr_table *tbl = matcher->tbl;
+	struct mlx5dr_pool_attr pool_attr = {0};
+	struct mlx5dr_context *ctx = tbl->ctx;
+	struct mlx5dr_devx_obj *devx_obj;
+	uint32_t required_stes;
+	int i, ret;
+	bool valid;
+
+	for (i = 0; i < matcher->num_of_at; i++) {
+		struct mlx5dr_action_template *at = matcher->at[i];
+
+		/* Check if action combinabtion is valid */
+		valid = mlx5dr_action_check_combo(at->action_type_arr, matcher->tbl->type);
+		if (!valid) {
+			DR_LOG(ERR, "Invalid combination in action template %d", i);
+			return rte_errno;
+		}
+
+		/* Process action template to setters */
+		ret = mlx5dr_action_template_process(at);
+		if (ret) {
+			DR_LOG(ERR, "Failed to process action template %d", i);
+			return rte_errno;
+		}
+
+		required_stes = at->num_of_action_stes - (!is_jumbo || at->only_term);
+		matcher->action_ste.max_stes = RTE_MAX(matcher->action_ste.max_stes, required_stes);
+
+		/* Future: Optimize reparse */
+	}
+
+	/* There are no additioanl STEs required for matcher */
+	if (!matcher->action_ste.max_stes)
+		return 0;
+
+	/* Allocate action STE mempool */
+	pool_attr.table_type = tbl->type;
+	pool_attr.pool_type = MLX5DR_POOL_TYPE_STE;
+	pool_attr.flags = MLX5DR_POOL_FLAGS_FOR_STE_ACTION_POOL;
+	pool_attr.alloc_log_sz = rte_log2_u32(matcher->action_ste.max_stes) +
+				 matcher->attr.table.sz_row_log;
+	matcher->action_ste.pool = mlx5dr_pool_create(ctx, &pool_attr);
+	if (!matcher->action_ste.pool) {
+		DR_LOG(ERR, "Failed to create action ste pool");
+		return rte_errno;
+	}
+
+	/* Allocate action RTC */
+	ret = mlx5dr_matcher_create_rtc(matcher, false);
+	if (ret) {
+		DR_LOG(ERR, "Failed to create action RTC");
+		goto free_ste_pool;
+	}
+
+	/* Allocate STC for jumps to STE */
+	devx_obj = mlx5dr_pool_chunk_get_base_devx_obj(matcher->action_ste.pool,
+						       &matcher->action_ste.ste);
+
+	stc_attr.action_offset = MLX5DR_ACTION_OFFSET_HIT;
+	stc_attr.action_type = MLX5_IFC_STC_ACTION_TYPE_JUMP_TO_STE_TABLE;
+	stc_attr.ste_table.ste_obj_id = devx_obj->id;
+	stc_attr.ste_table.match_definer_id = ctx->caps->trivial_match_definer;
+
+	ret = mlx5dr_action_alloc_single_stc(ctx, &stc_attr, tbl->type,
+					     &matcher->action_ste.stc);
+	if (ret) {
+		DR_LOG(ERR, "Failed to create action jump to table STC");
+		goto free_rtc;
+	}
+
+	return 0;
+
+free_rtc:
+	mlx5dr_matcher_destroy_rtc(matcher, false);
+free_ste_pool:
+	mlx5dr_pool_destroy(matcher->action_ste.pool);
+	return rte_errno;
+}
+
+static void mlx5dr_matcher_unbind_at(struct mlx5dr_matcher *matcher)
+{
+	struct mlx5dr_table *tbl = matcher->tbl;
+
+	if (!matcher->action_ste.max_stes)
+		return;
+
+	mlx5dr_action_free_single_stc(tbl->ctx, tbl->type, &matcher->action_ste.stc);
+	mlx5dr_matcher_destroy_rtc(matcher, false);
+	mlx5dr_pool_destroy(matcher->action_ste.pool);
 }
 
 static int mlx5dr_matcher_bind_mt(struct mlx5dr_matcher *matcher)
@@ -361,10 +458,15 @@ static int mlx5dr_matcher_create_and_connect(struct mlx5dr_matcher *matcher)
 	if (ret)
 		return ret;
 
+	/* Calculate and verify action combination */
+	ret = mlx5dr_matcher_bind_at(matcher);
+	if (ret)
+		goto unbind_mt;
+
 	/* Create matcher end flow table anchor */
 	ret = mlx5dr_matcher_create_end_ft(matcher);
 	if (ret)
-		goto unbind_mt;
+		goto unbind_at;
 
 	/* Allocate the RTC for the new matcher */
 	ret = mlx5dr_matcher_create_rtc(matcher, true);
@@ -382,6 +484,8 @@ destroy_rtc:
 	mlx5dr_matcher_destroy_rtc(matcher, true);
 destroy_end_ft:
 	mlx5dr_matcher_destroy_end_ft(matcher);
+unbind_at:
+	mlx5dr_matcher_unbind_at(matcher);
 unbind_mt:
 	mlx5dr_matcher_unbind_mt(matcher);
 	return ret;
@@ -392,6 +496,7 @@ static void mlx5dr_matcher_destroy_and_disconnect(struct mlx5dr_matcher *matcher
 	mlx5dr_matcher_disconnect(matcher);
 	mlx5dr_matcher_destroy_rtc(matcher, true);
 	mlx5dr_matcher_destroy_end_ft(matcher);
+	mlx5dr_matcher_unbind_at(matcher);
 	mlx5dr_matcher_unbind_mt(matcher);
 }
 
@@ -417,6 +522,8 @@ mlx5dr_matcher_create_col_matcher(struct mlx5dr_matcher *matcher)
 	col_matcher->tbl = matcher->tbl;
 	col_matcher->num_of_mt = matcher->num_of_mt;
 	memcpy(col_matcher->mt, matcher->mt, matcher->num_of_mt * sizeof(*matcher->mt));
+	col_matcher->num_of_at = matcher->num_of_at;
+	memcpy(col_matcher->at, matcher->at, matcher->num_of_at * sizeof(*matcher->at));
 
 	col_matcher->attr.priority = matcher->attr.priority;
 	col_matcher->attr.mode = MLX5DR_MATCHER_RESOURCE_MODE_HTABLE;
@@ -596,7 +703,7 @@ static int mlx5dr_matcher_uninit_root(struct mlx5dr_matcher *matcher)
 }
 
 static int
-mlx5dr_matcher_check_template(uint8_t num_of_mt, bool is_root)
+mlx5dr_matcher_check_template(uint8_t num_of_mt, uint8_t num_of_at, bool is_root)
 {
 	uint8_t max_num_of_mt;
 
@@ -604,26 +711,41 @@ mlx5dr_matcher_check_template(uint8_t num_of_mt, bool is_root)
 		MLX5DR_MATCHER_MAX_MT_ROOT :
 		MLX5DR_MATCHER_MAX_MT;
 
+	if (!num_of_mt || !num_of_at) {
+		DR_LOG(ERR, "Number of action/match template cannot be zero");
+		goto out_not_sup;
+	}
+
+	if (num_of_at > MLX5DR_MATCHER_MAX_AT) {
+		DR_LOG(ERR, "Number of action templates exceeds limit");
+		goto out_not_sup;
+	}
+
 	if (num_of_mt > max_num_of_mt) {
-		DR_LOG(ERR, "Number of match template exceeds limit");
-		rte_errno = ENOTSUP;
-		return rte_errno;
+		DR_LOG(ERR, "Number of match templates exceeds limit");
+		goto out_not_sup;
 	}
 
 	return 0;
+
+out_not_sup:
+	rte_errno = ENOTSUP;
+	return rte_errno;
 }
 
 struct mlx5dr_matcher *
 mlx5dr_matcher_create(struct mlx5dr_table *tbl,
 		      struct mlx5dr_match_template *mt[],
 		      uint8_t num_of_mt,
+		      struct mlx5dr_action_template *at[],
+		      uint8_t num_of_at,
 		      struct mlx5dr_matcher_attr *attr)
 {
 	bool is_root = mlx5dr_table_is_root(tbl);
 	struct mlx5dr_matcher *matcher;
 	int ret;
 
-	ret = mlx5dr_matcher_check_template(num_of_mt, is_root);
+	ret = mlx5dr_matcher_check_template(num_of_mt, num_of_at, is_root);
 	if (ret)
 		return NULL;
 
@@ -637,6 +759,8 @@ mlx5dr_matcher_create(struct mlx5dr_table *tbl,
 	matcher->attr = *attr;
 	matcher->num_of_mt = num_of_mt;
 	memcpy(matcher->mt, mt, num_of_mt * sizeof(*mt));
+	matcher->num_of_at = num_of_at;
+	memcpy(matcher->at, at, num_of_at * sizeof(*at));
 
 	ret = mlx5dr_matcher_process_attr(tbl->ctx->caps, &matcher->attr, is_root);
 	if (ret)

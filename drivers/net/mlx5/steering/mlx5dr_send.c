@@ -10,9 +10,14 @@ mlx5dr_send_add_new_dep_wqe(struct mlx5dr_send_engine *queue)
 	struct mlx5dr_send_ring_sq *send_sq = &queue->send_ring->send_sq;
 	unsigned idx = send_sq->head_dep_idx++ & (queue->num_entries - 1);
 
-	memset(&send_sq->dep_wqe[idx].wqe_data, 0, MLX5DR_WQE_SZ_GTA_DATA);
+	memset(&send_sq->dep_wqe[idx].wqe_data.tag, 0, MLX5DR_MATCH_TAG_SZ);
 
 	return &send_sq->dep_wqe[idx];
+}
+
+void mlx5dr_send_abort_new_dep_wqe(struct mlx5dr_send_engine *queue)
+{
+	queue->send_ring->send_sq.head_dep_idx--;
 }
 
 void mlx5dr_send_all_dep_wqe(struct mlx5dr_send_engine *queue)
@@ -318,6 +323,9 @@ static void mlx5dr_send_engine_update_rule(struct mlx5dr_send_engine *queue,
 			 */
 			priv->rule->status++;
 			*status = RTE_FLOW_OP_SUCCESS;
+			/* Rule was deleted now we can safely release action STEs */
+			if (priv->rule->status == MLX5DR_RULE_STATUS_DELETED)
+				mlx5dr_rule_free_action_ste_idx(priv->rule);
 		}
 	}
 }

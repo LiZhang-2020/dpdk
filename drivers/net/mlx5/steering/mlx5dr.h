@@ -97,7 +97,11 @@ struct mlx5dr_table_attr {
 };
 
 struct mlx5dr_matcher_attr {
+	/* Processing priority inside table */
 	uint32_t priority;
+	/* Provide all rules with unique rule_idx in num_log range to reduce locking */
+	bool optimize_using_rule_idx;
+	/* Resource mode and corresponding size */
 	enum mlx5dr_matcher_resource_mode mode;
 	union {
 		struct {
@@ -114,6 +118,8 @@ struct mlx5dr_matcher_attr {
 struct mlx5dr_rule_attr {
 	uint16_t queue_id;
 	void *user_data;
+	/* Valid if matcher optimize_using_rule_idx is set */
+	uint32_t rule_idx;
 	uint32_t burst:1;
 };
 
@@ -250,6 +256,10 @@ int mlx5dr_action_template_destroy(struct mlx5dr_action_template *at);
  *	Array of match templates to be used on matcher.
  * @param[in] num_of_mt
  *	Number of match templates in mt array.
+ * @param[in] at
+ *	Array of action templates to be used on matcher.
+ * @param[in] num_of_at
+ *	Number of action templates in mt array.
  * @param[in] attr
  *	Attributes used for matcher creation.
  * @return pointer to mlx5dr_matcher on success NULL otherwise.
@@ -258,6 +268,8 @@ struct mlx5dr_matcher *
 mlx5dr_matcher_create(struct mlx5dr_table *table,
 		      struct mlx5dr_match_template *mt[],
 		      uint8_t num_of_mt,
+		      struct mlx5dr_action_template *at[],
+		      uint8_t num_of_at,
 		      struct mlx5dr_matcher_attr *attr);
 
 /* Destroy direct rule matcher.
@@ -279,11 +291,13 @@ size_t mlx5dr_rule_get_handle_size(void);
  * @param[in] matcher
  *	The matcher in which the new rule will be created.
  * @param[in] mt_idx
- *	Match template index to create the rule with.
+ *	Match template index to create the match with.
  * @param[in] items
  *	The items used for the value matching.
  * @param[in] rule_actions
  *	Rule action to be executed on match.
+ * @param[in] at_idx
+ *	Action template index to apply the actions with.
  * @param[in] num_of_actions
  *	Number of rule actions.
  * @param[in] attr
@@ -295,8 +309,8 @@ size_t mlx5dr_rule_get_handle_size(void);
 int mlx5dr_rule_create(struct mlx5dr_matcher *matcher,
 		       uint8_t mt_idx,
 		       const struct rte_flow_item items[],
+		       uint8_t at_idx,
 		       struct mlx5dr_rule_action rule_actions[],
-		       uint8_t num_of_actions,
 		       struct mlx5dr_rule_attr *attr,
 		       struct mlx5dr_rule *rule_handle);
 

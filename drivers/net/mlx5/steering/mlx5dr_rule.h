@@ -7,9 +7,9 @@
 
 enum {
 	MLX5DR_STE_CTRL_SZ = 20,
+	MLX5DR_ACTIONS_SZ = 12,
 	MLX5DR_MATCH_TAG_SZ = 32,
 	MLX5DR_JUMBO_TAG_SZ = 44,
-	MLX5DR_ACTIONS_SZ = 12,
 };
 
 enum mlx5dr_rule_status {
@@ -40,8 +40,11 @@ struct mlx5dr_rule {
 	};
 	uint32_t rtc_0; /* The RTC into which the STE was inserted */
 	uint32_t rtc_1; /* The RTC into which the STE was inserted */
+	int action_ste_idx; /* Action STE pool ID */
 	uint8_t status; /* enum mlx5dr_rule_status */
 	uint8_t pending_wqes;
 };
+
+void mlx5dr_rule_free_action_ste_idx(struct mlx5dr_rule *rule);
 
 #endif

@@ -4,7 +4,7 @@
 
 #include "mlx5dr_internal.h"
 
-#define MLX5DR_ACTION_ASO_METER_INIT_COLOR_OFFSET 1
+#define MLX5DR_ACTION_METER_INIT_COLOR_OFFSET 1
 
 /* This is the maximum allowed action order for each table type:
  *	TX: CTR, Push,  Modify, Meter, Encap, Term
@@ -173,11 +173,10 @@ static bool mlx5dr_action_fixup_stc_attr(struct mlx5dr_cmd_stc_modify_attr *stc_
 	return false;
 }
 
-static int
-mlx5dr_action_alloc_single_stc(struct mlx5dr_context *ctx,
-			       struct mlx5dr_cmd_stc_modify_attr *stc_attr,
-			       uint32_t table_type,
-			       struct mlx5dr_pool_chunk *stc)
+int mlx5dr_action_alloc_single_stc(struct mlx5dr_context *ctx,
+				   struct mlx5dr_cmd_stc_modify_attr *stc_attr,
+				   uint32_t table_type,
+				   struct mlx5dr_pool_chunk *stc)
 {
 	struct mlx5dr_cmd_stc_modify_attr cleanup_stc_attr = {0};
 	struct mlx5dr_pool *stc_pool = ctx->stc_pool[table_type];
@@ -232,10 +231,9 @@ free_chunk:
        return rte_errno;
 }
 
-static void
-mlx5dr_action_free_single_stc(struct mlx5dr_context *ctx,
-			       uint32_t table_type,
-			       struct mlx5dr_pool_chunk *stc)
+void mlx5dr_action_free_single_stc(struct mlx5dr_context *ctx,
+				   uint32_t table_type,
+				   struct mlx5dr_pool_chunk *stc)
 {
 	struct mlx5dr_pool *stc_pool = ctx->stc_pool[table_type];
 	struct mlx5dr_cmd_stc_modify_attr stc_attr = {0};
@@ -1559,189 +1557,418 @@ mlx5dr_action_prepare_decap_l3_data(uint8_t *src, uint8_t *dst,
 	memcpy(dst, e_src, 2);
 }
 
-int mlx5dr_actions_quick_apply(struct mlx5dr_send_engine *queue,
-			       struct mlx5dr_context_common_res *common_res,
-			       struct mlx5dr_wqe_gta_ctrl_seg *wqe_ctrl,
-			       struct mlx5dr_wqe_gta_data_seg_ste *wqe_data,
-			       struct mlx5dr_rule_action rule_actions[],
-			       uint8_t num_actions,
-			       enum mlx5dr_table_type tbl_type,
-			       bool is_jumbo)
+static struct mlx5dr_actions_setter *
+mlx5dr_action_setter_find_first(struct mlx5dr_actions_setter *setter,
+				uint8_t req_flags)
 {
-	struct mlx5dr_action_default_stc *default_stc = common_res->default_stc;
-	uint32_t stc_arr[MLX5DR_ACTION_STC_IDX_MAX] = {0};
-	uint32_t *raw_wqe = (uint32_t *)wqe_data;
+	/* Use a new setter if requested flags are taken */
+	while (setter->flags & req_flags)
+		setter++;
+
+	/* Use current setter in required flags are not used */
+	return setter;
+}
+
+static void
+mlx5dr_action_apply_stc(struct mlx5dr_actions_apply_data *apply,
+			enum mlx5dr_action_stc_idx stc_idx,
+			uint8_t action_idx)
+{
+	struct mlx5dr_action *action = apply->rule_action[action_idx].action;
+
+	apply->wqe_ctrl->stc_ix[stc_idx] =
+		htobe32(action->stc[apply->tbl_type].offset);
+}
+
+static void
+mlx5dr_action_setter_push_vlan(struct mlx5dr_actions_apply_data *apply,
+			       struct mlx5dr_actions_setter *setter)
+{
+	struct mlx5dr_rule_action *rule_action;
+
+	rule_action = &apply->rule_action[setter->idx_double];
+	apply->wqe_data[MLX5DR_ACTION_OFFSET_DW6] = 0;
+	apply->wqe_data[MLX5DR_ACTION_OFFSET_DW7] = rule_action->push_vlan.vlan_hdr;
+
+	mlx5dr_action_apply_stc(apply, MLX5DR_ACTION_STC_IDX_DW6, setter->idx_double);
+	apply->wqe_ctrl->stc_ix[MLX5DR_ACTION_STC_IDX_DW7] = 0;
+}
+
+static void
+mlx5dr_action_setter_modify_header(struct mlx5dr_actions_apply_data *apply,
+				   struct mlx5dr_actions_setter *setter)
+{
+	struct mlx5dr_rule_action *rule_action;
 	struct mlx5dr_action *action;
-	bool require_double = false;
-	int stc_idx;
-	int i;
+	uint32_t arg_sz, arg_idx;
 
-	/* Set the default STC, current HW checks require all action fields to
-	 * be covered. This is needed to prevent invalid action creation using
-	 * multiple writes to the same STE.
-	 */
+	rule_action = &apply->rule_action[setter->idx_double];
+	action = rule_action->action;
+	mlx5dr_action_apply_stc(apply, MLX5DR_ACTION_STC_IDX_DW6, setter->idx_double);
+	apply->wqe_ctrl->stc_ix[MLX5DR_ACTION_STC_IDX_DW7] = 0;
 
-	wqe_ctrl->op_dirix = htobe32(MLX5DR_WQE_GTA_OP_ACTIVATE << 28);
-	stc_arr[MLX5DR_ACTION_STC_IDX_CTRL] = default_stc->nop_ctr.offset;
-	stc_arr[MLX5DR_ACTION_STC_IDX_DW5] = default_stc->nop_dw5.offset;
-	stc_arr[MLX5DR_ACTION_STC_IDX_DW6] = default_stc->nop_dw6.offset;
-	stc_arr[MLX5DR_ACTION_STC_IDX_DW7] = default_stc->nop_dw7.offset;
-	stc_arr[MLX5DR_ACTION_STC_IDX_HIT] = default_stc->default_hit.offset;
+	apply->wqe_data[MLX5DR_ACTION_OFFSET_DW6] = 0;
 
-	/* Perform lazy/quick action apply:
-	 * - Without action pattern (always assume dependent write)
-	 * - Support 0 additional action STEs
-	 * - Location are hardcoded, double, single, hit
-	 */
-	for (i = 0; i < num_actions; i++) {
-		uint32_t exe_aso_ctrl;
-		uint32_t arg_idx;
-		uint8_t arg_sz;
+	if (action->modify_header.num_of_actions == 1) {
+		if (action->modify_header.single_action_type ==
+		    MLX5_MODIFICATION_TYPE_COPY)
+			return;
 
-		action = rule_actions[i].action;
-		stc_idx = action->stc[tbl_type].offset;
+		if (action->flags & MLX5DR_ACTION_FLAG_SHARED)
+			apply->wqe_data[MLX5DR_ACTION_OFFSET_DW7] =
+				action->modify_header.single_action;
+		else
+			/* modify_header.data: | 4 bytes pattern | 4 bytes data| */
+			apply->wqe_data[MLX5DR_ACTION_OFFSET_DW7] =
+				*(uint32_t *)&rule_action->modify_header.data[4];
+	} else {
+		/* Argument offset multiple with number of args per these actions */
+		arg_sz = mlx5dr_arg_get_arg_size(action->modify_header.num_of_actions);
+		arg_idx = rule_action->modify_header.offset * arg_sz;
 
-		switch (action->type) {
-		case MLX5DR_ACTION_TYP_TAG:
-			raw_wqe[MLX5DR_ACTION_OFFSET_DW5] = htobe32(rule_actions[i].tag.value);
-			stc_arr[MLX5DR_ACTION_STC_IDX_DW5] = stc_idx;
-			break;
-		case MLX5DR_ACTION_TYP_CTR:
-			raw_wqe[MLX5DR_ACTION_OFFSET_DW0] = htobe32(rule_actions[i].counter.offset);
-			stc_arr[MLX5DR_ACTION_STC_IDX_CTRL] = stc_idx;
-			break;
-		case MLX5DR_ACTION_TYP_TNL_L2_TO_L2:
-			stc_arr[MLX5DR_ACTION_STC_IDX_DW5] = stc_idx;
-			break;
-		case MLX5DR_ACTION_TYP_L2_TO_TNL_L2:
-			arg_sz =
-				1 << mlx5dr_arg_data_size_to_arg_log_size(action->reformat.header_size);
-			/* Argument offset multiple on number of actions */
-			arg_idx = rule_actions[i].reformat.offset * arg_sz;
-			raw_wqe[MLX5DR_ACTION_OFFSET_DW7] = htobe32(arg_idx);
-			stc_arr[MLX5DR_ACTION_STC_IDX_DW6] = stc_idx;
-			require_double = true;
+		apply->wqe_data[MLX5DR_ACTION_OFFSET_DW7] = htobe32(arg_idx);
 
-			if (!(action->flags & MLX5DR_ACTION_FLAG_SHARED))
-				mlx5dr_arg_write(queue, NULL,
-						 action->reformat.arg_obj->id + arg_idx,
-						 rule_actions[i].reformat.data,
-						 action->reformat.header_size);
-			break;
-		case MLX5DR_ACTION_TYP_TNL_L3_TO_L2:
-			arg_sz = 1 << mlx5dr_arg_get_arg_log_size(action->modify_header.num_of_actions);
-			arg_idx = rule_actions[i].reformat.offset * arg_sz;
-			raw_wqe[MLX5DR_ACTION_OFFSET_DW7] = htobe32(arg_idx);
-			stc_arr[MLX5DR_ACTION_STC_IDX_DW6] = stc_idx;
-			require_double = true;
-
-			if (!(action->flags & MLX5DR_ACTION_FLAG_SHARED))
-				mlx5dr_arg_decapl3_write(queue,
-							 action->modify_header.arg_obj->id + arg_idx,
-							 rule_actions[i].reformat.data,
-							 action->modify_header.num_of_actions);
-			break;
-		case MLX5DR_ACTION_TYP_L2_TO_TNL_L3:
-			/* Remove L2 header, shared stc - single */
-			stc_arr[MLX5DR_ACTION_STC_IDX_DW5] =
-				mlx5dr_action_get_shared_stc_offset(common_res);
-
-			/* Insert with pointer (arg-id) - double */
-			arg_sz =
-				1 << mlx5dr_arg_data_size_to_arg_log_size(action->reformat.header_size);
-			arg_idx = rule_actions[i].reformat.offset * arg_sz;
-			raw_wqe[MLX5DR_ACTION_OFFSET_DW7] = htobe32(arg_idx);
-			stc_arr[MLX5DR_ACTION_STC_IDX_DW6] = stc_idx;
-			require_double = true;
-
-			if (!(action->flags & MLX5DR_ACTION_FLAG_SHARED))
-				mlx5dr_arg_write(queue, NULL,
-						 action->reformat.arg_obj->id + arg_idx,
-						 rule_actions[i].reformat.data,
-						 action->reformat.header_size);
-			break;
-		case MLX5DR_ACTION_TYP_MODIFY_HDR:
-			require_double = true;
-			stc_arr[MLX5DR_ACTION_STC_IDX_DW6] = stc_idx;
-
-			if (action->modify_header.num_of_actions == 1) {
-				if (action->modify_header.single_action_type ==
-				    MLX5_MODIFICATION_TYPE_COPY)
-					break;
-
-				if (action->flags & MLX5DR_ACTION_FLAG_SHARED)
-					raw_wqe[MLX5DR_ACTION_OFFSET_DW7] =
-						action->modify_header.single_action;
-				else
-					/* modify_header.data: | 4 bytes pattern | 4 bytes data| */
-					raw_wqe[MLX5DR_ACTION_OFFSET_DW7] =
-						*(uint32_t *)&rule_actions[i].modify_header.data[4];
-			} else {
-				arg_sz = 1 << mlx5dr_arg_get_arg_log_size(action->modify_header.num_of_actions);
-				/* Argument offset multiple with number of args per these actions */
-				arg_idx = rule_actions[i].modify_header.offset * arg_sz;
-				raw_wqe[MLX5DR_ACTION_OFFSET_DW7] = htobe32(arg_idx);
-
-				if (!(action->flags & MLX5DR_ACTION_FLAG_SHARED))
-					mlx5dr_action_modify_write(queue,
-								   action->modify_header.arg_obj->id + arg_idx,
-								   rule_actions[i].modify_header.data,
-								   action->modify_header.num_of_actions);
-			}
-			break;
-		case MLX5DR_ACTION_TYP_ASO_METER:
-			/* exe_aso_ctrl format:
-			 * [STC only and reserved bits 29b][init_color 2b][meter_id 1b]
-			 */
-			exe_aso_ctrl = rule_actions[i].aso_meter.offset % MLX5_ASO_METER_NUM_PER_OBJ;
-			exe_aso_ctrl |= rule_actions[i].aso_meter.init_color <<
-				MLX5DR_ACTION_ASO_METER_INIT_COLOR_OFFSET;
-			/* aso_object_offset format: [24B] */
-			raw_wqe[MLX5DR_ACTION_OFFSET_DW6] = htobe32(rule_actions[i].aso_meter.offset /
-				MLX5_ASO_METER_NUM_PER_OBJ);
-			raw_wqe[MLX5DR_ACTION_OFFSET_DW7] = htobe32(exe_aso_ctrl);
-			stc_arr[MLX5DR_ACTION_STC_IDX_DW6] = stc_idx;
-			require_double = true;
-			break;
-		case MLX5DR_ACTION_TYP_DROP:
-		case MLX5DR_ACTION_TYP_FT:
-		case MLX5DR_ACTION_TYP_TIR:
-		case MLX5DR_ACTION_TYP_MISS:
-		case MLX5DR_ACTION_TYP_VPORT:
-			stc_arr[MLX5DR_ACTION_STC_IDX_HIT] = stc_idx;
-			break;
-		default:
-			DR_LOG(ERR, "Found unsupported action type: %d", action->type);
-			rte_errno = ENOTSUP;
-			return rte_errno;
+		if (!(action->flags & MLX5DR_ACTION_FLAG_SHARED)) {
+			apply->require_dep = 1;
+			mlx5dr_action_modify_write(apply->queue,
+						   action->modify_header.arg_obj->id + arg_idx,
+						   rule_action->modify_header.data,
+						   action->modify_header.num_of_actions);
 		}
 	}
+}
 
-	/* Set shared STC for combo1 and combo2 */
-	wqe_ctrl->stc_ix[MLX5DR_ACTION_STC_IDX_CTRL] = htobe32(stc_arr[MLX5DR_ACTION_STC_IDX_CTRL]);
-	wqe_ctrl->stc_ix[MLX5DR_ACTION_STC_IDX_HIT] = htobe32(stc_arr[MLX5DR_ACTION_STC_IDX_HIT]);
+static void
+mlx5dr_action_setter_insert_ptr(struct mlx5dr_actions_apply_data *apply,
+				struct mlx5dr_actions_setter *setter)
+{
+	struct mlx5dr_rule_action *rule_action;
+	uint32_t arg_idx, arg_sz;
 
-	if (is_jumbo) {
-		/* With jumbo we temporarily support counter and HIT action
-		 * all the other STC's are not used.
-		 */
-		wqe_ctrl->stc_ix[MLX5DR_ACTION_STC_IDX_CTRL] |=
-			htobe32(MLX5DR_ACTION_STC_IDX_LAST_JUMBO_STE << 29);
+	rule_action = &apply->rule_action[setter->idx_double];
+
+	/* Argument offset multiple on args required for header size */
+	arg_sz = mlx5dr_arg_data_size_to_arg_size(rule_action->action->reformat.header_size);
+	arg_idx = rule_action->reformat.offset * arg_sz;
+
+	apply->wqe_data[MLX5DR_ACTION_OFFSET_DW6] = 0;
+	apply->wqe_data[MLX5DR_ACTION_OFFSET_DW7] = htobe32(arg_idx);
+
+	mlx5dr_action_apply_stc(apply, MLX5DR_ACTION_STC_IDX_DW6, setter->idx_double);
+	apply->wqe_ctrl->stc_ix[MLX5DR_ACTION_STC_IDX_DW7] = 0;
+
+	if (!(rule_action->action->flags & MLX5DR_ACTION_FLAG_SHARED)) {
+		apply->require_dep = 1;
+		mlx5dr_arg_write(apply->queue, NULL,
+				 rule_action->action->reformat.arg_obj->id + arg_idx,
+				 rule_action->reformat.data,
+				 rule_action->action->reformat.header_size);
+	}
+}
+
+static void
+mlx5dr_action_setter_tnl_l3_to_l2(struct mlx5dr_actions_apply_data *apply,
+				  struct mlx5dr_actions_setter *setter)
+{
+	struct mlx5dr_rule_action *rule_action;
+	struct mlx5dr_action *action;
+	uint32_t arg_sz, arg_idx;
+
+	rule_action = &apply->rule_action[setter->idx_double];
+	action = rule_action->action;
+
+	/* Argument offset multiple on args required for num of actions */
+	arg_sz = mlx5dr_arg_get_arg_size(action->modify_header.num_of_actions);
+	arg_idx = rule_action->reformat.offset * arg_sz;
+
+	apply->wqe_data[MLX5DR_ACTION_OFFSET_DW6] = 0;
+	apply->wqe_data[MLX5DR_ACTION_OFFSET_DW7] = htobe32(arg_idx);
+
+	mlx5dr_action_apply_stc(apply, MLX5DR_ACTION_STC_IDX_DW6, setter->idx_double);
+	apply->wqe_ctrl->stc_ix[MLX5DR_ACTION_STC_IDX_DW7] = 0;
+
+	if (!(action->flags & MLX5DR_ACTION_FLAG_SHARED)) {
+		apply->require_dep = 1;
+		mlx5dr_arg_decapl3_write(apply->queue,
+					 action->modify_header.arg_obj->id + arg_idx,
+					 rule_action->reformat.data,
+					 action->modify_header.num_of_actions);
+	}
+}
+
+static void
+mlx5dr_action_setter_aso_meter(struct mlx5dr_actions_apply_data *apply,
+			       struct mlx5dr_actions_setter *setter)
+{
+	struct mlx5dr_rule_action *rule_action;
+	uint32_t exe_aso_ctrl;
+
+	rule_action = &apply->rule_action[setter->idx_double];
+
+	/* exe_aso_ctrl format:
+	 * [STC only and reserved bits 29b][init_color 2b][meter_id 1b]
+	 */
+	exe_aso_ctrl = rule_action->aso_meter.offset % MLX5_ASO_METER_NUM_PER_OBJ;
+	exe_aso_ctrl |= rule_action->aso_meter.init_color <<
+			MLX5DR_ACTION_METER_INIT_COLOR_OFFSET;
+
+	/* aso_object_offset format: [24B] */
+	apply->wqe_data[MLX5DR_ACTION_OFFSET_DW6] =
+		htobe32(rule_action->aso_meter.offset / MLX5_ASO_METER_NUM_PER_OBJ);
+	apply->wqe_data[MLX5DR_ACTION_OFFSET_DW7] = htobe32(exe_aso_ctrl);
+
+	mlx5dr_action_apply_stc(apply, MLX5DR_ACTION_STC_IDX_DW6, setter->idx_double);
+	apply->wqe_ctrl->stc_ix[MLX5DR_ACTION_STC_IDX_DW7] = 0;
+}
+
+static void
+mlx5dr_action_setter_tag(struct mlx5dr_actions_apply_data *apply,
+			 struct mlx5dr_actions_setter *setter)
+{
+	struct mlx5dr_rule_action *rule_action;
+
+	rule_action = &apply->rule_action[setter->idx_single];
+	apply->wqe_data[MLX5DR_ACTION_OFFSET_DW5] = htobe32(rule_action->tag.value);
+	mlx5dr_action_apply_stc(apply, MLX5DR_ACTION_STC_IDX_DW5, setter->idx_single);
+}
+
+static void
+mlx5dr_action_setter_ctrl_ctr(struct mlx5dr_actions_apply_data *apply,
+			      struct mlx5dr_actions_setter *setter)
+{
+	struct mlx5dr_rule_action *rule_action;
+
+	rule_action = &apply->rule_action[setter->idx_ctr];
+	apply->wqe_data[MLX5DR_ACTION_OFFSET_DW0] = htobe32(rule_action->counter.offset);
+	mlx5dr_action_apply_stc(apply, MLX5DR_ACTION_STC_IDX_CTRL, setter->idx_ctr);
+}
+
+static void
+mlx5dr_action_setter_single(struct mlx5dr_actions_apply_data *apply,
+			    struct mlx5dr_actions_setter *setter)
+{
+	apply->wqe_data[MLX5DR_ACTION_OFFSET_DW5] = 0;
+	mlx5dr_action_apply_stc(apply, MLX5DR_ACTION_STC_IDX_DW5, setter->idx_single);
+}
+
+static void
+mlx5dr_action_setter_hit(struct mlx5dr_actions_apply_data *apply,
+			 struct mlx5dr_actions_setter *setter)
+{
+	apply->wqe_data[MLX5DR_ACTION_OFFSET_HIT_LSB] = 0;
+	mlx5dr_action_apply_stc(apply, MLX5DR_ACTION_STC_IDX_HIT, setter->idx_hit);
+}
+
+static void
+mlx5dr_action_setter_default_hit(struct mlx5dr_actions_apply_data *apply,
+				 __rte_unused struct mlx5dr_actions_setter *setter)
+{
+	apply->wqe_data[MLX5DR_ACTION_OFFSET_HIT_LSB] = 0;
+	apply->wqe_ctrl->stc_ix[MLX5DR_ACTION_STC_IDX_HIT] =
+		htobe32(apply->common_res->default_stc->default_hit.offset);
+}
+
+static void
+mlx5dr_action_setter_default_single(struct mlx5dr_actions_apply_data *apply,
+				    __rte_unused struct mlx5dr_actions_setter *setter)
+{
+	apply->wqe_data[MLX5DR_ACTION_OFFSET_DW5] = 0;
+	apply->wqe_ctrl->stc_ix[MLX5DR_ACTION_STC_IDX_DW5] =
+		htobe32(apply->common_res->default_stc->nop_dw5.offset);
+}
+
+static void
+mlx5dr_action_setter_default_double(struct mlx5dr_actions_apply_data *apply,
+				    __rte_unused struct mlx5dr_actions_setter *setter)
+{
+	apply->wqe_data[MLX5DR_ACTION_OFFSET_DW6] = 0;
+	apply->wqe_data[MLX5DR_ACTION_OFFSET_DW7] = 0;
+	apply->wqe_ctrl->stc_ix[MLX5DR_ACTION_STC_IDX_DW6] =
+		htobe32(apply->common_res->default_stc->nop_dw6.offset);
+	apply->wqe_ctrl->stc_ix[MLX5DR_ACTION_STC_IDX_DW7] =
+		htobe32(apply->common_res->default_stc->nop_dw7.offset);
+}
+
+static void
+mlx5dr_action_setter_default_ctr(struct mlx5dr_actions_apply_data *apply,
+				 __rte_unused struct mlx5dr_actions_setter *setter)
+{
+	uint8_t num_of_actions;
+
+	/* Control WQE counter DW also holds the number of actions */
+	num_of_actions = setter->flags & ASF_DOUBLE ?
+		MLX5DR_ACTION_STC_IDX_LAST_COMBO1 :
+		MLX5DR_ACTION_STC_IDX_LAST_COMBO2;
+
+	apply->wqe_data[MLX5DR_ACTION_OFFSET_DW0] = 0;
+	apply->wqe_ctrl->stc_ix[MLX5DR_ACTION_STC_IDX_CTRL] =
+		htobe32(apply->common_res->default_stc->nop_ctr.offset |
+			num_of_actions << 29);
+}
+
+static void
+mlx5dr_action_setter_hit_next_action(struct mlx5dr_actions_apply_data *apply,
+				     __rte_unused struct mlx5dr_actions_setter *setter)
+{
+	apply->wqe_data[MLX5DR_ACTION_OFFSET_HIT_LSB] = htobe32(apply->next_direct_idx << 6);
+	apply->wqe_ctrl->stc_ix[MLX5DR_ACTION_STC_IDX_HIT] = htobe32(apply->jump_to_action_stc);
+}
+
+static void
+mlx5dr_action_setter_common_decap(struct mlx5dr_actions_apply_data *apply,
+				  __rte_unused struct mlx5dr_actions_setter *setter)
+{
+	apply->wqe_data[MLX5DR_ACTION_OFFSET_DW5] = 0;
+	apply->wqe_ctrl->stc_ix[MLX5DR_ACTION_STC_IDX_DW5] =
+		htobe32(mlx5dr_action_get_shared_stc_offset(apply->common_res));
+}
+
+int mlx5dr_action_template_process(struct mlx5dr_action_template *at)
+{
+	struct mlx5dr_actions_setter *start_setter = at->setters + 1;
+	enum mlx5dr_action_type *action_type = at->action_type_arr;
+	struct mlx5dr_actions_setter *setter = at->setters;
+	struct mlx5dr_actions_setter *last_setter;
+	int i;
+
+	/* Note: Given action combination must be valid */
+
+	/* Check if action were already processed */
+	if (at->num_of_action_stes)
 		return 0;
+
+	for (i = 0; i < MLX5DR_ACTION_MAX_STE; i++) {
+		setter[i].set_ctr = &mlx5dr_action_setter_default_ctr;
+		setter[i].set_single = &mlx5dr_action_setter_default_single;
+		setter[i].set_double = &mlx5dr_action_setter_default_double;
+		setter[i].set_hit = &mlx5dr_action_setter_hit_next_action;
 	}
 
-	if (require_double) {
-		/* Combo1: Set 1 single (DW5) and 1 double (DW6-7) actions */
-		wqe_ctrl->stc_ix[MLX5DR_ACTION_STC_IDX_DW5] = htobe32(stc_arr[MLX5DR_ACTION_STC_IDX_DW5]);
-		wqe_ctrl->stc_ix[MLX5DR_ACTION_STC_IDX_DW6] = htobe32(stc_arr[MLX5DR_ACTION_STC_IDX_DW6]);
-		wqe_ctrl->stc_ix[MLX5DR_ACTION_STC_IDX_CTRL] |= htobe32(MLX5DR_ACTION_STC_IDX_LAST_COMBO1 << 29);
-	} else {
-		/* Combo2: Set 3 single (DW5-7) actions */
-		wqe_ctrl->stc_ix[MLX5DR_ACTION_STC_IDX_DW5] = htobe32(stc_arr[MLX5DR_ACTION_STC_IDX_DW5]);
-		wqe_ctrl->stc_ix[MLX5DR_ACTION_STC_IDX_DW6] = htobe32(stc_arr[MLX5DR_ACTION_STC_IDX_DW6]);
-		wqe_ctrl->stc_ix[MLX5DR_ACTION_STC_IDX_DW7] = htobe32(stc_arr[MLX5DR_ACTION_STC_IDX_DW7]);
-		wqe_ctrl->stc_ix[MLX5DR_ACTION_STC_IDX_CTRL] |= htobe32(MLX5DR_ACTION_STC_IDX_LAST_COMBO2 << 29);
+	/* The same action template setters can be used with jumbo or match
+	 * STE, to support both cases we reseve the first setter for cases
+	 * with jumbo STE to allow jump to the first action STE.
+	 * This extra setter can be reduced in some cases on rule creation.
+	 */
+	last_setter = setter = start_setter;
+
+	for (i = 0; i < at->num_actions; i++) {
+		switch (action_type[i]) {
+		case MLX5DR_ACTION_TYP_DROP:
+		case MLX5DR_ACTION_TYP_TIR:
+		case MLX5DR_ACTION_TYP_FT:
+		case MLX5DR_ACTION_TYP_VPORT:
+		case MLX5DR_ACTION_TYP_MISS:
+			/* Hit action */
+			setter->flags |= ASF_HIT;
+			setter->set_hit = &mlx5dr_action_setter_hit;
+			setter->idx_hit = i;
+			break;
+
+		case MLX5DR_ACTION_TYP_POP_VLAN:
+			/* Single remove header to header */
+			setter = mlx5dr_action_setter_find_first(last_setter, ASF_SINGLE1 | ASF_MODIFY);
+			setter->flags |= ASF_SINGLE1 | ASF_REPARSE | ASF_REMOVE;
+			setter->set_double = &mlx5dr_action_setter_single;
+			setter->idx_single = i;
+			break;
+
+		case MLX5DR_ACTION_TYP_PUSH_VLAN:
+			/* Double insert inline */
+			setter = mlx5dr_action_setter_find_first(last_setter, ASF_DOUBLE);
+			setter->flags |= ASF_DOUBLE | ASF_REPARSE;
+			setter->set_double = &mlx5dr_action_setter_push_vlan;
+			setter->idx_double = i;
+			break;
+
+		case MLX5DR_ACTION_TYP_MODIFY_HDR:
+			/* Double modify header list */
+			setter = mlx5dr_action_setter_find_first(last_setter, ASF_DOUBLE | ASF_REMOVE);
+			setter->flags |= ASF_DOUBLE | ASF_MODIFY | ASF_REPARSE;
+			setter->set_double = &mlx5dr_action_setter_modify_header;
+			setter->idx_double = i;
+			break;
+
+		case MLX5DR_ACTION_TYP_ASO_METER:
+			/* Double ASO meter */
+			setter = mlx5dr_action_setter_find_first(last_setter, ASF_DOUBLE);
+			setter->flags |= ASF_DOUBLE;
+			setter->set_double = &mlx5dr_action_setter_aso_meter;
+			setter->idx_double = i;
+			break;
+
+		case MLX5DR_ACTION_TYP_TNL_L2_TO_L2:
+			/* Single remove header to header */
+			setter = mlx5dr_action_setter_find_first(last_setter, ASF_SINGLE1 | ASF_MODIFY);
+			setter->flags |= ASF_SINGLE1 | ASF_REMOVE | ASF_REPARSE;
+			setter->set_single = &mlx5dr_action_setter_single;
+			setter->idx_single = i;
+			break;
+
+		case MLX5DR_ACTION_TYP_L2_TO_TNL_L2:
+			/* Double insert header with pointer */
+			setter = mlx5dr_action_setter_find_first(last_setter, ASF_DOUBLE);
+			setter->flags |= ASF_DOUBLE | ASF_REPARSE;
+			setter->set_double = &mlx5dr_action_setter_insert_ptr;
+			setter->idx_double = i;
+			break;
+
+		case MLX5DR_ACTION_TYP_L2_TO_TNL_L3:
+			/* Single remove + Double insert header with pointer */
+			setter = mlx5dr_action_setter_find_first(last_setter, ASF_SINGLE1 | ASF_DOUBLE);
+			setter->flags |= ASF_SINGLE1 | ASF_DOUBLE | ASF_REPARSE | ASF_REMOVE;
+			setter->set_double = &mlx5dr_action_setter_insert_ptr;
+			setter->idx_double = i;
+			setter->set_single = &mlx5dr_action_setter_common_decap;
+			setter->idx_single = i;
+			break;
+
+		case MLX5DR_ACTION_TYP_TNL_L3_TO_L2:
+			/* Double modify header list with remove and push inline */
+			setter = mlx5dr_action_setter_find_first(last_setter, ASF_DOUBLE | ASF_REMOVE);
+			setter->flags |= ASF_DOUBLE | ASF_MODIFY | ASF_REPARSE;
+			setter->set_double = &mlx5dr_action_setter_tnl_l3_to_l2;
+			setter->idx_double = i;
+			break;
+
+		case MLX5DR_ACTION_TYP_TAG:
+			/* Single TAG action, search for any room from the start */
+			setter = mlx5dr_action_setter_find_first(start_setter, ASF_SINGLE1);
+			setter->flags |= ASF_SINGLE1;
+			setter->set_single = &mlx5dr_action_setter_tag;
+			setter->idx_single = i;
+			break;
+
+		case MLX5DR_ACTION_TYP_CTR:
+			/* Control counter action
+			 * TODO: Current counter executed first. Support is needed
+			 *	 for single ation counter action which is done last.
+			 *	 Example: Decap + CTR
+			 */
+			setter = mlx5dr_action_setter_find_first(start_setter, ASF_CTR);
+			setter->flags |= ASF_CTR;
+			setter->set_ctr = &mlx5dr_action_setter_ctrl_ctr;
+			setter->idx_ctr = i;
+			break;
+
+		default:
+			DR_LOG(ERR, "Unsupported action type: %d", action_type[i]);
+			rte_errno = ENOTSUP;
+			assert(false);
+			return rte_errno;
+		}
+
+		last_setter = RTE_MAX(setter, last_setter);
 	}
+
+	/* Set default hit on the last STE if no hit action provided */
+	if (!(last_setter->flags & ASF_HIT))
+		last_setter->set_hit = &mlx5dr_action_setter_default_hit;
+
+	at->num_of_action_stes = last_setter - start_setter + 1;
+
+	/* Check if action template doesn't require any action DWs */
+	at->only_term = (at->num_of_action_stes == 1) &&
+		!(last_setter->flags & ~(ASF_CTR | ASF_HIT));
 
 	return 0;
 }
