@@ -18,30 +18,38 @@ mlx5dr_send_add_new_dep_wqe(struct mlx5dr_send_engine *queue)
 void mlx5dr_send_all_dep_wqe(struct mlx5dr_send_engine *queue)
 {
 	struct mlx5dr_send_ring_sq *send_sq = &queue->send_ring->send_sq;
-	struct mlx5dr_send_rule_attr send_attr = {0};
+	struct mlx5dr_send_ste_attr ste_attr = {0};
 	struct mlx5dr_send_ring_dep_wqe *dep_wqe;
 
+	ste_attr.send_attr.opmod = MLX5DR_WQE_GTA_OPMOD_STE;
+	ste_attr.send_attr.opcode = MLX5DR_WQE_OPCODE_TBL_ACCESS;
+	ste_attr.send_attr.len = MLX5DR_WQE_SZ_GTA_CTRL + MLX5DR_WQE_SZ_GTA_DATA;
+	ste_attr.gta_opcode = MLX5DR_WQE_GTA_OP_ACTIVATE;
+
 	/* Fence first from previous depend WQEs  */
-	send_attr.fence = 1;
+	ste_attr.send_attr.fence = 1;
 
 	while (send_sq->head_dep_idx != send_sq->tail_dep_idx) {
 		dep_wqe = &send_sq->dep_wqe[send_sq->tail_dep_idx++ & (queue->num_entries - 1)];
 
 		/* Notify HW on the last WQE */
-		send_attr.notify_hw = (send_sq->tail_dep_idx == send_sq->head_dep_idx);
-		send_attr.user_data = dep_wqe->user_data;
-		send_attr.rtc_0 = dep_wqe->rtc_0;
-		send_attr.rtc_1 = dep_wqe->rtc_1;
-		send_attr.retry_rtc_0 = dep_wqe->retry_rtc_0;
-		send_attr.retry_rtc_1 = dep_wqe->retry_rtc_1;
-		send_attr.wqe_ctrl = &dep_wqe->wqe_ctrl;
-		send_attr.wqe_data = &dep_wqe->wqe_data;
-		send_attr.queue = queue;
+		ste_attr.send_attr.notify_hw = (send_sq->tail_dep_idx == send_sq->head_dep_idx);
+		ste_attr.send_attr.user_data = dep_wqe->user_data;
+		ste_attr.send_attr.rule = dep_wqe->rule;
 
-		mlx5dr_send_rule(dep_wqe->rule, &send_attr);
+		ste_attr.rtc_0 = dep_wqe->rtc_0;
+		ste_attr.rtc_1 = dep_wqe->rtc_1;
+		ste_attr.retry_rtc_0 = dep_wqe->retry_rtc_0;
+		ste_attr.retry_rtc_1 = dep_wqe->retry_rtc_1;
+		ste_attr.used_id_rtc_0 = &dep_wqe->rule->rtc_0;
+		ste_attr.used_id_rtc_1 = &dep_wqe->rule->rtc_1;
+		ste_attr.wqe_ctrl = &dep_wqe->wqe_ctrl;
+		ste_attr.wqe_data = &dep_wqe->wqe_data;
+
+		mlx5dr_send_ste(queue, &ste_attr);
 
 		/* Fencing is done only on the first WQE */
-		send_attr.fence = 0;
+		ste_attr.send_attr.fence = 0;
 	}
 }
 
@@ -149,60 +157,76 @@ void mlx5dr_send_engine_post_end(struct mlx5dr_send_engine_post_ctrl *ctrl,
 		mlx5dr_send_engine_post_ring(sq, ctrl->queue->uar, wqe_ctrl);
 }
 
-void mlx5dr_send_rule(struct mlx5dr_rule *rule, struct mlx5dr_send_rule_attr *attr)
+static
+void mlx5dr_send_wqe(struct mlx5dr_send_engine *queue,
+		     struct mlx5dr_send_engine_post_attr *send_attr,
+		     struct mlx5dr_wqe_gta_ctrl_seg *send_wqe_ctrl,
+		     void *send_wqe_data,
+		     void *send_wqe_tag,
+		     bool is_jumbo,
+		     uint8_t gta_opcode,
+		     uint32_t direct_index)
 {
-	struct mlx5dr_send_engine_post_attr send_attr = {0};
 	struct mlx5dr_wqe_gta_data_seg_ste *wqe_data;
 	struct mlx5dr_wqe_gta_ctrl_seg *wqe_ctrl;
 	struct mlx5dr_send_engine_post_ctrl ctrl;
 	size_t wqe_len;
 
-	/* Set shared send attributes */
-	send_attr.rule = rule;
-	send_attr.user_data = attr->user_data;
-	send_attr.opmod = MLX5DR_WQE_GTA_OPMOD_STE;
-	send_attr.opcode = MLX5DR_WQE_OPCODE_TBL_ACCESS;
-	send_attr.len = MLX5DR_WQE_SZ_GTA_CTRL + MLX5DR_WQE_SZ_GTA_DATA;
+	ctrl = mlx5dr_send_engine_post_start(queue);
+	mlx5dr_send_engine_post_req_wqe(&ctrl, (void *)&wqe_ctrl, &wqe_len);
+	mlx5dr_send_engine_post_req_wqe(&ctrl, (void *)&wqe_data, &wqe_len);
 
-	if (attr->rtc_1) {
-		send_attr.id = attr->rtc_1;
-		send_attr.used_id = &rule->rtc_1;
-		send_attr.retry_id = attr->retry_rtc_1;
-		send_attr.fence = attr->fence;
-		send_attr.notify_hw = attr->notify_hw && !attr->rtc_0;
+	wqe_ctrl->op_dirix = htobe32(gta_opcode << 28 | direct_index);
+	memcpy(wqe_ctrl->stc_ix, send_wqe_ctrl->stc_ix, sizeof(send_wqe_ctrl->stc_ix));
 
-		ctrl = mlx5dr_send_engine_post_start(attr->queue);
-		mlx5dr_send_engine_post_req_wqe(&ctrl, (void *)&wqe_ctrl, &wqe_len);
-		mlx5dr_send_engine_post_req_wqe(&ctrl, (void *)&wqe_data, &wqe_len);
+	if (send_wqe_data)
+		memcpy(wqe_data, send_wqe_data, sizeof(*wqe_data));
+	else
+		mlx5dr_send_wqe_set_tag(wqe_data, send_wqe_tag, is_jumbo);
 
-		memcpy(wqe_ctrl, attr->wqe_ctrl, sizeof(*wqe_ctrl));
-		if (attr->wqe_data)
-			memcpy(wqe_data, attr->wqe_data, sizeof(*wqe_data));
-		else
-			mlx5dr_send_wqe_set_tag(wqe_data, attr->wqe_tag, attr->is_jumbo);
+	mlx5dr_send_engine_post_end(&ctrl, send_attr);
+}
 
-		mlx5dr_send_engine_post_end(&ctrl, &send_attr);
+void mlx5dr_send_ste(struct mlx5dr_send_engine *queue,
+		     struct mlx5dr_send_ste_attr *ste_attr)
+{
+	struct mlx5dr_send_engine_post_attr *send_attr = &ste_attr->send_attr;
+	uint8_t notify_hw = send_attr->notify_hw;
+	uint8_t fence = send_attr->fence;
+
+	if (ste_attr->rtc_1) {
+		send_attr->id = ste_attr->rtc_1;
+		send_attr->used_id = ste_attr->used_id_rtc_1;
+		send_attr->retry_id = ste_attr->retry_rtc_1;
+		send_attr->fence = fence;
+		send_attr->notify_hw = notify_hw && !ste_attr->rtc_0;
+		mlx5dr_send_wqe(queue, send_attr,
+				ste_attr->wqe_ctrl,
+				ste_attr->wqe_data,
+				ste_attr->wqe_tag,
+				ste_attr->wqe_tag_is_jumbo,
+				ste_attr->gta_opcode,
+				ste_attr->direct_index);
 	}
 
-	if (attr->rtc_0) {
-		send_attr.id = attr->rtc_0;
-		send_attr.used_id = &rule->rtc_0;
-		send_attr.retry_id = attr->retry_rtc_0;
-		send_attr.fence = attr->fence && !attr->rtc_1;
-		send_attr.notify_hw = attr->notify_hw;
-
-		ctrl = mlx5dr_send_engine_post_start(attr->queue);
-		mlx5dr_send_engine_post_req_wqe(&ctrl, (void *)&wqe_ctrl, &wqe_len);
-		mlx5dr_send_engine_post_req_wqe(&ctrl, (void *)&wqe_data, &wqe_len);
-
-		memcpy(wqe_ctrl, attr->wqe_ctrl, sizeof(*wqe_ctrl));
-		if (attr->wqe_data)
-			memcpy(wqe_data, attr->wqe_data, sizeof(*wqe_data));
-		else
-			mlx5dr_send_wqe_set_tag(wqe_data, attr->wqe_tag, attr->is_jumbo);
-
-		mlx5dr_send_engine_post_end(&ctrl, &send_attr);
+	if (ste_attr->rtc_0) {
+		send_attr->id = ste_attr->rtc_0;
+		send_attr->used_id = ste_attr->used_id_rtc_0;
+		send_attr->retry_id = ste_attr->retry_rtc_0;
+		send_attr->fence = fence && !ste_attr->rtc_1;
+		send_attr->notify_hw = notify_hw;
+		mlx5dr_send_wqe(queue, send_attr,
+				ste_attr->wqe_ctrl,
+				ste_attr->wqe_data,
+				ste_attr->wqe_tag,
+				ste_attr->wqe_tag_is_jumbo,
+				ste_attr->gta_opcode,
+				ste_attr->direct_index);
 	}
+
+	/* Restore to ortginal requested values */
+	send_attr->notify_hw = notify_hw;
+	send_attr->fence = fence;
 }
 
 static void mlx5dr_send_engine_retry_post_send(struct mlx5dr_send_engine *queue,

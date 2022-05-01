@@ -68,7 +68,6 @@ static void mlx5dr_rule_init_dep_wqe(struct mlx5dr_send_ring_dep_wqe *dep_wqe,
 			dep_wqe->retry_rtc_1 = matcher->col_matcher ?
 					       matcher->col_matcher->match_ste.rtc_1->id : 0;
 		}
-
 		break;
 
 	default:
@@ -186,7 +185,7 @@ static int mlx5dr_rule_destroy_hws(struct mlx5dr_rule *rule,
 	struct mlx5dr_context *ctx = rule->matcher->tbl->ctx;
 	struct mlx5dr_matcher *matcher = rule->matcher;
 	struct mlx5dr_wqe_gta_ctrl_seg wqe_ctrl = {0};
-	struct mlx5dr_send_rule_attr send_attr = {0};
+	struct mlx5dr_send_ste_attr ste_attr = {0};
 	struct mlx5dr_send_engine *queue;
 
 	queue = &ctx->send_queue[attr->queue_id];
@@ -216,18 +215,24 @@ static int mlx5dr_rule_destroy_hws(struct mlx5dr_rule *rule,
 
 	rule->status = MLX5DR_RULE_STATUS_DELETING;
 
-	wqe_ctrl.op_dirix = htobe32(MLX5DR_WQE_GTA_OP_DEACTIVATE << 28);
+	ste_attr.send_attr.opmod = MLX5DR_WQE_GTA_OPMOD_STE;
+	ste_attr.send_attr.opcode = MLX5DR_WQE_OPCODE_TBL_ACCESS;
+	ste_attr.send_attr.len = MLX5DR_WQE_SZ_GTA_CTRL + MLX5DR_WQE_SZ_GTA_DATA;
 
-	send_attr.queue = queue;
-	send_attr.notify_hw = !attr->burst;
-	send_attr.user_data = attr->user_data;
-	send_attr.rtc_0 = rule->rtc_0;
-	send_attr.rtc_1 = rule->rtc_1;
-	send_attr.wqe_ctrl = &wqe_ctrl;
-	send_attr.wqe_tag = &rule->tag;
-	send_attr.is_jumbo = mlx5dr_definer_is_jumbo(matcher->mt[0]->definer);
+	ste_attr.send_attr.rule = rule;
+	ste_attr.send_attr.notify_hw = !attr->burst;
+	ste_attr.send_attr.user_data = attr->user_data;
 
-	mlx5dr_send_rule(rule, &send_attr);
+	ste_attr.rtc_0 = rule->rtc_0;
+	ste_attr.rtc_1 = rule->rtc_1;
+	ste_attr.used_id_rtc_0 = &rule->rtc_0;
+	ste_attr.used_id_rtc_1 = &rule->rtc_1;
+	ste_attr.wqe_ctrl = &wqe_ctrl;
+	ste_attr.wqe_tag = &rule->tag;
+	ste_attr.wqe_tag_is_jumbo = mlx5dr_definer_is_jumbo(matcher->mt[0]->definer);
+	ste_attr.gta_opcode = MLX5DR_WQE_GTA_OP_DEACTIVATE;
+
+	mlx5dr_send_ste(queue, &ste_attr);
 
 	return 0;
 }

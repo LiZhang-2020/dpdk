@@ -152,30 +152,31 @@ struct mlx5dr_send_engine_post_ctrl {
 struct mlx5dr_send_engine_post_attr {
 	uint8_t opcode;
 	uint8_t opmod;
+	uint8_t notify_hw;
+	uint8_t fence;
 	size_t len;
 	struct mlx5dr_rule *rule;
 	uint32_t id;
 	uint32_t retry_id;
 	uint32_t *used_id;
 	void *user_data;
-	uint8_t notify_hw;
-	uint8_t fence;
 };
 
-struct mlx5dr_send_rule_attr {
-	uint8_t opmod;
+struct mlx5dr_send_ste_attr {
+	/* rtc / retry_rtc / used_id_rtc override send_attr */
 	uint32_t rtc_0;
 	uint32_t rtc_1;
 	uint32_t retry_rtc_0;
 	uint32_t retry_rtc_1;
-	void *user_data;
-	uint8_t notify_hw;
-	uint8_t fence;
-	struct mlx5dr_send_engine *queue;
+	uint32_t *used_id_rtc_0;
+	uint32_t *used_id_rtc_1;
+	bool wqe_tag_is_jumbo;
+	uint8_t gta_opcode;
+	uint32_t direct_index;
+	struct mlx5dr_send_engine_post_attr send_attr;
+	struct mlx5dr_rule_match_tag *wqe_tag;
 	struct mlx5dr_wqe_gta_ctrl_seg *wqe_ctrl;
 	struct mlx5dr_wqe_gta_data_seg_ste *wqe_data;
-	struct mlx5dr_rule_match_tag *wqe_tag;
-	bool is_jumbo;
 };
 
 /**
@@ -219,7 +220,8 @@ void mlx5dr_send_engine_post_req_wqe(struct mlx5dr_send_engine_post_ctrl *ctrl,
 void mlx5dr_send_engine_post_end(struct mlx5dr_send_engine_post_ctrl *ctrl,
 				 struct mlx5dr_send_engine_post_attr *attr);
 
-void mlx5dr_send_rule(struct mlx5dr_rule *rule, struct mlx5dr_send_rule_attr *attr);
+void mlx5dr_send_ste(struct mlx5dr_send_engine *queue,
+		     struct mlx5dr_send_ste_attr *ste_attr);
 
 void mlx5dr_send_engine_flush_queue(struct mlx5dr_send_engine *queue);
 
