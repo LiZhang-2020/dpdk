@@ -6,6 +6,83 @@
 
 #define MLX5DR_ACTION_ASO_METER_INIT_COLOR_OFFSET 1
 
+/* This is the maximum allowed action order for each table type:
+ *	TX: CTR, Push,  Modify, Meter, Encap, Term
+ *	RX: TAG, Decap, Pop, Modify, CTR, Meter, Encap, Term
+ *	FDB: Decap POP CTR Push Modify Meter Encap Term
+ */
+static const uint32_t action_order_arr[MLX5DR_TABLE_TYPE_MAX][MLX5DR_ACTION_TYP_MAX] = {
+	[MLX5DR_TABLE_TYPE_NIC_RX] = {
+		BIT(MLX5DR_ACTION_TYP_TAG),
+		BIT(MLX5DR_ACTION_TYP_TNL_L2_TO_L2) |
+		BIT(MLX5DR_ACTION_TYP_TNL_L3_TO_L2),
+		BIT(MLX5DR_ACTION_TYP_POP_VLAN),
+		BIT(MLX5DR_ACTION_TYP_MODIFY_HDR),
+		BIT(MLX5DR_ACTION_TYP_CTR),
+		BIT(MLX5DR_ACTION_TYP_ASO_METER),
+		BIT(MLX5DR_ACTION_TYP_L2_TO_TNL_L2) |
+		BIT(MLX5DR_ACTION_TYP_L2_TO_TNL_L3),
+		BIT(MLX5DR_ACTION_TYP_FT) |
+		BIT(MLX5DR_ACTION_TYP_MISS) |
+		BIT(MLX5DR_ACTION_TYP_TIR) |
+		BIT(MLX5DR_ACTION_TYP_DROP),
+		BIT(MLX5DR_ACTION_TYP_LAST),
+	},
+	[MLX5DR_TABLE_TYPE_NIC_TX] = {
+		BIT(MLX5DR_ACTION_TYP_CTR),
+		BIT(MLX5DR_ACTION_TYP_PUSH_VLAN),
+		BIT(MLX5DR_ACTION_TYP_MODIFY_HDR),
+		BIT(MLX5DR_ACTION_TYP_ASO_METER),
+		BIT(MLX5DR_ACTION_TYP_L2_TO_TNL_L2) |
+		BIT(MLX5DR_ACTION_TYP_L2_TO_TNL_L3),
+		BIT(MLX5DR_ACTION_TYP_FT) |
+		BIT(MLX5DR_ACTION_TYP_MISS) |
+		BIT(MLX5DR_ACTION_TYP_DROP),
+		BIT(MLX5DR_ACTION_TYP_LAST),
+	},
+	[MLX5DR_TABLE_TYPE_FDB] = {
+		BIT(MLX5DR_ACTION_TYP_TNL_L2_TO_L2) |
+		BIT(MLX5DR_ACTION_TYP_TNL_L3_TO_L2),
+		BIT(MLX5DR_ACTION_TYP_POP_VLAN),
+		BIT(MLX5DR_ACTION_TYP_CTR),
+		BIT(MLX5DR_ACTION_TYP_PUSH_VLAN),
+		BIT(MLX5DR_ACTION_TYP_MODIFY_HDR),
+		BIT(MLX5DR_ACTION_TYP_ASO_METER),
+		BIT(MLX5DR_ACTION_TYP_L2_TO_TNL_L2) |
+		BIT(MLX5DR_ACTION_TYP_L2_TO_TNL_L3),
+		BIT(MLX5DR_ACTION_TYP_FT) |
+		BIT(MLX5DR_ACTION_TYP_MISS) |
+		BIT(MLX5DR_ACTION_TYP_VPORT) |
+		BIT(MLX5DR_ACTION_TYP_DROP),
+		BIT(MLX5DR_ACTION_TYP_LAST),
+	},
+};
+
+bool mlx5dr_action_check_combo(enum mlx5dr_action_type *user_actions,
+			       enum mlx5dr_table_type table_type)
+{
+	const uint32_t *order_arr = action_order_arr[table_type];
+	uint8_t order_idx = 0;
+	uint8_t user_idx = 0;
+	bool valid_combo;
+
+	while (order_arr[order_idx] != BIT(MLX5DR_ACTION_TYP_LAST)) {
+		/* User action order validated move to next user action */
+		if (BIT(user_actions[user_idx]) & order_arr[order_idx])
+			user_idx++;
+
+		/* Iterate to the next supported action in the order */
+		order_idx++;
+	}
+
+	/* Combination is valid if all user action were processed */
+	valid_combo = user_actions[user_idx] == MLX5DR_ACTION_TYP_LAST;
+	if (!valid_combo)
+		DR_LOG(ERR, "Invalid action_type %d in template", user_actions[user_idx]);
+
+	return valid_combo;
+}
+
 int mlx5dr_action_root_build_attr(struct mlx5dr_rule_action rule_actions[],
 				  uint32_t num_actions,
 				  struct mlx5dv_flow_action_attr *attr)

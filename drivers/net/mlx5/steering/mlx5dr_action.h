@@ -141,6 +141,9 @@ int mlx5dr_action_get_default_stc(struct mlx5dr_context *ctx,
 void mlx5dr_action_put_default_stc(struct mlx5dr_context *ctx,
 				   uint8_t tbl_type);
 
+bool mlx5dr_action_check_combo(enum mlx5dr_action_type *user_actions,
+			       enum mlx5dr_table_type table_type);
+
 int mlx5dr_actions_quick_apply(struct mlx5dr_send_engine *queue,
 			       struct mlx5dr_context_common_res *common_res,
 			       struct mlx5dr_wqe_gta_ctrl_seg *wqe_ctrl,

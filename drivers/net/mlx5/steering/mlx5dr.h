@@ -43,6 +43,7 @@ enum mlx5dr_action_type {
 	MLX5DR_ACTION_TYP_POP_VLAN,
 	MLX5DR_ACTION_TYP_PUSH_VLAN,
 	MLX5DR_ACTION_TYP_ASO_METER,
+	MLX5DR_ACTION_TYP_MAX,
 };
 
 enum mlx5dr_action_flags {
