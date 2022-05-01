@@ -4,6 +4,33 @@
 
 #include "mlx5dr_internal.h"
 
+const char *mlx5dr_debug_action_type_str[] = {
+	[MLX5DR_ACTION_TYP_LAST] = "LAST",
+	[MLX5DR_ACTION_TYP_TNL_L2_TO_L2] = "TNL_L2_TO_L2",
+	[MLX5DR_ACTION_TYP_L2_TO_TNL_L2] = "L2_TO_TNL_L2",
+	[MLX5DR_ACTION_TYP_TNL_L3_TO_L2] = "TNL_L3_TO_L2",
+	[MLX5DR_ACTION_TYP_L2_TO_TNL_L3] = "L2_TO_TNL_L3",
+	[MLX5DR_ACTION_TYP_DROP] = "DROP",
+	[MLX5DR_ACTION_TYP_TIR] = "TIR",
+	[MLX5DR_ACTION_TYP_FT] = "FT",
+	[MLX5DR_ACTION_TYP_CTR] = "CTR",
+	[MLX5DR_ACTION_TYP_TAG] = "TAG",
+	[MLX5DR_ACTION_TYP_MODIFY_HDR] = "MODIFY_HDR",
+	[MLX5DR_ACTION_TYP_VPORT] = "VPORT",
+	[MLX5DR_ACTION_TYP_MISS] = "DEFAULT_MISS",
+	[MLX5DR_ACTION_TYP_POP_VLAN] = "POP_VLAN",
+	[MLX5DR_ACTION_TYP_PUSH_VLAN] = "PUSH_VLAN",
+	[MLX5DR_ACTION_TYP_ASO_METER] = "ASO_METER",
+};
+
+static_assert(ARRAY_SIZE(mlx5dr_debug_action_type_str) == MLX5DR_ACTION_TYP_MAX,
+	      "Missing mlx5dr_debug_action_type_str");
+
+const char *mlx5dr_debug_action_type_to_str(enum mlx5dr_action_type action_type)
+{
+	return mlx5dr_debug_action_type_str[action_type];
+}
+
 static int mlx5dr_debug_dump_matcher_template_definer(FILE *f,
 						      struct mlx5dr_match_template *mt)
 {
@@ -56,7 +83,8 @@ static int mlx5dr_debug_dump_matcher_template_definer(FILE *f,
 	return 0;
 }
 
-static int mlx5dr_debug_dump_matcher_template(FILE *f, struct mlx5dr_matcher *matcher)
+static int
+mlx5dr_debug_dump_matcher_match_template(FILE *f, struct mlx5dr_matcher *matcher)
 {
 	bool is_root = matcher->tbl->level == MLX5DR_ROOT_LEVEL;
 	int i, ret;
@@ -65,7 +93,7 @@ static int mlx5dr_debug_dump_matcher_template(FILE *f, struct mlx5dr_matcher *ma
 		struct mlx5dr_match_template *mt = matcher->mt[i];
 
 		ret = fprintf(f, "%d,0x%" PRIx64 ",0x%" PRIx64 ",%d,%d\n",
-			      MLX5DR_DEBUG_RES_TYPE_MATCHER_TEMPLATE,
+			      MLX5DR_DEBUG_RES_TYPE_MATCHER_MATCH_TEMPLATE,
 			      (uint64_t)(uintptr_t)mt,
 			      (uint64_t)(uintptr_t)matcher,
 			      is_root ? 0 : mt->fc_sz,
@@ -85,18 +113,56 @@ static int mlx5dr_debug_dump_matcher_template(FILE *f, struct mlx5dr_matcher *ma
 	return 0;
 }
 
+static int
+mlx5dr_debug_dump_matcher_action_template(FILE *f, struct mlx5dr_matcher *matcher)
+{
+	bool is_root = matcher->tbl->level == MLX5DR_ROOT_LEVEL;
+	enum mlx5dr_action_type action_type;
+	int i, j, ret;
+
+	for (i = 0; i < matcher->num_of_at; i++) {
+		struct mlx5dr_action_template *at = matcher->at[i];
+
+		ret = fprintf(f, "%d,0x%" PRIx64 ",0x%" PRIx64 ",%d,%d,%d",
+			      MLX5DR_DEBUG_RES_TYPE_MATCHER_ACTION_TEMPLATE,
+			      (uint64_t)(uintptr_t)at,
+			      (uint64_t)(uintptr_t)matcher,
+			      at->only_term ? 0 : 1,
+			      is_root ? 0 : at->num_of_action_stes,
+			      at->num_actions);
+		if (ret < 0) {
+			rte_errno = EINVAL;
+			return rte_errno;
+		}
+
+		for (j = 0; j < at->num_actions; j++) {
+			action_type = at->action_type_arr[j];
+			ret = fprintf(f, ",%s", mlx5dr_debug_action_type_to_str(action_type));
+			if (ret < 0) {
+				rte_errno = EINVAL;
+				return rte_errno;
+			}
+		}
+
+		fprintf(f, "\n");
+	}
+
+	return 0;
+}
+
 static int mlx5dr_debug_dump_matcher_attr(FILE *f, struct mlx5dr_matcher *matcher)
 {
 	struct mlx5dr_matcher_attr *attr = &matcher->attr;
 	int ret;
 
-	ret = fprintf(f, "%d,0x%" PRIx64 ",%d,%d,%d,%d\n",
+	ret = fprintf(f, "%d,0x%" PRIx64 ",%d,%d,%d,%d,%d\n",
 		      MLX5DR_DEBUG_RES_TYPE_MATCHER_ATTR,
 		      (uint64_t)(uintptr_t)matcher,
 		      attr->priority,
 		      attr->mode,
 		      attr->table.sz_row_log,
-		      attr->table.sz_col_log);
+		      attr->table.sz_col_log,
+		      attr->optimize_using_rule_idx);
 	if (ret < 0) {
 		rte_errno = EINVAL;
 		return rte_errno;
@@ -115,38 +181,66 @@ static int mlx5dr_debug_dump_matcher(FILE *f, struct mlx5dr_matcher *matcher)
 	struct mlx5dr_pool *ste_pool;
 	int ret;
 
+	ret = fprintf(f, "%d,0x%" PRIx64 ",0x%" PRIx64 ",%d,%d,0x%" PRIx64,
+		      MLX5DR_DEBUG_RES_TYPE_MATCHER,
+		      (uint64_t)(uintptr_t)matcher,
+		      (uint64_t)(uintptr_t)matcher->tbl,
+		      matcher->num_of_mt,
+		      is_root ? 0 : matcher->end_ft->id,
+		      matcher->col_matcher ? (uint64_t)(uintptr_t)matcher->col_matcher : 0);
+	if (ret < 0)
+		goto out_err;
+
 	ste = &matcher->match_ste.ste;
 	ste_pool = ctx->ste_pool[tbl_type];
 	ste_0 = mlx5dr_pool_chunk_get_base_devx_obj(ste_pool, ste);
 	if (tbl_type == MLX5DR_TABLE_TYPE_FDB)
 		ste_1 = mlx5dr_pool_chunk_get_base_devx_obj_mirror(ste_pool, ste);
 
-	ret = fprintf(f, "%d,0x%" PRIx64 ",0x%" PRIx64 ",%d,%d,0x%" PRIx64 ",%d,%d,%d,%d\n",
-		      MLX5DR_DEBUG_RES_TYPE_MATCHER,
-		      (uint64_t)(uintptr_t)matcher,
-		      (uint64_t)(uintptr_t)matcher->tbl,
-		      matcher->num_of_mt,
-		      is_root ? 0 : matcher->end_ft->id,
-		      matcher->col_matcher ? (uint64_t)(uintptr_t)matcher->col_matcher : 0,
-		      matcher->match_ste.rtc_0 ?
-		      matcher->match_ste.rtc_0->id : 0,
+	ret = fprintf(f, ",%d,%d,%d,%d",
+		      matcher->match_ste.rtc_0 ? matcher->match_ste.rtc_0->id : 0,
 		      ste_0 ? ste_0->id : 0,
 		      matcher->match_ste.rtc_1 ? matcher->match_ste.rtc_1->id : 0,
 		      ste_1 ? ste_1->id : 0);
-	if (ret < 0) {
-		rte_errno = EINVAL;
-		return rte_errno;
+	if (ret < 0)
+		goto out_err;
+
+	ste = &matcher->action_ste.ste;
+	ste_pool = matcher->action_ste.pool;
+	if (ste_pool) {
+		ste_0 = mlx5dr_pool_chunk_get_base_devx_obj(ste_pool, ste);
+		if (tbl_type == MLX5DR_TABLE_TYPE_FDB)
+			ste_1 = mlx5dr_pool_chunk_get_base_devx_obj_mirror(ste_pool, ste);
+	} else {
+		ste_0 = NULL;
+		ste_1 = NULL;
 	}
+
+	ret = fprintf(f, ",%d,%d,%d,%d\n",
+		      matcher->action_ste.rtc_0 ? matcher->action_ste.rtc_0->id : 0,
+		      ste_0 ? ste_0->id : 0,
+		      matcher->action_ste.rtc_1 ? matcher->action_ste.rtc_1->id : 0,
+		      ste_1 ? ste_1->id : 0);
+	if (ret < 0)
+		goto out_err;
 
 	ret = mlx5dr_debug_dump_matcher_attr(f, matcher);
 	if (ret)
 		return ret;
 
-	ret = mlx5dr_debug_dump_matcher_template(f, matcher);
+	ret = mlx5dr_debug_dump_matcher_match_template(f, matcher);
+	if (ret)
+		return ret;
+
+	ret = mlx5dr_debug_dump_matcher_action_template(f, matcher);
 	if (ret)
 		return ret;
 
 	return 0;
+
+out_err:
+	rte_errno = EINVAL;
+	return rte_errno;
 }
 
 static int mlx5dr_debug_dump_table(FILE *f, struct mlx5dr_table *tbl)

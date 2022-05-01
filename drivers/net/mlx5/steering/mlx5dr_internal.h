@@ -43,6 +43,10 @@
 #define BIT(_bit) (1ULL << (_bit))
 #define IS_BIT_SET(_value, _bit) (_value & (1ULL << (_bit)))
 
+#ifndef ARRAY_SIZE
+#define ARRAY_SIZE(x) (sizeof(x) / sizeof((x)[0]))
+#endif
+
 #ifdef RTE_LIBRTE_MLX5_DEBUG
 /* Prevent double function name print when debug is set */
 #define DR_LOG DRV_LOG

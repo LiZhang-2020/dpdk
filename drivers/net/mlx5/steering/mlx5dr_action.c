@@ -58,6 +58,15 @@ static const uint32_t action_order_arr[MLX5DR_TABLE_TYPE_MAX][MLX5DR_ACTION_TYP_
 	},
 };
 
+static void mlx5dr_action_print_combo(enum mlx5dr_action_type *user_actions)
+{
+	DR_LOG(ERR, "Invalid action_type sequence");
+	while (*user_actions != MLX5DR_ACTION_TYP_LAST) {
+		DR_LOG(ERR, "%s", mlx5dr_debug_action_type_to_str(*user_actions));
+		user_actions++;
+	}
+}
+
 bool mlx5dr_action_check_combo(enum mlx5dr_action_type *user_actions,
 			       enum mlx5dr_table_type table_type)
 {
@@ -78,7 +87,7 @@ bool mlx5dr_action_check_combo(enum mlx5dr_action_type *user_actions,
 	/* Combination is valid if all user action were processed */
 	valid_combo = user_actions[user_idx] == MLX5DR_ACTION_TYP_LAST;
 	if (!valid_combo)
-		DR_LOG(ERR, "Invalid action_type %d in template", user_actions[user_idx]);
+		mlx5dr_action_print_combo(user_actions);
 
 	return valid_combo;
 }
