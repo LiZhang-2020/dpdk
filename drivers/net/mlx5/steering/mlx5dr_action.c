@@ -22,10 +22,6 @@ int mlx5dr_action_root_build_attr(struct mlx5dr_rule_action rule_actions[],
 			attr[i].type = MLX5DV_FLOW_ACTION_DEST_DEVX;
 			attr[i].obj = action->devx_obj;
 			break;
-		case MLX5DR_ACTION_TYP_QP:
-			attr[i].type = MLX5DV_FLOW_ACTION_DEST_IBV_QP;
-			attr[i].qp = action->qp;
-			break;
 		case MLX5DR_ACTION_TYP_TAG:
 			attr[i].type = MLX5DV_FLOW_ACTION_TAG;
 			attr[i].tag_value = rule_actions[i].tag.value;
