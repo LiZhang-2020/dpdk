@@ -11,6 +11,10 @@ import ipaddress
 import struct
 
 
+cdef extern from 'endian.h':
+    unsigned long htobe16(unsigned long host_16bits)
+
+
 cdef class RteFlowItemEth(PydiruCM):
     def __init__(self, dst=bytes(), src=bytes(), eth_type=0, has_vlan=0):
         cdef char *dst_c = dst
@@ -154,6 +158,17 @@ cdef class Mlx5RteFlowItemTxQueue(PydiruCM):
         self.item.queue = qp_num
 
 
+cdef class RteFlowItemVlan(PydiruCM):
+    def __init__(self, tci=0, inner_type=0):
+        """
+        Initializes a RteFlowItemVlan object representing rte_flow_item_vlan C struct.
+        :param tci: Tag control information
+        :param inner_type: The inner ether type or TPID.
+        """
+        self.item.tci = htobe16(tci)
+        self.item.inner_type = htobe16(inner_type)
+
+
 cdef class RteFlowItem(PydiruCM):
     def __init__(self, flow_item_type, spec=None, mask=None, last=None):
         self.item.type = flow_item_type
@@ -182,6 +197,8 @@ cdef class RteFlowItem(PydiruCM):
             size = sizeof(pdr.rte_flow_item_vxlan)
         if flow_item_type == me.MLX5_RTE_FLOW_ITEM_TYPE_TX_QUEUE:
             size = sizeof(pdr.mlx5_rte_flow_item_tx_queue)
+        if flow_item_type == e.RTE_FLOW_ITEM_TYPE_VLAN:
+            size = sizeof(pdr.rte_flow_item_vlan)
         if spec:
             self.item.spec = calloc(1, size)
             memcpy(self.item.spec, <void *>&((<RteFlowItem>spec).item), size)

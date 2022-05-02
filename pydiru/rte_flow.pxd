@@ -43,3 +43,6 @@ cdef class RteFlowItemEnd(RteFlowItem):
 
 cdef class RteFlowResult(PydiruObject):
     cdef pdr.rte_flow_op_result flow_res
+
+cdef class RteFlowItemVlan(PydiruCM):
+    cdef pdr.rte_flow_item_vlan item

@@ -128,6 +128,10 @@ cdef extern  from '../../../../lib/librte_ethdev/rte_flow.h':
         uint8_t vni[3]
         uint8_t rsvd1
 
+    cdef struct rte_flow_item_vlan:
+        uint16_t tci
+        uint16_t inner_type
+
 cdef extern  from '../../../../drivers/net/mlx5/mlx5_flow.h':
 
     cdef struct mlx5_rte_flow_item_tx_queue:
