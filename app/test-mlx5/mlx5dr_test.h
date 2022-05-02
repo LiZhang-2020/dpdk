@@ -12,10 +12,33 @@
 #include <rte_flow.h>
 #include "../../drivers/net/mlx5/steering/mlx5dr.h"
 #include "/usr/include/infiniband/mlx5dv.h"
+
+/* W/A Below enum needed for cmd.h*/
+enum mlx5_ifc_stc_action_type {
+	MLX5_IFC_STC_ACTION_TYPE_NOP = 0x00,
+	MLX5_IFC_STC_ACTION_TYPE_COPY = 0x05,
+	MLX5_IFC_STC_ACTION_TYPE_SET = 0x06,
+	MLX5_IFC_STC_ACTION_TYPE_ADD = 0x07,
+	MLX5_IFC_STC_ACTION_TYPE_HEADER_REMOVE = 0x09,
+	MLX5_IFC_STC_ACTION_TYPE_HEADER_INSERT = 0x0b,
+	MLX5_IFC_STC_ACTION_TYPE_TAG = 0x0c,
+	MLX5_IFC_STC_ACTION_TYPE_ACC_MODIFY_LIST = 0x0e,
+	MLX5_IFC_STC_ACTION_TYPE_ASO = 0x12,
+	MLX5_IFC_STC_ACTION_TYPE_COUNTER = 0x14,
+	MLX5_IFC_STC_ACTION_TYPE_JUMP_TO_STE_TABLE = 0x80,
+	MLX5_IFC_STC_ACTION_TYPE_JUMP_TO_TIR = 0x81,
+	MLX5_IFC_STC_ACTION_TYPE_JUMP_TO_FT = 0x82,
+	MLX5_IFC_STC_ACTION_TYPE_DROP = 0x83,
+	MLX5_IFC_STC_ACTION_TYPE_ALLOW = 0x84,
+	MLX5_IFC_STC_ACTION_TYPE_JUMP_TO_VPORT = 0x85,
+	MLX5_IFC_STC_ACTION_TYPE_JUMP_TO_UPLINK = 0x86,
+};
+
+#include "../../drivers/net/mlx5/steering/mlx5dr_pool.h"
 #include "../../drivers/net/mlx5/steering/mlx5dr_context.h"
 #include "../../drivers/net/mlx5/steering/mlx5dr_send.h"
 #include "../../drivers/net/mlx5/steering/mlx5dr_rule.h"
-#include "../../drivers/net/mlx5/steering/mlx5dr_pool.h"
+#include "../../drivers/net/mlx5/steering/mlx5dr_cmd.h"
 #include "../../drivers/net/mlx5/steering/mlx5dr_action.h"
 
 #define MAX_ITEMS 10

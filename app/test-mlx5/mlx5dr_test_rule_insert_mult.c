@@ -6,16 +6,18 @@
 #include "mlx5dr_test.h"
 
 #define MAX_ITEMS 10
-#define BIG_LOOP 100
+#define BIG_LOOP 20
 #define MAX_ITEMS 10
 #define QUEUE_SIZE 1024
 #define COL_LOG 0 // not used
-#define ROW_LOG 21
+#define ROW_LOG 22
 #define NUM_OF_RULES (1 << ROW_LOG)
 #define BURST_TH (32)
 #define NUM_CORES 8
-#define QUEUE_PER_CORE 4
+#define QUEUE_PER_CORE 1
 #define NUM_OF_QUEUES (QUEUE_PER_CORE * NUM_CORES)
+
+pthread_mutex_t count_mutex;
 
 struct queue_info {
 	uint32_t queue_id;
@@ -26,13 +28,14 @@ struct queue_info {
 };
 
 struct thread_info {
+	struct queue_info queue[QUEUE_PER_CORE];
 	struct mlx5dr_context *ctx;
 	int queue_id;
 	const char *thread_name;
 	struct mlx5dr_matcher *matcher;
 	struct mlx5dr_action *drop;
-	struct queue_info queue[QUEUE_PER_CORE];
-};
+	uint32_t curr_loop;
+} __rte_cache_aligned;
 
 struct thread_info th_info[8];
 
@@ -171,6 +174,24 @@ static void set_match_mavneir(struct rte_flow_item_eth *eth_m,
 	items->type = RTE_FLOW_ITEM_TYPE_END;
 }
 
+static void sync_thread(struct thread_info *my_th_info)
+{
+	bool need_sync = true;
+	int i;
+
+	while (need_sync) {
+		need_sync = false;
+		pthread_mutex_lock(&count_mutex);
+		for (i = 0; i < NUM_CORES; i++) {
+			if (my_th_info->curr_loop > th_info[i].curr_loop)
+				need_sync = true;
+		}
+		if (!need_sync)
+			my_th_info->curr_loop++;
+		pthread_mutex_unlock(&count_mutex);
+	}
+}
+
 static int run_loop(__rte_unused void *nothing)
 {
 	struct rte_flow_item items[MAX_ITEMS] = {{0}};
@@ -197,6 +218,7 @@ static int run_loop(__rte_unused void *nothing)
 
 	core_id = lcore_id % NUM_CORES;
 	my_th_info = &th_info[core_id];
+	my_th_info->curr_loop = 0;
 
 	ctx = my_th_info->ctx;
 	hws_matcher = my_th_info->matcher;
@@ -227,6 +249,7 @@ static int run_loop(__rte_unused void *nothing)
 			my_th_info->queue[i].rules = 0;
 		}
 
+		sync_thread(my_th_info);
 		start = rte_rdtsc();
 
 		/* Create HWS rules */
@@ -238,11 +261,11 @@ static int run_loop(__rte_unused void *nothing)
 			rule_attr.user_data = &hws_rule[i];
 			rule_attr.burst = !((queue->rules) % BURST_TH == 0); /* Ring doorbell */
 
-			ipv_value.src_addr = i;
+			ipv_value.dst_addr = i;
 
 			rule_actions[0].action = drop;
 
-			ret = mlx5dr_rule_create(hws_matcher, 0, items, rule_actions, 1, &rule_attr, &hws_rule[i]);
+			ret = mlx5dr_rule_create(hws_matcher, 0, items, 0, rule_actions, &rule_attr, &hws_rule[i]);
 			if (ret) {
 				printf("Failed to create hws rule\n");
 				return -1;
@@ -256,6 +279,7 @@ static int run_loop(__rte_unused void *nothing)
 		end = rte_rdtsc();
 		/* Drain the queue */
 
+		sync_thread(my_th_info);
 		memset(&total, 0, sizeof(total));
 
 		for (i = 0; i < QUEUE_PER_CORE; i++) {
@@ -294,6 +318,7 @@ static int run_loop(__rte_unused void *nothing)
 		       total.rules,
 		       total.bp);
 
+		sync_thread(my_th_info);
 		start = rte_rdtsc();
 
 		/* Delete HWS rules */
@@ -321,6 +346,7 @@ static int run_loop(__rte_unused void *nothing)
 		end = rte_rdtsc();
 		/* Drain the queue */
 
+		sync_thread(my_th_info);
 		memset(&total, 0, sizeof(total));
 
 		for (i = 0; i < QUEUE_PER_CORE; i++) {
@@ -365,6 +391,7 @@ int run_test_rule_insert_mult(struct ibv_context *ibv_ctx)
 	struct mlx5dr_table *hws_tbl;
 	struct mlx5dr_matcher *hws_matcher1, *hws_matcher2, *hws_matcher3, *hws_matcher4;
 	struct mlx5dr_matcher *hws_matcher5, *hws_matcher6, *hws_matcher7, *hws_matcher8;
+	enum mlx5dr_action_type hws_action_type[5];
 	struct mlx5dr_context_attr dr_ctx_attr = {0};
 	struct mlx5dr_table_attr dr_tbl_attr = {0};
 	struct mlx5dr_matcher_attr matcher_attr = {0};
@@ -374,6 +401,7 @@ int run_test_rule_insert_mult(struct ibv_context *ibv_ctx)
 	struct rte_ipv4_hdr ipv_mask;
 	struct rte_ipv4_hdr ipv_value;
 	struct mlx5dr_match_template *mt;
+	struct mlx5dr_action_template *at;
 	struct mlx5dr_action *drop;
 
 	dr_ctx_attr.initial_log_ste_memory = 0;
@@ -410,20 +438,28 @@ int run_test_rule_insert_mult(struct ibv_context *ibv_ctx)
 		goto destroy_hws_tbl;
 	}
 
-	matcher_attr.mode = MLX5DR_MATCHER_RESOURCE_MODE_RULE;
+	hws_action_type[0] = MLX5DR_ACTION_TYP_DROP;
+	hws_action_type[1] = MLX5DR_ACTION_TYP_LAST;
+	at = mlx5dr_action_template_create(hws_action_type);
+	if (!at) {
+		printf("Failed hws action template\n");
+		goto destroy_match_template;
+	}
+
+	matcher_attr.mode = MLX5DR_MATCHER_RESOURCE_MODE_HTABLE;
 	matcher_attr.rule.num_log = ROW_LOG;
 
 	/* Create HWS matcher1 */
 	matcher_attr.priority = 0;
-	hws_matcher1 = mlx5dr_matcher_create(hws_tbl, &mt, 1, &matcher_attr);
+	hws_matcher1 = mlx5dr_matcher_create(hws_tbl, &mt, 1, &at, 1, &matcher_attr);
 	if (!hws_matcher1) {
 		printf("Failed to create HWS matcher 1\n");
-		goto destroy_template;
+		goto destroy_action_template;
 	}
 
 	/* Create HWS matcher2 */
 	matcher_attr.priority = 2;
-	hws_matcher2 = mlx5dr_matcher_create(hws_tbl, &mt, 1, &matcher_attr);
+	hws_matcher2 = mlx5dr_matcher_create(hws_tbl, &mt, 1, &at, 1, &matcher_attr);
 	if (!hws_matcher2) {
 		printf("Failed to create HWS matcher 2\n");
 		goto destroy_hws_matcher1;
@@ -431,7 +467,7 @@ int run_test_rule_insert_mult(struct ibv_context *ibv_ctx)
 
 	/* Create HWS matcher3 */
 	matcher_attr.priority = 3;
-	hws_matcher3 = mlx5dr_matcher_create(hws_tbl, &mt, 1, &matcher_attr);
+	hws_matcher3 = mlx5dr_matcher_create(hws_tbl, &mt, 1, &at, 1, &matcher_attr);
 	if (!hws_matcher3) {
 		printf("Failed to create HWS matcher 3\n");
 		goto destroy_hws_matcher2;
@@ -439,7 +475,7 @@ int run_test_rule_insert_mult(struct ibv_context *ibv_ctx)
 
 	/* Create HWS matcher4 */
 	matcher_attr.priority = 4;
-	hws_matcher4 = mlx5dr_matcher_create(hws_tbl, &mt, 1, &matcher_attr);
+	hws_matcher4 = mlx5dr_matcher_create(hws_tbl, &mt, 1, &at, 1, &matcher_attr);
 	if (!hws_matcher4) {
 		printf("Failed to create HWS matcher 4\n");
 		goto destroy_hws_matcher3;
@@ -447,7 +483,7 @@ int run_test_rule_insert_mult(struct ibv_context *ibv_ctx)
 
 	/* Create HWS matcher5 */
 	matcher_attr.priority = 5;
-	hws_matcher5 = mlx5dr_matcher_create(hws_tbl, &mt, 1, &matcher_attr);
+	hws_matcher5 = mlx5dr_matcher_create(hws_tbl, &mt, 1, &at, 1, &matcher_attr);
 	if (!hws_matcher5) {
 		printf("Failed to create HWS matcher 5\n");
 		goto destroy_hws_matcher4;
@@ -455,7 +491,7 @@ int run_test_rule_insert_mult(struct ibv_context *ibv_ctx)
 
 	/* Create HWS matcher6 */
 	matcher_attr.priority = 6;
-	hws_matcher6 = mlx5dr_matcher_create(hws_tbl, &mt, 1, &matcher_attr);
+	hws_matcher6 = mlx5dr_matcher_create(hws_tbl, &mt, 1, &at, 1, &matcher_attr);
 	if (!hws_matcher6) {
 		printf("Failed to create HWS matcher 6\n");
 		goto destroy_hws_matcher5;
@@ -463,7 +499,7 @@ int run_test_rule_insert_mult(struct ibv_context *ibv_ctx)
 
 	/* Create HWS matcher7 */
 	matcher_attr.priority = 7;
-	hws_matcher7 = mlx5dr_matcher_create(hws_tbl, &mt, 1, &matcher_attr);
+	hws_matcher7 = mlx5dr_matcher_create(hws_tbl, &mt, 1, &at, 1, &matcher_attr);
 	if (!hws_matcher7) {
 		printf("Failed to create HWS matcher 7\n");
 		goto destroy_hws_matcher6;
@@ -471,7 +507,7 @@ int run_test_rule_insert_mult(struct ibv_context *ibv_ctx)
 
 	/* Create HWS matcher8 */
 	matcher_attr.priority = 8;
-	hws_matcher8 = mlx5dr_matcher_create(hws_tbl, &mt, 1, &matcher_attr);
+	hws_matcher8 = mlx5dr_matcher_create(hws_tbl, &mt, 1, &at, 1, &matcher_attr);
 	if (!hws_matcher8) {
 		printf("Failed to create HWS matcher 8\n");
 		goto destroy_hws_matcher7;
@@ -488,48 +524,56 @@ int run_test_rule_insert_mult(struct ibv_context *ibv_ctx)
 	th_info[0].thread_name = "Thread 1!";
 	th_info[0].matcher = hws_matcher1;
 	th_info[0].drop = drop;
+	th_info[0].curr_loop = -1;
 
 	th_info[1].ctx = ctx;
 	th_info[1].queue_id = 1;
 	th_info[1].thread_name = "Thread 2!";
 	th_info[1].matcher = hws_matcher2;
 	th_info[1].drop = drop;
+	th_info[1].curr_loop = -1;
 
 	th_info[2].ctx = ctx;
 	th_info[2].queue_id = 1;
 	th_info[2].thread_name = "Thread 3!";
 	th_info[2].matcher = hws_matcher3;
 	th_info[2].drop = drop;
+	th_info[2].curr_loop = -1;
 
 	th_info[3].ctx = ctx;
 	th_info[3].queue_id = 1;
 	th_info[3].thread_name = "Thread 4!";
 	th_info[3].matcher = hws_matcher4;
 	th_info[3].drop = drop;
+	th_info[3].curr_loop = -1;
 
 	th_info[4].ctx = ctx;
 	th_info[4].queue_id = 1;
 	th_info[4].thread_name = "Thread 5!";
 	th_info[4].matcher = hws_matcher5;
 	th_info[4].drop = drop;
+	th_info[4].curr_loop = -1;
 
 	th_info[5].ctx = ctx;
 	th_info[5].queue_id = 1;
 	th_info[5].thread_name = "Thread 6!";
 	th_info[5].matcher = hws_matcher6;
 	th_info[5].drop = drop;
+	th_info[5].curr_loop = -1;
 
 	th_info[6].ctx = ctx;
 	th_info[6].queue_id = 1;
 	th_info[6].thread_name = "Thread 7!";
 	th_info[6].matcher = hws_matcher7;
 	th_info[6].drop = drop;
+	th_info[6].curr_loop = -1;
 
 	th_info[7].ctx = ctx;
 	th_info[7].queue_id = 1;
 	th_info[7].thread_name = "Thread 8!";
 	th_info[7].matcher = hws_matcher8;
 	th_info[7].drop = drop;
+	th_info[7].curr_loop = -1;
 
 	rte_eal_mp_remote_launch(run_loop, NULL, CALL_MAIN);
 
@@ -566,7 +610,9 @@ destroy_hws_matcher2:
 	mlx5dr_matcher_destroy(hws_matcher2);
 destroy_hws_matcher1:
 	mlx5dr_matcher_destroy(hws_matcher1);
-destroy_template:
+destroy_action_template:
+	mlx5dr_action_template_destroy(at);
+destroy_match_template:
 	mlx5dr_match_template_destroy(mt);
 destroy_hws_tbl:
 	mlx5dr_table_destroy(hws_tbl);

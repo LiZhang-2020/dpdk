@@ -9,7 +9,8 @@
 #define BIG_LOOP 10
 #define MAX_ITEMS 10
 #define QUEUE_SIZE 256
-#define NUM_OF_RULES (QUEUE_SIZE * 3906) // Almost 1M
+#define ROW_LOG 21
+#define NUM_OF_RULES (1 << ROW_LOG)
 #define BURST_TH (32)
 
 static int poll_for_comp(struct mlx5dr_context *ctx,
@@ -165,6 +166,10 @@ int run_test_rule_insert(struct ibv_context *ibv_ctx)
 	struct mlx5dr_context *ctx;
 	struct mlx5dr_table *root_tbl, *hws_tbl;
 	struct mlx5dr_matcher *root_matcher, *hws_matcher1;
+	struct mlx5dr_action_template *root_at;
+	struct mlx5dr_action_template *hws_at;
+	enum mlx5dr_action_type root_action_type[5];
+	enum mlx5dr_action_type hws_action_type[5];
 	struct mlx5dr_rule_action rule_actions[10];
 	struct mlx5dr_action *to_hws_tbl;
 	struct mlx5dr_action *decap;
@@ -203,13 +208,20 @@ int run_test_rule_insert(struct ibv_context *ibv_ctx)
 		goto out_err;
 	}
 
+	/* Allocate HWS rules */
+	hws_rule = calloc(NUM_OF_RULES, mlx5dr_rule_get_handle_size());
+	if (!hws_rule) {
+		printf("Failed to allocate memory for hws_rule\n");
+		goto close_ctx;
+	}
+
 	/* Create root table */
 	dr_tbl_attr.level = 0;
 	dr_tbl_attr.type = MLX5DR_TABLE_TYPE_NIC_RX;
 	root_tbl = mlx5dr_table_create(ctx, &dr_tbl_attr);
 	if (!root_tbl) {
 		printf("Failed to create root table\n");
-		goto close_ctx;
+		goto free_hws_rules;
 	}
 
 	/* Create HWS table */
@@ -229,13 +241,31 @@ int run_test_rule_insert(struct ibv_context *ibv_ctx)
 		goto destroy_hws_tbl;
 	}
 
+	root_action_type[0] = MLX5DR_ACTION_TYP_FT;
+	root_action_type[1] = MLX5DR_ACTION_TYP_LAST;
+	root_at = mlx5dr_action_template_create(root_action_type);
+	if (!root_at) {
+		printf("Failed root action template\n");
+		goto destroy_root_template;
+	}
+
+	hws_action_type[0] = MLX5DR_ACTION_TYP_DROP;
+	hws_action_type[1] = MLX5DR_ACTION_TYP_LAST;
+	hws_at = mlx5dr_action_template_create(hws_action_type);
+	if (!hws_at) {
+		printf("Failed hws action template\n");
+		goto destroy_root_at;
+	}
+
 	/* Create root matcher */
 	matcher_attr.priority = 0;
 	matcher_attr.mode = MLX5DR_MATCHER_RESOURCE_MODE_RULE;
-	root_matcher = mlx5dr_matcher_create(root_tbl, &mt_root, 1, &matcher_attr);
+	root_matcher = mlx5dr_matcher_create(root_tbl, &mt_root, 1,
+					     &root_at, 1,
+					     &matcher_attr);
 	if (!root_matcher) {
 		printf("Failed to create root matcher\n");
-		goto destroy_root_template;
+		goto destroy_hws_at;
 	}
 
 	set_match_mavneir(&eth_mask, &eth_value,
@@ -255,8 +285,10 @@ int run_test_rule_insert(struct ibv_context *ibv_ctx)
 	/* Create HWS matcher1 */
 	matcher_attr.priority = 0;
 	matcher_attr.mode = MLX5DR_MATCHER_RESOURCE_MODE_RULE;
-	matcher_attr.rule.num_log = 22;
-	hws_matcher1 = mlx5dr_matcher_create(hws_tbl, &mt, 1, &matcher_attr);
+	matcher_attr.rule.num_log = ROW_LOG;
+	hws_matcher1 = mlx5dr_matcher_create(hws_tbl, &mt, 1,
+					     &hws_at, 1,
+					     &matcher_attr);
 	if (!hws_matcher1) {
 		printf("Failed to create HWS matcher 1\n");
 		goto destroy_template;
@@ -297,20 +329,13 @@ int run_test_rule_insert(struct ibv_context *ibv_ctx)
 	rule_attr.queue_id = 0;
 	rule_attr.user_data = connect_rule;
 
-	ret = mlx5dr_rule_create(root_matcher, 0, items_conn, rule_actions, 1, &rule_attr, connect_rule);
+	ret = mlx5dr_rule_create(root_matcher, 0, items_conn, 0, rule_actions, &rule_attr, connect_rule);
 	if (ret) {
 		printf("Failed to create connect rule\n");
 		goto free_connect_rule;
 	}
 	pending_rules = 1;
 	poll_for_comp(ctx, rule_attr.queue_id, &pending_rules, 1, &miss_count, true);
-
-	/* Allocate HWS rules */
-	hws_rule = calloc(NUM_OF_RULES, mlx5dr_rule_get_handle_size());
-	if (!hws_rule) {
-		printf("Failed to allocate memory for hws_rule\n");
-		goto destroy_connect_rule;
-	}
 
 	for (j = 0; j < BIG_LOOP; j++) {
 		miss_count = 0;
@@ -327,10 +352,10 @@ int run_test_rule_insert(struct ibv_context *ibv_ctx)
 			ipv_value.dst_addr = i;
 			rule_actions[0].action = drop;
 
-			ret = mlx5dr_rule_create(hws_matcher1, 0, items, rule_actions, 1, &rule_attr, &hws_rule[i]);
+			ret = mlx5dr_rule_create(hws_matcher1, 0, items, 0, rule_actions, &rule_attr, &hws_rule[i]);
 			if (ret) {
 				printf("Failed to create hws rule\n");
-				goto free_hws_rules;
+				goto destroy_connect_rule;
 			}
 
 			pending_rules++;
@@ -359,7 +384,7 @@ int run_test_rule_insert(struct ibv_context *ibv_ctx)
 			ret = mlx5dr_rule_destroy(&hws_rule[i], &rule_attr);
 			if (ret) {
 				printf("Failed to destroy hws rule\n");
-				goto free_hws_rules;
+				goto destroy_connect_rule;
 			}
 
 			pending_rules++;
@@ -374,24 +399,24 @@ int run_test_rule_insert(struct ibv_context *ibv_ctx)
 		       miss_count, NUM_OF_RULES);
 	}
 
-	free(hws_rule);
 	mlx5dr_rule_destroy(connect_rule, &rule_attr);
 	free(connect_rule);
 	mlx5dr_action_destroy(drop);
 	mlx5dr_action_destroy(decap);
 	mlx5dr_action_destroy(to_hws_tbl);
+	mlx5dr_action_template_destroy(hws_at);
 	mlx5dr_matcher_destroy(hws_matcher1);
 	mlx5dr_match_template_destroy(mt);
+	mlx5dr_action_template_destroy(root_at);
 	mlx5dr_matcher_destroy(root_matcher);
 	mlx5dr_match_template_destroy(mt_root);
 	mlx5dr_table_destroy(hws_tbl);
 	mlx5dr_table_destroy(root_tbl);
+	free(hws_rule);
 	mlx5dr_context_close(ctx);
 
 	return 0;
 
-free_hws_rules:
-	free(hws_rule);
 destroy_connect_rule:
 	mlx5dr_rule_destroy(connect_rule, &rule_attr);
 free_connect_rule:
@@ -408,12 +433,18 @@ destroy_template:
 	mlx5dr_match_template_destroy(mt);
 destroy_root_matcher:
 	mlx5dr_matcher_destroy(root_matcher);
+destroy_hws_at:
+	mlx5dr_action_template_destroy(hws_at);
+destroy_root_at:
+	mlx5dr_action_template_destroy(root_at);
 destroy_root_template:
 	mlx5dr_match_template_destroy(mt_root);
 destroy_hws_tbl:
 	mlx5dr_table_destroy(hws_tbl);
 destroy_root_tbl:
 	mlx5dr_table_destroy(root_tbl);
+free_hws_rules:
+	free(hws_rule);
 close_ctx:
 	mlx5dr_context_close(ctx);
 out_err:

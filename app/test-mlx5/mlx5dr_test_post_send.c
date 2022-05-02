@@ -14,6 +14,7 @@ static int __mlx5dr_run_test_post(struct mlx5dr_context *ctx)
 	struct rte_flow_op_result res[NUM_POSTS + 1] = {{0}};
 	struct mlx5dr_send_engine_post_ctrl ctrl;
 	struct mlx5dr_rule rule[NUM_POSTS] = {{0}};
+	uint32_t tmp_rtc_id;
 	size_t len;
 	char *buf;
 	int ret = 0;
@@ -21,6 +22,7 @@ static int __mlx5dr_run_test_post(struct mlx5dr_context *ctx)
 
 	for (i = 0; i < NUM_POSTS - 1; i++) {
 		attr.user_data = (void *)&rule[i];
+		attr.used_id = &tmp_rtc_id;
 		ctrl = mlx5dr_send_engine_post_start(queue);
 		mlx5dr_send_engine_post_req_wqe(&ctrl, &buf, &len);
 		attr.rule = &rule[i];
