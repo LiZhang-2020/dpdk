@@ -4,8 +4,9 @@
 import struct
 import socket
 
-from pydiru.rte_flow import RteFlowItem, RteFlowItemEth, RteFlowItemIpv4, RteFlowItemTcp, RteFlowItemUdp, \
-    RteFlowItemEnd, RteFlowItemGtp, RteFlowItemGtpPsc, RteFlowItemIpv6, RteFlowItemVxlan
+from pydiru.rte_flow import RteFlowItem, RteFlowItemEth, RteFlowItemIpv4, RteFlowItemTcp, \
+    RteFlowItemUdp, RteFlowItemEnd, RteFlowItemGtp, RteFlowItemGtpPsc, RteFlowItemIpv6, \
+    RteFlowItemVxlan, RteFlowItemVlan
 from pydiru.providers.mlx5.steering.mlx5dr_rule import Mlx5drRuleAttr, Mlx5drRule
 import pydiru.pydiru_enums as p
 
@@ -19,7 +20,7 @@ UN_EXPECTED_SRC_IP = '1.1.1.3'
 UN_EXPECTED_IPV6 = "c0c1::c2c3:c4c5:c6c7:c8c9"
 UN_EXPECTED_SRC_PORT = 1235
 UN_EXPECTED_VXLAN_VNI = 8888888
-
+UN_EXPECTED_VLAN_ID = 1212
 
 
 class Mlx5drMatcherTest(PydiruTrafficTestCase):
@@ -87,6 +88,14 @@ class Mlx5drMatcherTest(PydiruTrafficTestCase):
         mask = RteFlowItemVxlan(flags=0xff, vni=0xffffff)
         val = RteFlowItemVxlan(flags=PacketConsts.VXLAN_FLAGS, vni=PacketConsts.VXLAN_VNI)
         return RteFlowItem(p.RTE_FLOW_ITEM_TYPE_VXLAN, val, mask)
+
+    @staticmethod
+    def create_vlan_rte_item():
+        mask = RteFlowItemVlan(tci=0xffff)
+        tci = (PacketConsts.VLAN_PRIO << 13) + (PacketConsts.VLAN_CFI << 12) + \
+              (PacketConsts.VLAN_ID)
+        val = RteFlowItemVlan(tci=tci)
+        return RteFlowItem(p.RTE_FLOW_ITEM_TYPE_VLAN, val, mask)
 
     def create_rx_rules(self, rte_item, root_rte_items=None):
         rte_items = [rte_item, RteFlowItemEnd()]
@@ -195,5 +204,16 @@ class Mlx5drMatcherTest(PydiruTrafficTestCase):
         exp_packet = gen_packet(self.server.msg_size, tunnel=TunnelType.VXLAN)
         un_exp_packet = gen_packet(self.server.msg_size, tunnel=TunnelType.VXLAN,
                                    vxlan_vni=UN_EXPECTED_VXLAN_VNI)
+        packets = [exp_packet, un_exp_packet]
+        raw_traffic(**self.traffic_args, packets=packets, expected_packet=exp_packet)
+
+    def test_mlx5dr_matcher_vlan(self):
+        """
+        Match on vlan attributes.
+        """
+        self.create_rx_rules(self.create_vlan_rte_item())
+        exp_packet = gen_packet(self.server.msg_size, with_vlan=True)
+        un_exp_packet = gen_packet(self.server.msg_size, with_vlan=True,
+                                   vlan_id=UN_EXPECTED_VLAN_ID)
         packets = [exp_packet, un_exp_packet]
         raw_traffic(**self.traffic_args, packets=packets, expected_packet=exp_packet)

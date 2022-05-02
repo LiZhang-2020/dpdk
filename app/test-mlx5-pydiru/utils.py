@@ -183,12 +183,14 @@ def gen_outer_headers(msg_size, tunnel=TunnelType.GTP_U, **kwargs):
     return outer
 
 
-def get_l2_header(src_mac=None, with_vlan=False, l3=PacketConsts.IP_V4):
+def get_l2_header(src_mac=None, with_vlan=False, l3=PacketConsts.IP_V4,
+                  vlan_id=PacketConsts.VLAN_ID):
     """
     Build l2 header.
     :param src_mac: Source MAC address to use in the packet.
     :param with_vlan: Tf True, add VLAN header to the packet
     :param l3: Packet layer 3 type: 4 for IPv4 or 6 for IPv6
+    :param vlan_id: vlan id to use in the packet.
     :return: l2 header
     """
     src_mac = src_mac if src_mac else bytes.fromhex(PacketConsts.SRC_MAC.replace(':', ''))
@@ -196,7 +198,7 @@ def get_l2_header(src_mac=None, with_vlan=False, l3=PacketConsts.IP_V4):
                          bytes.fromhex(PacketConsts.DST_MAC.replace(':', '')), src_mac)
     if with_vlan:
         packet += struct.pack('!HH', PacketConsts.VLAN_TPID, (PacketConsts.VLAN_PRIO << 13) +
-                              (PacketConsts.VLAN_CFI << 12) + PacketConsts.VLAN_ID)
+                              (PacketConsts.VLAN_CFI << 12) + vlan_id)
     if l3 == PacketConsts.IP_V4:
         packet += PacketConsts.ETHER_TYPE_IPV4.to_bytes(2, 'big')
     else:
@@ -230,6 +232,8 @@ def gen_packet(msg_size, l2=True, l3=PacketConsts.IP_V4, l4=PacketConsts.UDP_PRO
                 QFI (QoS flow identifier) field to use in the GTP PSC header.
             * *vni*
                 VXLAN VNI value to use in the packet.
+            * *vlan_id*
+                VLAN id value to use in the packet.
     :return: Bytes of the generated packet
     """
     if tunnel:
@@ -247,7 +251,8 @@ def gen_packet(msg_size, l2=True, l3=PacketConsts.IP_V4, l4=PacketConsts.UDP_PRO
     # Ethernet header
     if l2:
         src_mac = kwargs.get('src_mac', bytes.fromhex(PacketConsts.SRC_MAC.replace(':', '')))
-        packet = get_l2_header(src_mac, with_vlan, l3)
+        vlan_id = kwargs.get('vlan_id', PacketConsts.VLAN_ID)
+        packet = get_l2_header(src_mac, with_vlan, l3, vlan_id)
         if with_vlan:
             payload_size -= PacketConsts.VLAN_HEADER_SIZE
             ip_total_len -= PacketConsts.VLAN_HEADER_SIZE
