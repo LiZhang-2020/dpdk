@@ -7,9 +7,9 @@
 #define MLX5DR_ACTION_METER_INIT_COLOR_OFFSET 1
 
 /* This is the maximum allowed action order for each table type:
- *	TX: CTR, Push,  Modify, Meter, Encap, Term
- *	RX: TAG, Decap, Pop, Modify, CTR, Meter, Encap, Term
- *	FDB: Decap POP CTR Push Modify Meter Encap Term
+ *	TX: CTR, Push,  Modify, Meter, CT, Encap, Term
+ *	RX: TAG, Decap, Pop, Modify, CTR, Meter, CT, Encap, Term
+ *	FDB: Decap, POP, CTR, Push, Modify, Meter, CT, Encap, Term
  */
 static const uint32_t action_order_arr[MLX5DR_TABLE_TYPE_MAX][MLX5DR_ACTION_TYP_MAX] = {
 	[MLX5DR_TABLE_TYPE_NIC_RX] = {
@@ -20,6 +20,7 @@ static const uint32_t action_order_arr[MLX5DR_TABLE_TYPE_MAX][MLX5DR_ACTION_TYP_
 		BIT(MLX5DR_ACTION_TYP_MODIFY_HDR),
 		BIT(MLX5DR_ACTION_TYP_CTR),
 		BIT(MLX5DR_ACTION_TYP_ASO_METER),
+		BIT(MLX5DR_ACTION_TYP_ASO_CT),
 		BIT(MLX5DR_ACTION_TYP_L2_TO_TNL_L2) |
 		BIT(MLX5DR_ACTION_TYP_L2_TO_TNL_L3),
 		BIT(MLX5DR_ACTION_TYP_FT) |
@@ -33,6 +34,7 @@ static const uint32_t action_order_arr[MLX5DR_TABLE_TYPE_MAX][MLX5DR_ACTION_TYP_
 		BIT(MLX5DR_ACTION_TYP_PUSH_VLAN),
 		BIT(MLX5DR_ACTION_TYP_MODIFY_HDR),
 		BIT(MLX5DR_ACTION_TYP_ASO_METER),
+		BIT(MLX5DR_ACTION_TYP_ASO_CT),
 		BIT(MLX5DR_ACTION_TYP_L2_TO_TNL_L2) |
 		BIT(MLX5DR_ACTION_TYP_L2_TO_TNL_L3),
 		BIT(MLX5DR_ACTION_TYP_FT) |
@@ -48,6 +50,7 @@ static const uint32_t action_order_arr[MLX5DR_TABLE_TYPE_MAX][MLX5DR_ACTION_TYP_
 		BIT(MLX5DR_ACTION_TYP_PUSH_VLAN),
 		BIT(MLX5DR_ACTION_TYP_MODIFY_HDR),
 		BIT(MLX5DR_ACTION_TYP_ASO_METER),
+		BIT(MLX5DR_ACTION_TYP_ASO_CT),
 		BIT(MLX5DR_ACTION_TYP_L2_TO_TNL_L2) |
 		BIT(MLX5DR_ACTION_TYP_L2_TO_TNL_L3),
 		BIT(MLX5DR_ACTION_TYP_FT) |
@@ -380,6 +383,13 @@ static void mlx5dr_action_fill_stc_attr(struct mlx5dr_action *action,
 		attr->aso.devx_obj_id = obj->id;
 		attr->aso.return_reg_id = action->aso.return_reg_id;
 		break;
+	case MLX5DR_ACTION_TYP_ASO_CT:
+		attr->action_offset = MLX5DR_ACTION_OFFSET_DW6;
+		attr->action_type = MLX5_IFC_STC_ACTION_TYPE_ASO;
+		attr->aso.aso_type = ASO_OPC_MOD_CONNECTION_TRACKING;
+		attr->aso.devx_obj_id = obj->id;
+		attr->aso.return_reg_id = action->aso.return_reg_id;
+		break;
 	case MLX5DR_ACTION_TYP_VPORT:
 		attr->action_offset = MLX5DR_ACTION_OFFSET_HIT;
 		attr->action_type = MLX5_IFC_STC_ACTION_TYPE_JUMP_TO_VPORT;
@@ -663,22 +673,24 @@ free_action:
 	simple_free(action);
 	return NULL;
 }
-struct mlx5dr_action *
-mlx5dr_action_create_aso_meter(struct mlx5dr_context *ctx,
-			       struct mlx5dr_devx_obj *devx_obj,
-			       uint8_t return_reg_id,
-			       uint32_t flags)
+
+static struct mlx5dr_action *
+mlx5dr_action_create_aso(struct mlx5dr_context *ctx,
+			 enum mlx5dr_action_type action_type,
+			 struct mlx5dr_devx_obj *devx_obj,
+			 uint8_t return_reg_id,
+			 uint32_t flags)
 {
 	struct mlx5dr_action *action;
 	int ret;
 
 	if (mlx5dr_action_is_root_flags(flags)) {
-		DR_LOG(ERR, "ASO flow meter action cannot be used for root");
+		DR_LOG(ERR, "ASO action cannot be used over root table");
 		rte_errno = ENOTSUP;
 		return NULL;
 	}
 
-	action = mlx5dr_action_create_generic(ctx, flags, MLX5DR_ACTION_TYP_ASO_METER);
+	action = mlx5dr_action_create_generic(ctx, flags, action_type);
 	if (!action)
 		return NULL;
 
@@ -694,6 +706,26 @@ mlx5dr_action_create_aso_meter(struct mlx5dr_context *ctx,
 free_action:
 	simple_free(action);
 	return NULL;
+}
+
+struct mlx5dr_action *
+mlx5dr_action_create_aso_meter(struct mlx5dr_context *ctx,
+			       struct mlx5dr_devx_obj *devx_obj,
+			       uint8_t return_reg_id,
+			       uint32_t flags)
+{
+	return mlx5dr_action_create_aso(ctx, MLX5DR_ACTION_TYP_ASO_METER,
+					devx_obj, return_reg_id, flags);
+}
+
+struct mlx5dr_action *
+mlx5dr_action_create_aso_ct(struct mlx5dr_context *ctx,
+			    struct mlx5dr_devx_obj *devx_obj,
+			    uint8_t return_reg_id,
+			    uint32_t flags)
+{
+	return mlx5dr_action_create_aso(ctx, MLX5DR_ACTION_TYP_ASO_CT,
+					devx_obj, return_reg_id, flags);
 }
 
 struct mlx5dr_action *
@@ -1397,6 +1429,7 @@ static void mlx5dr_action_destroy_hws(struct mlx5dr_action *action)
 	case MLX5DR_ACTION_TYP_FT:
 	case MLX5DR_ACTION_TYP_TNL_L2_TO_L2:
 	case MLX5DR_ACTION_TYP_ASO_METER:
+	case MLX5DR_ACTION_TYP_ASO_CT:
 		mlx5dr_action_destroy_stcs(action);
 		break;
 	case MLX5DR_ACTION_TYP_TNL_L3_TO_L2:
@@ -1727,24 +1760,36 @@ mlx5dr_action_setter_tnl_l3_to_l2(struct mlx5dr_actions_apply_data *apply,
 }
 
 static void
-mlx5dr_action_setter_aso_meter(struct mlx5dr_actions_apply_data *apply,
-			       struct mlx5dr_actions_wqe_setter *setter)
+mlx5dr_action_setter_aso(struct mlx5dr_actions_apply_data *apply,
+			 struct mlx5dr_actions_wqe_setter *setter)
 {
 	struct mlx5dr_rule_action *rule_action;
 	uint32_t exe_aso_ctrl;
+	uint32_t offset;
 
 	rule_action = &apply->rule_action[setter->idx_double];
 
-	/* exe_aso_ctrl format:
-	 * [STC only and reserved bits 29b][init_color 2b][meter_id 1b]
-	 */
-	exe_aso_ctrl = rule_action->aso_meter.offset % MLX5_ASO_METER_NUM_PER_OBJ;
-	exe_aso_ctrl |= rule_action->aso_meter.init_color <<
-			MLX5DR_ACTION_METER_INIT_COLOR_OFFSET;
+	switch(rule_action->action->type){
+	case MLX5DR_ACTION_TYP_ASO_METER:
+		/* exe_aso_ctrl format:
+		 * [STC only and reserved bits 29b][init_color 2b][meter_id 1b]
+		 */
+		offset = rule_action->aso_meter.offset / MLX5_ASO_METER_NUM_PER_OBJ;
+		exe_aso_ctrl = rule_action->aso_meter.offset % MLX5_ASO_METER_NUM_PER_OBJ;
+		exe_aso_ctrl |= rule_action->aso_meter.init_color <<
+				MLX5DR_ACTION_METER_INIT_COLOR_OFFSET;
+		break;
+	case MLX5DR_ACTION_TYP_ASO_CT:
+		/* exe_aso_ctrl CT format:
+		 * [STC only and reserved bits 31b][direction 1b]
+		 */
+		offset = rule_action->aso_ct.offset / MLX5_ASO_CT_NUM_PER_OBJ;
+		exe_aso_ctrl = rule_action->aso_ct.direction;
+		break;
+	}
 
 	/* aso_object_offset format: [24B] */
-	apply->wqe_data[MLX5DR_ACTION_OFFSET_DW6] =
-		htobe32(rule_action->aso_meter.offset / MLX5_ASO_METER_NUM_PER_OBJ);
+	apply->wqe_data[MLX5DR_ACTION_OFFSET_DW6] = htobe32(offset);
 	apply->wqe_data[MLX5DR_ACTION_OFFSET_DW7] = htobe32(exe_aso_ctrl);
 
 	mlx5dr_action_apply_stc(apply, MLX5DR_ACTION_STC_IDX_DW6, setter->idx_double);
@@ -1877,10 +1922,10 @@ int mlx5dr_action_template_process(struct mlx5dr_action_template *at)
 			break;
 
 		case MLX5DR_ACTION_TYP_ASO_METER:
-			/* Double ASO meter */
+		case MLX5DR_ACTION_TYP_ASO_CT:
 			setter = mlx5dr_action_setter_find_first(last_setter, ASF_DOUBLE);
 			setter->flags |= ASF_DOUBLE;
-			setter->set_double = &mlx5dr_action_setter_aso_meter;
+			setter->set_double = &mlx5dr_action_setter_aso;
 			setter->idx_double = i;
 			break;
 

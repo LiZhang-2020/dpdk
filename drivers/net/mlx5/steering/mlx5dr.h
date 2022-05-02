@@ -43,6 +43,7 @@ enum mlx5dr_action_type {
 	MLX5DR_ACTION_TYP_POP_VLAN,
 	MLX5DR_ACTION_TYP_PUSH_VLAN,
 	MLX5DR_ACTION_TYP_ASO_METER,
+	MLX5DR_ACTION_TYP_ASO_CT,
 	MLX5DR_ACTION_TYP_MAX,
 };
 
@@ -71,6 +72,11 @@ enum mlx5dr_action_aso_meter_color {
 	MLX5DR_ACTION_ASO_METER_COLOR_YELLOW = 0x1,
 	MLX5DR_ACTION_ASO_METER_COLOR_GREEN = 0x2,
 	MLX5DR_ACTION_ASO_METER_COLOR_UNDEFINED = 0x3,
+};
+
+enum mlx5dr_action_aso_ct_flags {
+	MLX5DR_ACTION_ASO_CT_DIRECTION_INITIATOR = 0 << 0,
+	MLX5DR_ACTION_ASO_CT_DIRECTION_RESPONDER = 1 << 0,
 };
 
 enum mlx5dr_match_template_flags {
@@ -160,6 +166,11 @@ struct mlx5dr_rule_action {
 			uint32_t offset;
 			enum mlx5dr_action_aso_meter_color init_color;
 		} aso_meter;
+
+		struct {
+			uint32_t offset;
+			enum mlx5dr_action_aso_ct_flags direction;
+		} aso_ct;
 	};
 };
 
@@ -484,6 +495,24 @@ mlx5dr_action_create_aso_meter(struct mlx5dr_context *ctx,
 			       struct mlx5dr_devx_obj *devx_obj,
 			       uint8_t return_reg_c,
 			       uint32_t flags);
+
+/* Create direct rule ASO CT action.
+ *
+ * @param[in] ctx
+ *	The context in which the new action will be created.
+ * @param[in] devx_obj
+ *	The DEVX ASO object.
+ * @param[in] return_reg_id
+ * 	Copy the ASO object value into this reg_id, after a packet hits a rule with this ASO object.
+ * @param[in] flags
+ *	Action creation flags. (enum mlx5dr_action_flags)
+ * @return pointer to mlx5dr_action on success NULL otherwise.
+ */
+struct mlx5dr_action *
+mlx5dr_action_create_aso_ct(struct mlx5dr_context *ctx,
+			    struct mlx5dr_devx_obj *devx_obj,
+			    uint8_t return_reg_id,
+			    uint32_t flags);
 
 /* Destroy direct rule action.
  *
