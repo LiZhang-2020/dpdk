@@ -1364,7 +1364,6 @@ struct mlx5_dev_ctx_shared {
 	pthread_mutex_t lwm_config_lock;
 	uint32_t host_shaper_rate:8;
 	uint32_t lwm_triggered:1;
-	void *hws_tx;
 	struct mlx5_hws_cnt_svc_mng *cnt_svc;
 	struct mlx5_dev_shared_port port[]; /* per device port data array. */
 };
@@ -1612,6 +1611,7 @@ struct mlx5_priv {
 	struct rte_flow_template_table *hw_esw_sq_miss_root_tbl;
 	struct rte_flow_template_table *hw_esw_sq_miss_tbl;
 	struct rte_flow_template_table *hw_esw_zero_tbl;
+	struct rte_flow_template_table *hw_tx_meta_cpy_tbl;
 	struct mlx5_indexed_pool *flows[MLX5_FLOW_TYPE_MAXI];
 	/* RTE Flow rules. */
 	uint32_t ctrl_flows; /* Control flow rules. */

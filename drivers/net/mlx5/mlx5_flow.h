@@ -1315,14 +1315,6 @@ struct rte_flow_template_table {
 	uint32_t refcnt; /* Table reference counter. */
 };
 
-struct mlx5_hw_meta_tx_cpy_info {
-	struct rte_flow_pattern_template *pt;
-	struct rte_flow_actions_template *at;
-	struct rte_flow_template_table *tbl;
-	struct rte_flow *rule;
-	uint32_t cnt;
-};
-
 /*
  * Define list of valid combinations of RX Hash fields
  * (see enum ibv_rx_hash_fields).
@@ -2549,6 +2541,7 @@ int mlx5_flow_hw_esw_create_mgr_sq_miss_flow(struct rte_eth_dev *dev);
 int mlx5_flow_hw_esw_create_sq_miss_flow(struct rte_eth_dev *dev,
 					 uint32_t txq);
 int mlx5_flow_hw_esw_create_default_jump_flow(struct rte_eth_dev *dev);
+int mlx5_flow_hw_create_tx_default_mreg_copy_flow(struct rte_eth_dev *dev);
 int flow_hw_table_update(struct rte_eth_dev *dev,
 			 struct rte_flow_error *error);
 int mlx5_flow_actions_validate(struct rte_eth_dev *dev,
