@@ -1365,7 +1365,7 @@ mlx5dr_definer_fc_bind(struct mlx5dr_definer *definer,
 			return ret;
 
 		/* Move setter based on the location in the definer */
-		byte_diff = tag_offset % DW_SIZE - fc->byte_off % DW_SIZE;
+		byte_diff = fc->byte_off % DW_SIZE - tag_offset % DW_SIZE;
 		fc->bit_off = fc->bit_off + byte_diff * BITS_IN_BYTE;
 
 		/* Update offset in headers layout to offset in tag */
