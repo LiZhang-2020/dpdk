@@ -31,25 +31,25 @@
 				  bit_off)); \
 	} while (0)
 
-/* Setter function based on byte offset to directly set BE32 value  */
+/* Setter function based on byte offset to directly set FULL BE32 value  */
 #define DR_SET_BE32(p, v, byte_off, bit_off, mask) \
 	do { \
-		*((rte_be32_t *)(p) + (byte_off / 4)) = (v); \
+		*((rte_be32_t *)((uint8_t *)(p) + byte_off)) = (v); \
 	} while (0)
 
-/* Setter function based on byte offset to directly set BE32 value from ptr  */
+/* Setter function based on byte offset to directly set FULL BE32 value from ptr  */
 #define DR_SET_BE32P(p, v_ptr, byte_off, bit_off, mask) \
-	memcpy(((rte_be32_t *)(p) + (byte_off / 4)), v_ptr, 4);
+	memcpy((uint8_t *)(p) + byte_off, v_ptr, 4);
 
-/* Setter function based on byte offset to directly set BE16 value  */
+/* Setter function based on byte offset to directly set FULL BE16 value  */
 #define DR_SET_BE16(p, v, byte_off, bit_off, mask) \
 	do { \
-		*((rte_be16_t *)(p) + (byte_off / 2)) = (v); \
+		*((rte_be16_t *)((uint8_t *)(p) + byte_off)) = (v); \
 	} while (0)
 
-/* Setter function based on byte offset to directly set BE16 value from ptr  */
+/* Setter function based on byte offset to directly set FULL BE16 value from ptr  */
 #define DR_SET_BE16P(p, v_ptr, byte_off, bit_off, mask) \
-	memcpy(((rte_be16_t *)(p) + (byte_off / 2)), v_ptr, 2);
+	memcpy((uint8_t *)(p) + byte_off, v_ptr, 2);
 
 #define DR_CALC_SET_HDR(fc, hdr, field) \
 	do { \
