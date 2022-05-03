@@ -34,6 +34,25 @@ cdef extern  from '../../../../drivers/net/mlx5/steering/mlx5dr.h':
     cpdef enum mlx5dr_send_queue_actions:
         MLX5DR_SEND_QUEUE_ACTION_DRAIN
 
+    cpdef enum mlx5dr_action_type:
+        MLX5DR_ACTION_TYP_LAST
+        MLX5DR_ACTION_TYP_TNL_L2_TO_L2
+        MLX5DR_ACTION_TYP_L2_TO_TNL_L2
+        MLX5DR_ACTION_TYP_TNL_L3_TO_L2
+        MLX5DR_ACTION_TYP_L2_TO_TNL_L3
+        MLX5DR_ACTION_TYP_DROP
+        MLX5DR_ACTION_TYP_TIR
+        MLX5DR_ACTION_TYP_FT
+        MLX5DR_ACTION_TYP_CTR
+        MLX5DR_ACTION_TYP_TAG
+        MLX5DR_ACTION_TYP_MODIFY_HDR
+        MLX5DR_ACTION_TYP_VPORT
+        MLX5DR_ACTION_TYP_MISS
+        MLX5DR_ACTION_TYP_POP_VLAN
+        MLX5DR_ACTION_TYP_PUSH_VLAN
+        MLX5DR_ACTION_TYP_ASO_METER
+        MLX5DR_ACTION_TYP_MAX
+
 cdef extern  from '../../../../drivers/net/mlx5/mlx5_flow.h':
 
     cpdef enum mlx5_rte_flow_item_type:

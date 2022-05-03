@@ -37,16 +37,17 @@ cdef dr.mlx5dr_match_template *_match_template_create(pdr.rte_flow_item *items, 
 
 cdef dr.mlx5dr_matcher *_matcher_create(dr.mlx5dr_table *table,
                                         dr.mlx5dr_match_template *mt[],
-                                        num_of_mt, dr.mlx5dr_matcher_attr *attr):
-    return dr.mlx5dr_matcher_create(table, mt, num_of_mt, attr)
+                                        num_of_mt, dr.mlx5dr_action_template *at[],
+                                        num_of_at, dr.mlx5dr_matcher_attr *attr):
+    return dr.mlx5dr_matcher_create(table, mt, num_of_mt, at, num_of_at, attr)
 
 cdef _matcher_destroy(dr.mlx5dr_matcher *matcher):
     return dr.mlx5dr_matcher_destroy(matcher)
 
 cdef _rule_create(dr.mlx5dr_matcher *matcher, mt_idx, pdr.rte_flow_item *items,
-                  dr.mlx5dr_rule_action rule_actions[], num_of_actions,
+                  at_idx, dr.mlx5dr_rule_action rule_actions[],
                   dr.mlx5dr_rule_attr *attr, dr.mlx5dr_rule *rule_handle):
-    return dr.mlx5dr_rule_create(matcher, mt_idx, items, rule_actions, num_of_actions,
+    return dr.mlx5dr_rule_create(matcher, mt_idx, items, at_idx, rule_actions,
                                  attr, rule_handle)
 cdef _rule_destroy(dr.mlx5dr_rule *rule, dr.mlx5dr_rule_attr *attr):
     return dr.mlx5dr_rule_destroy(rule, attr)
@@ -94,3 +95,9 @@ cdef int _rule_get_handle_size():
 
 cdef dv.flow_hw_port_info *_flow_hw_conv_port_id(uint16_t port_id):
     return dv.flow_hw_conv_port_id(port_id)
+
+cdef dr.mlx5dr_action_template *_action_template_create(me.mlx5dr_action_type *actions_type):
+    return dr.mlx5dr_action_template_create(actions_type)
+
+cdef _action_template_destroy(dr.mlx5dr_action_template *action_template):
+    return dr.mlx5dr_action_template_destroy(action_template)

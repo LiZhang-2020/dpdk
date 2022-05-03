@@ -47,3 +47,6 @@ cdef class Mlx5drRuleAction(PydiruCM):
     cdef dr.mlx5dr_rule_action rule_action
     cdef Mlx5drAction action
     cdef void *data_buf
+
+cdef class Mlx5drActionTemplate(PydiruCM):
+    cdef dr.mlx5dr_action_template *action_template

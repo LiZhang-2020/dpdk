@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: BSD-3-Clause
 # Copyright (c) 2021, Nvidia Inc. All rights reserved.
 
+from pydiru.providers.mlx5.steering.mlx5dr_action cimport Mlx5drActionTemplate
 from pydiru.providers.mlx5.steering.mlx5dr_table cimport Mlx5drTable
 from pydiru.providers.mlx5.steering.mlx5dr_rule cimport Mlx5drRule
 import pydiru.providers.mlx5.steering.mlx5dr_enums as me
@@ -49,7 +50,7 @@ cdef class Mlx5drMacherTemplate(PydiruCM):
 
 
 cdef class Mlx5drMatcherAttr(PydiruObject):
-    def __init__(self, priority, mode, row_log=0, col_log=0, rule_log=0):
+    def __init__(self, priority, mode, row_log=0, col_log=0, rule_log=0, rule_idx_opt=False):
         """
          Initialize a Mlx5drMatcherAttr object representing mlx5dr_matcher_attr C struct.
         :param priority: Table priority
@@ -61,10 +62,12 @@ cdef class Mlx5drMatcherAttr(PydiruObject):
         :param row_log: Hint for the log number of rows to be created
         :param col_log: Hint for the log number of colunms to be created
         :param rule_log: Hint for the log number of rules to be created
+        :param rule_idx_opt: Determine if to use rule index optimization
         """
         super().__init__()
         self.attr.priority = priority
         self.attr.mode = mode
+        self.attr.optimize_using_rule_idx = rule_idx_opt
         if mode == me.MLX5DR_MATCHER_RESOURCE_MODE_HTABLE:
             self.attr.table.sz_row_log = row_log
             self.attr.table.sz_col_log = col_log
@@ -74,28 +77,40 @@ cdef class Mlx5drMatcherAttr(PydiruObject):
 
 cdef class Mlx5drMatcher(PydiruCM):
     def __init__(self, Mlx5drTable table, matcher_templates, num_of_templates,
-                 Mlx5drMatcherAttr matcher_attr):
+                 Mlx5drMatcherAttr matcher_attr, action_templates):
         """
         Initializes a Mlx5Mlx5drMatcherdrContext object representing mlx5dr_matcher struct.
         :param table: Matcher table
         :param matcher_templates: List of matcher templates
         :param num_of_templates: Number of matcher templates
         :param matcher_attr: Attributes for creating Mlx5drMatcher
+        :param action_templates: List of action templates
         """
         super().__init__()
         cdef dr.mlx5dr_match_template **mt
+        cdef dr.mlx5dr_action_template **at
         mt = <dr.mlx5dr_match_template **>calloc(num_of_templates, sizeof(dr.mlx5dr_match_template *))
         if mt == NULL:
+            raise MemoryError('Failed allocating memory.')
+        at = <dr.mlx5dr_action_template **>calloc(len(action_templates),
+                                                  sizeof(dr.mlx5dr_action_template *))
+        if at == NULL:
+            free(mt)
             raise MemoryError('Failed allocating memory.')
         for i in range(num_of_templates):
             matcher_template = <Mlx5drMacherTemplate>(matcher_templates[i])
             mt[i] = <dr.mlx5dr_match_template *>(matcher_template.matcher_template)
-        self.matcher = mlx5._matcher_create(table.table, mt, num_of_templates,
-                                            &matcher_attr.attr)
+        for i in range(len(action_templates)):
+            action_template = <Mlx5drActionTemplate>(action_templates[i])
+            at[i] = <dr.mlx5dr_action_template *>(action_template.action_template)
+        self.matcher = mlx5._matcher_create(table.table, mt, num_of_templates, at,
+                                            len(action_templates), &matcher_attr.attr)
         free(mt)
+        free(at)
         if self.matcher == NULL:
             raise PydiruErrno('Failed creating Mlx5drMatcher.')
         self.matcher_templates = matcher_templates[:]
+        self.action_templates = action_templates[:]
         table.add_ref(self)
         self.mlx5dr_table = table
         self.mlx5dr_rules = weakref.WeakSet()
@@ -118,4 +133,5 @@ cdef class Mlx5drMatcher(PydiruCM):
                 raise PydiruError('Failed to destroy Mlx5drMatcher.', rc)
             self.matcher = NULL
             self.matcher_templates = None
+            self.action_templates = None
             self.mlx5dr_table = None

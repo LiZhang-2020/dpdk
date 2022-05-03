@@ -16,16 +16,17 @@ cimport pydiru.libpydiru as pdr
 
 
 cdef class Mlx5drRuleAttr(PydiruCM):
-    def __init__(self, queue_id=0, user_data=None, burst=0):
+    def __init__(self, queue_id=0, user_data=None, burst=0, rule_idx=0):
         super().__init__()
 
         self.attr.queue_id = queue_id
         self.attr.user_data = <void *>user_data if user_data else NULL
         self.attr.burst = burst
+        self.attr.rule_idx = rule_idx
 
 
 cdef class Mlx5drRule(PydiruCM):
-    def __init__(self, Mlx5drMatcher matcher, mt_idx, rte_items, rule_actions,
+    def __init__(self, Mlx5drMatcher matcher, mt_idx, rte_items, at_idx, rule_actions,
                  num_of_actions, Mlx5drRuleAttr rule_attr_create, Mlx5drContext dr_ctx=None,
                  Mlx5drRuleAttr rule_attr_destroy=None):
         """
@@ -33,6 +34,7 @@ cdef class Mlx5drRule(PydiruCM):
         :param matcher: Matcher to create a rule with
         :param mt_idx: Index of the matcher template to use
         :param rte_items: Rte items defining values to match on
+        :param at_idx: Index of the action template to use
         :param rule_actions: Actions to perform on match
         :param num_of_actions: Number of rule actions
         :param rule_attr_create: Attributes for rule creation
@@ -64,8 +66,8 @@ cdef class Mlx5drRule(PydiruCM):
             r = <RteFlowItem>(rte_items[i])
             memcpy(<void *>&(item_ptr[i]), <void *>&(r.item), sizeof(pdr.rte_flow_item))
 
-        rc = mlx5._rule_create(matcher.matcher, mt_idx, item_ptr, actions_ptr, num_of_actions,
-			       &rule_attr_create.attr, rule)
+        rc = mlx5._rule_create(matcher.matcher, mt_idx, item_ptr, at_idx, actions_ptr,
+                               &rule_attr_create.attr, rule)
         free(item_ptr)
         free(actions_ptr)
         if rc:

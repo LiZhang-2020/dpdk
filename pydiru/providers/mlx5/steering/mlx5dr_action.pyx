@@ -4,6 +4,7 @@
 from pydiru.providers.mlx5.steering.mlx5dr_context cimport Mlx5drContext
 from pydiru.providers.mlx5.steering.mlx5dr_table cimport Mlx5drTable
 from pydiru.providers.mlx5.steering.mlx5dr_rule cimport Mlx5drRule
+cimport pydiru.providers.mlx5.steering.mlx5dr_enums_c as me
 from pydiru.pydiru_error import PydiruError
 cimport pydiru.providers.mlx5.mlx5 as mlx5
 from pydiru.base cimport close_weakrefs
@@ -344,3 +345,34 @@ cdef class Mlx5drRuleAction(PydiruCM):
             if self.data_buf:
                 free(self.data_buf)
                 self.data_buf = NULL
+
+
+cdef class Mlx5drActionTemplate(PydiruCM):
+    def __init__(self, actions_types):
+        """
+        Initializes a Mlx5drActionTemplate object representing mlx5dr_action_template struct.
+        :param actions_types: List of action types
+        """
+        super().__init__()
+        cdef me.mlx5dr_action_type *action_types_arr = NULL
+        action_types_arr = <me.mlx5dr_action_type *>calloc(len(actions_types),
+                                                           sizeof(me.mlx5dr_action_type))
+        if action_types_arr == NULL:
+            raise MemoryError('Memory allocation failed.')
+        for i in range(len(actions_types)):
+            action_types_arr[i] = actions_types[i]
+        self.action_template = mlx5._action_template_create(action_types_arr)
+        free(action_types_arr)
+        if self.action_template == NULL:
+            raise PydiruErrno('Mlx5drActionTemplate creation failed.')
+
+    def __dealloc__(self):
+        self.close()
+
+    cpdef close(self):
+        if self.action_template != NULL:
+            self.logger.debug('Closing Mlx5drActionTemplate.')
+            rc = mlx5._action_template_destroy(self.action_template)
+            if rc:
+                raise PydiruError('Failed to destroy Mlx5drActionTemplate.', rc)
+            self.action_template = NULL

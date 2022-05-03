@@ -30,6 +30,8 @@ cdef extern  from '../../../../drivers/net/mlx5/steering/mlx5dr.h':
 
     cdef struct mlx5dr_match_template
 
+    cdef struct mlx5dr_action_template
+
     cdef struct table_:
         uint8_t sz_row_log
         uint8_t sz_col_log
@@ -39,10 +41,10 @@ cdef extern  from '../../../../drivers/net/mlx5/steering/mlx5dr.h':
 
     cdef struct mlx5dr_matcher_attr:
         uint32_t priority
+        uint8_t optimize_using_rule_idx
         me.mlx5dr_matcher_resource_mode mode
         table_ table
         rule_ rule
-
 
     cdef struct mlx5dr_action:
         pass
@@ -80,6 +82,7 @@ cdef extern  from '../../../../drivers/net/mlx5/steering/mlx5dr.h':
     cdef struct mlx5dr_rule_attr:
         uint16_t queue_id
         void *user_data
+        uint32_t rule_idx
         uint32_t burst
 
     cdef struct mlx5dr_devx_obj:
@@ -98,12 +101,14 @@ cdef extern  from '../../../../drivers/net/mlx5/steering/mlx5dr.h':
     mlx5dr_matcher *mlx5dr_matcher_create(mlx5dr_table *table,
                                           mlx5dr_match_template *mt[],
                                           uint8_t num_of_mt,
+                                          mlx5dr_action_template *at[],
+                                          uint8_t num_of_at,
                                           mlx5dr_matcher_attr *attr)
     int mlx5dr_matcher_destroy(mlx5dr_matcher *matcher)
 
     int mlx5dr_rule_get_handle_size()
     int mlx5dr_rule_create(mlx5dr_matcher *matcher, uint8_t mt_idx, pdr.rte_flow_item *items,
-                           mlx5dr_rule_action rule_actions[], uint8_t num_of_actions,
+                           uint8_t at_idx, mlx5dr_rule_action rule_actions[],
                            mlx5dr_rule_attr *attr, mlx5dr_rule *rule_handle)
     int mlx5dr_rule_destroy(mlx5dr_rule *rule, mlx5dr_rule_attr *attr)
 
@@ -134,3 +139,5 @@ cdef extern  from '../../../../drivers/net/mlx5/steering/mlx5dr.h':
                                uint32_t res_nb)
     int mlx5dr_debug_dump(mlx5dr_context *ctx, s.FILE *f)
     int mlx5dr_send_queue_action(mlx5dr_context *ctx, uint16_t queue_id, uint32_t actions)
+    mlx5dr_action_template *mlx5dr_action_template_create(me.mlx5dr_action_type action_type[])
+    int mlx5dr_action_template_destroy(mlx5dr_action_template *at)
