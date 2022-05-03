@@ -4,13 +4,12 @@
 from pydiru.rte_flow import RteFlowItem, RteFlowItemEth, RteFlowItemEnd
 from pydiru.providers.mlx5.steering.mlx5dr_rule import Mlx5drRuleAttr, Mlx5drRule
 from pydiru.providers.mlx5.steering.mlx5dr_matcher import Mlx5drMacherTemplate
-from pydiru.providers.mlx5.steering.mlx5dr_devx_objects import Mlx5drDevxObj
 import pydiru.providers.mlx5.steering.mlx5dr_enums as me
 from pyverbs.pyverbs_error import PyverbsError
 import pydiru.pydiru_enums as p
 
 from .utils import raw_traffic, gen_packet, PacketConsts, create_sipv4_rte_items, TunnelType, gen_outer_headers, \
-    get_l2_header, create_dipv4_rte_items, create_devx_counter, query_counter, BULK_512, \
+    get_l2_header, create_dipv4_rte_items, BULK_512, create_counter_action, verify_counter, \
     create_eth_ipv4_l4_rte_items, create_tunneled_gtp_flags_rte_items, create_eth_ipv4_rte_items, \
     create_tunneled_gtp_teid_rte_items, is_cx6dx, ModifyFieldId, ModifyFieldLen, \
     SET_ACTION, NEW_MAC_STR
@@ -192,21 +191,6 @@ class Mlx5drTrafficTest(PydiruTrafficTestCase):
                           rule_actions=rule_actions, num_of_actions=len(rule_actions),
                           rule_attr_create=Mlx5drRuleAttr(user_data=bytes(8)), dr_ctx=agr_obj.dr_ctx)
 
-    def create_counter_action(self, agr_obj, flags=me.MLX5DR_ACTION_FLAG_HWS_RX,
-                              bulk=0, offset=0):
-        devx_counter, counter_id = create_devx_counter(agr_obj.dv_ctx, bulk=bulk)
-        self.devx_objects.append(devx_counter)
-        dr_counter = Mlx5drDevxObj(devx_counter, counter_id)
-        _, counter_ra = agr_obj.create_rule_action('counter', flags=flags,
-                                                   dr_counter=dr_counter)
-        counter_ra.counter_offset = offset
-        return devx_counter, counter_id, counter_ra
-
-    def verify_counter(self, agr_obj, devx_counter, counter_id, offset=0):
-        packets, octets = query_counter(devx_counter, counter_id, offset)
-        self.assertEqual(packets, agr_obj.num_msgs, 'Counter packets number is wrong.')
-        self.assertEqual(octets, agr_obj.num_msgs * agr_obj.msg_size,
-                         'Counter octets number is wrong.')
 
     def test_mlx5dr_default_miss(self):
         """
@@ -231,7 +215,7 @@ class Mlx5drTrafficTest(PydiruTrafficTestCase):
         _, miss_tx_ra = self.client.create_rule_action('def_miss',
                                                        flags=me.MLX5DR_ACTION_FLAG_HWS_TX)
         devx_counter, counter_id, counter_tx_ra = \
-            self.create_counter_action(self.client, flags=me.MLX5DR_ACTION_FLAG_HWS_TX)
+            create_counter_action(self, self.client, flags=me.MLX5DR_ACTION_FLAG_HWS_TX)
         self.miss_tx_rule = self.create_miss_rule(self.client, rte_items=sip_rte,
                                                   rule_actions=[counter_tx_ra, miss_tx_ra])
         # RX
@@ -255,7 +239,7 @@ class Mlx5drTrafficTest(PydiruTrafficTestCase):
         raw_traffic(self.client, self.server, self.server.num_msgs, [packet1, packet2],
                     expected_packet=packet1)
         # Verify counter
-        self.verify_counter(self.client, devx_counter, counter_id)
+        verify_counter(self, self.client, devx_counter, counter_id)
 
     def decap_rule_traffic(self, decap_type=me.MLX5DR_ACTION_REFORMAT_TYPE_TNL_L2_TO_L2):
         """
@@ -395,10 +379,10 @@ class Mlx5drTrafficTest(PydiruTrafficTestCase):
         tx_offset = 0x123
         rx_offset = 0x111
         tx_devx_counter, tx_counter_id, counter_tx_ra = \
-            self.create_counter_action(self.client, flags=me.MLX5DR_ACTION_FLAG_HWS_TX,
+            create_counter_action(self, self.client, flags=me.MLX5DR_ACTION_FLAG_HWS_TX,
                                        bulk=BULK_512, offset=tx_offset)
         rx_devx_counter, rx_counter_id, counter_rx_ra = \
-            self.create_counter_action(self.server, flags=me.MLX5DR_ACTION_FLAG_HWS_RX,
+            create_counter_action(self, self.server, flags=me.MLX5DR_ACTION_FLAG_HWS_RX,
                                        bulk=BULK_512, offset=rx_offset)
         self.rx_rule = Mlx5drRule(self.server.matcher, 0, rte_items,
                                   [counter_rx_ra, tir_ra], 2,
@@ -411,12 +395,12 @@ class Mlx5drTrafficTest(PydiruTrafficTestCase):
         packet = gen_packet(self.server.msg_size)
         raw_traffic(self.client, self.server, self.server.num_msgs, [packet])
         # Verify counters
-        self.verify_counter(self.client, tx_devx_counter, tx_counter_id, tx_offset)
+        verify_counter(self, self.client, tx_devx_counter, tx_counter_id, tx_offset)
         # RX steering counters include FCS\VCRC in the byte count on cx6dx.
         # Add extra 4 bytes to each packet.
         if is_cx6dx(self.attr):
             self.server.msg_size += 4
-        self.verify_counter(self.server, rx_devx_counter, rx_counter_id, rx_offset)
+        verify_counter(self, self.server, rx_devx_counter, rx_counter_id, rx_offset)
 
     @staticmethod
     def root_ttl_drops(agr_obj):

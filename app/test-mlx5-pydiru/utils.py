@@ -11,6 +11,7 @@ from pydiru.rte_flow import RteFlowItem, RteFlowItemEth, RteFlowItemIpv4, \
     RteFlowItemUdp, RteFlowItemTcp, RteFlowItemGtp, RteFlowItemGtpPsc, RteFlowItemEnd
 from pydiru.providers.mlx5.steering.mlx5dr_rule import Mlx5drRuleAttr, Mlx5drRule
 from pydiru.providers.mlx5.steering.mlx5dr_matcher import Mlx5drMacherTemplate
+from pydiru.providers.mlx5.steering.mlx5dr_devx_objects import Mlx5drDevxObj
 from pyverbs.pyverbs_error import PyverbsError, PyverbsRDMAError
 import pydiru.providers.mlx5.steering.mlx5dr_enums as me
 from pyverbs.providers.mlx5.mlx5dv import Mlx5DevxObj
@@ -568,3 +569,21 @@ def create_tunneled_gtp_teid_rte_items(with_qfi=False, inner_l4=socket.IPPROTO_U
 def is_cx6dx(dev_attrs):
     return dev_attrs.vendor_id == MELLANOX_VENDOR_ID and \
         dev_attrs.vendor_part_id == VendorPartID.CX6DX
+
+
+def create_counter_action(test, agr_obj, flags=me.MLX5DR_ACTION_FLAG_HWS_RX,
+                          bulk=0, offset=0):
+    devx_counter, counter_id = create_devx_counter(agr_obj.dv_ctx, bulk=bulk)
+    test.devx_objects.append(devx_counter)
+    dr_counter = Mlx5drDevxObj(devx_counter, counter_id)
+    _, counter_ra = agr_obj.create_rule_action('counter', flags=flags,
+                                               dr_counter=dr_counter)
+    counter_ra.counter_offset = offset
+    return devx_counter, counter_id, counter_ra
+
+
+def verify_counter(test, agr_obj, devx_counter, counter_id, offset=0):
+    packets, octets = query_counter(devx_counter, counter_id, offset)
+    test.assertEqual(packets, agr_obj.num_msgs, 'Counter packets number is wrong.')
+    test.assertEqual(octets, agr_obj.num_msgs * agr_obj.msg_size,
+                     'Counter octets number is wrong.')
