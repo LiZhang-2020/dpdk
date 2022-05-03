@@ -8690,7 +8690,19 @@ flow_dv_translate_item_meta(struct rte_eth_dev *dev,
 	mask = meta_m->data;
 	if (key_type == MLX5_SET_MATCHER_HS_M)
 		mask = value;
-	reg = flow_get_metadata_reg(dev, attr, NULL);
+	/*
+	 * In the current implementation, REG_B cannot be used to match.
+	 * Force to use REG_C_1 in HWS root table as other tables.
+	 * This map may change.
+	 * NIC: modify - REG_B to be present in SW
+	 *      match - REG_C_1 when copied from FDB, different from SWS
+	 * FDB: modify - REG_C_1 in Xmeta mode, REG_NON in legacy mode
+	 *      match - REG_C_1 in FDB
+	 */
+	if (!!(key_type & MLX5_SET_MATCHER_SW))
+		reg = flow_get_metadata_reg(dev, attr, NULL);
+	else
+		reg = flow_hw_get_reg_id(RTE_FLOW_ITEM_TYPE_META, 0);
 	if (reg < 0)
 		return;
 	MLX5_ASSERT(reg != REG_NON);
