@@ -5,6 +5,7 @@ from pydiru.providers.mlx5.steering.mlx5dr_action cimport Mlx5drRuleAction
 from pydiru.providers.mlx5.steering.mlx5dr_context cimport Mlx5drContext
 from pydiru.providers.mlx5.steering.mlx5dr_matcher cimport Mlx5drMatcher
 from pydiru.pydiru_error import PydiruError
+cimport pydiru.providers.mlx5.mlx5 as mlx5
 from pydiru.rte_flow cimport RteFlowResult
 from pydiru.rte_flow cimport RteFlowItem
 from libc.stdlib cimport free, calloc
@@ -45,7 +46,7 @@ cdef class Mlx5drRule(PydiruCM):
         cdef dr.mlx5dr_rule_action rule_action
         cdef dr.mlx5dr_rule_action *actions_ptr = NULL
 
-        rule = <dr.mlx5dr_rule *>calloc(1, dr.mlx5dr_rule_get_handle_size())
+        rule = <dr.mlx5dr_rule *>calloc(1, mlx5._rule_get_handle_size())
         item_ptr = <pdr.rte_flow_item *>calloc(len(rte_items), sizeof(pdr.rte_flow_item))
         actions_ptr = <dr.mlx5dr_rule_action *>calloc(num_of_actions, sizeof(dr.mlx5dr_rule_action))
 
@@ -63,8 +64,8 @@ cdef class Mlx5drRule(PydiruCM):
             r = <RteFlowItem>(rte_items[i])
             memcpy(<void *>&(item_ptr[i]), <void *>&(r.item), sizeof(pdr.rte_flow_item))
 
-        rc = dr.mlx5dr_rule_create(matcher.matcher, mt_idx, item_ptr, actions_ptr, num_of_actions,
-                                   &rule_attr_create.attr, rule)
+        rc = mlx5._rule_create(matcher.matcher, mt_idx, item_ptr, actions_ptr, num_of_actions,
+			       &rule_attr_create.attr, rule)
         free(item_ptr)
         free(actions_ptr)
         if rc:
@@ -93,7 +94,7 @@ cdef class Mlx5drRule(PydiruCM):
         if self.rule != NULL:
             self.logger.debug('Closing Mlx5drRule.')
             attr = self.rule_attr_destroy
-            rc = dr.mlx5dr_rule_destroy(self.rule, <dr.mlx5dr_rule_attr *>&(attr.attr))
+            rc = mlx5._rule_destroy(self.rule, <dr.mlx5dr_rule_attr *>&(attr.attr))
             if rc:
                 raise PydiruError('Failed to destroy Mlx5drRule.', rc)
             free(self.rule)

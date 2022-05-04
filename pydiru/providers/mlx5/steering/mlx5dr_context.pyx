@@ -1,10 +1,10 @@
 # SPDX-License-Identifier: BSD-3-Clause
 # Copyright (c) 2021, Nvidia Inc. All rights reserved.
 
-from pydiru.providers.mlx5.steering.libmlx5dr cimport mlx5dr_context_close
 from pydiru.providers.mlx5.steering.mlx5dr_table cimport Mlx5drTable
 from pydiru.providers.mlx5.steering.mlx5dr_action cimport Mlx5drAction
 from pydiru.pydiru_error import PydiruError
+cimport pydiru.providers.mlx5.mlx5 as mlx5
 from pydiru.rte_flow cimport RteFlowResult
 from pydiru.base cimport close_weakrefs
 from libc.stdlib cimport calloc, free
@@ -48,9 +48,8 @@ cdef class Mlx5drContext(PydiruCM):
         :param attr: Attributes for creating Mlx5drContext
         """
         super().__init__()
-        cdef v.ibv_context *ctx_ptr = <v.ibv_context *>(context.context)
-        self.context = dr.mlx5dr_context_open(ctx_ptr,
-                                              <dr.mlx5dr_context_attr *>&(attr.attr))
+        cdef v.ibv_context *ctx_ptr = <v.ibv_context *> context.context
+        self.context = mlx5._context_open(ctx_ptr, &attr.attr)
         if self.context == NULL:
             raise PydiruErrno('Failed creating Mlx5drContext')
         self.mlx5dr_tables = weakref.WeakSet()
@@ -92,7 +91,7 @@ cdef class Mlx5drContext(PydiruCM):
             pci_flow_en = args['a'].encode('UTF-8')
             argv[argc] = pci_flow_en
             argc += 1
-        res = p.rte_eal_init(argc, argv)
+        res = mlx5._rte_init(argc, argv)
         if res < 0:
             raise PydiruError('Failed initializing RTE')
 
@@ -109,7 +108,7 @@ cdef class Mlx5drContext(PydiruCM):
         if res_list_ptr == NULL:
             raise MemoryError('Failed allocating memory')
         results = []
-        res = dr.mlx5dr_send_queue_poll(self.context, queue_id, res_list_ptr, res_nb)
+        res = mlx5._send_queue_poll(self.context, queue_id, res_list_ptr, res_nb)
         if res > 0:
             for r in range(res):
                 if res_list_ptr[r].status == e.RTE_FLOW_OP_ERROR:
@@ -130,7 +129,7 @@ cdef class Mlx5drContext(PydiruCM):
         fp = s.fopen(filepath.encode('utf-8'), 'w+')
         if fp == NULL:
             raise PydiruError('Opening dump file failed.')
-        rc = dr.mlx5dr_debug_dump(self.context, fp)
+        rc = mlx5._debug_dump(self.context, fp)
         if s.fclose(fp) != 0:
             raise PydiruError('Closing dump file failed.')
         if rc != 0:
@@ -142,7 +141,7 @@ cdef class Mlx5drContext(PydiruCM):
         :param queue_id: The id of the queue to perform the action on.
         :param actions: Actions to perform on the queue. (enum mlx5dr_send_queue_actions)
         """
-        res = dr.mlx5dr_send_queue_action(self.context, queue_id, actions)
+        res = mlx5._send_queue_action(self.context, queue_id, actions)
         if res:
             raise PydiruError('Send queue action failed.', res)
 
@@ -153,7 +152,7 @@ cdef class Mlx5drContext(PydiruCM):
         if self.context != NULL:
             self.logger.debug('Closing Mlx5drContext.')
             close_weakrefs([self.mlx5dr_actions, self.mlx5dr_tables])
-            rc = mlx5dr_context_close(<dr.mlx5dr_context *>(self.context))
+            rc = mlx5._context_close(<dr.mlx5dr_context *>(self.context))
             if rc:
                 raise PydiruError('Failed to destroy Mlx5drContext.', rc)
             self.context = NULL

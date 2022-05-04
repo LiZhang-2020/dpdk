@@ -5,11 +5,11 @@ from pydiru.providers.mlx5.steering.mlx5dr_table cimport Mlx5drTable
 from pydiru.providers.mlx5.steering.mlx5dr_rule cimport Mlx5drRule
 import pydiru.providers.mlx5.steering.mlx5dr_enums as me
 from pydiru.pydiru_error import PydiruError
+cimport pydiru.providers.mlx5.mlx5 as mlx5
 from pydiru.rte_flow cimport RteFlowItem
 from pydiru.base cimport close_weakrefs
 from libc.stdlib cimport free, calloc
 from pydiru.base import PydiruErrno
-from libc.stdint cimport uint8_t
 from libc.string cimport memcpy
 cimport pydiru.libpydiru as pdr
 import weakref
@@ -31,7 +31,7 @@ cdef class Mlx5drMacherTemplate(PydiruCM):
         for i in range(len(rte_flow_items)):
             r = <RteFlowItem>(rte_flow_items[i])
             memcpy(<void *>&(item_ptr[i]), <void *>&(r.item), sizeof(pdr.rte_flow_item))
-        self.matcher_template = dr.mlx5dr_match_template_create(item_ptr, flags)
+        self.matcher_template = mlx5._match_template_create(item_ptr, flags)
         free(item_ptr)
         if self.matcher_template == NULL:
             raise PydiruErrno('Failed to create Mlx5drMacherTemplate')
@@ -42,7 +42,7 @@ cdef class Mlx5drMacherTemplate(PydiruCM):
     cpdef close(self):
         if self.matcher_template != NULL:
             self.logger.debug('Closing Mlx5drMacherTemplate.')
-            rc = dr.mlx5dr_match_template_destroy(self.matcher_template)
+            rc = mlx5._match_template_destroy(self.matcher_template)
             if rc:
                 raise PydiruError('Failed to destroy Mlx5drMacherTemplate.', rc)
             self.matcher_template = NULL
@@ -90,7 +90,8 @@ cdef class Mlx5drMatcher(PydiruCM):
         for i in range(num_of_templates):
             matcher_template = <Mlx5drMacherTemplate>(matcher_templates[i])
             mt[i] = <dr.mlx5dr_match_template *>(matcher_template.matcher_template)
-        self.matcher = dr.mlx5dr_matcher_create(table.table, mt, num_of_templates, &matcher_attr.attr)
+        self.matcher = mlx5._matcher_create(table.table, mt, num_of_templates,
+                                            &matcher_attr.attr)
         free(mt)
         if self.matcher == NULL:
             raise PydiruErrno('Failed creating Mlx5drMatcher.')
@@ -112,7 +113,7 @@ cdef class Mlx5drMatcher(PydiruCM):
         if self.matcher != NULL:
             self.logger.debug('Closing Mlx5drMatcher.')
             close_weakrefs([self.mlx5dr_rules])
-            rc = dr.mlx5dr_matcher_destroy(self.matcher)
+            rc = mlx5._matcher_destroy(self.matcher)
             if rc:
                 raise PydiruError('Failed to destroy Mlx5drMatcher.', rc)
             self.matcher = NULL
