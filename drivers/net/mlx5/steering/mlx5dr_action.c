@@ -1722,11 +1722,11 @@ int mlx5dr_actions_quick_apply(struct mlx5dr_send_engine *queue,
 	wqe_ctrl->stc_ix[MLX5DR_ACTION_STC_IDX_HIT] = htobe32(stc_arr[MLX5DR_ACTION_STC_IDX_HIT]);
 
 	if (is_jumbo) {
-		/* With jumbo we temporarily support counter and HIT action */
-		wqe_ctrl->stc_ix[MLX5DR_ACTION_STC_IDX_DW5] = htobe32(default_stc->nop_dw5.offset);
-		wqe_ctrl->stc_ix[MLX5DR_ACTION_STC_IDX_DW6] = htobe32(default_stc->nop_dw6.offset);
-		wqe_ctrl->stc_ix[MLX5DR_ACTION_STC_IDX_DW7] = htobe32(default_stc->nop_dw7.offset);
-		wqe_ctrl->stc_ix[MLX5DR_ACTION_STC_IDX_CTRL] |= htobe32(MLX5DR_ACTION_STC_IDX_LAST_COMBO2 << 29);
+		/* With jumbo we temporarily support counter and HIT action
+		 * all the other STC's are not used.
+		 */
+		wqe_ctrl->stc_ix[MLX5DR_ACTION_STC_IDX_CTRL] |=
+			htobe32(MLX5DR_ACTION_STC_IDX_LAST_JUMBO_STE << 29);
 		return 0;
 	}
 
