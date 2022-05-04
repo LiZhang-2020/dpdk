@@ -27,6 +27,9 @@ BULK_512 = 0b100
 
 MELLANOX_VENDOR_ID = 0x02c9
 
+SET_ACTION = 0x1
+NEW_MAC_STR = '88:88:88:88:88:88'
+
 
 class VendorPartID:
     CX6DX = 0x101d
@@ -35,6 +38,19 @@ class VendorPartID:
 class TunnelType:
     GTP_U = 'GPT-U'
     VXLAN = 'VXLAN'
+
+
+class ModifyFieldId:
+    OUT_SMAC_47_16 = 0x1
+    OUT_SMAC_15_0 = 0x2
+    OUT_IPV4_TTL = 0xa
+    OUT_UDP_SPORT = 0xb
+    OUT_UDP_DPORT = 0xc
+
+
+class ModifyFieldLen:
+    OUT_SMAC_47_16 = 32
+    OUT_SMAC_15_0 = 16
 
 
 class PacketConsts:
@@ -93,6 +109,11 @@ class PacketConsts:
     GTP_PSC_TYPE = 0x85
     GTP_PSC_PDU_TYPE = 1
     GTP_PSC_QFI = 3
+    # Modify Action consts
+    OUT_SMAC_47_16_FIELD_ID = 0x1
+    OUT_SMAC_47_16_FIELD_LENGTH = 32
+    OUT_SMAC_15_0_FIELD_ID = 0x2
+    OUT_SMAC_15_0_FIELD_LENGTH = 16
 
 
 def gen_outer_headers(msg_size, tunnel=TunnelType.GTP_U, **kwargs):
@@ -106,6 +127,8 @@ def gen_outer_headers(msg_size, tunnel=TunnelType.GTP_U, **kwargs):
                 QFI (QoS flow identifier) field to use in the GTP PSC header.
             * *ttl*
                 Time to live value to use in the packet.
+            * *vxlan_vni*
+                VXLAN VNI value to use in the packet.
     :return: Outer headers
     """
 
@@ -204,6 +227,8 @@ def gen_packet(msg_size, l2=True, l3=PacketConsts.IP_V4, l4=PacketConsts.UDP_PRO
                 Source L4 port to use in the packet.
             * *gtp_psc_qfi*
                 QFI (QoS flow identifier) field to use in the GTP PSC header.
+            * *vni*
+                VXLAN VNI value to use in the packet.
     :return: Bytes of the generated packet
     """
     if tunnel:

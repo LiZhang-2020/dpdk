@@ -118,3 +118,12 @@ cdef extern  from '../../../../lib/librte_ethdev/rte_flow.h':
     cdef struct rte_flow_item_gtp_psc:
         uint8_t pdu_type
         uint8_t qfi
+
+    cdef struct rte_flow_item_ethdev:
+        uint16_t port_id
+
+    cdef struct rte_flow_item_vxlan:
+        uint8_t flags
+        uint8_t rsvd0[3]
+        uint8_t vni[3]
+        uint8_t rsvd1

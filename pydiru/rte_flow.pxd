@@ -26,6 +26,12 @@ cdef class RteFlowItemGtp(PydiruCM):
 cdef class RteFlowItemGtpPsc(PydiruCM):
     cdef pdr.rte_flow_item_gtp_psc item
 
+cdef class RteFlowItemEthdev(PydiruCM):
+    cdef pdr.rte_flow_item_ethdev item
+
+cdef class RteFlowItemVxlan(PydiruCM):
+    cdef pdr.rte_flow_item_vxlan item
+
 cdef class RteFlowItem(PydiruCM):
     cdef pdr.rte_flow_item item
 
