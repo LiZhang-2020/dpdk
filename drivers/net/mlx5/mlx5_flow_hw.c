@@ -37,14 +37,17 @@
 /* Maximum number of rules in control flow tables. */
 #define MLX5_HW_CTRL_FLOW_NB_RULES (4096)
 
-/* Flow group for SQ miss default flows. */
-#define MLX5_HW_SQ_MISS_GROUP (UINT32_MAX)
+/* Lowest flow group usable by an application. */
+#define MLX5_HW_LOWEST_USABLE_GROUP (1)
 
 /* Maximum group index usable by user applications for transfer flows. */
-#define MLX5_HW_MAX_TRANSFER_GROUP (MLX5_HW_SQ_MISS_GROUP - 2)
+#define MLX5_HW_MAX_TRANSFER_GROUP (UINT32_MAX - 1)
 
 /* Lowest priority for HW root table. */
 #define MLX5_HW_LOWEST_PRIO_ROOT 15
+
+/* Lowest priority for HW non-root table. */
+#define MLX5_HW_LOWEST_PRIO_NON_ROOT (UINT32_MAX)
 
 static int flow_hw_flush_all_ctrl_flows(struct rte_eth_dev *dev);
 static int flow_hw_translate_group(struct rte_eth_dev *dev,
@@ -799,7 +802,8 @@ flow_hw_modify_field_compile(struct rte_eth_dev *dev,
 				(void *)(uintptr_t)conf->src.pvalue :
 				(void *)(uintptr_t)&conf->src.value;
 		if (conf->dst.field == RTE_FLOW_FIELD_META ||
-		    conf->dst.field == RTE_FLOW_FIELD_TAG) {
+		    conf->dst.field == RTE_FLOW_FIELD_TAG ||
+		    conf->dst.field == (enum rte_flow_field_id)MLX5_RTE_FLOW_FIELD_META_REG) {
 			value = *(const unaligned_uint32_t *)item.spec;
 			value = rte_cpu_to_be_32(value);
 			item.spec = &value;
@@ -1547,7 +1551,8 @@ flow_hw_modify_field_construct(struct mlx5_hw_q_job *job,
 	else
 		rte_memcpy(values, mhdr_action->src.pvalue, sizeof(values));
 	if (mhdr_action->dst.field == RTE_FLOW_FIELD_META ||
-	    mhdr_action->dst.field == RTE_FLOW_FIELD_TAG) {
+	    mhdr_action->dst.field == RTE_FLOW_FIELD_TAG ||
+	    mhdr_action->dst.field == (enum rte_flow_field_id)MLX5_RTE_FLOW_FIELD_META_REG) {
 		value_p = (unaligned_uint32_t *)values;
 		*value_p = rte_cpu_to_be_32(*value_p);
 	} else if (mhdr_action->dst.field == RTE_FLOW_FIELD_GTP_PSC_QFI) {
@@ -3590,6 +3595,17 @@ flow_hw_free_vport_actions(struct mlx5_priv *priv)
 	priv->hw_vport = NULL;
 }
 
+static uint32_t
+flow_hw_usable_lsb_vport_mask(struct mlx5_priv *priv)
+{
+	uint32_t usable_mask = ~priv->vport_meta_mask;
+
+	if (usable_mask)
+		return (1 << rte_bsf32(usable_mask));
+	else
+		return 0;
+}
+
 /**
  * Creates a flow pattern template used to match on E-Switch Manager.
  * This template is used to set up a table for SQ miss default flow.
@@ -3628,7 +3644,10 @@ flow_hw_create_ctrl_esw_mgr_pattern_template(struct rte_eth_dev *dev)
 }
 
 /**
- * Creates a flow pattern template used to match on a TX queue.
+ * Creates a flow pattern template used to match REG_C_0 and a TX queue.
+ * Matching on REG_C_0 is set up to match on least significant bit usable
+ * by user-space, which is set when packet was originated from E-Switch Manager.
+ *
  * This template is used to set up a table for SQ miss default flow.
  *
  * @param dev
@@ -3638,16 +3657,30 @@ flow_hw_create_ctrl_esw_mgr_pattern_template(struct rte_eth_dev *dev)
  *   Pointer to flow pattern template on success, NULL otherwise.
  */
 static struct rte_flow_pattern_template *
-flow_hw_create_ctrl_sq_pattern_template(struct rte_eth_dev *dev)
+flow_hw_create_ctrl_regc_sq_pattern_template(struct rte_eth_dev *dev)
 {
+	struct mlx5_priv *priv = dev->data->dev_private;
+	uint32_t marker_bit = flow_hw_usable_lsb_vport_mask(priv);
 	struct rte_flow_pattern_template_attr attr = {
 		.relaxed_matching = 0,
 		.transfer = 1,
+	};
+	struct rte_flow_item_tag reg_c0_spec = {
+		.index = (uint8_t)REG_C_0,
+	};
+	struct rte_flow_item_tag reg_c0_mask = {
+		.index = 0xff,
 	};
 	struct mlx5_rte_flow_item_tx_queue queue_mask = {
 		.queue = UINT32_MAX,
 	};
 	struct rte_flow_item items[] = {
+		{
+			.type = (enum rte_flow_item_type)
+				MLX5_RTE_FLOW_ITEM_TYPE_TAG,
+			.spec = &reg_c0_spec,
+			.mask = &reg_c0_mask,
+		},
 		{
 			.type = (enum rte_flow_item_type)
 				MLX5_RTE_FLOW_ITEM_TYPE_TX_QUEUE,
@@ -3658,6 +3691,12 @@ flow_hw_create_ctrl_sq_pattern_template(struct rte_eth_dev *dev)
 		},
 	};
 
+	if (!marker_bit) {
+		DRV_LOG(ERR, "Unable to set up pattern template for SQ miss table");
+		return NULL;
+	}
+	reg_c0_spec.data = marker_bit;
+	reg_c0_mask.data = marker_bit;
 	return flow_hw_pattern_template_create(dev, &attr, items, NULL);
 }
 
@@ -3732,6 +3771,93 @@ flow_hw_create_tx_default_mreg_copy_pattern_template(struct rte_eth_dev *dev)
 
 	RTE_SET_USED(drop_err);
 	return flow_hw_pattern_template_create(dev, &tx_pa_attr, eth_all, &drop_err);
+}
+
+/**
+ * Creates a flow actions template with modify field action and masked jump action.
+ * Modify field action sets the least significant bit of REG_C_0 (usable by user-space)
+ * to 1, meaning that packet was originated from E-Switch Manager. Jump action
+ * transfers steering to group 1.
+ *
+ * @param dev
+ *   Pointer to Ethernet device.
+ *
+ * @return
+ *   Pointer to flow actions template on success, NULL otherwise.
+ */
+static struct rte_flow_actions_template *
+flow_hw_create_ctrl_regc_jump_actions_template(struct rte_eth_dev *dev)
+{
+	struct mlx5_priv *priv = dev->data->dev_private;
+	uint32_t marker_bit = flow_hw_usable_lsb_vport_mask(priv);
+	uint32_t marker_bit_mask = UINT32_MAX;
+	struct rte_flow_actions_template_attr attr = {
+		.transfer = 1,
+	};
+	struct rte_flow_action_modify_field set_reg_v = {
+		.operation = RTE_FLOW_MODIFY_SET,
+		.dst = {
+			.field = (enum rte_flow_field_id)MLX5_RTE_FLOW_FIELD_META_REG,
+			.level = REG_C_0,
+		},
+		.src = {
+			.field = RTE_FLOW_FIELD_VALUE,
+		},
+		.width = 1,
+	};
+	struct rte_flow_action_modify_field set_reg_m = {
+		.operation = RTE_FLOW_MODIFY_SET,
+		.dst = {
+			.field = (enum rte_flow_field_id)MLX5_RTE_FLOW_FIELD_META_REG,
+			.level = UINT32_MAX,
+			.offset = UINT32_MAX,
+		},
+		.src = {
+			.field = RTE_FLOW_FIELD_VALUE,
+		},
+		.width = UINT32_MAX,
+	};
+	struct rte_flow_action_jump jump_v = {
+		.group = MLX5_HW_LOWEST_USABLE_GROUP,
+	};
+	struct rte_flow_action_jump jump_m = {
+		.group = UINT32_MAX,
+	};
+	struct rte_flow_action actions_v[] = {
+		{
+			.type = RTE_FLOW_ACTION_TYPE_MODIFY_FIELD,
+			.conf = &set_reg_v,
+		},
+		{
+			.type = RTE_FLOW_ACTION_TYPE_JUMP,
+			.conf = &jump_v,
+		},
+		{
+			.type = RTE_FLOW_ACTION_TYPE_END,
+		}
+	};
+	struct rte_flow_action actions_m[] = {
+		{
+			.type = RTE_FLOW_ACTION_TYPE_MODIFY_FIELD,
+			.conf = &set_reg_m,
+		},
+		{
+			.type = RTE_FLOW_ACTION_TYPE_JUMP,
+			.conf = &jump_m,
+		},
+		{
+			.type = RTE_FLOW_ACTION_TYPE_END,
+		}
+	};
+
+	if (!marker_bit) {
+		DRV_LOG(ERR, "Unable to set up actions template for SQ miss table");
+		return NULL;
+	}
+	set_reg_v.dst.offset = rte_bsf32(marker_bit);
+	rte_memcpy(set_reg_v.src.value, &marker_bit, sizeof(marker_bit));
+	rte_memcpy(set_reg_m.src.value, &marker_bit_mask, sizeof(marker_bit_mask));
+	return flow_hw_actions_template_create(dev, &attr, actions_v, actions_m, NULL);
 }
 
 /**
@@ -3955,8 +4081,8 @@ flow_hw_create_ctrl_sq_miss_table(struct rte_eth_dev *dev,
 {
 	struct rte_flow_template_table_attr attr = {
 		.flow_attr = {
-			.group = MLX5_HW_SQ_MISS_GROUP,
-			.priority = 0,
+			.group = 1,
+			.priority = MLX5_HW_LOWEST_PRIO_NON_ROOT,
 			.ingress = 0,
 			.egress = 0,
 			.transfer = 1,
@@ -4061,10 +4187,10 @@ flow_hw_create_ctrl_tables(struct rte_eth_dev *dev)
 {
 	struct mlx5_priv *priv = dev->data->dev_private;
 	struct rte_flow_pattern_template *esw_mgr_items_tmpl = NULL;
-	struct rte_flow_pattern_template *sq_items_tmpl = NULL;
+	struct rte_flow_pattern_template *regc_sq_items_tmpl = NULL;
 	struct rte_flow_pattern_template *port_items_tmpl = NULL;
 	struct rte_flow_pattern_template *tx_meta_items_tmpl = NULL;
-	struct rte_flow_actions_template *jump_sq_actions_tmpl = NULL;
+	struct rte_flow_actions_template *regc_jump_actions_tmpl = NULL;
 	struct rte_flow_actions_template *port_actions_tmpl = NULL;
 	struct rte_flow_actions_template *jump_one_actions_tmpl = NULL;
 	struct rte_flow_actions_template *tx_meta_actions_tmpl = NULL;
@@ -4077,8 +4203,8 @@ flow_hw_create_ctrl_tables(struct rte_eth_dev *dev)
 			" template for control flows", dev->data->port_id);
 		goto error;
 	}
-	sq_items_tmpl = flow_hw_create_ctrl_sq_pattern_template(dev);
-	if (!sq_items_tmpl) {
+	regc_sq_items_tmpl = flow_hw_create_ctrl_regc_sq_pattern_template(dev);
+	if (!regc_sq_items_tmpl) {
 		DRV_LOG(ERR, "port %u failed to create SQ item template for"
 			" control flows", dev->data->port_id);
 		goto error;
@@ -4098,10 +4224,9 @@ flow_hw_create_ctrl_tables(struct rte_eth_dev *dev)
 		}
 	}
 	/* Action templates */
-	jump_sq_actions_tmpl = flow_hw_create_ctrl_jump_actions_template(dev,
-									 MLX5_HW_SQ_MISS_GROUP);
-	if (!jump_sq_actions_tmpl) {
-		DRV_LOG(ERR, "port %u failed to create jump action template"
+	regc_jump_actions_tmpl = flow_hw_create_ctrl_regc_jump_actions_template(dev);
+	if (!regc_jump_actions_tmpl) {
+		DRV_LOG(ERR, "port %u failed to create REG_C set and jump action template"
 			" for control flows", dev->data->port_id);
 		goto error;
 	}
@@ -4111,7 +4236,8 @@ flow_hw_create_ctrl_tables(struct rte_eth_dev *dev)
 			" for control flows", dev->data->port_id);
 		goto error;
 	}
-	jump_one_actions_tmpl = flow_hw_create_ctrl_jump_actions_template(dev, 1);
+	jump_one_actions_tmpl = flow_hw_create_ctrl_jump_actions_template
+			(dev, MLX5_HW_LOWEST_USABLE_GROUP);
 	if (!jump_one_actions_tmpl) {
 		DRV_LOG(ERR, "port %u failed to create jump action template"
 			" for control flows", dev->data->port_id);
@@ -4128,14 +4254,14 @@ flow_hw_create_ctrl_tables(struct rte_eth_dev *dev)
 	/* Tables */
 	MLX5_ASSERT(priv->hw_esw_sq_miss_root_tbl == NULL);
 	priv->hw_esw_sq_miss_root_tbl = flow_hw_create_ctrl_sq_miss_root_table
-			(dev, esw_mgr_items_tmpl, jump_sq_actions_tmpl);
+			(dev, esw_mgr_items_tmpl, regc_jump_actions_tmpl);
 	if (!priv->hw_esw_sq_miss_root_tbl) {
 		DRV_LOG(ERR, "port %u failed to create table for default sq miss (root table)"
 			" for control flows", dev->data->port_id);
 		goto error;
 	}
 	MLX5_ASSERT(priv->hw_esw_sq_miss_tbl == NULL);
-	priv->hw_esw_sq_miss_tbl = flow_hw_create_ctrl_sq_miss_table(dev, sq_items_tmpl,
+	priv->hw_esw_sq_miss_tbl = flow_hw_create_ctrl_sq_miss_table(dev, regc_sq_items_tmpl,
 								     port_actions_tmpl);
 	if (!priv->hw_esw_sq_miss_tbl) {
 		DRV_LOG(ERR, "port %u failed to create table for default sq miss (non-root table)"
@@ -4180,14 +4306,14 @@ error:
 		flow_hw_actions_template_destroy(dev, jump_one_actions_tmpl, NULL);
 	if (port_actions_tmpl)
 		flow_hw_actions_template_destroy(dev, port_actions_tmpl, NULL);
-	if (jump_sq_actions_tmpl)
-		flow_hw_actions_template_destroy(dev, jump_sq_actions_tmpl, NULL);
+	if (regc_jump_actions_tmpl)
+		flow_hw_actions_template_destroy(dev, regc_jump_actions_tmpl, NULL);
 	if (xmeta == MLX5_XMETA_MODE_META32_HWS && tx_meta_items_tmpl)
 		flow_hw_pattern_template_destroy(dev, tx_meta_items_tmpl, NULL);
 	if (port_items_tmpl)
 		flow_hw_pattern_template_destroy(dev, port_items_tmpl, NULL);
-	if (sq_items_tmpl)
-		flow_hw_pattern_template_destroy(dev, sq_items_tmpl, NULL);
+	if (regc_sq_items_tmpl)
+		flow_hw_pattern_template_destroy(dev, regc_sq_items_tmpl, NULL);
 	if (esw_mgr_items_tmpl)
 		flow_hw_pattern_template_destroy(dev, esw_mgr_items_tmpl, NULL);
 	return -EINVAL;
@@ -5002,10 +5128,24 @@ mlx5_flow_hw_esw_create_mgr_sq_miss_flow(struct rte_eth_dev *dev)
 			.type = RTE_FLOW_ITEM_TYPE_END,
 		},
 	};
+	struct rte_flow_action_modify_field modify_field = {
+		.operation = RTE_FLOW_MODIFY_SET,
+		.dst = {
+			.field = (enum rte_flow_field_id)MLX5_RTE_FLOW_FIELD_META_REG,
+		},
+		.src = {
+			.field = RTE_FLOW_FIELD_VALUE,
+		},
+		.width = 1,
+	};
 	struct rte_flow_action_jump jump = {
-		.group = MLX5_HW_SQ_MISS_GROUP,
+		.group = 1,
 	};
 	struct rte_flow_action actions[] = {
+		{
+			.type = RTE_FLOW_ACTION_TYPE_MODIFY_FIELD,
+			.conf = &modify_field,
+		},
 		{
 			.type = RTE_FLOW_ACTION_TYPE_JUMP,
 			.conf = &jump,
@@ -5028,6 +5168,12 @@ int
 mlx5_flow_hw_esw_create_sq_miss_flow(struct rte_eth_dev *dev, uint32_t txq)
 {
 	uint16_t port_id = dev->data->port_id;
+	struct rte_flow_item_tag reg_c0_spec = {
+		.index = (uint8_t)REG_C_0,
+	};
+	struct rte_flow_item_tag reg_c0_mask = {
+		.index = 0xff,
+	};
 	struct mlx5_rte_flow_item_tx_queue queue_spec = {
 		.queue = txq,
 	};
@@ -5035,6 +5181,12 @@ mlx5_flow_hw_esw_create_sq_miss_flow(struct rte_eth_dev *dev, uint32_t txq)
 		.queue = UINT32_MAX,
 	};
 	struct rte_flow_item items[] = {
+		{
+			.type = (enum rte_flow_item_type)
+				MLX5_RTE_FLOW_ITEM_TYPE_TAG,
+			.spec = &reg_c0_spec,
+			.mask = &reg_c0_mask,
+		},
 		{
 			.type = (enum rte_flow_item_type)
 				MLX5_RTE_FLOW_ITEM_TYPE_TX_QUEUE,
@@ -5060,6 +5212,7 @@ mlx5_flow_hw_esw_create_sq_miss_flow(struct rte_eth_dev *dev, uint32_t txq)
 	struct rte_eth_dev *proxy_dev;
 	struct mlx5_priv *proxy_priv;
 	uint16_t proxy_port_id = dev->data->port_id;
+	uint32_t marker_bit;
 	int ret;
 
 	RTE_SET_USED(txq);
@@ -5080,6 +5233,14 @@ mlx5_flow_hw_esw_create_sq_miss_flow(struct rte_eth_dev *dev, uint32_t txq)
 		rte_errno = ENOMEM;
 		return -rte_errno;
 	}
+	marker_bit = flow_hw_usable_lsb_vport_mask(proxy_priv);
+	if (!marker_bit) {
+		DRV_LOG(ERR, "Unable to set up control flow in SQ miss table");
+		rte_errno = EINVAL;
+		return -rte_errno;
+	}
+	reg_c0_spec.data = marker_bit;
+	reg_c0_mask.data = marker_bit;
 	return flow_hw_create_ctrl_flow(dev, proxy_dev,
 					proxy_priv->hw_esw_sq_miss_tbl,
 					items, 0, actions, 0);
