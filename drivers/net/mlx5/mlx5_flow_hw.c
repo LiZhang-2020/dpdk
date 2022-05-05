@@ -4646,10 +4646,10 @@ void flow_hw_init_tags_set(struct rte_eth_dev *dev)
 		return;
 	unset |= 1 << (priv->mtr_color_reg - REG_C_0);
 	unset |= 1 << (REG_C_6 - REG_C_0);
-	if (meta_mode == MLX5_XMETA_MODE_META32_HWS) {
-		unset |= 1 << (REG_C_1 - REG_C_0);
+	if (priv->sh->config.dv_esw_en)
 		unset |= 1 << (REG_C_0 - REG_C_0);
-	}
+	if (meta_mode == MLX5_XMETA_MODE_META32_HWS)
+		unset |= 1 << (REG_C_1 - REG_C_0);
 	masks &= ~unset;
 	if (mlx5_flow_hw_avl_tags_init_cnt) {
 		for (i = 0; i < MLX5_FLOW_HW_TAGS_MAX; i++) {
