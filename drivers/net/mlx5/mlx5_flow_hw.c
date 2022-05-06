@@ -2514,41 +2514,6 @@ flow_hw_table_destroy(struct rte_eth_dev *dev,
 }
 
 static bool
-flow_hw_modify_field_is_packet_field(enum rte_flow_field_id field)
-{
-	switch (field) {
-	case RTE_FLOW_FIELD_MAC_DST:
-	case RTE_FLOW_FIELD_MAC_SRC:
-	case RTE_FLOW_FIELD_VLAN_TYPE:
-	case RTE_FLOW_FIELD_VLAN_ID:
-	case RTE_FLOW_FIELD_MAC_TYPE:
-	case RTE_FLOW_FIELD_IPV4_DSCP:
-	case RTE_FLOW_FIELD_IPV4_TTL:
-	case RTE_FLOW_FIELD_IPV4_SRC:
-	case RTE_FLOW_FIELD_IPV4_DST:
-	case RTE_FLOW_FIELD_IPV6_DSCP:
-	case RTE_FLOW_FIELD_IPV6_HOPLIMIT:
-	case RTE_FLOW_FIELD_IPV6_SRC:
-	case RTE_FLOW_FIELD_IPV6_DST:
-	case RTE_FLOW_FIELD_TCP_PORT_SRC:
-	case RTE_FLOW_FIELD_TCP_PORT_DST:
-	case RTE_FLOW_FIELD_TCP_SEQ_NUM:
-	case RTE_FLOW_FIELD_TCP_ACK_NUM:
-	case RTE_FLOW_FIELD_TCP_FLAGS:
-	case RTE_FLOW_FIELD_UDP_PORT_SRC:
-	case RTE_FLOW_FIELD_UDP_PORT_DST:
-	case RTE_FLOW_FIELD_VXLAN_VNI:
-	case RTE_FLOW_FIELD_GENEVE_VNI:
-	case RTE_FLOW_FIELD_GTP_TEID:
-	case RTE_FLOW_FIELD_IPV4_ECN:
-	case RTE_FLOW_FIELD_IPV6_ECN:
-		return true;
-	default:
-		return false;
-	}
-}
-
-static bool
 flow_hw_modify_field_is_used(const struct rte_flow_action_modify_field *action,
 			     enum rte_flow_field_id field)
 {
@@ -2601,25 +2566,10 @@ flow_hw_validate_action_modify_field(const struct rte_flow_action *action,
 				RTE_FLOW_ERROR_TYPE_ACTION, action,
 				"source offset level must be fully masked");
 	}
-	if (action_conf->src.field == RTE_FLOW_FIELD_IPV4_SRC ||
-	    action_conf->src.field == RTE_FLOW_FIELD_IPV4_DST)
-		return rte_flow_error_set(error, EINVAL,
-				RTE_FLOW_ERROR_TYPE_ACTION, action,
-				"current FW does not support copying from IPv4 address");
-	if (action_conf->src.field == RTE_FLOW_FIELD_IPV6_SRC ||
-	    action_conf->src.field == RTE_FLOW_FIELD_IPV6_DST)
-		return rte_flow_error_set(error, EINVAL,
-				RTE_FLOW_ERROR_TYPE_ACTION, action,
-				"current FW does not support copying from IPv6 address");
 	if (mask_conf->width != UINT32_MAX)
 		return rte_flow_error_set(error, EINVAL,
 				RTE_FLOW_ERROR_TYPE_ACTION, action,
 				"modify_field width field must be fully masked");
-	if (flow_hw_modify_field_is_packet_field(action_conf->src.field) &&
-	    flow_hw_modify_field_is_packet_field(action_conf->dst.field))
-		return rte_flow_error_set(error, EINVAL,
-				RTE_FLOW_ERROR_TYPE_ACTION, action,
-				"current FW does not support copying between packet fields");
 	if (flow_hw_modify_field_is_used(action_conf, RTE_FLOW_FIELD_START))
 		return rte_flow_error_set(error, EINVAL,
 				RTE_FLOW_ERROR_TYPE_ACTION, action,
