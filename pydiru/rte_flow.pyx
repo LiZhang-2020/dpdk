@@ -5,6 +5,7 @@ from libc.stdlib cimport free, calloc
 from libc.string cimport memcpy
 import socket
 
+import pydiru.providers.mlx5.steering.mlx5dr_enums as me
 import pydiru.pydiru_enums as e
 import ipaddress
 import struct
@@ -143,6 +144,16 @@ cdef class RteFlowItemVxlan(PydiruCM):
         self.item.flags = flags
 
 
+cdef class Mlx5RteFlowItemTxQueue(PydiruCM):
+    def __init__(self, qp_num=0):
+        """
+        Initializes a Mlx5RteFlowItemTxQueue object representing mlx5_rte_flow_item_tx_queue
+        C struct.
+        :param qp_num: Number of TX queue
+        """
+        self.item.queue = qp_num
+
+
 cdef class RteFlowItem(PydiruCM):
     def __init__(self, flow_item_type, spec=None, mask=None, last=None):
         self.item.type = flow_item_type
@@ -169,6 +180,8 @@ cdef class RteFlowItem(PydiruCM):
             size = sizeof(pdr.rte_flow_item_ethdev)
         if flow_item_type == e.RTE_FLOW_ITEM_TYPE_VXLAN:
             size = sizeof(pdr.rte_flow_item_vxlan)
+        if flow_item_type == me.MLX5_RTE_FLOW_ITEM_TYPE_TX_QUEUE:
+            size = sizeof(pdr.mlx5_rte_flow_item_tx_queue)
         if spec:
             self.item.spec = calloc(1, size)
             memcpy(self.item.spec, <void *>&((<RteFlowItem>spec).item), size)

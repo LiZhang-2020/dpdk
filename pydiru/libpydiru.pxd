@@ -68,7 +68,7 @@ cdef extern  from '../../../../lib/librte_net/rte_udp.h':
 cdef extern  from '../../../../lib/librte_ethdev/rte_flow.h':
 
     cdef struct rte_flow_item:
-        e.rte_flow_item_type type
+        int type
         void *spec
         void *last
         void *mask
@@ -127,3 +127,8 @@ cdef extern  from '../../../../lib/librte_ethdev/rte_flow.h':
         uint8_t rsvd0[3]
         uint8_t vni[3]
         uint8_t rsvd1
+
+cdef extern  from '../../../../drivers/net/mlx5/mlx5_flow.h':
+
+    cdef struct mlx5_rte_flow_item_tx_queue:
+        uint32_t queue

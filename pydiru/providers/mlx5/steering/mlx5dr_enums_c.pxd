@@ -33,3 +33,12 @@ cdef extern  from '../../../../drivers/net/mlx5/steering/mlx5dr.h':
 
     cpdef enum mlx5dr_send_queue_actions:
         MLX5DR_SEND_QUEUE_ACTION_DRAIN
+
+cdef extern  from '../../../../drivers/net/mlx5/mlx5_flow.h':
+
+    cpdef enum mlx5_rte_flow_item_type:
+        MLX5_RTE_FLOW_ITEM_TYPE_END
+        MLX5_RTE_FLOW_ITEM_TYPE_TAG
+        MLX5_RTE_FLOW_ITEM_TYPE_TX_QUEUE
+        MLX5_RTE_FLOW_ITEM_TYPE_VLAN
+        MLX5_RTE_FLOW_ITEM_TYPE_TUNNEL
