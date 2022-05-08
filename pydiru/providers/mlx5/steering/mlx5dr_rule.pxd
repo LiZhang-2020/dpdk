@@ -3,11 +3,11 @@
 
 from pydiru.providers.mlx5.steering.mlx5dr_matcher cimport Mlx5drMatcher
 cimport pydiru.providers.mlx5.steering.libmlx5dr as dr
-from pydiru.base cimport close_weakrefs
 from pydiru.base cimport PydiruCM
 
 cdef class Mlx5drRuleAttr(PydiruCM):
     cdef dr.mlx5dr_rule_attr attr
+    cdef object user_data
 
 cdef class Mlx5drRule(PydiruCM):
     cdef dr.mlx5dr_rule *rule

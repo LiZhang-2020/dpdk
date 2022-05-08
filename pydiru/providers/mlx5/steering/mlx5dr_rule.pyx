@@ -13,6 +13,7 @@ from pydiru.base import PydiruErrno
 from libc.string cimport memcpy
 cimport pydiru.pydiru_enums_c as e
 cimport pydiru.libpydiru as pdr
+import ctypes
 import time
 
 POLLING_TIMEOUT = 5
@@ -26,6 +27,11 @@ cdef class Mlx5drRuleAttr(PydiruCM):
         self.attr.user_data = <void *>user_data if user_data else NULL
         self.attr.burst = burst
         self.attr.rule_idx = rule_idx
+        self.user_data = user_data
+
+    @property
+    def user_data(self):
+        return self.user_data
 
 
 cdef class Mlx5drRule(PydiruCM):
@@ -94,6 +100,10 @@ cdef class Mlx5drRule(PydiruCM):
             if <RteFlowResult>(res[0]).status != e.RTE_FLOW_OP_SUCCESS:
                 raise PydiruError(f'ERROR completion returned from queue ID: {rule_attr_create.attr.queue_id} '
                                   f'with status: {res[0]).status}.')
+            user_data_from_addr = ctypes.cast(<RteFlowResult>(res[0]).user_data, ctypes.py_object).value
+            if  user_data_from_addr != rule_attr_create.user_data:
+                raise PydiruError(f'ERROR completion returned from queue ID: {rule_attr_create.attr.queue_id} '
+                                  f'with differnt user_data: {user_data_from_addr}.')
 
     def __dealloc__(self):
         self.close()

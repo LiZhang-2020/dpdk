@@ -132,7 +132,7 @@ class Mlx5drMatcherTest(PydiruTrafficTestCase):
                                             root_rte_items=root_rte_items)
         _, tir_ra = self.server.create_rule_action('tir')
         self.tir_rule = Mlx5drRule(self.server.matcher, 0, rte_items, 0, [tir_ra], 1,
-                                   Mlx5drRuleAttr(user_data=bytes(8)), self.server.dr_ctx)
+                                   Mlx5drRuleAttr(user_data=bytes([1])), self.server.dr_ctx)
 
     def test_mlx5dr_matcher_has_vlan(self):
         """
