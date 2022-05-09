@@ -216,6 +216,7 @@ struct mlx5dr_definer_conv_data {
 	X(SET,		first_vlan_q,		v->has_more_vlan ? STE_SVLAN : STE_CVLAN, rte_flow_item_vlan) \
 	X(SET,		eth_first_vlan_q,	v->has_vlan ? STE_CVLAN : 0, rte_flow_item_eth) \
 	X(SET,		ipv4_ihl,		v->ihl,			rte_ipv4_hdr) \
+	X(SET,		ipv4_tos,		v->type_of_service,	rte_ipv4_hdr) \
 	X(SET,		ipv4_time_to_live,	v->time_to_live,	rte_ipv4_hdr) \
 	X(SET_BE32,	ipv4_dst_addr,		v->dst_addr,		rte_ipv4_hdr) \
 	X(SET_BE32,	ipv4_src_addr,		v->src_addr,		rte_ipv4_hdr) \
@@ -560,7 +561,7 @@ mlx5dr_definer_conv_item_ipv4(struct mlx5dr_definer_conv_data *cd,
 	if (!m)
 		return 0;
 
-	if (m->type_of_service || m->total_length || m->packet_id ||
+	if (m->total_length || m->packet_id ||
 	    m->hdr_checksum) {
 		rte_errno = ENOTSUP;
 		return rte_errno;
@@ -606,6 +607,13 @@ mlx5dr_definer_conv_item_ipv4(struct mlx5dr_definer_conv_data *cd,
 		fc->item_idx = item_idx;
 		fc->tag_set = &mlx5dr_definer_ipv4_time_to_live_set;
 		DR_CALC_SET(fc, eth_l3, time_to_live_hop_limit, inner);
+	}
+
+	if (m->type_of_service) {
+		fc = &cd->fc[DR_CALC_FNAME(IP_TOS, inner)];
+		fc->item_idx = item_idx;
+		fc->tag_set = &mlx5dr_definer_ipv4_tos_set;
+		DR_CALC_SET(fc, eth_l3, tos, inner);
 	}
 
 	return 0;
