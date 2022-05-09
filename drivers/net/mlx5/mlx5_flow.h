@@ -1217,6 +1217,12 @@ struct rte_flow_actions_template {
 	struct rte_flow_actions_template_attr attr;
 	struct rte_flow_action *actions; /* Cached flow actions. */
 	struct rte_flow_action *masks; /* Cached action masks.*/
+	struct mlx5dr_action_template *tmpl; /* mlx5dr action template. */
+	uint16_t dr_actions_num; /* Amount of DR rules actions. */
+	uint16_t actions_num; /* Amount of flow actions */
+	uint16_t *actions_off; /* DR action offset for given rte action offset. */
+	uint16_t reformat_off; /* Offset of DR reformat action. */
+	uint16_t mhdr_off; /* Offset of DR modify header action. */
 	uint32_t refcnt; /* Reference counter. */
 	uint16_t rx_cpy_pos; /* Action position of Rx metadata to be copied. */
 };
@@ -1264,7 +1270,6 @@ struct mlx5_hw_actions {
 	/* Encap/Decap action. */
 	struct mlx5_hw_encap_decap_action *encap_decap;
 	uint16_t encap_decap_pos; /* Encap/Decap action position. */
-	uint32_t acts_num:4; /* Total action number. */
 	uint32_t mark:1; /* Indicate the mark action. */
 	uint32_t cnt_id; /* Counter id. */
 	/* Translated DR action array from action template. */
