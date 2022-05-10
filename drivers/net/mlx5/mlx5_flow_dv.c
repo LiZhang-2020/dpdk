@@ -10596,8 +10596,7 @@ flow_dv_hashfields_set(uint64_t item_flags,
 		rss_inner = 1;
 #endif
 	if ((rss_inner && (items & MLX5_FLOW_LAYER_INNER_L3_IPV4)) ||
-	    (!rss_inner && (items & MLX5_FLOW_LAYER_OUTER_L3_IPV4)) ||
-	     !items) {
+	    (!rss_inner && (items & MLX5_FLOW_LAYER_OUTER_L3_IPV4))) {
 		if (rss_types & MLX5_IPV4_LAYER_TYPES) {
 			if (rss_types & ETH_RSS_L3_SRC_ONLY)
 				fields |= IBV_RX_HASH_SRC_IPV4;
@@ -10607,8 +10606,7 @@ flow_dv_hashfields_set(uint64_t item_flags,
 				fields |= MLX5_IPV4_IBV_RX_HASH;
 		}
 	} else if ((rss_inner && (items & MLX5_FLOW_LAYER_INNER_L3_IPV6)) ||
-		   (!rss_inner && (items & MLX5_FLOW_LAYER_OUTER_L3_IPV6)) ||
-		   !items) {
+		   (!rss_inner && (items & MLX5_FLOW_LAYER_OUTER_L3_IPV6))) {
 		if (rss_types & MLX5_IPV6_LAYER_TYPES) {
 			if (rss_types & ETH_RSS_L3_SRC_ONLY)
 				fields |= IBV_RX_HASH_SRC_IPV6;
@@ -10631,8 +10629,7 @@ flow_dv_hashfields_set(uint64_t item_flags,
 		return;
 	}
 	if ((rss_inner && (items & MLX5_FLOW_LAYER_INNER_L4_UDP)) ||
-	    (!rss_inner && (items & MLX5_FLOW_LAYER_OUTER_L4_UDP)) ||
-	    !items) {
+	    (!rss_inner && (items & MLX5_FLOW_LAYER_OUTER_L4_UDP))) {
 		if (rss_types & ETH_RSS_UDP) {
 			if (rss_types & ETH_RSS_L4_SRC_ONLY)
 				fields |= IBV_RX_HASH_SRC_PORT_UDP;
@@ -10642,8 +10639,7 @@ flow_dv_hashfields_set(uint64_t item_flags,
 				fields |= MLX5_UDP_IBV_RX_HASH;
 		}
 	} else if ((rss_inner && (items & MLX5_FLOW_LAYER_INNER_L4_TCP)) ||
-		   (!rss_inner && (items & MLX5_FLOW_LAYER_OUTER_L4_TCP)) ||
-		   !items) {
+		   (!rss_inner && (items & MLX5_FLOW_LAYER_OUTER_L4_TCP))) {
 		if (rss_types & ETH_RSS_TCP) {
 			if (rss_types & ETH_RSS_L4_SRC_ONLY)
 				fields |= IBV_RX_HASH_SRC_PORT_TCP;
