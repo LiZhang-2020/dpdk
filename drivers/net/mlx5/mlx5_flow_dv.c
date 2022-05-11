@@ -1675,8 +1675,9 @@ flow_dv_validate_action_pop_vlan(struct rte_eth_dev *dev,
 					  "cannot pop vlan after decap without "
 					  "match on inner vlan in the flow");
 	/* Pop VLAN without preceding Decap requires outer header with VLAN. */
-	if (!(action_flags & MLX5_FLOW_ACTION_DECAP) &&
-	    !(item_flags & MLX5_FLOW_LAYER_OUTER_VLAN))
+	if (priv->sh->config.dv_validate_mod &&
+	    ((action_flags & MLX5_FLOW_ACTION_DECAP) &&
+	     !(item_flags & MLX5_FLOW_LAYER_OUTER_VLAN)))
 		return rte_flow_error_set(error, ENOTSUP,
 					  RTE_FLOW_ERROR_TYPE_UNSPECIFIED,
 					  NULL,
