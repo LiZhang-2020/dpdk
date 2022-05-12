@@ -197,7 +197,7 @@ struct mlx5dr_definer_conv_data {
 
 /* Xmacro used to create generic item setter from items */
 #define LIST_OF_FIELDS_INFO \
-	X(SET,		eth_type,		v->type,		rte_flow_item_eth) \
+	X(SET_BE16,	eth_type,		v->type,		rte_flow_item_eth) \
 	X(SET_BE32P,	eth_smac_47_16,		&v->src.addr_bytes[0],	rte_flow_item_eth) \
 	X(SET_BE16P,	eth_smac_15_0,		&v->src.addr_bytes[4],	rte_flow_item_eth) \
 	X(SET_BE32P,	eth_dmac_47_16,		&v->dst.addr_bytes[0],	rte_flow_item_eth) \
