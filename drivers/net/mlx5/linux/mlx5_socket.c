@@ -107,6 +107,7 @@ mlx5_pmd_socket_handle(void *cb __rte_unused)
 		ret = mlx5_flow_dev_dump(dev,
 			(struct rte_flow *)((uintptr_t)flow_ptr), file, &err);
 
+	fflush(file);
 	/* Set-up the ancillary data and reply. */
 	msg.msg_controllen = 0;
 	msg.msg_control = NULL;
