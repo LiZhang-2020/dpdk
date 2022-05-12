@@ -250,6 +250,34 @@ struct mlx5_ifc_definer_hl_ipv6_addr_bits {
 	u8 ipv6_address_31_0[0x20];
 };
 
+struct mlx5_ifc_definer_tcp_icmp_header_bits {
+	union {
+		struct {
+			u8 icmp_dw1[0x20];
+			u8 icmp_dw2[0x20];
+			u8 icmp_dw3[0x20];
+		};
+		struct {
+			u8 tcp_seq[0x20];
+			u8 tcp_ack[0x20];
+			u8 tcp_win_urg[0x20];
+		};
+	};
+};
+
+struct mlx5_ifc_definer_hl_tunnel_header_bits {
+	u8 tunnel_header_0[0x20];
+	u8 tunnel_header_1[0x20];
+	u8 tunnel_header_2[0x20];
+	u8 tunnel_header_3[0x20];
+};
+
+struct mlx5_ifc_definer_hl_metadata_bits {
+	u8 metadata_to_cqe[0x20];
+	u8 general_purpose[0x20];
+	u8 acomulated_hash[0x20];
+};
+
 struct mlx5_ifc_definer_hl_flex_parser_bits {
 	u8 flex_parser_7[0x20];
 	u8 flex_parser_6[0x20];
@@ -276,19 +304,6 @@ struct mlx5_ifc_definer_hl_registers_bits {
 	u8 register_c_1[0x20];
 };
 
-struct mlx5_ifc_definer_hl_tunnel_header_bits {
-	u8 tunnel_header_0[0x20];
-	u8 tunnel_header_1[0x20];
-	u8 tunnel_header_2[0x20];
-	u8 tunnel_header_3[0x20];
-};
-
-struct mlx5_ifc_definer_hl_metadata_bits {
-	u8 metadata_to_cqe[0x20];
-	u8 general_purpose[0x20];
-	u8 acomulated_hash[0x20];
-};
-
 struct mlx5_ifc_definer_hl_bits {
 	struct mlx5_ifc_definer_hl_eth_l2_bits eth_l2_outer;
 	struct mlx5_ifc_definer_hl_eth_l2_bits eth_l2_inner;
@@ -313,10 +328,10 @@ struct mlx5_ifc_definer_hl_bits {
 	struct mlx5_ifc_definer_hl_ipv6_addr_bits ipv6_src_inner;
 	u8 unsupported_dest_ib_l3[0x80];
 	u8 unsupported_source_ib_l3[0x80];
-	u8 reserved_at_b80[0xa0];
+	u8 reserved_at_b80[0x40];
 	//	struct x udp_misc_outer; 0x20
 	//	struct x udp_misc_inner; 0x20
-	//	struct x tcp_misc; 0x60
+	struct mlx5_ifc_definer_tcp_icmp_header_bits tcp_icmp;
 	struct mlx5_ifc_definer_hl_tunnel_header_bits tunnel_header;
 	u8 reserved_at_ca0[0x2c0];
 	//	struct x mpls_outer; 0xa0
@@ -400,6 +415,24 @@ struct mlx5_ifc_header_gre_bits {
 	u8 gre_protocol[0x10];
 	u8 checksum[0x10];
 	u8 reserved_at_30[0x10];
+};
+
+struct mlx5_ifc_header_icmp_bits {
+	union {
+		u8 icmp_dw1[0x20];
+		struct {
+			u8 cksum[0x10];
+			u8 code[0x8];
+			u8 type[0x8];
+		};
+	};
+	union {
+		u8 icmp_dw2[0x20];
+		struct {
+			u8 seq_nb[0x10];
+			u8 ident[0x10];
+		};
+	};
 };
 
 struct mlx5dr_definer {
