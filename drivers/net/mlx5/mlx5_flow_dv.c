@@ -7281,6 +7281,8 @@ flow_dv_translate_item_eth(void *key, const struct rte_flow_item *item,
 	if (MLX5_ITEM_VALID(item, key_type))
 		return;
 	MLX5_ITEM_UPDATE(item, key_type, eth_v, eth_m, &nic_mask);
+	if (!eth_vv)
+		eth_vv = eth_v;
 	if (inner)
 		hdrs_v = MLX5_ADDR_OF(fte_match_param, key, inner_headers);
 	else
@@ -7342,7 +7344,7 @@ flow_dv_translate_item_eth(void *key, const struct rte_flow_item *item,
 		 * not set, only single-tagged packets will be matched.
 		 */
 		MLX5_SET(fte_match_set_lyr_2_4, hdrs_v, cvlan_tag, 1);
-		if (eth_vv->has_vlan)
+		if ((key_type != MLX5_SET_MATCHER_HS_M) && eth_vv->has_vlan)
 			return;
 	}
 	l24_v = MLX5_ADDR_OF(fte_match_set_lyr_2_4, hdrs_v, ethertype);
