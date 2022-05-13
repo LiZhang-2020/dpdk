@@ -1599,6 +1599,13 @@ This item is meant to use the same structure as `Item: PORT_REPRESENTOR`_.
 
 See also `Action: REPRESENTED_PORT`_.
 
+Item: ``METER_COLOR``
+^^^^^^^^^^^^^^^^^^^^^
+
+Matches Color Marker set by a Meter.
+
+- ``color``: Metering color marker.
+
 Actions
 ~~~~~~~
 

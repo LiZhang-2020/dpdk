@@ -160,6 +160,7 @@ static const struct rte_flow_desc_data rte_flow_desc_item[] = {
 			rte_flow_item_flex_conv),
 	MK_FLOW_ITEM(PORT_REPRESENTOR, sizeof(struct rte_flow_item_ethdev)),
 	MK_FLOW_ITEM(REPRESENTED_PORT, sizeof(struct rte_flow_item_ethdev)),
+	MK_FLOW_ITEM(METER_COLOR, sizeof(struct rte_flow_item_meter_color)),
 };
 
 /** Generate flow_action[] entry. */
