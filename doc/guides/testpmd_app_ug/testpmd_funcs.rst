@@ -4086,6 +4086,10 @@ This section lists supported pattern items and their attributes, if any.
 
   - ``ethdev_port_id {unsigned}``: ethdev port ID
 
+- ``meter``: match Meter color.
+
+  - ``color {value}``: Meter color value(green/yellow/red).
+
 Actions list
 ^^^^^^^^^^^^
 
