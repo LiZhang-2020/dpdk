@@ -883,6 +883,7 @@ flow_hw_modify_field_compile(struct rte_eth_dev *dev,
 				(void *)(uintptr_t)&conf->src.value;
 		if (conf->dst.field == RTE_FLOW_FIELD_META ||
 		    conf->dst.field == RTE_FLOW_FIELD_TAG ||
+		    conf->dst.field == RTE_FLOW_FIELD_METER_COLOR ||
 		    conf->dst.field == (enum rte_flow_field_id)MLX5_RTE_FLOW_FIELD_META_REG) {
 			value = *(const unaligned_uint32_t *)item.spec;
 			value = rte_cpu_to_be_32(value);
@@ -1730,6 +1731,7 @@ flow_hw_modify_field_construct(struct mlx5_hw_q_job *job,
 		rte_memcpy(values, mhdr_action->src.pvalue, sizeof(values));
 	if (mhdr_action->dst.field == RTE_FLOW_FIELD_META ||
 	    mhdr_action->dst.field == RTE_FLOW_FIELD_TAG ||
+	    mhdr_action->dst.field == RTE_FLOW_FIELD_METER_COLOR ||
 	    mhdr_action->dst.field == (enum rte_flow_field_id)MLX5_RTE_FLOW_FIELD_META_REG) {
 		value_p = (unaligned_uint32_t *)values;
 		*value_p = rte_cpu_to_be_32(*value_p);

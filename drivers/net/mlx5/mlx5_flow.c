@@ -12529,6 +12529,7 @@ mlx5_flow_item_field_width(struct rte_eth_dev *dev,
 		return inherit < 0 ? 0 : inherit;
 	case RTE_FLOW_FIELD_IPV4_ECN:
 	case RTE_FLOW_FIELD_IPV6_ECN:
+	case RTE_FLOW_FIELD_METER_COLOR:
 		return 2;
 	default:
 		MLX5_ASSERT(false);
@@ -12998,6 +12999,31 @@ mlx5_flow_field_id_to_modify_info
 				info[idx].offset = data->offset;
 		}
 		break;
+	case RTE_FLOW_FIELD_METER_COLOR:
+		{
+			const uint32_t color_mask =
+				(UINT32_C(1) << MLX5_MTR_COLOR_BITS) - 1;
+			int reg;
+
+			if (priv->sh->config.dv_flow_en == 2)
+				reg = flow_hw_get_reg_id
+					(RTE_FLOW_ITEM_TYPE_METER_COLOR, 0);
+			else
+				reg = mlx5_flow_get_reg_id(dev, MLX5_MTR_COLOR,
+						       0, error);
+			if (reg < 0)
+				return;
+			MLX5_ASSERT(reg != REG_NON);
+			MLX5_ASSERT((unsigned int)reg < RTE_DIM(reg_to_field));
+			info[idx] = (struct field_modify_info){4, 0,
+						reg_to_field[reg]};
+			if (mask)
+				mask[idx] = flow_modify_info_mask_32_masked
+					(width, data->offset, color_mask);
+			else
+				info[idx].offset = data->offset;
+		}
+		break;
 	case RTE_FLOW_FIELD_POINTER:
 	case RTE_FLOW_FIELD_VALUE:
 	default:
@@ -13055,7 +13081,8 @@ flow_convert_action_modify_field(struct rte_eth_dev *dev,
 					(void *)(uintptr_t)conf->src.pvalue :
 					(void *)(uintptr_t)&conf->src.value;
 		if (conf->dst.field == RTE_FLOW_FIELD_META ||
-		    conf->dst.field == RTE_FLOW_FIELD_TAG) {
+		    conf->dst.field == RTE_FLOW_FIELD_TAG ||
+		    conf->dst.field == RTE_FLOW_FIELD_METER_COLOR) {
 			meta = *(const unaligned_uint32_t *)item.spec;
 			meta = rte_cpu_to_be_32(meta);
 			item.spec = &meta;
