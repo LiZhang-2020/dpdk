@@ -158,6 +158,7 @@ static void mlx5dr_rule_create_init(struct mlx5dr_rule *rule,
 	apply->tbl_type = tbl->type;
 	apply->common_res = &ctx->common_res[tbl->type];
 	apply->jump_to_action_stc = matcher->action_ste.stc.offset;
+	apply->require_dep = 0;
 }
 
 static int mlx5dr_rule_create_hws(struct mlx5dr_rule *rule,
@@ -172,9 +173,9 @@ static int mlx5dr_rule_create_hws(struct mlx5dr_rule *rule,
 	bool is_jumbo = mlx5dr_definer_is_jumbo(mt->definer);
 	struct mlx5dr_matcher *matcher = rule->matcher;
 	struct mlx5dr_context *ctx = matcher->tbl->ctx;
-	struct mlx5dr_actions_apply_data apply = {0};
 	struct mlx5dr_send_ste_attr ste_attr = {0};
 	struct mlx5dr_send_ring_dep_wqe *dep_wqe;
+	struct mlx5dr_actions_apply_data apply;
 	struct mlx5dr_actions_setter *setter;
 	struct mlx5dr_send_engine *queue;
 	uint8_t total_stes, action_stes;
@@ -220,6 +221,8 @@ static int mlx5dr_rule_create_hws(struct mlx5dr_rule *rule,
 		/* Action STEs are written to a specific index last to first */
 		ste_attr.direct_index = rule->action_ste_idx + action_stes;
 		apply.next_direct_idx = ste_attr.direct_index;
+	} else {
+		apply.next_direct_idx = 0;
 	}
 
 	for (i = total_stes; i-- > 0;) {
