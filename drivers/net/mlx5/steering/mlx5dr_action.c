@@ -1778,44 +1778,6 @@ mlx5dr_action_setter_default_hit(struct mlx5dr_actions_apply_data *apply,
 }
 
 static void
-mlx5dr_action_setter_default_single(struct mlx5dr_actions_apply_data *apply,
-				    __rte_unused struct mlx5dr_actions_setter *setter)
-{
-	apply->wqe_data[MLX5DR_ACTION_OFFSET_DW5] = 0;
-	apply->wqe_ctrl->stc_ix[MLX5DR_ACTION_STC_IDX_DW5] =
-		htobe32(apply->common_res->default_stc->nop_dw5.offset);
-}
-
-static void
-mlx5dr_action_setter_default_double(struct mlx5dr_actions_apply_data *apply,
-				    __rte_unused struct mlx5dr_actions_setter *setter)
-{
-	apply->wqe_data[MLX5DR_ACTION_OFFSET_DW6] = 0;
-	apply->wqe_data[MLX5DR_ACTION_OFFSET_DW7] = 0;
-	apply->wqe_ctrl->stc_ix[MLX5DR_ACTION_STC_IDX_DW6] =
-		htobe32(apply->common_res->default_stc->nop_dw6.offset);
-	apply->wqe_ctrl->stc_ix[MLX5DR_ACTION_STC_IDX_DW7] =
-		htobe32(apply->common_res->default_stc->nop_dw7.offset);
-}
-
-static void
-mlx5dr_action_setter_default_ctr(struct mlx5dr_actions_apply_data *apply,
-				 __rte_unused struct mlx5dr_actions_setter *setter)
-{
-	uint8_t num_of_actions;
-
-	/* Control WQE counter DW also holds the number of actions */
-	num_of_actions = setter->flags & ASF_DOUBLE ?
-		MLX5DR_ACTION_STC_IDX_LAST_COMBO1 :
-		MLX5DR_ACTION_STC_IDX_LAST_COMBO2;
-
-	apply->wqe_data[MLX5DR_ACTION_OFFSET_DW0] = 0;
-	apply->wqe_ctrl->stc_ix[MLX5DR_ACTION_STC_IDX_CTRL] =
-		htobe32(apply->common_res->default_stc->nop_ctr.offset |
-			num_of_actions << 29);
-}
-
-static void
 mlx5dr_action_setter_hit_next_action(struct mlx5dr_actions_apply_data *apply,
 				     __rte_unused struct mlx5dr_actions_setter *setter)
 {
@@ -1846,12 +1808,8 @@ int mlx5dr_action_template_process(struct mlx5dr_action_template *at)
 	if (at->num_of_action_stes)
 		return 0;
 
-	for (i = 0; i < MLX5DR_ACTION_MAX_STE; i++) {
-		setter[i].set_ctr = &mlx5dr_action_setter_default_ctr;
-		setter[i].set_single = &mlx5dr_action_setter_default_single;
-		setter[i].set_double = &mlx5dr_action_setter_default_double;
+	for (i = 0; i < MLX5DR_ACTION_MAX_STE; i++)
 		setter[i].set_hit = &mlx5dr_action_setter_hit_next_action;
-	}
 
 	/* The same action template setters can be used with jumbo or match
 	 * STE, to support both cases we reseve the first setter for cases

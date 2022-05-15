@@ -172,28 +172,75 @@ void mlx5dr_action_free_single_stc(struct mlx5dr_context *ctx,
 				   struct mlx5dr_pool_chunk *stc);
 
 static inline void
+mlx5dr_action_setter_default_single(struct mlx5dr_actions_apply_data *apply,
+				    __rte_unused struct mlx5dr_actions_setter *setter)
+{
+	apply->wqe_data[MLX5DR_ACTION_OFFSET_DW5] = 0;
+	apply->wqe_ctrl->stc_ix[MLX5DR_ACTION_STC_IDX_DW5] =
+		htobe32(apply->common_res->default_stc->nop_dw5.offset);
+}
+
+static inline void
+mlx5dr_action_setter_default_double(struct mlx5dr_actions_apply_data *apply,
+				    __rte_unused struct mlx5dr_actions_setter *setter)
+{
+	apply->wqe_data[MLX5DR_ACTION_OFFSET_DW6] = 0;
+	apply->wqe_data[MLX5DR_ACTION_OFFSET_DW7] = 0;
+	apply->wqe_ctrl->stc_ix[MLX5DR_ACTION_STC_IDX_DW6] =
+		htobe32(apply->common_res->default_stc->nop_dw6.offset);
+	apply->wqe_ctrl->stc_ix[MLX5DR_ACTION_STC_IDX_DW7] =
+		htobe32(apply->common_res->default_stc->nop_dw7.offset);
+}
+
+static inline void
+mlx5dr_action_setter_default_ctr(struct mlx5dr_actions_apply_data *apply,
+				 __rte_unused struct mlx5dr_actions_setter *setter)
+{
+	apply->wqe_data[MLX5DR_ACTION_OFFSET_DW0] = 0;
+	apply->wqe_ctrl->stc_ix[MLX5DR_ACTION_STC_IDX_CTRL] =
+		htobe32(apply->common_res->default_stc->nop_ctr.offset);
+}
+
+static inline void
 mlx5dr_action_apply_setter(struct mlx5dr_actions_apply_data *apply,
 			   struct mlx5dr_actions_setter *setter,
 			   bool is_jumbo)
 {
 	uint8_t num_of_actions;
 
-	setter->set_hit(apply, setter);
-	setter->set_single(apply, setter);
-	setter->set_double(apply, setter);
-	setter->set_ctr(apply, setter);
+	/* Set control counter */
+	if (setter->flags & ASF_CTR)
+		setter->set_ctr(apply, setter);
+	else
+		mlx5dr_action_setter_default_ctr(apply, setter);
 
-	if (is_jumbo) {
-		/* Clean the default STC - Under check with CD if required */
+	/* Set single and double on match */
+	if (!is_jumbo) {
+		if (setter->flags & ASF_SINGLE1)
+			setter->set_single(apply, setter);
+		else
+			mlx5dr_action_setter_default_single(apply, setter);
+
+		if (setter->flags & ASF_DOUBLE)
+			setter->set_double(apply, setter);
+		else
+			mlx5dr_action_setter_default_double(apply, setter);
+
+		num_of_actions = setter->flags & ASF_DOUBLE ?
+			MLX5DR_ACTION_STC_IDX_LAST_COMBO1 :
+			MLX5DR_ACTION_STC_IDX_LAST_COMBO2;
+	} else {
+		apply->wqe_data[MLX5DR_ACTION_OFFSET_DW5] = 0;
+		apply->wqe_data[MLX5DR_ACTION_OFFSET_DW6] = 0;
+		apply->wqe_data[MLX5DR_ACTION_OFFSET_DW7] = 0;
 		apply->wqe_ctrl->stc_ix[MLX5DR_ACTION_STC_IDX_DW5] = 0;
 		apply->wqe_ctrl->stc_ix[MLX5DR_ACTION_STC_IDX_DW6] = 0;
 		apply->wqe_ctrl->stc_ix[MLX5DR_ACTION_STC_IDX_DW7] = 0;
 		num_of_actions = MLX5DR_ACTION_STC_IDX_LAST_JUMBO_STE;
-	} else {
-		num_of_actions = setter->flags & ASF_DOUBLE ?
-				 MLX5DR_ACTION_STC_IDX_LAST_COMBO1 :
-				 MLX5DR_ACTION_STC_IDX_LAST_COMBO2;
 	}
+
+	/* Set next/final hit action */
+	setter->set_hit(apply, setter);
 
 	/* Set number of actions */
 	apply->wqe_ctrl->stc_ix[MLX5DR_ACTION_STC_IDX_CTRL] |=
@@ -201,4 +248,3 @@ mlx5dr_action_apply_setter(struct mlx5dr_actions_apply_data *apply,
 }
 
 #endif
-
