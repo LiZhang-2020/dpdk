@@ -12852,10 +12852,14 @@ mlx5_flow_field_id_to_modify_info
 		break;
 	case RTE_FLOW_FIELD_IPV4_ECN:
 	case RTE_FLOW_FIELD_IPV6_ECN:
+		MLX5_ASSERT(data->offset + width <= 2);
+		off_be = 2 - (data->offset + width);
 		info[idx] = (struct field_modify_info){1, 0,
 					MLX5_MODI_OUT_IP_ECN};
 		if (mask)
-			mask[idx] = 0x3 >> (2 - width);
+			mask[idx] = flow_modify_info_mask_8(width, off_be);
+		else
+			info[idx].offset = off_be;
 		break;
 	case RTE_FLOW_FIELD_GTP_PSC_QFI:
 		MLX5_ASSERT(data->offset + width <= 8);
