@@ -3094,6 +3094,7 @@ flow_hw_pattern_validate(struct rte_eth_dev *dev,
 		}
 		case RTE_FLOW_ITEM_TYPE_VOID:
 		case RTE_FLOW_ITEM_TYPE_ETH:
+		case RTE_FLOW_ITEM_TYPE_VLAN:
 		case RTE_FLOW_ITEM_TYPE_IPV4:
 		case RTE_FLOW_ITEM_TYPE_IPV6:
 		case RTE_FLOW_ITEM_TYPE_UDP:
