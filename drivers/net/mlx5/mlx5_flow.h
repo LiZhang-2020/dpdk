@@ -1535,6 +1535,7 @@ flow_hw_get_reg_id(enum rte_flow_item_type type, uint32_t id)
 		 */
 		return REG_A;
 	case RTE_FLOW_ITEM_TYPE_CONNTRACK:
+	case RTE_FLOW_ITEM_TYPE_METER_COLOR:
 		return mlx5_flow_hw_aso_tag;
 	case RTE_FLOW_ITEM_TYPE_TAG:
 		MLX5_ASSERT(id < MLX5_FLOW_HW_TAGS_MAX);

@@ -3745,6 +3745,16 @@ flow_hw_pattern_validate(struct rte_eth_dev *dev,
 								  " attribute");
 			}
 			break;
+		case RTE_FLOW_ITEM_TYPE_METER_COLOR:
+		{
+			int reg = flow_hw_get_reg_id(RTE_FLOW_ITEM_TYPE_METER_COLOR, 0);
+			if (reg == REG_NON)
+				return rte_flow_error_set(error, EINVAL,
+							  RTE_FLOW_ERROR_TYPE_UNSPECIFIED,
+							  NULL,
+							  "Unsupported meter color register");
+			break;
+		}
 		case RTE_FLOW_ITEM_TYPE_VOID:
 		case RTE_FLOW_ITEM_TYPE_ETH:
 		case RTE_FLOW_ITEM_TYPE_VLAN:

@@ -264,7 +264,8 @@ struct mlx5dr_definer_conv_data {
 	X(SET,		ipv4_protocol_gre,	IPPROTO_GRE,		rte_flow_item_gre) \
 	X(SET_BE32,	gre_opt_key,		v->key.key,		rte_flow_item_gre_opt) \
 	X(SET_BE32,	gre_opt_seq,		v->sequence.sequence,	rte_flow_item_gre_opt) \
-	X(SET_BE16,	gre_opt_checksum,	v->checksum_rsvd.checksum,rte_flow_item_gre_opt)
+	X(SET_BE16,	gre_opt_checksum,	v->checksum_rsvd.checksum,	rte_flow_item_gre_opt) \
+	X(SET,		meter_color,		rte_col_2_mlx5_col(v->color),	rte_flow_item_meter_color)
 
 /* Item set function format */
 #define X(set_type, func_name, value, itme_type) \
@@ -1514,6 +1515,30 @@ mlx5dr_definer_conv_item_icmp6(struct mlx5dr_definer_conv_data *cd,
 }
 
 static int
+mlx5dr_definer_conv_item_meter_color(struct mlx5dr_definer_conv_data *cd,
+			     struct rte_flow_item *item,
+			     int item_idx)
+{
+	const struct rte_flow_item_meter_color *m = item->mask;
+	struct mlx5dr_definer_fc *fc;
+	int reg;
+
+	if (!m)
+		return 0;
+
+	reg = flow_hw_get_reg_id(RTE_FLOW_ITEM_TYPE_METER_COLOR, 0);
+	MLX5_ASSERT(reg > 0);
+
+	fc = mlx5dr_definer_get_register_fc(cd, reg);
+	if (!fc)
+		return rte_errno;
+
+	fc->item_idx = item_idx;
+	fc->tag_set = &mlx5dr_definer_meter_color_set;
+	return 0;
+}
+
+static int
 mlx5dr_definer_conv_items_to_hl(struct mlx5dr_context *ctx,
 				struct mlx5dr_match_template *mt,
 				uint8_t *hl)
@@ -1624,6 +1649,10 @@ mlx5dr_definer_conv_items_to_hl(struct mlx5dr_context *ctx,
 		case RTE_FLOW_ITEM_TYPE_ICMP6:
 			ret = mlx5dr_definer_conv_item_icmp6(&cd, items, i);
 			item_flags |= MLX5_FLOW_LAYER_ICMP6;
+			break;
+		case RTE_FLOW_ITEM_TYPE_METER_COLOR:
+			ret = mlx5dr_definer_conv_item_meter_color(&cd, items, i);
+			item_flags |= MLX5_FLOW_ITEM_METER_COLOR;
 			break;
 		default:
 			DR_LOG(ERR, "Unsupported item type %d", items->type);
