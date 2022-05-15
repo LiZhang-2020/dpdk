@@ -2497,6 +2497,69 @@ flow_dv_validate_action_aso_ct(struct rte_eth_dev *dev,
 	return 0;
 }
 
+/**
+ * Validate METER_COLOR item.
+ *
+ * @param[in] dev
+ *   Pointer to the rte_eth_dev structure.
+ * @param[in] item
+ *   Item specification.
+ * @param[in] attr
+ *   Attributes of flow that includes this item.
+ * @param[out] error
+ *   Pointer to error structure.
+ *
+ * @return
+ *   0 on success, a negative errno value otherwise and rte_errno is set.
+ */
+static int
+flow_dv_validate_item_meter_color(struct rte_eth_dev *dev,
+			   const struct rte_flow_item *item,
+			   const struct rte_flow_attr *attr __rte_unused,
+			   struct rte_flow_error *error)
+{
+	struct mlx5_priv *priv = dev->data->dev_private;
+	const struct rte_flow_item_meter_color *spec = item->spec;
+	const struct rte_flow_item_meter_color *mask = item->mask;
+	struct rte_flow_item_meter_color nic_mask = {
+		.color = RTE_COLORS
+	};
+	int ret;
+
+	if (priv->mtr_color_reg == REG_NON)
+		return rte_flow_error_set(error, ENOTSUP,
+					  RTE_FLOW_ERROR_TYPE_ITEM, item,
+					  "meter color register"
+					  " isn't available");
+	ret = mlx5_flow_get_reg_id(dev, MLX5_MTR_COLOR, 0, error);
+	if (ret < 0)
+		return ret;
+	if (!spec)
+		return rte_flow_error_set(error, EINVAL,
+					  RTE_FLOW_ERROR_TYPE_ITEM_SPEC,
+					  item->spec,
+					  "data cannot be empty");
+	if (spec->color > RTE_COLORS)
+		return rte_flow_error_set(error, EINVAL,
+					  RTE_FLOW_ERROR_TYPE_ACTION_CONF,
+					  &spec->color,
+					  "meter color is invalid");
+	if (!mask)
+		mask = &rte_flow_item_meter_color_mask;
+	if (!mask->color)
+		return rte_flow_error_set(error, EINVAL,
+					RTE_FLOW_ERROR_TYPE_ITEM_SPEC, NULL,
+					"mask cannot be zero");
+
+	ret = mlx5_flow_item_acceptable(item, (const uint8_t *)mask,
+				(const uint8_t *)&nic_mask,
+				sizeof(struct rte_flow_item_meter_color),
+				MLX5_ITEM_RANGE_NOT_ACCEPTED, error);
+	if (ret < 0)
+		return ret;
+	return 0;
+}
+
 int
 flow_dv_encap_decap_match_cb(void *tool_ctx __rte_unused,
 			     struct mlx5_list_entry *entry, void *cb_ctx)
@@ -6215,6 +6278,13 @@ flow_dv_validate(struct rte_eth_dev *dev, const struct rte_flow_attr *attr,
 			if (ret < 0)
 				return ret;
 			break;
+		case RTE_FLOW_ITEM_TYPE_METER_COLOR:
+			ret = flow_dv_validate_item_meter_color(dev, items,
+								attr, error);
+			if (ret < 0)
+				return ret;
+			last_item = MLX5_FLOW_ITEM_METER_COLOR;
+			break;
 		default:
 			return rte_flow_error_set(error, ENOTSUP,
 						  RTE_FLOW_ERROR_TYPE_ITEM,
@@ -9513,6 +9583,45 @@ flow_dv_translate_item_flex(struct rte_eth_dev *dev, void *matcher, void *key,
 	mlx5_flex_flow_translate_item(dev, matcher, key, item, is_inner);
 }
 
+/**
+ * Add METER_COLOR item to matcher
+ *
+ * @param[in] dev
+ *   The device to configure through.
+ * @param[in, out] key
+ *   Flow matcher value.
+ * @param[in] item
+ *   Flow pattern to translate.
+ * @param[in] key_type
+ *   Set flow matcher mask or value.
+ */
+static void
+flow_dv_translate_item_meter_color(struct rte_eth_dev *dev, void *key,
+			    const struct rte_flow_item *item,
+			    uint32_t key_type)
+{
+	const struct rte_flow_item_meter_color *color_m = item->mask;
+	const struct rte_flow_item_meter_color *color_v = item->spec;
+	uint32_t value, mask;
+	int reg = REG_NON;
+
+	MLX5_ASSERT(color_v);
+	if (MLX5_ITEM_VALID(item, key_type))
+		return;
+	MLX5_ITEM_UPDATE(item, key_type, color_v, color_m,
+		&rte_flow_item_meter_color_mask);
+	value = rte_col_2_mlx5_col(color_v->color);
+	mask = color_m ?
+		color_m->color : (UINT32_C(1) << MLX5_MTR_COLOR_BITS) - 1;
+	if (!!(key_type & MLX5_SET_MATCHER_SW))
+		reg = mlx5_flow_get_reg_id(dev, MLX5_MTR_COLOR, 0, NULL);
+	else
+		reg = flow_hw_get_reg_id(RTE_FLOW_ITEM_TYPE_METER_COLOR, 0);
+	if (reg == REG_NON)
+		return;
+	flow_dv_match_meta_reg(key, (enum modify_reg)reg, value, mask);
+}
+
 static uint32_t matcher_zero[MLX5_ST_SZ_DW(fte_match_param)] = { 0 };
 
 #define HEADER_IS_ZERO(match_criteria, headers)				     \
@@ -12697,6 +12806,10 @@ flow_dv_translate_items(struct rte_eth_dev *dev,
 				(dev, key, items, last_item, key_type);
 		/* No other protocol should follow eCPRI layer. */
 		last_item = MLX5_FLOW_LAYER_ECPRI;
+		break;
+	case RTE_FLOW_ITEM_TYPE_METER_COLOR:
+		flow_dv_translate_item_meter_color(dev, key, items, key_type);
+		last_item = MLX5_FLOW_ITEM_METER_COLOR;
 		break;
 	default:
 		break;

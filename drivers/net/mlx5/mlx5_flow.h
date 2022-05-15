@@ -280,6 +280,9 @@ enum mlx5_feature_name {
 /* ESP item */
 #define MLX5_FLOW_ITEM_ESP (UINT64_C(1) << 40)
 
+/* Meter color item */
+#define MLX5_FLOW_ITEM_METER_COLOR (UINT64_C(1) << 44)
+
 /* Outer Masks. */
 #define MLX5_FLOW_LAYER_OUTER_L3 \
 	(MLX5_FLOW_LAYER_OUTER_L3_IPV4 | MLX5_FLOW_LAYER_OUTER_L3_IPV6)
