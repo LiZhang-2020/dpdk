@@ -2,18 +2,23 @@
 # Copyright (c) 2022, Nvidia Inc. All rights reserved.
 
 from .utils import raw_traffic, gen_packet, PacketConsts, create_sipv4_rte_items, \
-    create_counter_action, verify_counter, send_packets, poll_cq
+    create_counter_action, verify_counter, send_packets, create_ipv4_rte_item, create_eth_rte_item, \
+    NEW_MAC_STR, ModifyFieldId, ModifyFieldLen
 from pydiru.rte_flow import RteFlowItem, RteFlowItemEthdev, RteFlowItemIpv4, Mlx5RteFlowItemTxQueue,\
     RteFlowItemEnd
+from pydiru.providers.mlx5.steering.mlx5dr_action import Mlx5drRuleAction, Mlx5drActionDestTable, \
+    Mlx5drActionTemplate
 from pydiru.providers.mlx5.steering.mlx5dr_rule import Mlx5drRuleAttr, Mlx5drRule
 from pyverbs.pyverbs_error import PyverbsRDMAError, PyverbsError
 from pydiru.providers.mlx5.mlx5_flow import FlowPortInfo
 from .base import BaseDrResources, PydiruTrafficTestCase
 import pydiru.providers.mlx5.steering.mlx5dr_enums as me
 from pyverbs.providers.mlx5.mlx5dv import Mlx5Context
+from .prm_structs import SetActionIn
 from pydiru.base import PydiruErrno
 import pydiru.pydiru_enums as p
 import unittest
+import struct
 import errno
 
 
@@ -136,3 +141,88 @@ class Mlx5drFDBTest(PydiruTrafficTestCase):
         for _ in range(self.vf.num_msgs):
             send_packets(self.vf, [packet])
         verify_counter(self, self.client, devx_counter, counter_id)
+
+    def create_tmp_rule_and_verify(self, at_idx, actions, send_packets, exp_packet):
+        """
+        Creates a rule with provided actions and action template index.
+        Sends and verifies packets.
+        Removes the rule.
+        """
+        rte_items = create_sipv4_rte_items(PacketConsts.SRC_IP)
+        self.tmp_rule = Mlx5drRule(self.server.matcher, 0, rte_items, at_idx, actions, len(actions),
+                                   Mlx5drRuleAttr(user_data=bytes(8)), self.server.dr_ctx)
+        raw_traffic(self.client, self.vf, self.server.num_msgs, send_packets,
+                    expected_packet=exp_packet)
+        self.tmp_rule.close()
+
+    def test_mlx5dr_fdb_actions(self):
+        """
+        Verify actions on fdb by creating different rules on the same non root matcher:
+        Counter + Vport
+        Drop
+        Modify header + Vport
+        Goto FT and goto Vport on the next FT
+        Verify traffic on Vport using action TIR.
+        """
+        ib_port = self.vf_to_ib_port(self.vf_name)
+        eth_rte_items = [create_eth_rte_item(), RteFlowItemEnd()]
+        src_ip_rte_items = create_sipv4_rte_items(PacketConsts.SRC_IP)
+        dst_ip_items = [create_ipv4_rte_item(dst_addr=PacketConsts.DST_IP), RteFlowItemEnd()]
+        action_types_list = [[me.MLX5DR_ACTION_TYP_DROP, me.MLX5DR_ACTION_TYP_LAST],
+                             [me.MLX5DR_ACTION_TYP_CTR, me.MLX5DR_ACTION_TYP_VPORT,
+                              me.MLX5DR_ACTION_TYP_LAST],
+                             [me.MLX5DR_ACTION_TYP_MODIFY_HDR, me.MLX5DR_ACTION_TYP_VPORT,
+                              me.MLX5DR_ACTION_TYP_LAST],
+                             [me.MLX5DR_ACTION_TYP_FT, me.MLX5DR_ACTION_TYP_LAST]]
+        self.server.init_steering_resources(rte_items=src_ip_rte_items,
+                                            table_type=me.MLX5DR_TABLE_TYPE_FDB,
+                                            root_rte_items=eth_rte_items,
+                                            action_types_list=action_types_list)
+        _, vport_ra = self.server.create_rule_action('vport', flags=me.MLX5DR_ACTION_FLAG_HWS_FDB,
+                                                     vport=ib_port)
+        packet = gen_packet(self.server.msg_size)
+        # Create TIR rule on VF
+        self.vf.init_steering_resources(rte_items=dst_ip_items)
+        _, tir_ra = self.vf.create_rule_action('tir')
+        self.vf.tir_rule = Mlx5drRule(self.vf.matcher, 0, dst_ip_items, 0, [tir_ra], 1,
+                                      Mlx5drRuleAttr(user_data=bytes(8)), self.vf.dr_ctx)
+        # Drop
+        drop_ip = "1.1.1.3"
+        _, drop_ra = self.server.create_rule_action('drop', flags=me.MLX5DR_ACTION_FLAG_HWS_FDB)
+        packet_drop = gen_packet(self.server.msg_size, src_ip=drop_ip)
+        self.drop_rule = Mlx5drRule(self.server.matcher, 0, create_sipv4_rte_items(drop_ip), 0,
+                                    [drop_ra], 1, Mlx5drRuleAttr(user_data=bytes(8)),
+                                    self.server.dr_ctx)
+        # Counter
+        devx_counter, counter_id, counter_ra = \
+            create_counter_action(self, self.server, flags=me.MLX5DR_ACTION_FLAG_HWS_FDB)
+        # Verify that packet_drop is dropped and the other packet is passed
+        # through counter and vport actions and reached TIR on VF.
+        self.create_tmp_rule_and_verify(1, [counter_ra, vport_ra], [packet, packet_drop], packet)
+        verify_counter(self, self.server, devx_counter, counter_id)
+
+        # Modify
+        smac_15_0 = 0x8888
+        modify_actions = [SetActionIn(field=ModifyFieldId.OUT_SMAC_15_0,
+                                      length=ModifyFieldLen.OUT_SMAC_15_0, data=smac_15_0)]
+        _, modify_ra = self.server.create_rule_action('modify', log_bulk_size=12, offset=0,
+                                                      actions=modify_actions,
+                                                      flags=me.MLX5DR_ACTION_FLAG_HWS_FDB)
+        exp_str_smac = PacketConsts.SRC_MAC[:12] + NEW_MAC_STR[12:]
+        exp_src_mac = struct.pack('!6s', bytes.fromhex(exp_str_smac.replace(':', '')))
+        exp_modify_packet = gen_packet(self.server.msg_size, src_mac=exp_src_mac)
+        self.create_tmp_rule_and_verify(2, [modify_ra, vport_ra], [packet, packet_drop],
+                                        exp_modify_packet)
+        # Goto FT
+        self.server.table2 = self.server.create_table(table_type=me.MLX5DR_TABLE_TYPE_FDB)
+        tbl_action = Mlx5drActionDestTable(self.server.dr_ctx, self.server.table2,
+                                           me.MLX5DR_ACTION_FLAG_HWS_FDB)
+        tbl_ra = Mlx5drRuleAction(tbl_action)
+        # Goto vport on table2
+        table2_at = Mlx5drActionTemplate([me.MLX5DR_ACTION_TYP_VPORT, me.MLX5DR_ACTION_TYP_LAST])
+        table2_matcher = self.server.create_matcher(self.server.table2,
+                                                    self.server.matcher_templates,
+                                                    [table2_at])
+        self.ft_rule = Mlx5drRule(table2_matcher, 0, src_ip_rte_items, 0, [vport_ra], 1,
+                                  Mlx5drRuleAttr(user_data=bytes(8)), self.server.dr_ctx)
+        self.create_tmp_rule_and_verify(3, [tbl_ra], [packet, packet_drop], packet)
