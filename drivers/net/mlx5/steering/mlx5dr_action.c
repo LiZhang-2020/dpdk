@@ -1566,8 +1566,8 @@ mlx5dr_action_prepare_decap_l3_data(uint8_t *src, uint8_t *dst,
 	memcpy(dst, e_src, 2);
 }
 
-static struct mlx5dr_actions_setter *
-mlx5dr_action_setter_find_first(struct mlx5dr_actions_setter *setter,
+static struct mlx5dr_actions_wqe_setter *
+mlx5dr_action_setter_find_first(struct mlx5dr_actions_wqe_setter *setter,
 				uint8_t req_flags)
 {
 	/* Use a new setter if requested flags are taken */
@@ -1591,7 +1591,7 @@ mlx5dr_action_apply_stc(struct mlx5dr_actions_apply_data *apply,
 
 static void
 mlx5dr_action_setter_push_vlan(struct mlx5dr_actions_apply_data *apply,
-			       struct mlx5dr_actions_setter *setter)
+			       struct mlx5dr_actions_wqe_setter *setter)
 {
 	struct mlx5dr_rule_action *rule_action;
 
@@ -1605,7 +1605,7 @@ mlx5dr_action_setter_push_vlan(struct mlx5dr_actions_apply_data *apply,
 
 static void
 mlx5dr_action_setter_modify_header(struct mlx5dr_actions_apply_data *apply,
-				   struct mlx5dr_actions_setter *setter)
+				   struct mlx5dr_actions_wqe_setter *setter)
 {
 	struct mlx5dr_rule_action *rule_action;
 	struct mlx5dr_action *action;
@@ -1649,7 +1649,7 @@ mlx5dr_action_setter_modify_header(struct mlx5dr_actions_apply_data *apply,
 
 static void
 mlx5dr_action_setter_insert_ptr(struct mlx5dr_actions_apply_data *apply,
-				struct mlx5dr_actions_setter *setter)
+				struct mlx5dr_actions_wqe_setter *setter)
 {
 	struct mlx5dr_rule_action *rule_action;
 	uint32_t arg_idx, arg_sz;
@@ -1677,7 +1677,7 @@ mlx5dr_action_setter_insert_ptr(struct mlx5dr_actions_apply_data *apply,
 
 static void
 mlx5dr_action_setter_tnl_l3_to_l2(struct mlx5dr_actions_apply_data *apply,
-				  struct mlx5dr_actions_setter *setter)
+				  struct mlx5dr_actions_wqe_setter *setter)
 {
 	struct mlx5dr_rule_action *rule_action;
 	struct mlx5dr_action *action;
@@ -1707,7 +1707,7 @@ mlx5dr_action_setter_tnl_l3_to_l2(struct mlx5dr_actions_apply_data *apply,
 
 static void
 mlx5dr_action_setter_aso_meter(struct mlx5dr_actions_apply_data *apply,
-			       struct mlx5dr_actions_setter *setter)
+			       struct mlx5dr_actions_wqe_setter *setter)
 {
 	struct mlx5dr_rule_action *rule_action;
 	uint32_t exe_aso_ctrl;
@@ -1732,7 +1732,7 @@ mlx5dr_action_setter_aso_meter(struct mlx5dr_actions_apply_data *apply,
 
 static void
 mlx5dr_action_setter_tag(struct mlx5dr_actions_apply_data *apply,
-			 struct mlx5dr_actions_setter *setter)
+			 struct mlx5dr_actions_wqe_setter *setter)
 {
 	struct mlx5dr_rule_action *rule_action;
 
@@ -1743,7 +1743,7 @@ mlx5dr_action_setter_tag(struct mlx5dr_actions_apply_data *apply,
 
 static void
 mlx5dr_action_setter_ctrl_ctr(struct mlx5dr_actions_apply_data *apply,
-			      struct mlx5dr_actions_setter *setter)
+			      struct mlx5dr_actions_wqe_setter *setter)
 {
 	struct mlx5dr_rule_action *rule_action;
 
@@ -1754,7 +1754,7 @@ mlx5dr_action_setter_ctrl_ctr(struct mlx5dr_actions_apply_data *apply,
 
 static void
 mlx5dr_action_setter_single(struct mlx5dr_actions_apply_data *apply,
-			    struct mlx5dr_actions_setter *setter)
+			    struct mlx5dr_actions_wqe_setter *setter)
 {
 	apply->wqe_data[MLX5DR_ACTION_OFFSET_DW5] = 0;
 	mlx5dr_action_apply_stc(apply, MLX5DR_ACTION_STC_IDX_DW5, setter->idx_single);
@@ -1762,7 +1762,7 @@ mlx5dr_action_setter_single(struct mlx5dr_actions_apply_data *apply,
 
 static void
 mlx5dr_action_setter_hit(struct mlx5dr_actions_apply_data *apply,
-			 struct mlx5dr_actions_setter *setter)
+			 struct mlx5dr_actions_wqe_setter *setter)
 {
 	apply->wqe_data[MLX5DR_ACTION_OFFSET_HIT_LSB] = 0;
 	mlx5dr_action_apply_stc(apply, MLX5DR_ACTION_STC_IDX_HIT, setter->idx_hit);
@@ -1770,7 +1770,7 @@ mlx5dr_action_setter_hit(struct mlx5dr_actions_apply_data *apply,
 
 static void
 mlx5dr_action_setter_default_hit(struct mlx5dr_actions_apply_data *apply,
-				 __rte_unused struct mlx5dr_actions_setter *setter)
+				 __rte_unused struct mlx5dr_actions_wqe_setter *setter)
 {
 	apply->wqe_data[MLX5DR_ACTION_OFFSET_HIT_LSB] = 0;
 	apply->wqe_ctrl->stc_ix[MLX5DR_ACTION_STC_IDX_HIT] =
@@ -1779,7 +1779,7 @@ mlx5dr_action_setter_default_hit(struct mlx5dr_actions_apply_data *apply,
 
 static void
 mlx5dr_action_setter_hit_next_action(struct mlx5dr_actions_apply_data *apply,
-				     __rte_unused struct mlx5dr_actions_setter *setter)
+				     __rte_unused struct mlx5dr_actions_wqe_setter *setter)
 {
 	apply->wqe_data[MLX5DR_ACTION_OFFSET_HIT_LSB] = htobe32(apply->next_direct_idx << 6);
 	apply->wqe_ctrl->stc_ix[MLX5DR_ACTION_STC_IDX_HIT] = htobe32(apply->jump_to_action_stc);
@@ -1787,7 +1787,7 @@ mlx5dr_action_setter_hit_next_action(struct mlx5dr_actions_apply_data *apply,
 
 static void
 mlx5dr_action_setter_common_decap(struct mlx5dr_actions_apply_data *apply,
-				  __rte_unused struct mlx5dr_actions_setter *setter)
+				  __rte_unused struct mlx5dr_actions_wqe_setter *setter)
 {
 	apply->wqe_data[MLX5DR_ACTION_OFFSET_DW5] = 0;
 	apply->wqe_ctrl->stc_ix[MLX5DR_ACTION_STC_IDX_DW5] =
@@ -1796,10 +1796,10 @@ mlx5dr_action_setter_common_decap(struct mlx5dr_actions_apply_data *apply,
 
 int mlx5dr_action_template_process(struct mlx5dr_action_template *at)
 {
-	struct mlx5dr_actions_setter *start_setter = at->setters + 1;
+	struct mlx5dr_actions_wqe_setter *start_setter = at->setters + 1;
 	enum mlx5dr_action_type *action_type = at->action_type_arr;
-	struct mlx5dr_actions_setter *setter = at->setters;
-	struct mlx5dr_actions_setter *last_setter;
+	struct mlx5dr_actions_wqe_setter *setter = at->setters;
+	struct mlx5dr_actions_wqe_setter *last_setter;
 	int i;
 
 	/* Note: Given action combination must be valid */

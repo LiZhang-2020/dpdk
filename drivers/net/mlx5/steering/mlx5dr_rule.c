@@ -175,8 +175,8 @@ static int mlx5dr_rule_create_hws(struct mlx5dr_rule *rule,
 	struct mlx5dr_context *ctx = matcher->tbl->ctx;
 	struct mlx5dr_send_ste_attr ste_attr = {0};
 	struct mlx5dr_send_ring_dep_wqe *dep_wqe;
+	struct mlx5dr_actions_wqe_setter *setter;
 	struct mlx5dr_actions_apply_data apply;
-	struct mlx5dr_actions_setter *setter;
 	struct mlx5dr_send_engine *queue;
 	uint8_t total_stes, action_stes;
 	int i, ret;

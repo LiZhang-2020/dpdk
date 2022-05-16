@@ -82,13 +82,13 @@ struct mlx5dr_actions_apply_data {
 	uint8_t require_dep;
 };
 
-struct mlx5dr_actions_setter;
+struct mlx5dr_actions_wqe_setter;
 
 typedef void (*mlx5dr_action_setter_fp)
 	(struct mlx5dr_actions_apply_data *apply,
-	 struct mlx5dr_actions_setter *setter);
+	 struct mlx5dr_actions_wqe_setter *setter);
 
-struct mlx5dr_actions_setter {
+struct mlx5dr_actions_wqe_setter {
 	mlx5dr_action_setter_fp set_single;
 	mlx5dr_action_setter_fp set_double;
 	mlx5dr_action_setter_fp set_hit;
@@ -101,7 +101,7 @@ struct mlx5dr_actions_setter {
 };
 
 struct mlx5dr_action_template {
-	struct mlx5dr_actions_setter setters[MLX5DR_ACTION_MAX_STE];
+	struct mlx5dr_actions_wqe_setter setters[MLX5DR_ACTION_MAX_STE];
 	enum mlx5dr_action_type *action_type_arr;
 	uint8_t num_of_action_stes;
 	uint8_t num_actions;
@@ -173,7 +173,7 @@ void mlx5dr_action_free_single_stc(struct mlx5dr_context *ctx,
 
 static inline void
 mlx5dr_action_setter_default_single(struct mlx5dr_actions_apply_data *apply,
-				    __rte_unused struct mlx5dr_actions_setter *setter)
+				    __rte_unused struct mlx5dr_actions_wqe_setter *setter)
 {
 	apply->wqe_data[MLX5DR_ACTION_OFFSET_DW5] = 0;
 	apply->wqe_ctrl->stc_ix[MLX5DR_ACTION_STC_IDX_DW5] =
@@ -182,7 +182,7 @@ mlx5dr_action_setter_default_single(struct mlx5dr_actions_apply_data *apply,
 
 static inline void
 mlx5dr_action_setter_default_double(struct mlx5dr_actions_apply_data *apply,
-				    __rte_unused struct mlx5dr_actions_setter *setter)
+				    __rte_unused struct mlx5dr_actions_wqe_setter *setter)
 {
 	apply->wqe_data[MLX5DR_ACTION_OFFSET_DW6] = 0;
 	apply->wqe_data[MLX5DR_ACTION_OFFSET_DW7] = 0;
@@ -194,7 +194,7 @@ mlx5dr_action_setter_default_double(struct mlx5dr_actions_apply_data *apply,
 
 static inline void
 mlx5dr_action_setter_default_ctr(struct mlx5dr_actions_apply_data *apply,
-				 __rte_unused struct mlx5dr_actions_setter *setter)
+				 __rte_unused struct mlx5dr_actions_wqe_setter *setter)
 {
 	apply->wqe_data[MLX5DR_ACTION_OFFSET_DW0] = 0;
 	apply->wqe_ctrl->stc_ix[MLX5DR_ACTION_STC_IDX_CTRL] =
@@ -203,7 +203,7 @@ mlx5dr_action_setter_default_ctr(struct mlx5dr_actions_apply_data *apply,
 
 static inline void
 mlx5dr_action_apply_setter(struct mlx5dr_actions_apply_data *apply,
-			   struct mlx5dr_actions_setter *setter,
+			   struct mlx5dr_actions_wqe_setter *setter,
 			   bool is_jumbo)
 {
 	uint8_t num_of_actions;
