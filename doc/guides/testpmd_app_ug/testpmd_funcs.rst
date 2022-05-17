@@ -4375,6 +4375,14 @@ This section lists supported actions and their attributes, if any.
 
   - ``ethdev_port_id {unsigned}``: ethdev port ID
 
+- ``meter_mark``:  meter the directed packets using profile and policy
+
+  - ``mtr_profile {unsigned}``: meter profile id to use
+  - ``mtr_policy {unsigned}``: meter policy id to use
+  - ``mtr_color_mode {unsigned}``: meter color-awareness mode (blind/aware)
+  - ``mtr_init_color {value}``: initial color value(green/yellow/red)
+  - ``mtr_state {unsigned}``: meter state (disabled/enabled)
+
 Destroying flow rules
 ~~~~~~~~~~~~~~~~~~~~~
 
