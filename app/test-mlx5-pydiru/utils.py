@@ -71,6 +71,7 @@ class PacketConsts:
     IP_V4_FLAGS = 2  # Don't fragment is set
     TTL_HOP_LIMIT = 64
     IHL = 5
+    TOS = 0x33
     # Hardcoded values for flow matchers
     ETHER_TYPE_IPV4 = 0x800
     MAC_MASK = "ff:ff:ff:ff:ff:ff"
@@ -225,6 +226,8 @@ def gen_packet(msg_size, l2=True, l3=PacketConsts.IP_V4, l4=PacketConsts.UDP_PRO
                 Destination IPv4/IPv6 address to use in the packet.
             * *ttl*
                 Time to live value to use in the packet.
+            * *tos*
+                Type of service value to use in the packet.
             * *src_port*
                 Source L4 port to use in the packet.
             * *gtp_psc_qfi*
@@ -259,12 +262,13 @@ def gen_packet(msg_size, l2=True, l3=PacketConsts.IP_V4, l4=PacketConsts.UDP_PRO
         packet = b''
 
     ttl = kwargs.get('ttl', PacketConsts.TTL_HOP_LIMIT)
+    tos = kwargs.get('tos', 0)
     if l3 == PacketConsts.IP_V4:
         # IPv4 header
         src_ip = kwargs.get('src_ip', PacketConsts.SRC_IP)
         dst_ip = kwargs.get('dst_ip', PacketConsts.DST_IP)
         packet += struct.pack('!2B3H2BH4s4s', (PacketConsts.IP_V4 << 4) +
-                              PacketConsts.IHL, 0, ip_total_len, 0,
+                              PacketConsts.IHL, tos, ip_total_len, 0,
                               PacketConsts.IP_V4_FLAGS << 13,
                               ttl, next_hdr, 0,
                               socket.inet_aton(src_ip),

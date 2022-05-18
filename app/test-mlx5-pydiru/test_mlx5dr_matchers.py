@@ -21,6 +21,8 @@ UN_EXPECTED_IPV6 = "c0c1::c2c3:c4c5:c6c7:c8c9"
 UN_EXPECTED_SRC_PORT = 1235
 UN_EXPECTED_VXLAN_VNI = 8888888
 UN_EXPECTED_VLAN_ID = 1212
+UN_EXPECTED_TOS = 0x44
+
 
 
 class Mlx5drMatcherTest(PydiruTrafficTestCase):
@@ -35,9 +37,11 @@ class Mlx5drMatcherTest(PydiruTrafficTestCase):
                              'num_msgs': self.server.num_msgs}
 
     @staticmethod
-    def create_ipv4_rte_item():
-        mask = RteFlowItemIpv4(src_addr=bytes(4 * [0xff]), dst_addr=bytes(4 * [0xff]))
-        val = RteFlowItemIpv4(src_addr=PacketConsts.SRC_IP, dst_addr=PacketConsts.DST_IP)
+    def create_ipv4_rte_item(tos=None):
+        tos_mask = 0 if tos is None else 0xff
+        tos_val = 0 if tos is None else tos
+        mask = RteFlowItemIpv4(tos=tos_mask, src_addr=bytes(4 * [0xff]), dst_addr=bytes(4 * [0xff]))
+        val = RteFlowItemIpv4(tos=tos_val, src_addr=PacketConsts.SRC_IP, dst_addr=PacketConsts.DST_IP)
         return RteFlowItem(p.RTE_FLOW_ITEM_TYPE_IPV4, val, mask)
 
     @staticmethod
@@ -137,6 +141,16 @@ class Mlx5drMatcherTest(PydiruTrafficTestCase):
         self.create_rx_rules(self.create_ipv4_rte_item())
         exp_packet = gen_packet(self.server.msg_size)
         un_exp_packet = gen_packet(self.server.msg_size, src_ip=UN_EXPECTED_SRC_IP)
+        packets = [exp_packet, un_exp_packet]
+        raw_traffic(**self.traffic_args, packets=packets, expected_packet=exp_packet)
+
+    def test_mlx5dr_matcher_ipv4_tos(self):
+        """
+        Match on IPv4 header with TOS attributes.
+        """
+        self.create_rx_rules(self.create_ipv4_rte_item(tos=PacketConsts.TOS))
+        exp_packet = gen_packet(self.server.msg_size, tos=PacketConsts.TOS)
+        un_exp_packet = gen_packet(self.server.msg_size, tos=UN_EXPECTED_TOS)
         packets = [exp_packet, un_exp_packet]
         raw_traffic(**self.traffic_args, packets=packets, expected_packet=exp_packet)
 
