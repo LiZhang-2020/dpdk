@@ -105,10 +105,8 @@ enum mlx5dr_definer_fname {
 	MLX5DR_DEFINER_FNAME_IP_FRAG_I,
 	MLX5DR_DEFINER_FNAME_IPV6_PAYLOAD_LEN_O,
 	MLX5DR_DEFINER_FNAME_IPV6_PAYLOAD_LEN_I,
-	MLX5DR_DEFINER_FNAME_IP_ECN_O,
-	MLX5DR_DEFINER_FNAME_IP_ECN_I,
-	MLX5DR_DEFINER_FNAME_IP_DSCP_O,
-	MLX5DR_DEFINER_FNAME_IP_DSCP_I,
+	MLX5DR_DEFINER_FNAME_IP_TOS_O,
+	MLX5DR_DEFINER_FNAME_IP_TOS_I,
 	MLX5DR_DEFINER_FNAME_IPV6_FLOW_LABEL_O,
 	MLX5DR_DEFINER_FNAME_IPV6_FLOW_LABEL_I,
 	MLX5DR_DEFINER_FNAME_IPV6_DST_127_96_O,
@@ -387,25 +385,14 @@ mlx5dr_definer_vxlan_vni_set(struct mlx5dr_definer_fc *fc,
 }
 
 static void
-mlx5dr_definer_ipv6_ecn_set(struct mlx5dr_definer_fc *fc,
+mlx5dr_definer_ipv6_tos_set(struct mlx5dr_definer_fc *fc,
 			    const void *item_spec,
 			    uint8_t *tag)
 {
 	const struct rte_flow_item_ipv6 *v = item_spec;
-	uint8_t ecn = DR_GET(header_ipv6_vtc, &v->hdr.vtc_flow, ecn);
+	uint8_t tos = DR_GET(header_ipv6_vtc, &v->hdr.vtc_flow, tos);
 
-	DR_SET(tag, ecn, fc->byte_off, fc->bit_off, fc->bit_mask);
-}
-
-static void
-mlx5dr_definer_ipv6_dscp_set(struct mlx5dr_definer_fc *fc,
-			     const void *item_spec,
-			     uint8_t *tag)
-{
-	const struct rte_flow_item_ipv6 *v = item_spec;
-	uint8_t dscp = DR_GET(header_ipv6_vtc, &v->hdr.vtc_flow, dscp);
-
-	DR_SET(tag, dscp, fc->byte_off, fc->bit_off, fc->bit_mask);
+	DR_SET(tag, tos, fc->byte_off, fc->bit_off, fc->bit_mask);
 }
 
 static void
@@ -661,18 +648,11 @@ mlx5dr_definer_conv_item_ipv6(struct mlx5dr_definer_conv_data *cd,
 		DR_CALC_SET(fc, eth_l4, ip_fragmented, inner);
 	}
 
-	if (DR_GET(header_ipv6_vtc, &m->hdr.vtc_flow, dscp)) {
-		fc = &cd->fc[DR_CALC_FNAME(IP_DSCP, inner)];
+	if (DR_GET(header_ipv6_vtc, &m->hdr.vtc_flow, tos)) {
+		fc = &cd->fc[DR_CALC_FNAME(IP_TOS, inner)];
 		fc->item_idx = item_idx;
-		fc->tag_set = &mlx5dr_definer_ipv6_dscp_set;
-		DR_CALC_SET(fc, eth_l3, dscp, inner);
-	}
-
-	if (DR_GET(header_ipv6_vtc, &m->hdr.vtc_flow, ecn)) {
-		fc = &cd->fc[DR_CALC_FNAME(IP_ECN, inner)];
-		fc->item_idx = item_idx;
-		fc->tag_set = &mlx5dr_definer_ipv6_ecn_set;
-		DR_CALC_SET(fc, eth_l3, ecn, inner);
+		fc->tag_set = &mlx5dr_definer_ipv6_tos_set;
+		DR_CALC_SET(fc, eth_l3, tos, inner);
 	}
 
 	if (DR_GET(header_ipv6_vtc, &m->hdr.vtc_flow, flow_label)) {

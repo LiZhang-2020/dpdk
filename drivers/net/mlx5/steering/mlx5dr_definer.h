@@ -74,8 +74,13 @@ struct mlx5_ifc_definer_hl_ib_l2_bits {
 struct mlx5_ifc_definer_hl_eth_l3_bits {
 	u8 ip_version[0x4];
 	u8 ihl[0x4];
-	u8 dscp[0x6];
-	u8 ecn[0x2];
+	union {
+		u8 tos[0x8];
+		struct {
+			u8 dscp[0x6];
+			u8 ecn[0x2];
+		};
+	};
 	u8 time_to_live_hop_limit[0x8];
 	u8 protocol_next_header[0x8];
 	u8 identification[0x10];
@@ -366,8 +371,13 @@ struct mlx5_ifc_header_gtp_psc_bits {
 
 struct mlx5_ifc_header_ipv6_vtc_bits {
 	u8 version[0x4];
-	u8 dscp[0x6];
-	u8 ecn[0x2];
+	union {
+		u8 tos[0x8];
+		struct {
+			u8 dscp[0x6];
+			u8 ecn[0x2];
+		};
+	};
 	u8 flow_label[0x14];
 };
 
