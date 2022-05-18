@@ -62,12 +62,16 @@ class PacketConsts:
     IPV6_HEADER_SIZE = 40
     UDP_HEADER_SIZE = 8
     TCP_HEADER_SIZE = 20
+    ICMP_HEADER_SIZE = 8
+    ICMPV6_HEADER_SIZE = 8
     VLAN_HEADER_SIZE = 4
     TCP_HEADER_SIZE_WORDS = 5
     IP_V4 = 4
     IP_V6 = 6
     TCP_PROTO = 'tcp'
     UDP_PROTO = 'udp'
+    ICMP_PROTO = 'icmp'
+    ICMPV6_PROTO = 'icmpv6'
     IP_V4_FLAGS = 2  # Don't fragment is set
     TTL_HOP_LIMIT = 64
     IHL = 5
@@ -95,6 +99,11 @@ class PacketConsts:
     VLAN_PRIO = 5
     VLAN_CFI = 1
     VLAN_ID = 0xc0c
+    ICMP_TYPE = 13
+    ICMP_CODE = 0
+    ICMP_CKSUM = 0
+    ICMP_IDENT = 100
+    ICMP_SEQ = 1
     # GTPU consts
     GTP_U_PORT = 2152
     GTPU_VERSION = 1
@@ -214,7 +223,7 @@ def gen_packet(msg_size, l2=True, l3=PacketConsts.IP_V4, l4=PacketConsts.UDP_PRO
     :param msg_size: total packet size
     :param l2: If True, Build packet with l2 Ethernet header
     :param l3: Packet layer 3 type: 4 for IPv4 or 6 for IPv6
-    :param l4: Packet layer 4 type: 'tcp' or 'udp'
+    :param l4: Packet layer 4 type: 'tcp', 'udp', 'icmp' or 'icmpv6'
     :param with_vlan: if True add VLAN header to the packet
     :param tunnel: If set, the type of tunneling to use.
     :param kwargs: Arguments:
@@ -236,6 +245,8 @@ def gen_packet(msg_size, l2=True, l3=PacketConsts.IP_V4, l4=PacketConsts.UDP_PRO
                 VXLAN VNI value to use in the packet.
             * *vlan_id*
                 VLAN id value to use in the packet.
+            * *icmp_type*
+                ICMP type value to be used in packet.
     :return: Bytes of the generated packet
     """
     if tunnel:
@@ -284,7 +295,12 @@ def gen_packet(msg_size, l2=True, l3=PacketConsts.IP_V4, l4=PacketConsts.UDP_PRO
 
     src_port = kwargs.get('src_port', PacketConsts.SRC_PORT)
     dst_port = kwargs.get('dst_port', PacketConsts.DST_PORT)
-    if l4 == PacketConsts.UDP_PROTO:
+    icmp_type = kwargs.get('icmp_type', PacketConsts.ICMP_TYPE)
+    if l4 == PacketConsts.ICMP_PROTO or l4 == PacketConsts.ICMPV6_PROTO:
+        # ICMP header
+        packet += struct.pack('!2B3H', icmp_type, PacketConsts.ICMP_CODE, PacketConsts.ICMP_CKSUM,
+                              PacketConsts.ICMP_IDENT, PacketConsts.ICMP_SEQ)
+    elif l4 == PacketConsts.UDP_PROTO:
         # UDP header
         packet += struct.pack('!4H', src_port, dst_port,
                               payload_size + PacketConsts.UDP_HEADER_SIZE, 0)

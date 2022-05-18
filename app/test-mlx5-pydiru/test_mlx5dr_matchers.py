@@ -6,7 +6,7 @@ import socket
 
 from pydiru.rte_flow import RteFlowItem, RteFlowItemEth, RteFlowItemIpv4, RteFlowItemTcp, \
     RteFlowItemUdp, RteFlowItemEnd, RteFlowItemGtp, RteFlowItemGtpPsc, RteFlowItemIpv6, \
-    RteFlowItemVxlan, RteFlowItemVlan
+    RteFlowItemVxlan, RteFlowItemVlan, RteFlowItemIcmp, RteFlowItemIcmp6
 from pydiru.providers.mlx5.steering.mlx5dr_rule import Mlx5drRuleAttr, Mlx5drRule
 import pydiru.pydiru_enums as p
 
@@ -22,6 +22,7 @@ UN_EXPECTED_SRC_PORT = 1235
 UN_EXPECTED_VXLAN_VNI = 8888888
 UN_EXPECTED_VLAN_ID = 1212
 UN_EXPECTED_TOS = 0x44
+UN_EXPECTED_ICMP_TYPE = 14
 
 
 
@@ -74,6 +75,22 @@ class Mlx5drMatcherTest(PydiruTrafficTestCase):
         val = RteFlowItemUdp(src_port=PacketConsts.SRC_PORT,
                              dst_port=PacketConsts.DST_PORT)
         return RteFlowItem(p.RTE_FLOW_ITEM_TYPE_UDP, val, mask)
+
+    @staticmethod
+    def create_icmp_rte_item(l4=PacketConsts.ICMP_PROTO):
+        if l4 == PacketConsts.ICMP_PROTO:
+            mask = RteFlowItemIcmp(icmp_type=0xff, code=0xff, cksum=0xffff, ident=0xffff,
+                                   seq_nb=0xffff)
+            val = RteFlowItemIcmp(icmp_type=PacketConsts.ICMP_TYPE, code=PacketConsts.ICMP_CODE,
+                                cksum=PacketConsts.ICMP_CKSUM, ident=PacketConsts.ICMP_IDENT,
+                                seq_nb=PacketConsts.ICMP_SEQ)
+            item_type = p.RTE_FLOW_ITEM_TYPE_ICMP
+        else:
+            mask = RteFlowItemIcmp6(icmp_type=0xff, code=0xff, cksum=0xffff)
+            val = RteFlowItemIcmp6(icmp_type=PacketConsts.ICMP_TYPE, code=PacketConsts.ICMP_CODE,
+                                   cksum=PacketConsts.ICMP_CKSUM)
+            item_type = p.RTE_FLOW_ITEM_TYPE_ICMP6
+        return RteFlowItem(item_type, val, mask)
 
     @staticmethod
     def create_gtp_rte_item():
@@ -252,5 +269,32 @@ class Mlx5drMatcherTest(PydiruTrafficTestCase):
         exp_packet = gen_packet(self.server.msg_size, with_vlan=True)
         un_exp_packet = gen_packet(self.server.msg_size, with_vlan=True,
                                    vlan_id=UN_EXPECTED_VLAN_ID)
+        packets = [exp_packet, un_exp_packet]
+        raw_traffic(**self.traffic_args, packets=packets, expected_packet=exp_packet)
+
+    def test_mlx5dr_matcher_icmp(self):
+        """
+        Match on on ICMP item.
+        """
+        self.create_rx_rules(self.create_icmp_rte_item())
+        exp_packet = gen_packet(self.server.msg_size, l4=PacketConsts.ICMP_PROTO)
+        un_exp_packet = gen_packet(self.server.msg_size, l4=PacketConsts.ICMP_PROTO,
+                                   icmp_type=UN_EXPECTED_ICMP_TYPE)
+        packets = [exp_packet, un_exp_packet]
+        raw_traffic(**self.traffic_args, packets=packets, expected_packet=exp_packet)
+
+    def test_mlx5dr_matcher_icmp6(self):
+        """
+        Match on on ICMP6 item.
+        """
+        root_items = []
+        empty_item = RteFlowItemEth()
+        root_items.append(RteFlowItem(p.RTE_FLOW_ITEM_TYPE_ETH, empty_item, empty_item))
+        root_items.append(RteFlowItemEnd())
+        self.create_rx_rules(self.create_icmp_rte_item(l4=PacketConsts.ICMPV6_PROTO), root_items)
+        exp_packet = gen_packet(self.server.msg_size, l3=PacketConsts.IP_V6,
+                                l4=PacketConsts.ICMPV6_PROTO)
+        un_exp_packet = gen_packet(self.server.msg_size, l3=PacketConsts.IP_V6,
+                                   l4=PacketConsts.ICMPV6_PROTO, icmp_type=UN_EXPECTED_ICMP_TYPE)
         packets = [exp_packet, un_exp_packet]
         raw_traffic(**self.traffic_args, packets=packets, expected_packet=exp_packet)
