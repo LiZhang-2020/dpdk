@@ -65,6 +65,22 @@ cdef extern  from '../../../../lib/librte_net/rte_udp.h':
         uint16_t dgram_len
         uint16_t dgram_cksum
 
+cdef extern  from '../../../../lib/librte_net/rte_icmp.h':
+
+    cdef struct rte_icmp_hdr:
+        uint8_t  icmp_type
+        uint8_t  icmp_code
+        uint16_t icmp_cksum
+        uint16_t icmp_ident
+        uint16_t icmp_seq_nb
+
+cdef extern  from '../../../../lib/librte_ethdev/rte_flow.h':
+
+    cdef struct rte_flow_item_icmp6:
+        uint8_t  type
+        uint8_t  code
+        uint16_t checksum
+
 cdef extern  from '../../../../lib/librte_ethdev/rte_flow.h':
 
     cdef struct rte_flow_item:
@@ -103,6 +119,9 @@ cdef extern  from '../../../../lib/librte_ethdev/rte_flow.h':
 
     cdef struct rte_flow_item_udp:
         rte_udp_hdr hdr
+
+    cdef struct rte_flow_item_icmp:
+        rte_icmp_hdr hdr
 
     cdef struct rte_flow_op_result:
         uint32_t version

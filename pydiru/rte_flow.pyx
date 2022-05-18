@@ -96,6 +96,22 @@ cdef class RteFlowItemUdp(PydiruCM):
         self.item.hdr.dgram_cksum = cksum
 
 
+cdef class RteFlowItemIcmp(PydiruCM):
+    def __init__(self, icmp_type=0, code=0, cksum=0, ident=0, seq_nb=0):
+        self.item.hdr.icmp_type = icmp_type
+        self.item.hdr.icmp_code = code
+        self.item.hdr.icmp_cksum = socket.htons(cksum)
+        self.item.hdr.icmp_ident = socket.htons(ident)
+        self.item.hdr.icmp_seq_nb = socket.htons(seq_nb)
+
+
+cdef class RteFlowItemIcmp6(PydiruCM):
+    def __init__(self, icmp_type=0, code=0, cksum=0):
+        self.item.type = icmp_type
+        self.item.code = code
+        self.item.checksum = socket.htons(cksum)
+
+
 cdef class RteFlowItemGtp(PydiruCM):
     def __init__(self, flags=0, msg_type=0, msg_len=0, teid=0):
         """
@@ -195,6 +211,10 @@ cdef class RteFlowItem(PydiruCM):
             size = sizeof(pdr.rte_flow_item_tcp)
         if flow_item_type == e.RTE_FLOW_ITEM_TYPE_UDP:
             size = sizeof(pdr.rte_flow_item_udp)
+        if flow_item_type == e.RTE_FLOW_ITEM_TYPE_ICMP:
+            size = sizeof(pdr.rte_flow_item_icmp)
+        if flow_item_type == e.RTE_FLOW_ITEM_TYPE_ICMP6:
+            size = sizeof(pdr.rte_flow_item_icmp6)
         if flow_item_type in [e.RTE_FLOW_ITEM_TYPE_GTP,
                               e.RTE_FLOW_ITEM_TYPE_GTPC,
                               e.RTE_FLOW_ITEM_TYPE_GTPU]:
