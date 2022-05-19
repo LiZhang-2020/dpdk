@@ -23,6 +23,11 @@ apps = [
 	'test-sad',
 	'test-mlx5']
 
+extra_apps = run_command(list_dir_globs, get_option('apps'), check: true).stdout().split()
+if extra_apps.length() >= 1 and extra_apps[0] != '.'
+	apps = apps + extra_apps
+endif
+
 default_cflags = machine_args + ['-DALLOW_EXPERIMENTAL_API']
 default_ldflags = []
 if get_option('default_library') == 'static' and not is_windows
