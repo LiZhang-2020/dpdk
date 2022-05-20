@@ -6,7 +6,7 @@ import socket
 import struct
 import time
 
-from pydiru.rte_flow import RteFlowItem, RteFlowItemEth, RteFlowItemIpv4, \
+from pydiru.rte_flow import RteFlowItem, RteFlowItemEth, RteFlowItemIpv4, RteFlowItemIpv6, \
     RteFlowItemUdp, RteFlowItemTcp, RteFlowItemGtp, RteFlowItemGtpPsc, RteFlowItemEnd, RteFlowItemTag
 from pydiru.providers.mlx5.steering.mlx5dr_devx_objects import Mlx5drDevxObj
 from pyverbs.pyverbs_error import PyverbsError, PyverbsRDMAError
@@ -44,11 +44,13 @@ class ModifyFieldId:
     OUT_IPV4_TTL = 0xa
     OUT_UDP_SPORT = 0xb
     OUT_UDP_DPORT = 0xc
+    METEDATA_REG_C_1 = 0x52
 
 
 class ModifyFieldLen:
     OUT_SMAC_47_16 = 32
     OUT_SMAC_15_0 = 16
+    METEDATA_REG_C = 32
 
 
 class PacketConsts:
@@ -499,6 +501,21 @@ def create_ipv4_rte_item(**kwargs):
                           dst_addr=0 if dst_addr is None else dst_addr,
                           next_proto=0 if next_proto is None else next_proto)
     return RteFlowItem(p.RTE_FLOW_ITEM_TYPE_IPV4, val, mask)
+
+
+def create_ipv6_rte_item(**kwargs):
+    dst_addr = kwargs.get('dst_addr', None)
+    src_addr = kwargs.get('src_addr', None)
+    proto = kwargs.get('proto', None)
+
+    mask = RteFlowItemIpv6(src_addr='::' if src_addr is None else ("ffff:" * 8)[:-1],
+                           dst_addr='::' if dst_addr is None else ("ffff:" * 8)[:-1],
+                           proto=0 if proto is None else 0xff)
+    val = RteFlowItemIpv6(src_addr='::' if src_addr is None else src_addr,
+                          dst_addr='::' if dst_addr is None else dst_addr,
+                          proto=0 if proto is None else proto)
+    return RteFlowItem(p.RTE_FLOW_ITEM_TYPE_IPV6, val, mask)
+
 
 def create_tcp_rte_item(**kwargs):
     dst_port = kwargs.get('dst_port', None)
