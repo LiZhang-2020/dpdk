@@ -137,6 +137,7 @@ mlx5_hws_cnt_svc(void *opaque)
 
 	while (sh->cnt_svc->svc_running != 0) {
 		start_cycle = rte_rdtsc();
+		rte_spinlock_lock(&sh->cnt_svc->query_cycle_l);
 		MLX5_ETH_FOREACH_DEV(port_id, sh->cdev->dev) {
 			struct mlx5_priv *opriv =
 				rte_eth_devices[port_id].data->dev_private;
@@ -146,6 +147,7 @@ mlx5_hws_cnt_svc(void *opaque)
 				__mlx5_hws_cnt_svc(sh, opriv->hws_cpool);
 			}
 		}
+		rte_spinlock_unlock(&sh->cnt_svc->query_cycle_l);
 		query_cycle = rte_rdtsc() - start_cycle;
 		query_us = query_cycle / (rte_get_timer_hz() / US_PER_S);
 		sleep_us = interval - query_us;
@@ -474,15 +476,24 @@ void
 mlx5_hws_cnt_pool_destroy(struct mlx5_dev_ctx_shared *sh,
 		struct mlx5_hws_cnt_pool *cpool)
 {
+	bool unlock;
+
 	if (cpool == NULL)
 		return;
-	if (--sh->cnt_svc->refcnt == 0)
+	if (--sh->cnt_svc->refcnt == 0) {
 		mlx5_hws_cnt_svc_deinit(sh);
+		unlock = false;
+	} else {
+		rte_spinlock_lock(&sh->cnt_svc->query_cycle_l);
+		unlock = true;
+	}
 	mlx5_hws_cnt_pool_action_destroy(cpool);
 	mlx5_hws_cnt_pool_dcs_free(sh, cpool);
 	mlx5_hws_cnt_raw_data_free(sh, cpool->raw_mng);
 	mlx5_free((void *)cpool->cfg.name);
 	mlx5_hws_cnt_pool_deinit(cpool);
+	if (unlock)
+		rte_spinlock_unlock(&sh->cnt_svc->query_cycle_l);
 }
 
 int

@@ -1254,6 +1254,7 @@ struct mlx5_hws_cnt_svc_mng {
 	uint32_t query_interval;
 	pthread_t service_thread;
 	uint8_t svc_running;
+	rte_spinlock_t query_cycle_l;
 	struct mlx5_hws_aso_mng aso_mng __rte_cache_aligned;
 };
 
