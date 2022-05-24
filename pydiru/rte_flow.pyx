@@ -141,6 +141,19 @@ cdef class RteFlowItemGtpPsc(PydiruCM):
         self.item.qfi = qfi
 
 
+cdef class RteFlowItemGreOption(PydiruCM):
+    def __init__(self, checksum=0, key=0, sequence=0):
+        """
+        Initializes a RteFlowItemGreOption object representing rte_flow_item_gre_opt C struct.
+        :param checksum: Optional field checksum in GRE header
+        :param key: Optional field key in GRE header
+        :param sequence: Optional field sequence in GRE header
+        """
+        self.item.checksum_rsvd.checksum = socket.htonl(checksum)
+        self.item.key.key = socket.htonl(key)
+        self.item.sequence.sequence = socket.htonl(sequence)
+
+
 cdef class RteFlowItemEthdev(PydiruCM):
     def __init__(self, port_id=0):
         """
@@ -233,6 +246,8 @@ cdef class RteFlowItem(PydiruCM):
         if flow_item_type in [e.RTE_FLOW_ITEM_TYPE_TAG,
                               me.MLX5_RTE_FLOW_ITEM_TYPE_TAG]:
             size = sizeof(pdr.rte_flow_item_tag)
+        if flow_item_type == e.RTE_FLOW_ITEM_TYPE_GRE_OPTION:
+            size = sizeof(pdr.rte_flow_item_gre_opt)
         if spec:
             self.item.spec = calloc(1, size)
             memcpy(self.item.spec, <void *>&((<RteFlowItem>spec).item), size)

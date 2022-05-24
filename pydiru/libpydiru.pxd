@@ -159,3 +159,20 @@ cdef extern  from '../../../../drivers/net/mlx5/mlx5_flow.h':
     cdef struct rte_flow_item_tag:
         uint32_t data
         uint8_t index
+
+cdef extern  from '../../../../lib/librte_net/rte_gre.h':
+
+    cdef struct rte_gre_hdr_opt_checksum_rsvd:
+        uint16_t checksum
+        uint16_t reserved1
+
+    cdef struct rte_gre_hdr_opt_key:
+        uint32_t key
+
+    cdef struct rte_gre_hdr_opt_sequence:
+        uint32_t sequence
+
+    cdef struct rte_flow_item_gre_opt:
+        rte_gre_hdr_opt_checksum_rsvd checksum_rsvd
+        rte_gre_hdr_opt_key key
+        rte_gre_hdr_opt_sequence sequence

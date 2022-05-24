@@ -26,6 +26,7 @@ cdef extern  from '../../../../lib/librte_ethdev/rte_flow.h':
         RTE_FLOW_ITEM_TYPE_NVGRE
         RTE_FLOW_ITEM_TYPE_MPLS
         RTE_FLOW_ITEM_TYPE_GRE
+        RTE_FLOW_ITEM_TYPE_GRE_OPTION
         RTE_FLOW_ITEM_TYPE_FUZZY
         RTE_FLOW_ITEM_TYPE_GTP
         RTE_FLOW_ITEM_TYPE_GTPC

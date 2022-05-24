@@ -44,6 +44,9 @@ cdef class Mlx5RteFlowItemTxQueue(PydiruCM):
 cdef class RteFlowItemTag(PydiruCM):
     cdef pdr.rte_flow_item_tag item
 
+cdef class RteFlowItemGreOption(PydiruCM):
+    cdef pdr.rte_flow_item_gre_opt item
+
 cdef class RteFlowItem(PydiruCM):
     cdef pdr.rte_flow_item item
 
