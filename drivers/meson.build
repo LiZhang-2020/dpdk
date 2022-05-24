@@ -75,6 +75,7 @@ foreach subpath:subdirs
 		# static builds.
 		ext_deps = []
 		pkgconfig_extra_libs = []
+		testpmd_sources = []
 
 		if disabled_drivers.contains(drv_path)
 			build = false
@@ -234,6 +235,10 @@ foreach subpath:subdirs
 			set_variable('shared_@0@'.format(lib_name), shared_dep)
 			set_variable('static_@0@'.format(lib_name), static_dep)
 			dependency_name = ''.join(lib_name.split('rte_'))
+			if testpmd_sources.length() != 0
+		            testpmd_drivers_sources += testpmd_sources
+		            testpmd_drivers_deps += dependency_name
+		        endif
 			message('drivers/@0@: Defining dependency "@1@"'.format(
 					drv_path, dependency_name))
 		endif # build

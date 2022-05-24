@@ -66,6 +66,8 @@ if jansson_dep.found()
     dpdk_conf.set('RTE_HAS_JANSSON', 1)
     ext_deps += jansson_dep
 endif
-if dpdk_conf.has('RTE_NET_MLX5')
-    deps += 'net_mlx5'
-endif
+
+# Driver-specific commands are located in driver directories.
+includes = include_directories('.')
+sources += testpmd_drivers_sources
+deps += testpmd_drivers_deps
