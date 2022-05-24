@@ -507,13 +507,16 @@ def create_ipv6_rte_item(**kwargs):
     dst_addr = kwargs.get('dst_addr', None)
     src_addr = kwargs.get('src_addr', None)
     proto = kwargs.get('proto', None)
+    hop_limits = kwargs.get('hop_limits', None)
 
     mask = RteFlowItemIpv6(src_addr='::' if src_addr is None else ("ffff:" * 8)[:-1],
                            dst_addr='::' if dst_addr is None else ("ffff:" * 8)[:-1],
-                           proto=0 if proto is None else 0xff)
+                           proto=0 if proto is None else 0xff,
+                           hop_limits=0 if hop_limits is None else 0xff)
     val = RteFlowItemIpv6(src_addr='::' if src_addr is None else src_addr,
                           dst_addr='::' if dst_addr is None else dst_addr,
-                          proto=0 if proto is None else proto)
+                          proto=0 if proto is None else proto,
+                          hop_limits=0 if hop_limits is None else hop_limits)
     return RteFlowItem(p.RTE_FLOW_ITEM_TYPE_IPV6, val, mask)
 
 
