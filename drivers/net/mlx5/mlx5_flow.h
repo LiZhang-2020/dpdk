@@ -1192,6 +1192,9 @@ struct mlx5_action_construct_data {
 			uint32_t level; /* RSS level. */
 			uint32_t idx; /* Shared action index. */
 		} shared_rss;
+		struct {
+			uint32_t id;
+		} shared_counter;
 	};
 };
 

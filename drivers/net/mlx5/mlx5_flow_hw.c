@@ -558,6 +558,44 @@ __flow_hw_act_data_shared_rss_append(struct mlx5_priv *priv,
 }
 
 /**
+ * Append shared counter action to the dynamic action list.
+ *
+ * @param[in] priv
+ *   Pointer to the port private data structure.
+ * @param[in] acts
+ *   Pointer to the template HW steering DR actions.
+ * @param[in] type
+ *   Action type.
+ * @param[in] action_src
+ *   Offset of source rte flow action.
+ * @param[in] action_dst
+ *   Offset of destination DR action.
+ * @param[in] cnt_id
+ *   Shared counter id.
+ *
+ * @return
+ *    0 on success, negative value otherwise and rte_errno is set.
+ */
+static __rte_always_inline int
+__flow_hw_act_data_shared_cnt_append(struct mlx5_priv *priv,
+				     struct mlx5_hw_actions *acts,
+				     enum rte_flow_action_type type,
+				     uint16_t action_src,
+				     uint16_t action_dst,
+				     cnt_id_t cnt_id)
+{	struct mlx5_action_construct_data *act_data;
+
+	act_data = __flow_hw_act_data_alloc(priv, type, action_src, action_dst);
+	if (!act_data)
+		return -1;
+	act_data->type = type;
+	act_data->shared_counter.id = cnt_id;
+	LIST_INSERT_HEAD(&acts->act_list, act_data, next);
+	return 0;
+}
+
+
+/**
  * Translate shared indirect action.
  *
  * @param[in] dev
@@ -596,6 +634,13 @@ flow_hw_shared_action_translate(struct rte_eth_dev *dev,
 		    (priv, acts,
 		    (enum rte_flow_action_type)MLX5_RTE_FLOW_ACTION_TYPE_RSS,
 		    action_src, action_dst, idx, shared_rss))
+			return -1;
+		break;
+	case MLX5_INDIRECT_ACTION_TYPE_COUNT:
+		if (__flow_hw_act_data_shared_cnt_append(priv, acts,
+			(enum rte_flow_action_type)
+			MLX5_RTE_FLOW_ACTION_TYPE_COUNT,
+			action_src, action_dst, act_idx))
 			return -1;
 		break;
 	default:
@@ -1487,6 +1532,13 @@ flow_hw_shared_action_construct(struct rte_eth_dev *dev,
 				(dev, &act_data, item_flags, rule_act))
 			return -1;
 		break;
+	case MLX5_INDIRECT_ACTION_TYPE_COUNT:
+		if (mlx5_hws_cnt_pool_get_action_offset(priv->hws_cpool,
+				act_idx,
+				&rule_act->action,
+				&rule_act->counter.offset))
+			return -1;
+		break;
 	default:
 		DRV_LOG(WARNING, "Unsupported shared action type:%d", type);
 		break;
@@ -1775,6 +1827,17 @@ flow_hw_actions_construct(struct rte_eth_dev *dev,
 			if (ret != 0)
 				return ret;
 			job->flow->cnt_id = cnt_id;
+			break;
+		case MLX5_RTE_FLOW_ACTION_TYPE_COUNT:
+			ret = mlx5_hws_cnt_pool_get_action_offset
+				(priv->hws_cpool,
+				 act_data->shared_counter.id,
+				 &rule_acts[act_data->action_dst].action,
+				 &rule_acts[act_data->action_dst].counter.offset
+				 );
+			if (ret != 0)
+				return ret;
+			job->flow->cnt_id = act_data->shared_counter.id;
 			break;
 		default:
 			break;
@@ -2877,6 +2940,11 @@ flow_hw_dr_actions_template_handle_shared(const struct rte_flow_action *mask,
 	case MLX5_INDIRECT_ACTION_TYPE_RSS:
 		at->actions_off[action_src] = *curr_off;
 		action_types[*curr_off] = MLX5DR_ACTION_TYP_TIR;
+		*curr_off = *curr_off + 1;
+		break;
+	case MLX5_INDIRECT_ACTION_TYPE_COUNT:
+		at->actions_off[action_src] = *curr_off;
+		action_types[*curr_off] = MLX5DR_ACTION_TYP_CTR;
 		*curr_off = *curr_off + 1;
 		break;
 	default:
@@ -4896,10 +4964,28 @@ flow_hw_action_handle_create(struct rte_eth_dev *dev, uint32_t queue,
 			     void *user_data,
 			     struct rte_flow_error *error)
 {
+	struct rte_flow_action_handle *handle = NULL;
+	struct mlx5_priv *priv = dev->data->dev_private;
+	cnt_id_t cnt_id;
+
 	RTE_SET_USED(queue);
 	RTE_SET_USED(attr);
 	RTE_SET_USED(user_data);
-	return flow_dv_action_create(dev, conf, action, error);
+	switch (action->type) {
+	case RTE_FLOW_ACTION_TYPE_COUNT:
+		if (mlx5_hws_cnt_shared_get(priv->hws_cpool, &cnt_id))
+			rte_flow_error_set(error, ENODEV,
+					RTE_FLOW_ERROR_TYPE_ACTION,
+					NULL,
+					"counter are not configured!");
+		else
+			handle = (struct rte_flow_action_handle *)
+				 (uintptr_t)cnt_id;
+		break;
+	default:
+		handle = flow_dv_action_create(dev, conf, action, error);
+	}
+	return handle;
 }
 
 /**
@@ -4963,10 +5049,19 @@ flow_hw_action_handle_destroy(struct rte_eth_dev *dev, uint32_t queue,
 			      void *user_data,
 			      struct rte_flow_error *error)
 {
+	uint32_t act_idx = (uint32_t)(uintptr_t)handle;
+	uint32_t type = act_idx >> MLX5_INDIRECT_ACTION_TYPE_OFFSET;
+	struct mlx5_priv *priv = dev->data->dev_private;
+
 	RTE_SET_USED(queue);
 	RTE_SET_USED(attr);
 	RTE_SET_USED(user_data);
-	return flow_dv_action_destroy(dev, handle, error);
+	switch (type) {
+	case MLX5_INDIRECT_ACTION_TYPE_COUNT:
+		return mlx5_hws_cnt_shared_put(priv->hws_cpool, &act_idx);
+	default:
+		return flow_dv_action_destroy(dev, handle, error);
+	}
 }
 
 static int
@@ -5111,7 +5206,15 @@ flow_hw_action_query(struct rte_eth_dev *dev,
 		     const struct rte_flow_action_handle *handle, void *data,
 		     struct rte_flow_error *error)
 {
-	return flow_dv_action_query(dev, handle, data, error);
+	uint32_t act_idx = (uint32_t)(uintptr_t)handle;
+	uint32_t type = act_idx >> MLX5_INDIRECT_ACTION_TYPE_OFFSET;
+
+	switch (type) {
+	case MLX5_INDIRECT_ACTION_TYPE_COUNT:
+		return flow_hw_query_counter(dev, act_idx, data, error);
+	default:
+		return flow_dv_action_query(dev, handle, data, error);
+	}
 }
 
 const struct mlx5_flow_driver_ops mlx5_flow_hw_drv_ops = {
