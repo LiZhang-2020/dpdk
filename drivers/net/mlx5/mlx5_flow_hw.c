@@ -5024,6 +5024,96 @@ flow_hw_query(const struct rte_eth_dev *dev,
 	return ret;
 }
 
+/**
+ * Create indirect action.
+ *
+ * @param[in] dev
+ *   Pointer to the Ethernet device structure.
+ * @param[in] conf
+ *   Shared action configuration.
+ * @param[in] action
+ *   Action specification used to create indirect action.
+ * @param[out] error
+ *   Perform verbose error reporting if not NULL. Initialized in case of
+ *   error only.
+ *
+ * @return
+ *   A valid shared action handle in case of success, NULL otherwise and
+ *   rte_errno is set.
+ */
+static struct rte_flow_action_handle *
+flow_hw_action_create(struct rte_eth_dev *dev,
+		       const struct rte_flow_indir_action_conf *conf,
+		       const struct rte_flow_action *action,
+		       struct rte_flow_error *err)
+{
+	return flow_hw_action_handle_create(dev, UINT32_MAX, NULL, conf, action,
+					    NULL, err);
+}
+
+/**
+ * Destroy the indirect action.
+ * Release action related resources on the NIC and the memory.
+ * Lock free, (mutex should be acquired by caller).
+ * Dispatcher for action type specific call.
+ *
+ * @param[in] dev
+ *   Pointer to the Ethernet device structure.
+ * @param[in] handle
+ *   The indirect action object handle to be removed.
+ * @param[out] error
+ *   Perform verbose error reporting if not NULL. Initialized in case of
+ *   error only.
+ *
+ * @return
+ *   0 on success, otherwise negative errno value.
+ */
+static int
+flow_hw_action_destroy(struct rte_eth_dev *dev,
+		       struct rte_flow_action_handle *handle,
+		       struct rte_flow_error *error)
+{
+	return flow_hw_action_handle_destroy(dev, UINT32_MAX, NULL, handle,
+			NULL, error);
+}
+
+/**
+ * Updates in place shared action configuration.
+ *
+ * @param[in] dev
+ *   Pointer to the Ethernet device structure.
+ * @param[in] handle
+ *   The indirect action object handle to be updated.
+ * @param[in] update
+ *   Action specification used to modify the action pointed by *handle*.
+ *   *update* could be of same type with the action pointed by the *handle*
+ *   handle argument, or some other structures like a wrapper, depending on
+ *   the indirect action type.
+ * @param[out] error
+ *   Perform verbose error reporting if not NULL. Initialized in case of
+ *   error only.
+ *
+ * @return
+ *   0 on success, otherwise negative errno value.
+ */
+static int
+flow_hw_action_update(struct rte_eth_dev *dev,
+		      struct rte_flow_action_handle *handle,
+		      const void *update,
+		      struct rte_flow_error *err)
+{
+	return flow_hw_action_handle_update(dev, UINT32_MAX, NULL, handle,
+			update, NULL, err);
+}
+
+static int
+flow_hw_action_query(struct rte_eth_dev *dev,
+		     const struct rte_flow_action_handle *handle, void *data,
+		     struct rte_flow_error *error)
+{
+	return flow_dv_action_query(dev, handle, data, error);
+}
+
 const struct mlx5_flow_driver_ops mlx5_flow_hw_drv_ops = {
 	.info_get = flow_hw_info_get,
 	.configure = flow_hw_configure,
@@ -5043,10 +5133,10 @@ const struct mlx5_flow_driver_ops mlx5_flow_hw_drv_ops = {
 	.async_action_destroy = flow_hw_action_handle_destroy,
 	.async_action_update = flow_hw_action_handle_update,
 	.action_validate = flow_dv_action_validate,
-	.action_create = flow_dv_action_create,
-	.action_destroy = flow_dv_action_destroy,
-	.action_update = flow_dv_action_update,
-	.action_query = flow_dv_action_query,
+	.action_create = flow_hw_action_create,
+	.action_destroy = flow_hw_action_destroy,
+	.action_update = flow_hw_action_update,
+	.action_query = flow_hw_action_query,
 	.query = flow_hw_query,
 };
 
