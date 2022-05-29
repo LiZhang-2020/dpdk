@@ -63,7 +63,7 @@ class Mlx5drFDBTest(PydiruTrafficTestCase):
         val = RteFlowItemIpv4(src_addr=PacketConsts.SRC_IP, dst_addr=PacketConsts.DST_IP)
         root_rte_items = [RteFlowItem(p.RTE_FLOW_ITEM_TYPE_IPV4, val, mask),  RteFlowItemEnd()]
         agr_obj.init_steering_resources(rte_items=rte_items, table_type=me.MLX5DR_TABLE_TYPE_FDB,
-                                        root_rte_items=root_rte_items, actions=actions_temp)
+                                        root_rte_items=root_rte_items, action_types_list=actions_temp)
         agr_obj.rule = Mlx5drRule(agr_obj.matcher, 0, rte_items, 0, actions, len(actions),
                                   Mlx5drRuleAttr(user_data=bytes(8)), agr_obj.dr_ctx)
 
