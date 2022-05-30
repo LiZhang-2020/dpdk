@@ -949,6 +949,9 @@ flow_hw_represented_port_compile(struct rte_eth_dev *dev,
 	if (m && !!m->port_id) {
 		struct mlx5_priv *port_priv;
 
+		if (!v)
+			return rte_flow_error_set(error, EINVAL, RTE_FLOW_ERROR_TYPE_ACTION,
+						  action, "port index was not provided");
 		port_priv = mlx5_port_to_eswitch_info(v->port_id, false);
 		if (port_priv == NULL)
 			return rte_flow_error_set
@@ -2729,10 +2732,13 @@ flow_hw_validate_action_represented_port(struct rte_eth_dev *dev,
 					  RTE_FLOW_ERROR_TYPE_UNSPECIFIED, NULL,
 					  "cannot use represented_port actions"
 					  " without an E-Switch");
-	if (mask_conf->port_id) {
+	if (mask_conf && mask_conf->port_id) {
 		struct mlx5_priv *port_priv;
 		struct mlx5_priv *dev_priv;
 
+		if (!action_conf)
+			return rte_flow_error_set(error, EINVAL, RTE_FLOW_ERROR_TYPE_ACTION,
+						  action, "port index was not provided");
 		port_priv = mlx5_port_to_eswitch_info(action_conf->port_id, false);
 		if (!port_priv)
 			return rte_flow_error_set(error, rte_errno,
