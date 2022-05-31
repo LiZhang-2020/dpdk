@@ -2590,6 +2590,7 @@ flow_hw_template_table_create(struct rte_eth_dev *dev,
 			      uint8_t nb_action_templates,
 			      struct rte_flow_error *error)
 {
+	struct mlx5_priv *priv = dev->data->dev_private;
 	struct mlx5_flow_template_table_cfg cfg = {
 		.attr = *attr,
 		.external = true,
@@ -2598,6 +2599,12 @@ flow_hw_template_table_create(struct rte_eth_dev *dev,
 
 	if (flow_hw_translate_group(dev, &cfg, group, &cfg.attr.flow_attr.group, error))
 		return NULL;
+	if (priv->sh->config.dv_esw_en && cfg.attr.flow_attr.egress) {
+		rte_flow_error_set(error, EINVAL, RTE_FLOW_ERROR_TYPE_ATTR, NULL,
+				  "egress flows are not supported with HW Steering"
+				  " when E-Switch is enabled");
+		return NULL;
+	}
 	return flow_hw_table_create(dev, &cfg, item_templates, nb_item_templates,
 				    action_templates, nb_action_templates, error);
 }
