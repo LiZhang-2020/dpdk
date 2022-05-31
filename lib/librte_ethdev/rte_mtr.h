@@ -525,6 +525,26 @@ rte_mtr_meter_profile_delete(uint16_t port_id,
 	struct rte_mtr_error *error);
 
 /**
+ * Meter profile get
+ *
+ * Get meter profile object for a given meter profile ID.
+ *
+ * @param[in] port_id
+ *   The port identifier of the Ethernet device.
+ * @param[in] meter_profile_id
+ *   Meter profile ID. Needs to be the valid.
+ * @param[out] error
+ *   Error details. Filled in only on error, when not NULL.
+ * @return
+ *   A valid handle in case of success, NULL otherwise.
+ */
+__rte_experimental
+struct rte_flow_meter_profile *
+rte_mtr_meter_profile_get(uint16_t port_id,
+	uint32_t meter_profile_id,
+	struct rte_mtr_error *error);
+
+/**
  * Check whether a meter policy can be created on a given port.
  *
  * The meter policy is validated for correctness and
@@ -659,6 +679,26 @@ struct rte_mtr_meter_policy_params policy = \
 __rte_experimental
 int
 rte_mtr_meter_policy_delete(uint16_t port_id,
+	uint32_t policy_id,
+	struct rte_mtr_error *error);
+
+/**
+ * Meter policy get
+ *
+ * Get meter policy object for a given meter policy ID.
+ *
+ * @param[in] port_id
+ *   The port identifier of the Ethernet device.
+ * @param[in] policy_id
+ *   Policy identifier.
+ * @param[out] error
+ *   Error details. Filled in only on error, when not NULL.
+ * @return
+ *   A valid handle in case of success, NULL otherwise.
+ */
+__rte_experimental
+struct rte_flow_meter_policy *
+rte_mtr_meter_policy_get(uint16_t port_id,
 	uint32_t policy_id,
 	struct rte_mtr_error *error);
 
