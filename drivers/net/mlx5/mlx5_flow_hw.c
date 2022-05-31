@@ -2405,6 +2405,13 @@ flow_hw_table_create(struct rte_eth_dev *dev,
 	for (i = 0; i < nb_item_templates; i++) {
 		uint32_t ret;
 
+		if ((flow_attr.ingress && !item_templates[i]->attr.ingress) ||
+		    (flow_attr.egress && !item_templates[i]->attr.egress) ||
+		    (flow_attr.transfer && !item_templates[i]->attr.transfer)) {
+			DRV_LOG(ERR, "pattern template and template table attribute mismatch");
+			rte_errno = EINVAL;
+			goto it_error;
+		}
 		ret = __atomic_add_fetch(&item_templates[i]->refcnt, 1,
 					 __ATOMIC_RELAXED);
 		if (ret <= 1) {
@@ -3300,11 +3307,48 @@ flow_hw_pattern_validate(struct rte_eth_dev *dev,
 			 const struct rte_flow_item items[],
 			 struct rte_flow_error *error)
 {
+	struct mlx5_priv *priv = dev->data->dev_private;
 	int i;
 	bool items_end = false;
-	RTE_SET_USED(dev);
-	RTE_SET_USED(attr);
 
+	if (!attr->ingress && !attr->egress && !attr->transfer)
+		return rte_flow_error_set(error, EINVAL, RTE_FLOW_ERROR_TYPE_ATTR, NULL,
+					  "at least one of the direction attributes"
+					  " must be specified");
+	if (priv->sh->config.dv_esw_en) {
+		MLX5_ASSERT(priv->master || priv->representor);
+		if (priv->master) {
+			/*
+			 * It is allowed to specify ingress, egress and transfer attributes
+			 * at the same time, in order to construct flows catching all missed
+			 * FDB traffic and forwarding it to the master port.
+			 */
+			if (!(attr->ingress ^ attr->egress ^ attr->transfer))
+				return rte_flow_error_set(error, EINVAL,
+							  RTE_FLOW_ERROR_TYPE_ATTR, NULL,
+							  "only one or all direction attributes"
+							  " at once can be used on transfer proxy"
+							  " port");
+		} else {
+			if (attr->transfer)
+				return rte_flow_error_set(error, EINVAL,
+							  RTE_FLOW_ERROR_TYPE_ATTR_TRANSFER, NULL,
+							  "transfer attribute cannot be used with"
+							  " port representors");
+			if (attr->ingress && attr->egress)
+				return rte_flow_error_set(error, EINVAL,
+							  RTE_FLOW_ERROR_TYPE_ATTR, NULL,
+							  "ingress and egress direction attributes"
+							  " cannot be used at the same time on"
+							  " port representors");
+		}
+	} else {
+		if (attr->transfer)
+			return rte_flow_error_set(error, EINVAL,
+						  RTE_FLOW_ERROR_TYPE_ATTR_TRANSFER, NULL,
+						  "transfer attribute cannot be used when"
+						  " E-Switch is disabled");
+	}
 	for (i = 0; !items_end; i++) {
 		int type = items[i].type;
 
@@ -3335,7 +3379,15 @@ flow_hw_pattern_validate(struct rte_eth_dev *dev,
 							  RTE_FLOW_ERROR_TYPE_UNSPECIFIED,
 							  NULL,
 							  "Unsupported internal tag index");
+			break;
 		}
+		case RTE_FLOW_ITEM_TYPE_REPRESENTED_PORT:
+			if (attr->ingress || attr->egress)
+				return rte_flow_error_set(error, EINVAL,
+						  RTE_FLOW_ERROR_TYPE_ITEM, NULL,
+						  "represented port item cannot be used"
+						  " when transfer attribute is set");
+			break;
 		case RTE_FLOW_ITEM_TYPE_VOID:
 		case RTE_FLOW_ITEM_TYPE_ETH:
 		case RTE_FLOW_ITEM_TYPE_VLAN:
@@ -3345,7 +3397,6 @@ flow_hw_pattern_validate(struct rte_eth_dev *dev,
 		case RTE_FLOW_ITEM_TYPE_TCP:
 		case RTE_FLOW_ITEM_TYPE_GTP:
 		case RTE_FLOW_ITEM_TYPE_GTP_PSC:
-		case RTE_FLOW_ITEM_TYPE_REPRESENTED_PORT:
 		case RTE_FLOW_ITEM_TYPE_VXLAN:
 		case MLX5_RTE_FLOW_ITEM_TYPE_TX_QUEUE:
 		case RTE_FLOW_ITEM_TYPE_META:
@@ -3394,21 +3445,7 @@ flow_hw_pattern_template_create(struct rte_eth_dev *dev,
 
 	if (flow_hw_pattern_validate(dev, attr, items, error))
 		return NULL;
-	if (priv->sh->config.dv_esw_en && attr->ingress) {
-		/*
-		 * Disallow pattern template with ingress and egress/transfer
-		 * attributes in order to forbid implicit port matching
-		 * on egress and transfer traffic.
-		 */
-		if (attr->egress || attr->transfer) {
-			rte_flow_error_set(error, EINVAL,
-					   RTE_FLOW_ERROR_TYPE_UNSPECIFIED,
-					   NULL,
-					   "item template for ingress traffic"
-					   " cannot be used for egress/transfer"
-					   " traffic when E-Switch is enabled");
-			return NULL;
-		}
+	if (priv->sh->config.dv_esw_en && attr->ingress && !attr->egress && !attr->transfer) {
 		copied_items = flow_hw_copy_prepend_port_item(items, error);
 		if (!copied_items)
 			return NULL;
