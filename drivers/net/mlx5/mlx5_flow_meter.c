@@ -743,6 +743,36 @@ mlx5_flow_meter_profile_delete(struct rte_eth_dev *dev,
 }
 
 /**
+ * Callback to get MTR profile.
+ *
+ * @param[in] dev
+ *   Pointer to Ethernet device.
+ * @param[in] meter_profile_id
+ *   Meter profile id.
+ * @param[out] error
+ *   Pointer to the error structure.
+ *
+ * @return
+ *   A valid handle in case of success, NULL otherwise.
+ */
+static struct rte_flow_meter_profile *
+mlx5_flow_meter_profile_get(struct rte_eth_dev *dev,
+			  uint32_t meter_profile_id,
+			  struct rte_mtr_error *error)
+{
+	struct mlx5_priv *priv = dev->data->dev_private;
+
+	if (!priv->mtr_en) {
+		rte_mtr_error_set(error, ENOTSUP,
+				  RTE_MTR_ERROR_TYPE_UNSPECIFIED, NULL,
+				  "Meter is not supported");
+		return NULL;
+	}
+	return (void *)(uintptr_t)mlx5_flow_meter_profile_find(priv,
+							meter_profile_id);
+}
+
+/**
  * Callback to add MTR profile with HWS.
  *
  * @param[in] dev
@@ -1302,6 +1332,37 @@ mlx5_flow_meter_policy_delete(struct rte_eth_dev *dev,
 		return ret;
 	mlx5_free(mtr_policy);
 	return 0;
+}
+
+/**
+ * Callback to get MTR policy.
+ *
+ * @param[in] dev
+ *   Pointer to Ethernet device.
+ * @param[in] policy_id
+ *   Meter policy id.
+ * @param[out] error
+ *   Pointer to the error structure.
+ *
+ * @return
+ *   A valid handle in case of success, NULL otherwise.
+ */
+static struct rte_flow_meter_policy *
+mlx5_flow_meter_policy_get(struct rte_eth_dev *dev,
+			  uint32_t policy_id,
+			  struct rte_mtr_error *error)
+{
+	struct mlx5_priv *priv = dev->data->dev_private;
+	uint32_t policy_idx;
+
+	if (!priv->mtr_en) {
+		rte_mtr_error_set(error, ENOTSUP,
+				  RTE_MTR_ERROR_TYPE_UNSPECIFIED, NULL,
+				  "Meter is not supported");
+		return NULL;
+	}
+	return (void *)(uintptr_t)mlx5_flow_meter_policy_find(dev, policy_id,
+							      &policy_idx);
 }
 
 /**
@@ -2555,9 +2616,11 @@ static const struct rte_mtr_ops mlx5_flow_mtr_ops = {
 	.capabilities_get = mlx5_flow_mtr_cap_get,
 	.meter_profile_add = mlx5_flow_meter_profile_add,
 	.meter_profile_delete = mlx5_flow_meter_profile_delete,
+	.meter_profile_get = mlx5_flow_meter_profile_get,
 	.meter_policy_validate = mlx5_flow_meter_policy_validate,
 	.meter_policy_add = mlx5_flow_meter_policy_add,
 	.meter_policy_delete = mlx5_flow_meter_policy_delete,
+	.meter_policy_get = mlx5_flow_meter_policy_get,
 	.create = mlx5_flow_meter_create,
 	.destroy = mlx5_flow_meter_destroy,
 	.meter_enable = mlx5_flow_meter_enable,
@@ -2572,9 +2635,11 @@ static const struct rte_mtr_ops mlx5_flow_mtr_hws_ops = {
 	.capabilities_get = mlx5_flow_mtr_cap_get,
 	.meter_profile_add = mlx5_flow_meter_profile_hws_add,
 	.meter_profile_delete = mlx5_flow_meter_profile_hws_delete,
+	.meter_profile_get = mlx5_flow_meter_profile_get,
 	.meter_policy_validate = mlx5_flow_meter_policy_hws_validate,
 	.meter_policy_add = mlx5_flow_meter_policy_hws_add,
 	.meter_policy_delete = mlx5_flow_meter_policy_hws_delete,
+	.meter_policy_get = mlx5_flow_meter_policy_get,
 	.create = mlx5_flow_meter_hws_create,
 	.destroy = mlx5_flow_meter_hws_destroy,
 	.meter_enable = mlx5_flow_meter_enable,
