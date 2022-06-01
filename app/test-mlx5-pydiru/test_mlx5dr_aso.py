@@ -93,7 +93,8 @@ class Mlx5drAsoTest(PydiruTrafficTestCase):
     def verify_meter_counters(green_devx_counter, green_counter_id, red_devx_counter, red_counter_id):
         packets, octets = u.query_counter(green_devx_counter, green_counter_id, 0)
         green_rate = octets / 1000000 / 3
-        assert(green_rate <= 15.625), f'Actual green rate is {green_rate}.'
+        error_margin = 1.1  # Set error to 10%
+        assert(green_rate <= 15.625 * error_margin), f'Actual green rate is {green_rate}.'
         assert(green_rate > 12), f'Actual green rate is {green_rate}.'
         packets, octets = u.query_counter(red_devx_counter, red_counter_id, 0)
         red_rate = octets / 1000000 / 3
@@ -154,7 +155,7 @@ class Mlx5drAsoTest(PydiruTrafficTestCase):
         self.create_aso_rules(self.client, me.MLX5DR_ACTION_FLAG_HWS_TX, rte_items, tx_fm_ra,
                               counter_green_ra_tx, counter_red_ra_tx, reg_c_tx)
         # Lower message size to keep sending rate not too high
-        self.client.msg_size = 200
+        self.client.msg_size = 500
         packet = u.gen_packet(self.client.msg_size)
         # We want to send at least at 30MBps speed
         rate_limit = 30
