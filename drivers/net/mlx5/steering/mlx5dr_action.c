@@ -1610,6 +1610,7 @@ mlx5dr_action_setter_modify_header(struct mlx5dr_actions_apply_data *apply,
 	struct mlx5dr_rule_action *rule_action;
 	struct mlx5dr_action *action;
 	uint32_t arg_sz, arg_idx;
+	uint8_t *single_action;
 
 	rule_action = &apply->rule_action[setter->idx_double];
 	action = rule_action->action;
@@ -1624,12 +1625,12 @@ mlx5dr_action_setter_modify_header(struct mlx5dr_actions_apply_data *apply,
 			return;
 
 		if (action->flags & MLX5DR_ACTION_FLAG_SHARED)
-			apply->wqe_data[MLX5DR_ACTION_OFFSET_DW7] =
-				action->modify_header.single_action;
+			single_action = (uint8_t *)&action->modify_header.single_action;
 		else
-			/* modify_header.data: | 4 bytes pattern | 4 bytes data| */
-			apply->wqe_data[MLX5DR_ACTION_OFFSET_DW7] =
-				*(uint32_t *)&rule_action->modify_header.data[4];
+			single_action = rule_action->modify_header.data;
+
+		apply->wqe_data[MLX5DR_ACTION_OFFSET_DW7] =
+			*(__be32 *)MLX5_ADDR_OF(set_action_in, single_action, data);
 	} else {
 		/* Argument offset multiple with number of args per these actions */
 		arg_sz = mlx5dr_arg_get_arg_size(action->modify_header.num_of_actions);
