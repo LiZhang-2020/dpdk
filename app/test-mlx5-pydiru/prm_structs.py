@@ -163,7 +163,7 @@ class QueryTirOut(Packet):
 
 class SetActionIn(Packet):
     fields_desc = [
-        BitField('action_type', 0, 4),
+        BitField('action_type', 1, 4),
         BitField('field', 0, 12),
         BitField('reserved1', 0, 3),
         BitField('offset', 0, 5),

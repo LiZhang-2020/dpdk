@@ -3,7 +3,7 @@
 
 from operator import itemgetter
 from .utils import raw_traffic, gen_packet, create_sipv4_rte_items, create_dipv4_rte_items,\
-    PacketConsts, SET_ACTION, NEW_MAC_STR
+    PacketConsts, NEW_MAC_STR
 from pydiru.providers.mlx5.steering.mlx5dr_rule import Mlx5drRuleAttr, Mlx5drRule
 from pydiru.providers.mlx5.steering.mlx5dr_matcher import Mlx5drMacherTemplate
 from .base import BaseDrResources, PydiruTrafficTestCase, NUM_OF_QUEUES
@@ -24,9 +24,9 @@ class Mlx5drTrafficTest(PydiruTrafficTestCase):
 
     @staticmethod
     def create_src_mac_set_action():
-        action1 = SetActionIn(action_type=SET_ACTION, field=PacketConsts.OUT_SMAC_47_16_FIELD_ID,
+        action1 = SetActionIn(field=PacketConsts.OUT_SMAC_47_16_FIELD_ID,
                               length=PacketConsts.OUT_SMAC_47_16_FIELD_LENGTH, data=0x88888888)
-        action2 = SetActionIn(action_type=SET_ACTION, field=PacketConsts.OUT_SMAC_15_0_FIELD_ID,
+        action2 = SetActionIn(field=PacketConsts.OUT_SMAC_15_0_FIELD_ID,
                               length=PacketConsts.OUT_SMAC_15_0_FIELD_LENGTH, data=0x8888)
         return [action1, action2]
 
