@@ -13,6 +13,9 @@ from pydiru.base import PydiruErrno
 from libc.string cimport memcpy
 cimport pydiru.pydiru_enums_c as e
 cimport pydiru.libpydiru as pdr
+import time
+
+POLLING_TIMEOUT = 5
 
 
 cdef class Mlx5drRuleAttr(PydiruCM):
@@ -82,9 +85,12 @@ cdef class Mlx5drRule(PydiruCM):
         self.mlx5dr_matcher = matcher
         matcher.add_ref(self)
         if dr_ctx:
+            start_poll_t = time.perf_counter()
             res = []
-            while not res:
+            while not res and (time.perf_counter() - start_poll_t) < POLLING_TIMEOUT:
                 res = dr_ctx.poll_send_queue(rule_attr_create.attr.queue_id, 1)
+            if not res:
+                raise PydiruError(f'Got timeout on polling queue id {rule_attr_create.attr.queue_id}.')
             if <RteFlowResult>(res[0]).status != e.RTE_FLOW_OP_SUCCESS:
                 raise PydiruError(f'ERROR completion returned from queue ID: {rule_attr_create.attr.queue_id} '
                                   f'with status: {res[0]).status}.')
