@@ -1105,7 +1105,7 @@ __flow_hw_actions_translate(struct rte_eth_dev *dev,
 	for (; !actions_end; actions++, masks++) {
 		switch (actions->type) {
 		case RTE_FLOW_ACTION_TYPE_INDIRECT:
-			action_pos = at->actions_off[actions - action_start];
+			action_pos = at->actions_off[actions - at->actions];
 			if (!attr->group) {
 				DRV_LOG(ERR, "Indirect action is not supported in root table.");
 				goto err;
@@ -1123,7 +1123,7 @@ __flow_hw_actions_translate(struct rte_eth_dev *dev,
 		case RTE_FLOW_ACTION_TYPE_VOID:
 			break;
 		case RTE_FLOW_ACTION_TYPE_MARK:
-			action_pos = at->actions_off[actions - action_start];
+			action_pos = at->actions_off[actions - at->actions];
 			acts->mark = true;
 			if (masks->conf &&
 			    ((const struct rte_flow_action_mark *)
@@ -1140,12 +1140,12 @@ __flow_hw_actions_translate(struct rte_eth_dev *dev,
 			flow_hw_rxq_flag_set(dev, true);
 			break;
 		case RTE_FLOW_ACTION_TYPE_DROP:
-			action_pos = at->actions_off[actions - action_start];
+			action_pos = at->actions_off[actions - at->actions];
 			acts->rule_acts[action_pos].action =
 				priv->hw_drop[!!attr->group];
 			break;
 		case RTE_FLOW_ACTION_TYPE_JUMP:
-			action_pos = at->actions_off[actions - action_start];
+			action_pos = at->actions_off[actions - at->actions];
 			if (masks->conf &&
 			    ((const struct rte_flow_action_jump *)
 			     masks->conf)->group) {
@@ -1166,7 +1166,7 @@ __flow_hw_actions_translate(struct rte_eth_dev *dev,
 			}
 			break;
 		case RTE_FLOW_ACTION_TYPE_QUEUE:
-			action_pos = at->actions_off[actions - action_start];
+			action_pos = at->actions_off[actions - at->actions];
 			if (masks->conf &&
 			    ((const struct rte_flow_action_queue *)
 			     masks->conf)->index) {
@@ -1185,7 +1185,7 @@ __flow_hw_actions_translate(struct rte_eth_dev *dev,
 			}
 			break;
 		case RTE_FLOW_ACTION_TYPE_RSS:
-			action_pos = at->actions_off[actions - action_start];
+			action_pos = at->actions_off[actions - at->actions];
 			if (actions->conf && masks->conf) {
 				acts->tir = flow_hw_tir_action_register
 				(dev,
@@ -1274,7 +1274,7 @@ __flow_hw_actions_translate(struct rte_eth_dev *dev,
 				action_start += 1;
 			break;
 		case RTE_FLOW_ACTION_TYPE_REPRESENTED_PORT:
-			action_pos = at->actions_off[actions - action_start];
+			action_pos = at->actions_off[actions - at->actions];
 			if (flow_hw_represented_port_compile
 					(dev, attr, action_start, actions,
 					 masks, acts, action_pos, error))
@@ -1286,7 +1286,7 @@ __flow_hw_actions_translate(struct rte_eth_dev *dev,
 			 * Calculated DR offset is stored only for ASO_METER and FT
 			 * is assumed to be the next action.
 			 */
-			action_pos = at->actions_off[actions - action_start];
+			action_pos = at->actions_off[actions - at->actions];
 			jump_pos = action_pos + 1;
 			if (actions->conf && masks->conf &&
 			    ((const struct rte_flow_action_meter *)
@@ -1302,7 +1302,7 @@ __flow_hw_actions_translate(struct rte_eth_dev *dev,
 				goto err;
 			break;
 		case RTE_FLOW_ACTION_TYPE_COUNT:
-			action_pos = at->actions_off[actions - action_start];
+			action_pos = at->actions_off[actions - at->actions];
 			if (masks->conf &&
 			    ((const struct rte_flow_action_count *)
 			     masks->conf)->id) {
