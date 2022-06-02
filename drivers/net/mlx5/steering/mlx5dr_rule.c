@@ -293,6 +293,7 @@ static void mlx5dr_rule_destroy_failed_hws(struct mlx5dr_rule *rule,
 	if (attr->burst)
 		return;
 
+	mlx5dr_send_all_dep_wqe(queue);
 	mlx5dr_send_engine_flush_queue(queue);
 }
 
