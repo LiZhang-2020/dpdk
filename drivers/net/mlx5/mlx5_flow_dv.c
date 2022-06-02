@@ -5870,6 +5870,7 @@ flow_dv_validate(struct rte_eth_dev *dev, const struct rte_flow_attr *attr,
 			port_id_item = items;
 			break;
 		case RTE_FLOW_ITEM_TYPE_REPRESENTED_PORT:
+		case RTE_FLOW_ITEM_TYPE_PORT_REPRESENTOR:
 			ret = flow_dv_validate_item_represented_port
 					(dev, items, attr, item_flags, &act_priv, error);
 			if (ret < 0)
@@ -8930,6 +8931,29 @@ flow_dv_translate_item_port_id_all(struct rte_eth_dev *dev,
 }
 
 /**
+ * Translate port representor item to eswitch match on port id.
+ *
+ * @param[in] dev
+ *   The devich to configure through.
+ * @param[in, out] key
+ *   Flow matcher value.
+ * @param[in] key_type
+ *   Set flow matcher mask or value.
+ *
+ * @return
+ *   0 on success, a negative errno value otherwise.
+ */
+static int
+flow_dv_translate_item_port_representor(struct rte_eth_dev *dev, void *key,
+					uint32_t key_type)
+{
+	flow_dv_translate_item_source_vport(key,
+			key_type & MLX5_SET_MATCHER_V ?
+			mlx5_flow_get_esw_manager_vport_id(dev) : 0xffff);
+	return 0;
+}
+
+/**
  * Translate represented port item to eswitch match on port id.
  *
  * @param[in] dev
@@ -10545,10 +10569,12 @@ static void
 flow_dv_translate_item_tx_queue(struct rte_eth_dev *dev,
 				void *key,
 				const struct rte_flow_item *item,
+				const struct rte_flow_item *port_representor_item,
 				uint32_t key_type)
 {
 	const struct mlx5_rte_flow_item_tx_queue *queue_m;
 	const struct mlx5_rte_flow_item_tx_queue *queue_v;
+	const struct rte_flow_item_ethdev *pid_v;
 	const struct mlx5_rte_flow_item_tx_queue queue_mask = {
 		.queue = UINT32_MAX,
 	};
@@ -10560,6 +10586,13 @@ flow_dv_translate_item_tx_queue(struct rte_eth_dev *dev,
 	if (!queue_m || !queue_v)
 		return;
 	if (key_type & MLX5_SET_MATCHER_V) {
+		if (port_representor_item) {
+			pid_v = port_representor_item->spec;
+			if (pid_v)
+				dev = &rte_eth_devices[pid_v->port_id];
+			else
+				return;
+		}
 		txq = mlx5_txq_get(dev, queue_v->queue);
 		if (!txq)
 			return;
@@ -12423,6 +12456,11 @@ flow_dv_translate_items(struct rte_eth_dev *dev,
 			(dev, key, items, wks->attr, key_type);
 		last_item = MLX5_FLOW_ITEM_PORT_ID;
 		break;
+	case RTE_FLOW_ITEM_TYPE_PORT_REPRESENTOR:
+		flow_dv_translate_item_port_representor
+			(dev, key, key_type);
+		last_item = MLX5_FLOW_ITEM_PORT_REPRESENTOR;
+		break;
 	case RTE_FLOW_ITEM_TYPE_REPRESENTED_PORT:
 		flow_dv_translate_item_represented_port
 			(dev, key, items, wks->attr, key_type);
@@ -12628,7 +12666,7 @@ flow_dv_translate_items(struct rte_eth_dev *dev,
 		last_item = MLX5_FLOW_ITEM_TAG;
 		break;
 	case MLX5_RTE_FLOW_ITEM_TYPE_TX_QUEUE:
-		flow_dv_translate_item_tx_queue(dev, key, items, key_type);
+		flow_dv_translate_item_tx_queue(dev, key, items, NULL, key_type);
 		last_item = MLX5_FLOW_ITEM_TX_QUEUE;
 		break;
 	case RTE_FLOW_ITEM_TYPE_GTP:
@@ -12814,6 +12852,8 @@ flow_dv_translate_items_sws(struct rte_eth_dev *dev,
 	struct mlx5_dv_matcher_workspace wks_m = wks;
 	const struct rte_flow_item *integrity_items[2] = {NULL, NULL};
 	const struct rte_flow_item *gre_item = NULL;
+	const struct rte_flow_item *port_representor_item = NULL;
+	int item_type;
 	int tunnel;
 	int ret;
 
@@ -12823,7 +12863,8 @@ flow_dv_translate_items_sws(struct rte_eth_dev *dev,
 						  RTE_FLOW_ERROR_TYPE_ITEM,
 						  NULL, "item not supported");
 		tunnel = !!(wks.item_flags & MLX5_FLOW_LAYER_TUNNEL);
-		switch (items->type) {
+		item_type = items->type;
+		switch (item_type) {
 		case RTE_FLOW_ITEM_TYPE_SFT:
 			ret = flow_dv_translate_item_sft(dev, match_mask,
 							 match_value, items,
@@ -12847,6 +12888,14 @@ flow_dv_translate_items_sws(struct rte_eth_dev *dev,
 			wks.last_item = tunnel ? MLX5_FLOW_ITEM_INNER_FLEX :
 						 MLX5_FLOW_ITEM_OUTER_FLEX;
 			break;
+		case MLX5_RTE_FLOW_ITEM_TYPE_TX_QUEUE:
+			flow_dv_translate_item_tx_queue(dev, match_value, items,
+							port_representor_item,
+							MLX5_SET_MATCHER_SW_V);
+			flow_dv_translate_item_tx_queue(dev, match_mask, items,
+							port_representor_item,
+							MLX5_SET_MATCHER_SW_M);
+			break;
 		default:
 			ret = flow_dv_translate_items(dev, items, &wks_m,
 				match_mask, MLX5_SET_MATCHER_SW_M, error);
@@ -12858,6 +12907,8 @@ flow_dv_translate_items_sws(struct rte_eth_dev *dev,
 				return ret;
 			if (items->type == RTE_FLOW_ITEM_TYPE_GRE)
 				gre_item = items;
+			if (items->type == RTE_FLOW_ITEM_TYPE_PORT_REPRESENTOR)
+				port_representor_item = items;
 			break;
 		}
 		wks.item_flags |= wks.last_item;
@@ -12873,6 +12924,7 @@ flow_dv_translate_items_sws(struct rte_eth_dev *dev,
 	 */
 	if (!(wks.item_flags & MLX5_FLOW_ITEM_PORT_ID) &&
 	    !(wks.item_flags & MLX5_FLOW_ITEM_REPRESENTED_PORT) &&
+	    !(wks.item_flags & MLX5_FLOW_ITEM_PORT_REPRESENTOR) &&
 	    (priv->representor || priv->master) &&
 	    !(attr->egress && !attr->transfer) &&
 	    attr->group != MLX5_FLOW_MREG_CP_TABLE_GROUP) {
