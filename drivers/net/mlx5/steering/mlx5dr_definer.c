@@ -285,6 +285,56 @@ mlx5dr_definer_ones_set(struct mlx5dr_definer_fc *fc,
 }
 
 static void
+mlx5dr_definer_conntrack_mask(struct mlx5dr_definer_fc *fc,
+			      const void *item_spec,
+			      uint8_t *tag)
+{
+	const struct rte_flow_item_conntrack *m = item_spec;
+	uint32_t reg_mask = 0;
+
+	if (m->flags & (RTE_FLOW_CONNTRACK_PKT_STATE_VALID |
+			RTE_FLOW_CONNTRACK_PKT_STATE_INVALID |
+			RTE_FLOW_CONNTRACK_PKT_STATE_DISABLED))
+		reg_mask |= (MLX5_CT_SYNDROME_VALID | MLX5_CT_SYNDROME_INVALID |
+			     MLX5_CT_SYNDROME_TRAP);
+
+	if (m->flags & RTE_FLOW_CONNTRACK_PKT_STATE_CHANGED)
+		reg_mask |= MLX5_CT_SYNDROME_STATE_CHANGE;
+
+	if (m->flags & RTE_FLOW_CONNTRACK_PKT_STATE_BAD)
+		reg_mask |= MLX5_CT_SYNDROME_BAD_PACKET;
+
+	DR_SET(tag, reg_mask, fc->byte_off, fc->bit_off, fc->bit_mask);
+}
+
+static void
+mlx5dr_definer_conntrack_tag(struct mlx5dr_definer_fc *fc,
+			     const void *item_spec,
+			     uint8_t *tag)
+{
+	const struct rte_flow_item_conntrack *v = item_spec;
+	uint32_t reg_value = 0;
+
+	/* The conflict should be checked in the validation. */
+	if (v->flags & RTE_FLOW_CONNTRACK_PKT_STATE_VALID)
+		reg_value |= MLX5_CT_SYNDROME_VALID;
+
+	if (v->flags & RTE_FLOW_CONNTRACK_PKT_STATE_CHANGED)
+		reg_value |= MLX5_CT_SYNDROME_STATE_CHANGE;
+
+	if (v->flags & RTE_FLOW_CONNTRACK_PKT_STATE_INVALID)
+		reg_value |= MLX5_CT_SYNDROME_INVALID;
+
+	if (v->flags & RTE_FLOW_CONNTRACK_PKT_STATE_DISABLED)
+		reg_value |= MLX5_CT_SYNDROME_TRAP;
+
+	if (v->flags & RTE_FLOW_CONNTRACK_PKT_STATE_BAD)
+		reg_value |= MLX5_CT_SYNDROME_BAD_PACKET;
+
+	DR_SET(tag, reg_value, fc->byte_off, fc->bit_off, fc->bit_mask);
+}
+
+static void
 mlx5dr_definer_integrity_set(struct mlx5dr_definer_fc *fc,
 			     const void *item_spec,
 			     uint8_t *tag)
@@ -1110,7 +1160,12 @@ mlx5dr_definer_conv_item_tag(struct mlx5dr_definer_conv_data *cd,
 		reg = flow_hw_get_reg_id(RTE_FLOW_ITEM_TYPE_TAG, v->index);
 	else
 		reg = (int)v->index;
-	MLX5_ASSERT(reg > 0);
+
+	if (reg <= 0) {
+		DR_LOG(ERR, "Invalid register for item tag");
+		rte_errno = EINVAL;
+		return rte_errno;
+	}
 
 	fc = mlx5dr_definer_get_register_fc(cd, reg);
 	if (!fc)
@@ -1134,7 +1189,11 @@ mlx5dr_definer_conv_item_metadata(struct mlx5dr_definer_conv_data *cd,
 		return 0;
 
 	reg = flow_hw_get_reg_id(RTE_FLOW_ITEM_TYPE_META, -1);
-	MLX5_ASSERT(reg > 0);
+	if (reg <= 0) {
+		DR_LOG(ERR, "Invalid register for item metadata");
+		rte_errno = EINVAL;
+		return rte_errno;
+	}
 
 	fc = mlx5dr_definer_get_register_fc(cd, reg);
 	if (!fc)
@@ -1320,6 +1379,36 @@ mlx5dr_definer_conv_item_integrity(struct mlx5dr_definer_conv_data *cd,
 }
 
 static int
+mlx5dr_definer_conv_item_conntrack(struct mlx5dr_definer_conv_data *cd,
+				   struct rte_flow_item *item,
+				   int item_idx)
+{
+	const struct rte_flow_item_conntrack *m = item->mask;
+	struct mlx5dr_definer_fc *fc;
+	int reg;
+
+	if (!m)
+		return 0;
+
+	reg = flow_hw_get_reg_id(RTE_FLOW_ITEM_TYPE_CONNTRACK, -1);
+	if (reg <= 0) {
+		DR_LOG(ERR, "Invalid register for item conntrack");
+		rte_errno = EINVAL;
+		return rte_errno;
+	}
+
+	fc = mlx5dr_definer_get_register_fc(cd, reg);
+	if (!fc)
+		return rte_errno;
+
+	fc->item_idx = item_idx;
+	fc->tag_mask_set = &mlx5dr_definer_conntrack_mask;
+	fc->tag_set = &mlx5dr_definer_conntrack_tag;
+
+	return 0;
+}
+
+static int
 mlx5dr_definer_conv_items_to_hl(struct mlx5dr_context *ctx,
 				struct mlx5dr_match_template *mt,
 				uint8_t *hl)
@@ -1419,6 +1508,9 @@ mlx5dr_definer_conv_items_to_hl(struct mlx5dr_context *ctx,
 			ret = mlx5dr_definer_conv_item_integrity(&cd, items, i);
 			item_flags |= cd.tunnel ? MLX5_FLOW_ITEM_INNER_INTEGRITY :
 						  MLX5_FLOW_ITEM_OUTER_INTEGRITY;
+			break;
+		case RTE_FLOW_ITEM_TYPE_CONNTRACK:
+			ret = mlx5dr_definer_conv_item_conntrack(&cd, items, i);
 			break;
 		default:
 			DR_LOG(ERR, "Unsupported item type %d", items->type);
