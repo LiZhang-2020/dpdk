@@ -87,7 +87,9 @@ struct mlx5dr_cmd_stc_modify_attr {
 			uint16_t esw_owner_vhca_id;
 		} vport;
 		struct {
-			uint32_t ste_obj_id;
+			struct mlx5dr_pool_chunk ste;
+			struct mlx5dr_pool *ste_pool;
+			uint32_t ste_obj_id; /* Internal */
 			uint32_t match_definer_id;
 			uint8_t log_hash_size;
 		} ste_table;

@@ -154,15 +154,30 @@ static bool mlx5dr_action_fixup_stc_attr(struct mlx5dr_cmd_stc_modify_attr *stc_
 					 uint32_t table_type,
 					 bool is_mirror)
 {
+	struct mlx5dr_devx_obj *devx_obj;
+	bool use_fixup = false;
 	uint32_t fw_tbl_type;
-
-	if (table_type != MLX5DR_TABLE_TYPE_FDB)
-		return false;
 
 	fw_tbl_type = mlx5dr_table_get_res_fw_ft_type(table_type, is_mirror);
 
-	if (stc_attr->action_type == MLX5_IFC_STC_ACTION_TYPE_JUMP_TO_VPORT &&
-	    stc_attr->vport.vport_num == WIRE_PORT) {
+	switch (stc_attr->action_type) {
+	case MLX5_IFC_STC_ACTION_TYPE_JUMP_TO_STE_TABLE:
+		if (!is_mirror)
+			devx_obj = mlx5dr_pool_chunk_get_base_devx_obj(stc_attr->ste_table.ste_pool,
+								       &stc_attr->ste_table.ste);
+		else
+			devx_obj = mlx5dr_pool_chunk_get_base_devx_obj_mirror(stc_attr->ste_table.ste_pool,
+									      &stc_attr->ste_table.ste);
+
+		*fixup_stc_attr = *stc_attr;
+		fixup_stc_attr->ste_table.ste_obj_id = devx_obj->id;
+		use_fixup = true;
+		break;
+
+	case MLX5_IFC_STC_ACTION_TYPE_JUMP_TO_VPORT:
+		if (stc_attr->vport.vport_num != WIRE_PORT)
+			break;
+
 		if (fw_tbl_type == FS_FT_FDB_RX) {
 			/*The FW doesn't allow to go back to wire in the RX side, so change it to DROP*/
 			fixup_stc_attr->action_type = MLX5_IFC_STC_ACTION_TYPE_DROP;
@@ -176,10 +191,14 @@ static bool mlx5dr_action_fixup_stc_attr(struct mlx5dr_cmd_stc_modify_attr *stc_
 			fixup_stc_attr->vport.vport_num = 0;
 			fixup_stc_attr->vport.esw_owner_vhca_id = stc_attr->vport.esw_owner_vhca_id;
 		}
-		return true;
+		use_fixup = true;
+		break;
+
+	default:
+		break;
 	}
 
-	return false;
+	return use_fixup;
 }
 
 int mlx5dr_action_alloc_single_stc(struct mlx5dr_context *ctx,

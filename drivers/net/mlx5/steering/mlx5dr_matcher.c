@@ -279,7 +279,6 @@ static int mlx5dr_matcher_bind_at(struct mlx5dr_matcher *matcher)
 	struct mlx5dr_table *tbl = matcher->tbl;
 	struct mlx5dr_pool_attr pool_attr = {0};
 	struct mlx5dr_context *ctx = tbl->ctx;
-	struct mlx5dr_devx_obj *devx_obj;
 	uint32_t required_stes;
 	int i, ret;
 	bool valid;
@@ -331,12 +330,10 @@ static int mlx5dr_matcher_bind_at(struct mlx5dr_matcher *matcher)
 	}
 
 	/* Allocate STC for jumps to STE */
-	devx_obj = mlx5dr_pool_chunk_get_base_devx_obj(matcher->action_ste.pool,
-						       &matcher->action_ste.ste);
-
 	stc_attr.action_offset = MLX5DR_ACTION_OFFSET_HIT;
 	stc_attr.action_type = MLX5_IFC_STC_ACTION_TYPE_JUMP_TO_STE_TABLE;
-	stc_attr.ste_table.ste_obj_id = devx_obj->id;
+	stc_attr.ste_table.ste = matcher->action_ste.ste;
+	stc_attr.ste_table.ste_pool = matcher->action_ste.pool;
 	stc_attr.ste_table.match_definer_id = ctx->caps->trivial_match_definer;
 
 	ret = mlx5dr_action_alloc_single_stc(ctx, &stc_attr, tbl->type,
