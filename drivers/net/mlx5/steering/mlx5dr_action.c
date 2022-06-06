@@ -376,6 +376,7 @@ static void mlx5dr_action_fill_stc_attr(struct mlx5dr_action *action,
 	case MLX5DR_ACTION_TYP_ASO_METER:
 		attr->action_offset = MLX5DR_ACTION_OFFSET_DW6;
 		attr->action_type = MLX5_IFC_STC_ACTION_TYPE_ASO;
+		attr->aso.aso_type = ASO_OPC_MOD_POLICER;
 		attr->aso.devx_obj_id = obj->id;
 		attr->aso.return_reg_id = action->aso.return_reg_id;
 		break;

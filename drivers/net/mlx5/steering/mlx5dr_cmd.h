@@ -79,6 +79,7 @@ struct mlx5dr_cmd_stc_modify_attr {
 			uint16_t insert_anchor;
 		} reformat;
 		struct {
+			uint8_t aso_type;
 			uint32_t devx_obj_id;
 			uint8_t return_reg_id;
 		} aso;

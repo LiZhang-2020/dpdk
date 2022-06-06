@@ -392,7 +392,7 @@ mlx5dr_cmd_stc_modify_set_stc_param(struct mlx5dr_cmd_stc_modify_attr *stc_attr,
 		MLX5_SET(stc_ste_param_execute_aso, stc_parm, return_reg_id,
 			 stc_attr->aso.return_reg_id);
 		MLX5_SET(stc_ste_param_execute_aso, stc_parm, aso_type,
-			 ASO_OPC_MOD_POLICER);
+			 stc_attr->aso.aso_type);
 		break;
 	case MLX5_IFC_STC_ACTION_TYPE_JUMP_TO_STE_TABLE:
 		MLX5_SET(stc_ste_param_ste_table, stc_parm, ste_obj_id,
