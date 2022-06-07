@@ -51,7 +51,12 @@ cdef extern  from '../../../../drivers/net/mlx5/steering/mlx5dr.h':
         MLX5DR_ACTION_TYP_POP_VLAN
         MLX5DR_ACTION_TYP_PUSH_VLAN
         MLX5DR_ACTION_TYP_ASO_METER
+        MLX5DR_ACTION_TYP_ASO_CT
         MLX5DR_ACTION_TYP_MAX
+
+    cpdef enum mlx5dr_action_aso_ct_flags:
+        MLX5DR_ACTION_ASO_CT_DIRECTION_INITIATOR
+        MLX5DR_ACTION_ASO_CT_DIRECTION_RESPONDER
 
 cdef extern  from '../../../../drivers/net/mlx5/mlx5_flow.h':
 

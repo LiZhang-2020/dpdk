@@ -214,6 +214,23 @@ cdef class Mlx5drAsoFlowMeter(Mlx5drAction):
         aso_obj.add_ref(self)
 
 
+cdef class Mlx5drActionCtAso(Mlx5drAction):
+    def __init__(self, Mlx5drContext ctx, Mlx5drDevxObj aso_obj, flags, reg_c=0):
+        """
+        Initializes CT ASO action
+        :param ctx: Mlx5drContext context
+        :param aso_obj: DR devx ASO object
+        :param flags: Action flags
+        :param reg_c: Reg C index for setting the color
+        """
+        super().__init__(ctx)
+        self.action = mlx5._action_create_ct_aso(ctx.context, &aso_obj.dr_devx_obj, reg_c, flags)
+        if self.action == NULL:
+            raise PydiruErrno('Mlx5drActionCtAso creation failed.')
+        self.aso_obj = aso_obj
+        aso_obj.add_ref(self)
+
+
 cdef class Mlx5drRuleAction(PydiruCM):
     """
     Class Mlx5drRuleAction representing mlx5dr_rule_action struct.
@@ -249,6 +266,9 @@ cdef class Mlx5drRuleAction(PydiruCM):
         elif isinstance(self.action, Mlx5drAsoFlowMeter):
             self.aso_flow_meter_offset = kwargs.get('offset', 0)
             self.aso_flow_meter_init_color = kwargs.get('meter_init_color', 0)
+        elif isinstance(self.action, Mlx5drActionCtAso):
+            self.ct_aso_offset = kwargs.get('offset', 0)
+            self.direction = kwargs.get('direction', 0)
 
     @property
     def tag_value(self):
@@ -334,6 +354,22 @@ cdef class Mlx5drRuleAction(PydiruCM):
     @aso_flow_meter_init_color.setter
     def aso_flow_meter_init_color(self, init_color):
         self.rule_action.aso_meter.init_color = init_color
+
+    @property
+    def ct_aso_offset(self):
+        return self.rule_action.aso_ct.offset
+
+    @ct_aso_offset.setter
+    def ct_aso_offset(self, offset):
+        self.rule_action.aso_ct.offset = offset
+
+    @property
+    def direction(self):
+        return self.rule_action.aso_ct.direction
+
+    @direction.setter
+    def direction(self, direction):
+        self.rule_action.aso_ct.direction = direction
 
     def __dealloc__(self):
         self.close()
