@@ -262,6 +262,12 @@ struct mlx5_ifc_definer_hl_tunnel_header_bits {
 	u8 tunnel_header_3[0x20];
 };
 
+struct mlx5_ifc_definer_hl_metadata_bits {
+	u8 metadata_to_cqe[0x20];
+	u8 general_purpose[0x20];
+	u8 acomulated_hash[0x20];
+};
+
 struct mlx5_ifc_definer_hl_bits {
 	struct mlx5_ifc_definer_hl_eth_l2_bits eth_l2_outer;
 	struct mlx5_ifc_definer_hl_eth_l2_bits eth_l2_inner;
@@ -287,22 +293,21 @@ struct mlx5_ifc_definer_hl_bits {
 	u8 unsupported_dest_ib_l3[0x80];
 	u8 unsupported_source_ib_l3[0x80];
 	u8 reserved_at_b80[0xa0];
-	//	struct x udp_misc_outer;
-	//	struct x udp_misc_inner;
-	//	struct x tcp_misc;
+	//	struct x udp_misc_outer; 0x20
+	//	struct x udp_misc_inner; 0x20
+	//	struct x tcp_misc; 0x60
 	struct mlx5_ifc_definer_hl_tunnel_header_bits tunnel_header;
-	u8 reserved_at_ca0[0x3a0];
-	//	struct x mpls_outer;
-	//	struct x mpls_inner;
-	//	struct x config_headers_outer;
-	//	struct x config_headers_inner;
-	//	struct x random_number;
-	//	struct x ipsec;
-	//	struct x metadata_to_cqe;
-	//	struct x general_purpose_lookup_field;
-	//	struct x accumulated_hash;
-	//	struct x utc_timestamp;
-	//	struct x free_running_timestamp;
+	u8 reserved_at_ca0[0x2c0];
+	//	struct x mpls_outer; 0xa0
+	//	struct x mpls_inner; 0xa0
+	//	struct x config_headers_outer; 0x80
+	//	struct x config_headers_inner; 0x80
+	//	struct x random_number; 0x20
+	//	struct x ipsec; 0x60
+	struct mlx5_ifc_definer_hl_metadata_bits metadata;
+	u8 reserved_at_fc0[0x80];
+	//	struct x utc_timestamp; 0x40
+	//	struct x free_running_timestamp; 0x40
 	struct mlx5_ifc_definer_hl_flex_parser_bits flex_parser;
 	struct mlx5_ifc_definer_hl_registers_bits registers;
 	//	struct x ib_l3_extended;

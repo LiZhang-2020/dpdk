@@ -161,6 +161,8 @@ enum mlx5dr_definer_fname {
 	MLX5DR_DEFINER_FNAME_REG_5,
 	MLX5DR_DEFINER_FNAME_REG_6,
 	MLX5DR_DEFINER_FNAME_REG_7,
+	MLX5DR_DEFINER_FNAME_REG_A,
+	MLX5DR_DEFINER_FNAME_REG_B,
 	MLX5DR_DEFINER_FNAME_GRE_C_VER,
 	MLX5DR_DEFINER_FNAME_GRE_PROTOCOL,
 	MLX5DR_DEFINER_FNAME_GRE_OPT_KEY,
@@ -1039,6 +1041,14 @@ mlx5dr_definer_get_register_fc(struct mlx5dr_definer_conv_data *cd, int reg)
 	case REG_C_7:
 		fc = &cd->fc[MLX5DR_DEFINER_FNAME_REG_7];
 		DR_CALC_SET_HDR(fc, registers, register_c_7);
+		break;
+	case REG_A:
+		fc = &cd->fc[MLX5DR_DEFINER_FNAME_REG_A];
+		DR_CALC_SET_HDR(fc, metadata, general_purpose);
+		break;
+	case REG_B:
+		fc = &cd->fc[MLX5DR_DEFINER_FNAME_REG_B];
+		DR_CALC_SET_HDR(fc, metadata, metadata_to_cqe);
 		break;
 	default:
 		rte_errno = ENOTSUP;
