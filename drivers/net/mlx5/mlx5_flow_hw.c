@@ -4954,7 +4954,7 @@ void flow_hw_init_tags_set(struct rte_eth_dev *dev)
 			if (mlx5_flow_hw_avl_tags[i] != REG_NON && !!((1 << i) & masks)) {
 				copy[mlx5_flow_hw_avl_tags[i] - REG_C_0] =
 						mlx5_flow_hw_avl_tags[i];
-				copy_masks |= (1 << i);
+				copy_masks |= (1 << (mlx5_flow_hw_avl_tags[i] - REG_C_0));
 			}
 		}
 		if (copy_masks != masks) {
