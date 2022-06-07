@@ -1458,6 +1458,7 @@ extern struct flow_hw_port_info mlx5_flow_hw_port_infos[RTE_MAX_ETHPORTS];
 #define MLX5_FLOW_HW_TAGS_MAX 8
 extern uint32_t mlx5_flow_hw_avl_tags_init_cnt;
 extern enum modify_reg mlx5_flow_hw_avl_tags[];
+extern enum modify_reg mlx5_flow_hw_aso_tag;
 
 /*
  * Get metadata match tag and mask for given rte_eth_dev port.
@@ -1530,6 +1531,8 @@ flow_hw_get_reg_id(enum rte_flow_item_type type, uint32_t id)
 		 * REG_B case should be rejected on pattern template validation.
 		 */
 		return REG_A;
+	case RTE_FLOW_ITEM_TYPE_CONNTRACK:
+		return mlx5_flow_hw_aso_tag;
 	case RTE_FLOW_ITEM_TYPE_TAG:
 		MLX5_ASSERT(id < MLX5_FLOW_HW_TAGS_MAX);
 		return mlx5_flow_hw_avl_tags[id];

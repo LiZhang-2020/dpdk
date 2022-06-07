@@ -4950,6 +4950,7 @@ void flow_hw_init_tags_set(struct rte_eth_dev *dev)
 		unset |= 1 << (REG_C_1 - REG_C_0);
 	masks &= ~unset;
 	if (mlx5_flow_hw_avl_tags_init_cnt) {
+		MLX5_ASSERT(mlx5_flow_hw_aso_tag == priv->mtr_color_reg);
 		for (i = 0; i < MLX5_FLOW_HW_TAGS_MAX; i++) {
 			if (mlx5_flow_hw_avl_tags[i] != REG_NON && !!((1 << i) & masks)) {
 				copy[mlx5_flow_hw_avl_tags[i] - REG_C_0] =
@@ -4972,6 +4973,7 @@ void flow_hw_init_tags_set(struct rte_eth_dev *dev)
 		}
 	}
 	priv->sh->hws_tags = 1;
+	mlx5_flow_hw_aso_tag = (enum modify_reg)priv->mtr_color_reg;
 	mlx5_flow_hw_avl_tags_init_cnt++;
 }
 
