@@ -1138,7 +1138,6 @@ struct rte_flow {
 	};
 	uint32_t geneve_tlv_option; /**< Holds Geneve TLV option id. > */
 } __rte_packed;
-
 /* HWS flow struct. */
 struct rte_flow_hw {
 	uint32_t idx; /* Flow index from indexed pool. */
@@ -1152,6 +1151,7 @@ struct rte_flow_hw {
 	struct rte_flow_template_table *table;
 	struct mlx5dr_rule rule; /* HWS layer data struct. */
 	uint32_t cnt_id;
+	uint32_t mtr_id;
 } __rte_packed;
 
 /* rte flow action translate to DR action struct. */
@@ -1278,6 +1278,7 @@ struct mlx5_hw_actions {
 	uint16_t encap_decap_pos; /* Encap/Decap action position. */
 	uint32_t mark:1; /* Indicate the mark action. */
 	uint32_t cnt_id; /* Counter id. */
+	uint32_t mtr_id; /* Meter id. */
 	/* Translated DR action array from action template. */
 	struct mlx5dr_rule_action rule_acts[MLX5_HW_MAX_ACTS];
 };

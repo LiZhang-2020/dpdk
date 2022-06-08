@@ -409,6 +409,10 @@ __flow_hw_action_template_destroy(struct rte_eth_dev *dev,
 		mlx5_hws_cnt_shared_put(priv->hws_cpool, &acts->cnt_id);
 		acts->cnt_id = 0;
 	}
+	if (acts->mtr_id) {
+		mlx5_ipool_free(priv->hws_mpool->idx_pool, acts->mtr_id);
+		acts->mtr_id = 0;
+	}
 }
 
 /**
@@ -1117,6 +1121,70 @@ static rte_be32_t vlan_hdr_to_be32(const struct rte_flow_action *actions)
 #endif
 }
 
+static __rte_always_inline struct mlx5_aso_mtr *
+flow_hw_meter_mark_alloc(struct rte_eth_dev *dev,
+			   const struct rte_flow_action *action)
+{
+	struct mlx5_priv *priv = dev->data->dev_private;
+	struct mlx5_aso_mtr_pool *pool = priv->hws_mpool;
+	const struct rte_flow_action_meter_mark *meter_mark = action->conf;
+	struct mlx5_aso_mtr *aso_mtr;
+	struct mlx5_flow_meter_info *fm;
+	uint32_t mtr_id;
+
+	aso_mtr = mlx5_ipool_malloc(priv->hws_mpool->idx_pool, &mtr_id);
+	if (!aso_mtr)
+		return NULL;
+	/* Fill the flow meter parameters. */
+	aso_mtr->type = ASO_METER_INDIRECT;
+	fm = &aso_mtr->fm;
+	fm->meter_id = mtr_id;
+	fm->profile = (struct mlx5_flow_meter_profile *)(meter_mark->profile);
+	fm->is_enable = meter_mark->state;
+	fm->color_aware = meter_mark->color_mode;
+	aso_mtr->pool = pool;
+	aso_mtr->state = ASO_METER_WAIT;
+	aso_mtr->offset = mtr_id - 1;
+	aso_mtr->init_color = (meter_mark->color_mode) ?
+		meter_mark->init_color : RTE_COLOR_GREEN;
+	/* Update ASO flow meter by wqe. */
+	if (mlx5_aso_meter_update_by_wqe(priv->sh, aso_mtr, &priv->mtr_bulk)) {
+		mlx5_ipool_free(pool->idx_pool, mtr_id);
+		return NULL;
+	}
+	/* Wait for ASO object completion. */
+	if (mlx5_aso_mtr_wait(priv->sh, aso_mtr)) {
+		mlx5_ipool_free(pool->idx_pool, mtr_id);
+		return NULL;
+	}
+	return aso_mtr;
+}
+
+static __rte_always_inline int
+flow_hw_meter_mark_compile(struct rte_eth_dev *dev,
+			   uint16_t aso_mtr_pos,
+			   const struct rte_flow_action *action,
+			   struct mlx5dr_rule_action *acts,
+			   uint32_t *index)
+{
+	struct mlx5_priv *priv = dev->data->dev_private;
+	struct mlx5_aso_mtr_pool *pool = priv->hws_mpool;
+	struct mlx5_aso_mtr *aso_mtr;
+
+	aso_mtr = flow_hw_meter_mark_alloc(dev, action);
+	if (!aso_mtr)
+		return -1;
+
+	/* Compile METER_MARK action */
+	acts[aso_mtr_pos].action = pool->action;
+	acts[aso_mtr_pos].aso_meter.offset = aso_mtr->offset;
+	acts[aso_mtr_pos].aso_meter.init_color =
+		(enum mlx5dr_action_aso_meter_color)
+		rte_col_2_mlx5_col(aso_mtr->init_color);
+	*index = aso_mtr->fm.meter_id;
+	return 0;
+}
+
 /**
  * Translate rte_flow actions to DR action.
  *
@@ -1430,6 +1498,23 @@ __flow_hw_actions_translate(struct rte_eth_dev *dev,
 					 actions - action_start, action_pos)) {
 				goto err;
 			}
+			break;
+		case RTE_FLOW_ACTION_TYPE_METER_MARK:
+			action_pos = at->actions_off[actions - action_start];
+			if (actions->conf && masks->conf &&
+			    ((const struct rte_flow_action_meter_mark *)
+			     masks->conf)->profile) {
+				ret = flow_hw_meter_mark_compile(dev,
+							action_pos, actions,
+							acts->rule_acts,
+							&acts->mtr_id);
+				if (ret)
+					goto err;
+			} else if (__flow_hw_act_data_general_append(priv, acts,
+							actions->type,
+							actions - action_start,
+							action_pos))
+				goto err;
 			break;
 		case RTE_FLOW_ACTION_TYPE_END:
 			actions_end = true;
@@ -1800,8 +1885,7 @@ flow_hw_actions_construct(struct rte_eth_dev *dev,
 	uint32_t ft_flag;
 	size_t encap_len = 0;
 	struct mlx5_action_construct_data *act_data;
-	struct mlx5_aso_mtr *mtr;
-	uint32_t mtr_id;
+	struct mlx5_aso_mtr *aso_mtr;
 
 	rte_memcpy(rule_acts, hw_acts->rule_acts, sizeof(*rule_acts) * at->dr_actions_num);
 	attr.group = table->grp->group_id;
@@ -1836,6 +1920,7 @@ flow_hw_actions_construct(struct rte_eth_dev *dev,
 		int ret;
 		uint32_t ct_idx;
 		cnt_id_t cnt_id;
+		uint32_t mtr_id;
 
 		action = &actions[act_data->action_src];
 		/*
@@ -1940,13 +2025,13 @@ flow_hw_actions_construct(struct rte_eth_dev *dev,
 		case RTE_FLOW_ACTION_TYPE_METER:
 			meter = action->conf;
 			mtr_id = meter->mtr_id;
-			mtr = mlx5_aso_meter_by_idx(priv, mtr_id);
+			aso_mtr = mlx5_aso_meter_by_idx(priv, mtr_id);
 			rule_acts[act_data->action_dst].action =
 				priv->mtr_bulk.action;
 			rule_acts[act_data->action_dst].aso_meter.offset =
-								mtr->offset;
+								aso_mtr->offset;
 			jump = flow_hw_jump_action_register
-				(dev, &table->cfg, mtr->fm.group, NULL);
+				(dev, &table->cfg, aso_mtr->fm.group, NULL);
 			if (!jump)
 				return -1;
 			MLX5_ASSERT
@@ -1956,7 +2041,7 @@ flow_hw_actions_construct(struct rte_eth_dev *dev,
 							 jump->root_action;
 			job->flow->jump = jump;
 			job->flow->fate_type = MLX5_FLOW_FATE_JUMP;
-			if (mlx5_aso_mtr_wait(priv->sh, mtr))
+			if (mlx5_aso_mtr_wait(priv->sh, aso_mtr))
 				return -1;
 			break;
 		case RTE_FLOW_ACTION_TYPE_COUNT:
@@ -1991,6 +2076,13 @@ flow_hw_actions_construct(struct rte_eth_dev *dev,
 			if (flow_hw_ct_compile(dev, ct_idx,
 					       &rule_acts[act_data->action_dst]))
 				return -1;
+			break;
+		case RTE_FLOW_ACTION_TYPE_METER_MARK:
+			ret = flow_hw_meter_mark_compile(dev,
+				act_data->action_dst, action,
+				rule_acts, &job->flow->mtr_id);
+			if (ret != 0)
+				return ret;
 			break;
 		default:
 			break;
@@ -2254,6 +2346,7 @@ flow_hw_pull(struct rte_eth_dev *dev,
 	     struct rte_flow_error *error)
 {
 	struct mlx5_priv *priv = dev->data->dev_private;
+	struct mlx5_aso_mtr_pool *pool = priv->hws_mpool;
 	struct mlx5_hw_q_job *job;
 	int ret, i;
 
@@ -2277,6 +2370,10 @@ flow_hw_pull(struct rte_eth_dev *dev,
 				mlx5_hws_cnt_pool_put(priv->hws_cpool, &queue,
 						&job->flow->cnt_id);
 				job->flow->cnt_id = 0;
+			}
+			if (job->flow->mtr_id) {
+				mlx5_ipool_free(pool->idx_pool,	job->flow->mtr_id);
+				job->flow->mtr_id = 0;
 			}
 			mlx5_ipool_free(job->flow->table->flow, job->flow->idx);
 		}
@@ -3100,6 +3197,9 @@ flow_hw_actions_validate(struct rte_eth_dev *dev,
 		case RTE_FLOW_ACTION_TYPE_METER:
 			/* TODO: Validation logic */
 			break;
+		case RTE_FLOW_ACTION_TYPE_METER_MARK:
+			/* TODO: Validation logic */
+			break;
 		case RTE_FLOW_ACTION_TYPE_MODIFY_FIELD:
 			ret = flow_hw_validate_action_modify_field(action,
 									mask,
@@ -3283,6 +3383,12 @@ flow_hw_dr_actions_template_create(struct rte_flow_actions_template *at)
 			i += is_of_vlan_pcp_present(at->actions + i) ?
 				MLX5_HW_VLAN_PUSH_PCP_IDX :
 				MLX5_HW_VLAN_PUSH_VID_IDX;
+			break;
+		case RTE_FLOW_ACTION_TYPE_METER_MARK:
+			at->actions_off[i] = curr_off;
+			action_types[curr_off++] = MLX5DR_ACTION_TYP_ASO_METER;
+			if (curr_off >= MLX5_HW_MAX_ACTS)
+				goto err_actions_num;
 			break;
 		default:
 			type = mlx5_hw_dr_action_types[at->actions[i].type];

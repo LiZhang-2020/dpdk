@@ -15,6 +15,14 @@
 #include "mlx5.h"
 #include "mlx5_flow.h"
 
+/*
+ * The default ipool threshold value indicates which per_core_cache
+ * value to set.
+ */
+#define MLX5_MTR_IPOOL_SIZE_THRESHOLD (1 << 19)
+/* The default min local cache size. */
+#define MLX5_MTR_IPOOL_CACHE_MIN (1 << 9)
+
 static void
 mlx5_flow_meter_uninit(struct rte_eth_dev *dev)
 {
@@ -27,6 +35,11 @@ mlx5_flow_meter_uninit(struct rte_eth_dev *dev)
 	if (priv->mtr_profile_arr) {
 		mlx5_free(priv->mtr_profile_arr);
 		priv->mtr_profile_arr = NULL;
+	}
+	if (priv->hws_mpool) {
+		mlx5_ipool_destroy(priv->hws_mpool->idx_pool);
+		mlx5_free(priv->hws_mpool);
+		priv->hws_mpool = NULL;
 	}
 	if (priv->mtr_bulk.aso) {
 		mlx5_free(priv->mtr_bulk.aso);
@@ -59,27 +72,39 @@ mlx5_flow_meter_init(struct rte_eth_dev *dev,
 	uint32_t i;
 	struct rte_mtr_error error;
 	uint32_t flags;
+	uint32_t nb_mtrs = rte_align32pow2(nb_meters);
+	struct mlx5_indexed_pool_config cfg = {
+		.size = sizeof(struct mlx5_aso_mtr),
+		.trunk_size = 1 << 12,
+		.per_core_cache = 1 << 13,
+		.need_lock = 1,
+		.release_mem_en = !!priv->sh->config.reclaim_mode,
+		.malloc = mlx5_malloc,
+		.max_idx = nb_meters,
+		.free = mlx5_free,
+		.type = "mlx5_hw_mtr_mark_action",
+	};
 
 	if (!nb_meters || !nb_meter_profiles || !nb_meter_policies) {
 		ret = ENOTSUP;
 		rte_mtr_error_set(&error, ENOMEM,
-					RTE_MTR_ERROR_TYPE_UNSPECIFIED,
-					NULL, "Meter configuration is invalid.");
+				  RTE_MTR_ERROR_TYPE_UNSPECIFIED,
+				  NULL, "Meter configuration is invalid.");
 		goto err;
 	}
 	if (!priv->mtr_en || !priv->sh->meter_aso_en) {
 		ret = ENOTSUP;
 		rte_mtr_error_set(&error, ENOMEM,
-					RTE_MTR_ERROR_TYPE_UNSPECIFIED,
-					NULL, "Meter ASO is not supported.");
+				  RTE_MTR_ERROR_TYPE_UNSPECIFIED,
+				  NULL, "Meter ASO is not supported.");
 		goto err;
 	}
 	priv->mtr_config.nb_meters = nb_meters;
 	if (mlx5_aso_queue_init(priv->sh, ASO_OPC_MOD_POLICER)) {
 		ret = ENOMEM;
 		rte_mtr_error_set(&error, ENOMEM,
-					RTE_MTR_ERROR_TYPE_UNSPECIFIED,
-					NULL, "Meter ASO queue allocation failed.");
+				  RTE_MTR_ERROR_TYPE_UNSPECIFIED,
+				  NULL, "Meter ASO queue allocation failed.");
 		goto err;
 	}
 	log_obj_size = rte_log2_u32(nb_meters >> 1);
@@ -89,8 +114,8 @@ mlx5_flow_meter_init(struct rte_eth_dev *dev,
 	if (!dcs) {
 		ret = ENOMEM;
 		rte_mtr_error_set(&error, ENOMEM,
-					RTE_MTR_ERROR_TYPE_UNSPECIFIED,
-					NULL, "Meter ASO object allocation failed.");
+				  RTE_MTR_ERROR_TYPE_UNSPECIFIED,
+				  NULL, "Meter ASO object allocation failed.");
 		goto err;
 	}
 	priv->mtr_bulk.devx_obj = dcs;
@@ -98,8 +123,8 @@ mlx5_flow_meter_init(struct rte_eth_dev *dev,
 	if (reg_id < 0) {
 		ret = ENOTSUP;
 		rte_mtr_error_set(&error, ENOMEM,
-					RTE_MTR_ERROR_TYPE_UNSPECIFIED,
-					NULL, "Meter register is not available.");
+				  RTE_MTR_ERROR_TYPE_UNSPECIFIED,
+				  NULL, "Meter register is not available.");
 		goto err;
 	}
 	flags = MLX5DR_ACTION_FLAG_HWS_RX | MLX5DR_ACTION_FLAG_HWS_TX;
@@ -111,19 +136,20 @@ mlx5_flow_meter_init(struct rte_eth_dev *dev,
 	if (!priv->mtr_bulk.action) {
 		ret = ENOMEM;
 		rte_mtr_error_set(&error, ENOMEM,
-					RTE_MTR_ERROR_TYPE_UNSPECIFIED,
-					NULL, "Meter action creation failed.");
+				  RTE_MTR_ERROR_TYPE_UNSPECIFIED,
+				  NULL, "Meter action creation failed.");
 		goto err;
 	}
 	priv->mtr_bulk.aso = mlx5_malloc(MLX5_MEM_ZERO,
-						sizeof(struct mlx5_aso_mtr) * nb_meters,
-						RTE_CACHE_LINE_SIZE,
-						SOCKET_ID_ANY);
+					 sizeof(struct mlx5_aso_mtr) *
+					 nb_meters,
+					 RTE_CACHE_LINE_SIZE,
+					 SOCKET_ID_ANY);
 	if (!priv->mtr_bulk.aso) {
 		ret = ENOMEM;
 		rte_mtr_error_set(&error, ENOMEM,
-					RTE_MTR_ERROR_TYPE_UNSPECIFIED,
-					NULL, "Meter bulk ASO allocation failed.");
+				  RTE_MTR_ERROR_TYPE_UNSPECIFIED,
+				  NULL, "Meter bulk ASO allocation failed.");
 		goto err;
 	}
 	priv->mtr_bulk.size = nb_meters;
@@ -134,32 +160,56 @@ mlx5_flow_meter_init(struct rte_eth_dev *dev,
 		aso->offset = i;
 		aso++;
 	}
+	priv->hws_mpool = mlx5_malloc(MLX5_MEM_ZERO,
+				sizeof(struct mlx5_aso_mtr_pool),
+				RTE_CACHE_LINE_SIZE, SOCKET_ID_ANY);
+	if (!priv->hws_mpool) {
+		ret = ENOMEM;
+		rte_mtr_error_set(&error, ENOMEM,
+				  RTE_MTR_ERROR_TYPE_UNSPECIFIED,
+				  NULL, "Meter ipool allocation failed.");
+		goto err;
+	}
+	priv->hws_mpool->devx_obj = priv->mtr_bulk.devx_obj;
+	priv->hws_mpool->action = priv->mtr_bulk.action;
+	/*
+	 * No need for local cache if Meter number is a small number.
+	 * Since flow insertion rate will be very limited in that case.
+	 * Here let's set the number to less than default trunk size 4K.
+	 */
+	if (nb_mtrs <= cfg.trunk_size) {
+		cfg.per_core_cache = 0;
+		cfg.trunk_size = nb_mtrs;
+	} else if (nb_mtrs <= MLX5_MTR_IPOOL_SIZE_THRESHOLD) {
+		cfg.per_core_cache = MLX5_MTR_IPOOL_CACHE_MIN;
+	}
+	priv->hws_mpool->idx_pool = mlx5_ipool_create(&cfg);
 	priv->mtr_config.nb_meter_profiles = nb_meter_profiles;
 	priv->mtr_profile_arr =
 		mlx5_malloc(MLX5_MEM_ZERO,
-				sizeof(struct mlx5_flow_meter_profile) *
-				nb_meter_profiles,
-				RTE_CACHE_LINE_SIZE,
-				SOCKET_ID_ANY);
+			    sizeof(struct mlx5_flow_meter_profile) *
+			    nb_meter_profiles,
+			    RTE_CACHE_LINE_SIZE,
+			    SOCKET_ID_ANY);
 	if (!priv->mtr_profile_arr) {
 		ret = ENOMEM;
 		rte_mtr_error_set(&error, ENOMEM,
-					RTE_MTR_ERROR_TYPE_UNSPECIFIED,
-					NULL, "Meter profile allocation failed.");
+				  RTE_MTR_ERROR_TYPE_UNSPECIFIED,
+				  NULL, "Meter profile allocation failed.");
 		goto err;
 	}
 	priv->mtr_config.nb_meter_policies = nb_meter_policies;
 	priv->mtr_policy_arr =
 		mlx5_malloc(MLX5_MEM_ZERO,
-				sizeof(struct mlx5_flow_meter_policy) *
-				nb_meter_policies,
-				RTE_CACHE_LINE_SIZE,
-				SOCKET_ID_ANY);
+			    sizeof(struct mlx5_flow_meter_policy) *
+			    nb_meter_policies,
+			    RTE_CACHE_LINE_SIZE,
+			    SOCKET_ID_ANY);
 	if (!priv->mtr_policy_arr) {
 		ret = ENOMEM;
 		rte_mtr_error_set(&error, ENOMEM,
-					RTE_MTR_ERROR_TYPE_UNSPECIFIED,
-					NULL, "Meter policy allocation failed.");
+				  RTE_MTR_ERROR_TYPE_UNSPECIFIED,
+				  NULL, "Meter policy allocation failed.");
 		goto err;
 	}
 	return 0;

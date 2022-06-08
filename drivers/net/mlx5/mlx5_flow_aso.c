@@ -714,8 +714,11 @@ mlx5_aso_mtr_sq_enqueue_single(struct mlx5_dev_ctx_shared *sh,
 	fm = &aso_mtr->fm;
 	sq->elts[sq->head & mask].mtr = aso_mtr;
 	if (aso_mtr->type == ASO_METER_INDIRECT) {
-		pool = container_of(aso_mtr, struct mlx5_aso_mtr_pool,
-				    mtrs[aso_mtr->offset]);
+		if (likely(sh->config.dv_flow_en == 2))
+			pool = aso_mtr->pool;
+		else
+			pool = container_of(aso_mtr, struct mlx5_aso_mtr_pool,
+					    mtrs[aso_mtr->offset]);
 		id = pool->devx_obj->id;
 	} else {
 		id = bulk->devx_obj->id;

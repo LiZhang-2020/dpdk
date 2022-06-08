@@ -981,12 +981,16 @@ enum mlx5_aso_mtr_type {
 
 /* Generic aso_flow_meter information. */
 struct mlx5_aso_mtr {
-	LIST_ENTRY(mlx5_aso_mtr) next;
+	union {
+		LIST_ENTRY(mlx5_aso_mtr) next;
+		struct mlx5_aso_mtr_pool *pool;
+	};
 	enum mlx5_aso_mtr_type type;
 	struct mlx5_flow_meter_info fm;
 	/**< Pointer to the next aso flow meter structure. */
 	uint8_t state; /**< ASO flow meter state. */
 	uint32_t offset;
+	enum rte_color init_color;
 };
 
 /* Generic aso_flow_meter pool structure. */
@@ -995,6 +999,8 @@ struct mlx5_aso_mtr_pool {
 	/*Must be the first in pool*/
 	struct mlx5_devx_obj *devx_obj;
 	/* The devx object of the minimum aso flow meter ID. */
+	struct mlx5dr_action *action; /* HWS action. */
+	struct mlx5_indexed_pool *idx_pool; /* HWS index pool. */
 	uint32_t index; /* Pool index in management structure. */
 };
 
@@ -1705,6 +1711,7 @@ struct mlx5_priv {
 	struct mlx5_indexed_pool *acts_ipool; /* Action data indexed pool. */
 	struct mlx5_hws_cnt_pool *hws_cpool; /* HW steering's counter pool. */
 	struct mlx5_aso_ct_pool *hws_ctpool; /* HW steering's CT pool. */
+	struct mlx5_aso_mtr_pool *hws_mpool; /* Meter mark indexed pool. */
 };
 
 #define PORT_ID(priv) ((priv)->dev_data->port_id)
