@@ -294,6 +294,8 @@ EXPERIMENTAL {
 	rte_mtr_meter_profile_get;
 	rte_mtr_meter_policy_get;
 	rte_flow_get_q_aged_flows;
+	rte_eth_rx_avail_thresh_query;
+	rte_eth_rx_avail_thresh_set;
 };
 
 INTERNAL {

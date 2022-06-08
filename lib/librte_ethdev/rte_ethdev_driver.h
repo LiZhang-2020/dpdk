@@ -795,6 +795,26 @@ typedef int (*eth_representor_info_get_t)(struct rte_eth_dev *dev,
 	struct rte_eth_representor_info *info);
 
 /**
+ * @internal Set Rx queue available descriptors threshold.
+ * @see rte_eth_rx_avail_thresh_set()
+ *
+ * Driver should round down number of descriptors on conversion from
+ * percentage.
+ */
+typedef int (*eth_rx_queue_avail_thresh_set_t)(struct rte_eth_dev *dev,
+				      uint16_t rx_queue_id,
+				      uint8_t avail_thresh);
+
+/**
+ * @internal Query Rx queue available descriptors threshold event.
+ * @see rte_eth_rx_avail_thresh_query()
+ */
+
+typedef int (*eth_rx_queue_avail_thresh_query_t)(struct rte_eth_dev *dev,
+					uint16_t *rx_queue_id,
+					uint8_t *avail_thresh);
+
+/**
  * @internal A structure containing the functions exported by an Ethernet driver.
  */
 struct eth_dev_ops {
@@ -955,6 +975,11 @@ struct eth_dev_ops {
 
 	eth_representor_info_get_t representor_info_get;
 	/**< Get representor info. */
+
+	/** Set Rx queue available descriptors threshold */
+	eth_rx_queue_avail_thresh_set_t rx_queue_avail_thresh_set;
+	/** Query Rx queue available descriptors threshold event */
+	eth_rx_queue_avail_thresh_query_t rx_queue_avail_thresh_query;
 };
 
 /**
