@@ -1531,9 +1531,12 @@ mlx5_flow_meter_policy_hws_add(struct rte_eth_dev *dev,
 					  RTE_MTR_ERROR_TYPE_METER_POLICY_ID,
 					  NULL, "Meter policy domains are conflicting.");
 	mtr_policy->is_rss = is_rss;
-	mtr_policy->ingress = domain_color & MLX5_MTR_DOMAIN_INGRESS_BIT;
-	mtr_policy->egress = domain_color & MLX5_MTR_DOMAIN_EGRESS_BIT;
-	mtr_policy->transfer = domain_color & MLX5_MTR_DOMAIN_TRANSFER_BIT;
+	mtr_policy->ingress = !!(domain_color & MLX5_MTR_DOMAIN_INGRESS_BIT);
+	pta.ingress = mtr_policy->ingress;
+	mtr_policy->egress = !!(domain_color & MLX5_MTR_DOMAIN_EGRESS_BIT);
+	pta.egress = mtr_policy->egress;
+	mtr_policy->transfer = !!(domain_color & MLX5_MTR_DOMAIN_TRANSFER_BIT);
+	pta.transfer = mtr_policy->transfer;
 	mtr_policy->group = MLX5_FLOW_TABLE_HWS_POLICY - policy_id;
 	mtr_policy->is_hierarchy = is_hierarchy;
 	mtr_policy->initialized = 1;
