@@ -4961,6 +4961,11 @@ struct rte_flow_port_attr {
 	 * @see RTE_FLOW_ACTION_TYPE_METER
 	 */
 	uint32_t nb_meter_policies;
+	/**
+	 * Number of connection tracking to configure.
+	 * @see RTE_FLOW_ACTION_TYPE_CONNTRACK
+	 */
+	uint32_t nb_cts;
 };
 
 /**
