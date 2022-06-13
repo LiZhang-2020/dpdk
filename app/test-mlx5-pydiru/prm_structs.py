@@ -4,7 +4,7 @@
 
 from scapy.fields import BitField, ByteField, IntField, \
      ShortField, LongField, StrFixedLenField, PacketField, \
-     FieldListField, ConditionalField, PadField, PacketListField
+     FieldListField, ConditionalField, PadField, PacketListField, MultipleTypeField
 from scapy.packet import Packet
 
 
@@ -379,12 +379,88 @@ class FlowMeterAsoObj(Packet):
     ]
 
 
+class TcpWindowParams(Packet):
+    fields_desc = [
+        IntField('max_ack', 0),
+        IntField('max_win', 0),
+        IntField('reply_end', 0),
+        IntField('sent_end', 0),
+    ]
+
+
+class ConnTrackAso(Packet):
+    fields_desc = [
+        PacketField('reply_direction_tcp_window_params', TcpWindowParams(),
+                    TcpWindowParams),
+        PacketField('original_direction_tcp_window_params', TcpWindowParams(),
+                    TcpWindowParams),
+        IntField('last_end', 0),
+        IntField('last_ack', 0),
+        IntField('last_seq', 0),
+        ShortField('last_win', 0),
+        BitField('reserved6', 0, 10),
+        BitField('last_dir', 0, 1),
+        BitField('last_index', 0, 5),
+        StrFixedLenField('reserved5', None, length=8),
+        BitField('reply_dircetion_tcp_scale', 0, 4),
+        BitField('reply_dircetion_tcp_close_initiated', 0, 1),
+        BitField('reply_dircetion_tcp_liberal_enabled', 0, 1),
+        BitField('reply_dircetion_tcp_data_unacked', 0, 1),
+        BitField('reply_dircetion_tcp_max_ack', 0, 1),
+        ByteField('reserved3', 0),
+        BitField('original_dircetion_tcp_scale', 0, 4),
+        BitField('original_dircetion_tcp_close_initiated', 0, 1),
+        BitField('original_dircetion_tcp_liberal_enabled', 0, 1),
+        BitField('original_dircetion_tcp_data_unacked', 0, 1),
+        BitField('original_dircetion_tcp_max_ack', 0, 1),
+        ByteField('reserved4', 0),
+        BitField('valid', 0, 1),
+        BitField('state', 0, 3),
+        BitField('freeze_track', 0, 1),
+        BitField('reserved1', 0, 12),
+        BitField('connection_assured', 0, 1),
+        BitField('sack_permitted', 0, 1),
+        BitField('challenged_acked', 0, 1),
+        BitField('heartbeat', 0, 1),
+        BitField('max_ack_window', 0, 3),
+        BitField('reserved2', 0, 1),
+        BitField('retransmission_counter', 0, 3),
+        BitField('retranmission_limit_exceeded', 0, 1),
+        BitField('retranmission_limit', 0, 3),
+    ]
+
+
+class ConnTrackOffload(Packet):
+    fields_desc = [
+        LongField('modify_field_select', 0),
+        StrFixedLenField('reserved1', None, length=8),
+        ByteField('reserved2', 0),
+        BitField('conn_track_aso_access_pd', 0, 24),
+        StrFixedLenField('reserved3', None, length=44),
+        PacketField('conn_track_aso', ConnTrackAso(), ConnTrackAso),
+    ]
+
+
+class CTAsoData(Packet):
+    fields_desc = [
+        PacketField('bytewise_data', ConnTrackAso(), ConnTrackAso)
+    ]
+
+
 class CreateGeneralObjIn(Packet):
     fields_desc = [
         PacketField('general_obj_in_cmd_hdr', GeneralObjInCmdHdr(), GeneralObjInCmdHdr),
-        ConditionalField(PadField(PacketField('obj_context', FlowMeterAsoObj(), FlowMeterAsoObj()),
-                                  len(FlowMeterAsoObj()), padwith=b"\x00"),
-                         lambda pkt: pkt.general_obj_in_cmd_hdr.obj_type == 0x24),
+        MultipleTypeField(
+            [
+                (PadField(PacketField('obj_context', FlowMeterAsoObj(), FlowMeterAsoObj()),
+                         len(FlowMeterAsoObj()), padwith=b"\x00"),
+                lambda pkt: pkt.general_obj_in_cmd_hdr.obj_type == 0x24),
+                (PadField(PacketField('obj_context', ConnTrackOffload(), ConnTrackOffload()),
+                         len(ConnTrackOffload()), padwith=b"\x00"),
+                lambda pkt: pkt.general_obj_in_cmd_hdr.obj_type == 0x31),
+            ],
+            StrFixedLenField('obj_context', None, length=16)  # By default
+        ),
     ]
 
 

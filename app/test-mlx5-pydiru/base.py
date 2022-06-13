@@ -30,7 +30,7 @@ from pydiru.providers.mlx5.steering.mlx5dr_rule import Mlx5drRuleAttr, Mlx5drRul
 from pydiru.providers.mlx5.steering.mlx5dr_devx_objects import Mlx5drDevxObj
 import pydiru.providers.mlx5.steering.mlx5dr_enums as me
 
-from .prm_structs import Tirc, CreateTirIn, AsoCtrl, AsoData
+from .prm_structs import Tirc, CreateTirIn, AsoCtrl, AsoData, CTAsoData
 from .utils import MAX_DIFF_PACKETS, POLLING_TIMEOUT
 from args_parser import parser
 
@@ -40,6 +40,7 @@ MATCHER_ROW = 5
 MODIFY_ACTION_SIZE = 8
 ACCESS_ASO = 0x2d
 OPC_MOD_ADD_FP = 2
+OPC_MOD_ADD_INT = 1
 
 
 class PydiruAPITestCase(unittest.TestCase):
@@ -354,22 +355,30 @@ class AsoResources(BaseDrResources):
         self.cq.end_poll()
 
     @staticmethod
-    def create_aso_wqe(flow_meter_param, obj_id, qp_num):
+    def create_aso_wqe(aso_data, obj_id, qp_num, opmod):
         """
         Create and return the aso WQE.
         """
-        ctrl_seg = WqeCtrlSeg(opcode=ACCESS_ASO, opmod=OPC_MOD_ADD_FP, qp_num=qp_num, ds=8,
+        ctrl_seg = WqeCtrlSeg(opcode=ACCESS_ASO, opmod=opmod, qp_num=qp_num, ds=8,
                               fm_ce_se=dv.MLX5_WQE_CTRL_CQ_UPDATE, imm=socket.htonl(obj_id))
         aso_ctrl = AsoCtrl(data_mask=0xffffffffffffffff, data_mask_mode=1,
                            condition_0_operand=1, condition_1_operand=1, condition_operand=1)
-        aso_data = AsoData(bytewise_data=flow_meter_param)
         return Wqe([ctrl_seg, aso_ctrl, aso_data])
 
-    def configure_aso_object(self, params, obj_id):
+    def configure_aso_object(self, params, obj_id, aso_type='meter'):
         """
         Post send raw ACCESS_ASO WQE in order to configure ASO object.
         :param params: ASO object parameters
         :param obj_id: ASO object ID
+        :param aso_type: ct or meter
         """
-        raw_send_wqe = self.create_aso_wqe(params, obj_id, self.qp.qp_num)
+        if aso_type == 'meter':
+            opmod = OPC_MOD_ADD_FP
+            aso_data = AsoData(bytewise_data=params)
+        elif aso_type == 'ct':
+            opmod = OPC_MOD_ADD_INT
+            aso_data = CTAsoData(bytewise_data=params)
+        else:
+            raise unittest.SkipTest('Unsupported ASO type')
+        raw_send_wqe = self.create_aso_wqe(aso_data, obj_id, self.qp.qp_num, opmod)
         self.send_raw_wqe(raw_send_wqe)

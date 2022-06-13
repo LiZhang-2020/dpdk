@@ -5,18 +5,24 @@ from pyverbs.providers.mlx5.mlx5dv_objects import Mlx5DvObj
 import pyverbs.providers.mlx5.mlx5_enums as dv
 
 from pydiru.providers.mlx5.steering.mlx5dr_action import Mlx5drRuleAction, Mlx5drActionDestTable
-from pydiru.providers.mlx5.steering.mlx5dr_action import Mlx5drRuleAction, Mlx5drAsoFlowMeter
+from pydiru.providers.mlx5.steering.mlx5dr_action import Mlx5drRuleAction, Mlx5drAsoFlowMeter, \
+    Mlx5drActionCtAso
 from pydiru.providers.mlx5.steering.mlx5dr_rule import Mlx5drRuleAttr, Mlx5drRule
 from pydiru.providers.mlx5.steering.mlx5dr_matcher import Mlx5drMacherTemplate
 from pydiru.providers.mlx5.steering.mlx5dr_action import Mlx5drActionTemplate
 from pydiru.providers.mlx5.steering.mlx5dr_devx_objects import Mlx5drDevxObj
 from .base import BaseDrResources, PydiruTrafficTestCase, AsoResources
-from .prm_structs import FlowMeterAsoObj, FlowMeterParams
+from .prm_structs import FlowMeterAsoObj, FlowMeterParams, ConnTrackOffload, ConnTrackAso
 import pydiru.providers.mlx5.steering.mlx5dr_enums as me
 from . import utils as u
 
+import random
+
 FLOW_METER_BUCKET_OVERFLOW = 0x1
 FLOW_METER_ASO = 0x24
+CT_ASO = 0x31
+CT_VALID_SYND = 0x1
+CT_INVALID_SYND = 0x80
 
 
 class Mlx5drAsoTest(PydiruTrafficTestCase):
@@ -164,3 +170,124 @@ class Mlx5drAsoTest(PydiruTrafficTestCase):
                                    red_devx_counter_rx, red_counter_id_rx)
         self.verify_meter_counters(green_devx_counter_tx, green_counter_id_tx,
                                    red_devx_counter_tx, red_counter_id_tx)
+
+    @staticmethod
+    def create_ct_aso_obj(agr_obj, ct_aso_param):
+        """
+        Creates CT ASO DEVX object
+        :param agr_obj: Aggregation object
+        :return: CT ASO object and its object ID
+        """
+        pd = agr_obj.pd
+        dv_pd = Mlx5DvObj(dv.MLX5DV_OBJ_PD, pd=pd).dvpd
+        ct_aso_obj = ConnTrackOffload(conn_track_aso_access_pd=dv_pd.pdn,
+                                      conn_track_aso=ct_aso_param)
+        # log_obj_range: Log (base 2) of the range of objects referenced
+        # by the command.
+        # For CREATE, this field indicates the amount of
+        # consecutive objects to create.
+        # This param must be 6 in order to successfully create the object otherwise
+        # it fails with bad param syndrome
+        general_obj, obj_id = u.create_devx_general_object(agr_obj.dv_ctx,
+                                                           CT_ASO, ct_aso_obj,
+                                                           log_obj_range=6)
+        return general_obj, obj_id
+
+    def create_ct_aso_ra(self, reg_c, syndrome, flag=me.MLX5DR_ACTION_FLAG_HWS_RX):
+        """
+        Create CT ASO rule action and enables the CT ASO feature
+        :param reg_c: Register C index to use for CT ASO syndromes
+        :param syndrome: Indicate what syndrome to validate
+        :param flag: Action type
+        :return: CT ASO rule action
+        """
+        if flag == me.MLX5DR_ACTION_FLAG_HWS_TX:
+            agr_obj = self.client
+            direction = me.MLX5DR_ACTION_ASO_CT_DIRECTION_INITIATOR
+        else:
+            agr_obj = self.server
+            direction = me.MLX5DR_ACTION_ASO_CT_DIRECTION_RESPONDER
+        # Create CT ASO
+        ct_aso_param = ConnTrackAso(valid=1, state=1)
+        devx_aso_obj, obj_id = self.create_ct_aso_obj(agr_obj, ct_aso_param)
+        self.logger.debug(f'CT ASO object with ID {obj_id} is created.')
+        self.devx_objects.append(devx_aso_obj)
+        # Init ASO resources
+        if syndrome == CT_VALID_SYND:
+            aso_res = AsoResources(agr_obj.dv_ctx, agr_obj.pd, agr_obj.ib_port)
+            aso_res.configure_aso_object(ct_aso_param, obj_id, 'ct')
+        dr_aso_obj = Mlx5drDevxObj(devx_aso_obj, obj_id)
+        ct_action = Mlx5drActionCtAso(agr_obj.dr_ctx, dr_aso_obj, flag, reg_c=reg_c)
+        return Mlx5drRuleAction(ct_action, direction=direction, offset=0)
+
+    def hws_ct_aso(self, synd=CT_VALID_SYND):
+        """
+        Validate CT ASO action on RX and TX sides:
+        TX: Create TX root table and forward all traffic to non root, on non
+        root match on sip with actions CT ASO and forward to FT, on the next
+        table match on syndrome which is stored in reg C with counter action,
+        validate counter with expected octets and number of packets.
+        RX: Create RX root table and forward all traffic to non root, on
+        non-root match on sip with actions CT ASO and forward to FT, on the next
+        table match on syndrome which is stored in reg C and then forward to
+        TIR and validate packets.
+        :param synd: Syndrome to match on reg C
+        """
+        actions_types = [[me.MLX5DR_ACTION_TYP_ASO_CT, me.MLX5DR_ACTION_TYP_FT,
+                          me.MLX5DR_ACTION_TYP_LAST]]
+        rte_items = u.create_sipv4_rte_items(u.PacketConsts.SRC_IP)
+        self.server.init_steering_resources(rte_items=rte_items,
+                                            action_types_list=actions_types)
+        self.client.init_steering_resources(rte_items=rte_items, action_types_list=actions_types,
+                                            table_type=me.MLX5DR_TABLE_TYPE_NIC_TX)
+        regs = self.get_flow_meter_reg_id(self.server.dv_ctx)
+        # TX
+        reg_c_tx = regs[0]
+        tx_ct_ra = self.create_ct_aso_ra(reg_c_tx, synd, me.MLX5DR_ACTION_FLAG_HWS_TX)
+        tx_tbl2 = self.client.create_table(level=2, table_type=me.MLX5DR_TABLE_TYPE_NIC_TX)
+        tx_tbl2_a = Mlx5drActionDestTable(self.client.dr_ctx, tx_tbl2,
+                                          me.MLX5DR_ACTION_FLAG_HWS_TX)
+        tx_tbl2_ra = Mlx5drRuleAction(tx_tbl2_a)
+        ct_aso_rule2 = Mlx5drRule(self.client.matcher, 0, rte_items, 0, [tx_ct_ra, tx_tbl2_ra], 2,
+                                  Mlx5drRuleAttr(user_data=bytes(8)), self.client.dr_ctx)
+        counter_at = [Mlx5drActionTemplate([me.MLX5DR_ACTION_TYP_CTR, me.MLX5DR_ACTION_TYP_LAST])]
+        devx_counter_tx, counter_id_tx, counter_ra_tx = \
+            u.create_counter_action(self, self.client, flags=me.MLX5DR_ACTION_FLAG_HWS_TX)
+        reg_c_rte2 = u.create_reg_c_rte_items(synd, reg_c_tx + 3)
+        reg_c_mt_tx = [Mlx5drMacherTemplate(reg_c_rte2,
+                                            flags=me.MLX5DR_MATCH_TEMPLATE_FLAG_RELAXED_MATCH)]
+        tx_matcher2 = self.client.create_matcher(tx_tbl2, reg_c_mt_tx, counter_at)
+        tx_ctr_rule = Mlx5drRule(tx_matcher2, 0, reg_c_rte2, 0, [counter_ra_tx], 1,
+                                 Mlx5drRuleAttr(user_data=bytes(8)), self.client.dr_ctx)
+        # RX
+        reg_c_rx = regs[1]
+        rx_ct_ra = self.create_ct_aso_ra(reg_c_rx, synd)
+        rx_tbl2 = self.server.create_table(level=2, table_type=me.MLX5DR_TABLE_TYPE_NIC_RX)
+        rx_tbl2_a = Mlx5drActionDestTable(self.server.dr_ctx, rx_tbl2,
+                                          me.MLX5DR_ACTION_FLAG_HWS_RX)
+        rx_tbl2_ra = Mlx5drRuleAction(rx_tbl2_a)
+        rx_aso_rule = Mlx5drRule(self.server.matcher, 0, rte_items, 0, [rx_ct_ra, rx_tbl2_ra], 2,
+                                 Mlx5drRuleAttr(user_data=bytes(8)), self.server.dr_ctx)
+        tir_at = [Mlx5drActionTemplate([me.MLX5DR_ACTION_TYP_TIR, me.MLX5DR_ACTION_TYP_LAST])]
+        tir_a, tir_ra = self.server.create_rule_action('tir')
+        reg_c_rte = u.create_reg_c_rte_items(synd, reg_c_rx + 3)
+        reg_c_matcher_template = [Mlx5drMacherTemplate(reg_c_rte,
+                                                       flags=me.MLX5DR_MATCH_TEMPLATE_FLAG_RELAXED_MATCH)]
+        rx_matcher2 = self.server.create_matcher(rx_tbl2, reg_c_matcher_template, tir_at)
+        rx_tir_rule = Mlx5drRule(rx_matcher2, 0, reg_c_rte, 0, [tir_ra], 1,
+                                 Mlx5drRuleAttr(user_data=bytes(8)), self.server.dr_ctx)
+        packet = u.gen_packet(self.server.msg_size)
+        u.raw_traffic(self.client, self.server, self.server.num_msgs, [packet])
+        u.verify_counter(self, self.client, devx_counter_tx, counter_id_tx)
+
+    def test_mlx5dr_ct_aso_valid(self):
+        """
+        CT ASO action on TX and RX with valid syndrome matching on reg C
+        """
+        self.hws_ct_aso()
+
+    def test_mlx5dr_ct_aso_invalid(self):
+        """
+        CT ASO action on TX and RX with invalid syndrome matching on reg C
+        """
+        self.hws_ct_aso(synd=CT_INVALID_SYND)
