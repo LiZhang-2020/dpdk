@@ -11,7 +11,6 @@ enum mlx5dr_pool_type {
 };
 
 #define MLX5DR_POOL_STC_LOG_SZ 14
-#define MLX5DR_POOL_STE_MIN_LOG_SZ 16 /* defines the minimum allocation */
 
 #define MLX5DR_POOL_RESOURCE_ARR_SZ 100
 

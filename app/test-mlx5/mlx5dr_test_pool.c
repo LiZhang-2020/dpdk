@@ -5,6 +5,8 @@
 #include <time.h>
 #include "mlx5dr_test.h"
 
+#define MLX5DR_POOL_STE_MIN_LOG_SZ 16
+
 static int mlx5d_run_test_pool_operations(struct mlx5dr_context *ctx)
 {
 	struct mlx5dr_pool_attr pool_attr = {0};

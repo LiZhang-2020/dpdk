@@ -28,7 +28,6 @@ struct mlx5dr_context {
 	struct ibv_pd *pd;
 	uint32_t pd_num;
 	struct mlx5dr_pool *stc_pool[MLX5DR_TABLE_TYPE_MAX];
-	struct mlx5dr_pool *ste_pool[MLX5DR_TABLE_TYPE_MAX];
 	struct mlx5dr_context_common_res common_res[MLX5DR_TABLE_TYPE_MAX];
 	struct mlx5dr_pattern_cache *pattern_cache;
 	pthread_spinlock_t ctrl_lock;

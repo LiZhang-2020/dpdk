@@ -176,7 +176,6 @@ static int mlx5dr_debug_dump_matcher(FILE *f, struct mlx5dr_matcher *matcher)
 {
 	bool is_root = matcher->tbl->level == MLX5DR_ROOT_LEVEL;
 	enum mlx5dr_table_type tbl_type = matcher->tbl->type;
-	struct mlx5dr_context *ctx = matcher->tbl->ctx;
 	struct mlx5dr_devx_obj *ste_0, *ste_1 = NULL;
 	struct mlx5dr_pool_chunk *ste;
 	struct mlx5dr_pool *ste_pool;
@@ -193,7 +192,7 @@ static int mlx5dr_debug_dump_matcher(FILE *f, struct mlx5dr_matcher *matcher)
 		goto out_err;
 
 	ste = &matcher->match_ste.ste;
-	ste_pool = ctx->ste_pool[tbl_type];
+	ste_pool = matcher->match_ste.pool;
 	if (ste_pool) {
 		ste_0 = mlx5dr_pool_chunk_get_base_devx_obj(ste_pool, ste);
 		if (tbl_type == MLX5DR_TABLE_TYPE_FDB)

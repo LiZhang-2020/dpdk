@@ -28,27 +28,8 @@ static int mlx5dr_context_pools_init(struct mlx5dr_context *ctx)
 		}
 	}
 
-	/* Create an STE pool per FT type */
-	pool_attr.pool_type = MLX5DR_POOL_TYPE_STE;
-	pool_attr.flags = MLX5DR_POOL_FLAGS_FOR_MATCHER_STE_POOL;
-	max_log_sz = RTE_MIN(MLX5DR_POOL_STE_MIN_LOG_SZ, ctx->caps->ste_alloc_log_max);
-	pool_attr.alloc_log_sz = RTE_MAX(max_log_sz, ctx->caps->ste_alloc_log_gran);
-
-	for (i = 0; i < MLX5DR_TABLE_TYPE_MAX; i++) {
-		pool_attr.table_type = i;
-		ctx->ste_pool[i] = mlx5dr_pool_create(ctx, &pool_attr);
-		if (!ctx->ste_pool[i]) {
-			DR_LOG(ERR, "Failed to allocate STE pool [%d]" ,i);
-			goto free_ste_pools;
-		}
-	}
-
 	return 0;
 
-free_ste_pools:
-	for (i = 0; i < MLX5DR_TABLE_TYPE_MAX; i++)
-		if (ctx->ste_pool[i])
-			mlx5dr_pool_destroy(ctx->ste_pool[i]);
 free_stc_pools:
 	for (i = 0; i < MLX5DR_TABLE_TYPE_MAX; i++)
 		if (ctx->stc_pool[i])
@@ -66,9 +47,6 @@ static void mlx5dr_context_pools_uninit(struct mlx5dr_context *ctx)
 	mlx5dr_pat_uninit_pattern_cache(ctx->pattern_cache);
 
 	for (i = 0; i < MLX5DR_TABLE_TYPE_MAX; i++) {
-		if (ctx->ste_pool[i])
-			mlx5dr_pool_destroy(ctx->ste_pool[i]);
-
 		if (ctx->stc_pool[i])
 			mlx5dr_pool_destroy(ctx->stc_pool[i]);
 	}

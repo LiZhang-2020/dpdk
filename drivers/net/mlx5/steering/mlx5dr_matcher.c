@@ -167,7 +167,7 @@ static int mlx5dr_matcher_create_rtc(struct mlx5dr_matcher *matcher,
 	if (is_match_rtc) {
 		rtc_0 = &matcher->match_ste.rtc_0;
 		rtc_1 = &matcher->match_ste.rtc_1;
-		ste_pool = ctx->ste_pool[tbl->type];
+		ste_pool = matcher->match_ste.pool;
 		ste = &matcher->match_ste.ste;
 		ste->order = matcher->attr.table.sz_col_log +
 			     matcher->attr.table.sz_row_log;
@@ -255,7 +255,7 @@ static void mlx5dr_matcher_destroy_rtc(struct mlx5dr_matcher *matcher,
 	if (is_match_rtc) {
 		rtc_0 = matcher->match_ste.rtc_0;
 		rtc_1 = matcher->match_ste.rtc_1;
-		ste_pool = tbl->ctx->ste_pool[tbl->type];
+		ste_pool = matcher->match_ste.pool;
 		ste = &matcher->match_ste.ste;
 	} else {
 		rtc_0 = matcher->action_ste.rtc_0;
@@ -367,7 +367,9 @@ static void mlx5dr_matcher_unbind_at(struct mlx5dr_matcher *matcher)
 static int mlx5dr_matcher_bind_mt(struct mlx5dr_matcher *matcher)
 {
 	struct mlx5dr_context *ctx = matcher->tbl->ctx;
-	int i, ret, created = 0;
+	struct mlx5dr_pool_attr pool_attr = {0};
+	int i, created = 0;
+	int ret = -1;
 
 	for (i = 0; i < matcher->num_of_mt; i++) {
 		/* Get a definer for each match template */
@@ -390,6 +392,19 @@ static int mlx5dr_matcher_bind_mt(struct mlx5dr_matcher *matcher)
 		}
 	}
 
+	/* Create an STE pool per matcher*/
+	pool_attr.pool_type = MLX5DR_POOL_TYPE_STE;
+	pool_attr.flags = MLX5DR_POOL_FLAGS_FOR_MATCHER_STE_POOL;
+	pool_attr.alloc_log_sz = matcher->attr.table.sz_col_log +
+		matcher->attr.table.sz_row_log;
+	pool_attr.table_type = matcher->tbl->type;
+
+	matcher->match_ste.pool = mlx5dr_pool_create(ctx, &pool_attr);
+	if (!matcher->match_ste.pool) {
+		DR_LOG(ERR, "Failed to allocate matcher STE pool");
+		goto definer_put;
+	}
+
 	return 0;
 
 definer_put:
@@ -405,6 +420,8 @@ static void mlx5dr_matcher_unbind_mt(struct mlx5dr_matcher *matcher)
 
 	for (i = 0; i < matcher->num_of_mt; i++)
 		mlx5dr_definer_put(matcher->mt[i]);
+
+	mlx5dr_pool_destroy(matcher->match_ste.pool);
 }
 
 static int
