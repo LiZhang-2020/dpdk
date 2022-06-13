@@ -12166,6 +12166,7 @@ flow_dv_ct_pool_create(struct rte_eth_dev *dev,
 	struct mlx5_devx_obj *obj = NULL;
 	uint32_t i;
 	uint32_t log_obj_size = rte_log2_u32(MLX5_ASO_CT_ACTIONS_PER_POOL);
+	size_t mem_size;
 
 	obj = mlx5_devx_cmd_create_conn_track_offload_obj(priv->sh->cdev->ctx,
 							  priv->sh->cdev->pdn,
@@ -12175,7 +12176,10 @@ flow_dv_ct_pool_create(struct rte_eth_dev *dev,
 		DRV_LOG(ERR, "Failed to create conn_track_offload_obj using DevX.");
 		return NULL;
 	}
-	pool = mlx5_malloc(MLX5_MEM_ZERO, sizeof(*pool), 0, SOCKET_ID_ANY);
+	mem_size = sizeof(struct mlx5_aso_ct_action) *
+		   MLX5_ASO_CT_ACTIONS_PER_POOL +
+		   sizeof(*pool);
+	pool = mlx5_malloc(MLX5_MEM_ZERO, mem_size, 0, SOCKET_ID_ANY);
 	if (!pool) {
 		rte_errno = ENOMEM;
 		claim_zero(mlx5_devx_cmd_destroy(obj));

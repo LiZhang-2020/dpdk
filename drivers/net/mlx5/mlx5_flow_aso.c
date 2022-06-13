@@ -917,6 +917,15 @@ mlx5_aso_mtr_wait(struct mlx5_dev_ctx_shared *sh,
 	return -1;
 }
 
+static inline struct mlx5_aso_ct_pool*
+__mlx5_aso_ct_get_pool(struct mlx5_dev_ctx_shared *sh,
+		       struct mlx5_aso_ct_action *ct)
+{
+	if (likely(sh->config.dv_flow_en == 2))
+		return ct->pool;
+	return container_of(ct, struct mlx5_aso_ct_pool, actions[ct->offset]);
+}
+
 /*
  * Post a WQE to the ASO CT SQ to modify the context.
  *
@@ -959,7 +968,7 @@ mlx5_aso_ct_sq_enqueue_single(struct mlx5_dev_ctx_shared *sh,
 	/* Fill next WQE. */
 	__atomic_store_n(&ct->state, ASO_CONNTRACK_WAIT, __ATOMIC_RELAXED);
 	sq->elts[sq->head & mask].ct = ct;
-	pool = container_of(ct, struct mlx5_aso_ct_pool, actions[ct->offset]);
+	pool = __mlx5_aso_ct_get_pool(sh, ct);
 	/* Each WQE will have a single CT object. */
 	wqe->general_cseg.misc = rte_cpu_to_be_32(pool->devx_obj->id +
 						  ct->offset);
@@ -1129,7 +1138,7 @@ mlx5_aso_ct_sq_query_single(struct mlx5_dev_ctx_shared *sh,
 	/* Fill next WQE. */
 	wqe_idx = sq->head & mask;
 	sq->elts[wqe_idx].ct = ct;
-	pool = container_of(ct, struct mlx5_aso_ct_pool, actions[ct->offset]);
+	pool = __mlx5_aso_ct_get_pool(sh, ct);
 	/* Each WQE will have a single CT object. */
 	wqe->general_cseg.misc = rte_cpu_to_be_32(pool->devx_obj->id +
 						  ct->offset);
@@ -1248,7 +1257,7 @@ mlx5_aso_ct_update_by_wqe(struct mlx5_dev_ctx_shared *sh,
 			return 0;
 		/* Waiting for wqe resource. */
 	} while (--poll_wqe_times);
-	pool = container_of(ct, struct mlx5_aso_ct_pool, actions[ct->offset]);
+	pool = __mlx5_aso_ct_get_pool(sh, ct);
 	DRV_LOG(ERR, "Fail to send WQE for ASO CT %d in pool %d",
 		ct->offset, pool->index);
 	return -1;
@@ -1283,7 +1292,7 @@ mlx5_aso_ct_wait_ready(struct mlx5_dev_ctx_shared *sh,
 			return 0;
 		/* Waiting for CQE ready, no sleep in data path. */
 	} while (--poll_cqe_times);
-	pool = container_of(ct, struct mlx5_aso_ct_pool, actions[ct->offset]);
+	pool = __mlx5_aso_ct_get_pool(sh, ct);
 	DRV_LOG(ERR, "Fail to poll CQE for ASO CT %d in pool %d",
 		ct->offset, pool->index);
 	return -1;
@@ -1399,7 +1408,7 @@ mlx5_aso_ct_query_by_wqe(struct mlx5_dev_ctx_shared *sh,
 		else
 			continue;
 	} while (--poll_wqe_times);
-	pool = container_of(ct, struct mlx5_aso_ct_pool, actions[ct->offset]);
+	pool = __mlx5_aso_ct_get_pool(sh, ct);
 	DRV_LOG(ERR, "Fail to send WQE for ASO CT %d in pool %d",
 		ct->offset, pool->index);
 	return -1;

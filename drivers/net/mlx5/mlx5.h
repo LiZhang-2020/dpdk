@@ -1174,7 +1174,12 @@ enum mlx5_aso_ct_state {
 
 /* Generic ASO connection tracking structure. */
 struct mlx5_aso_ct_action {
-	LIST_ENTRY(mlx5_aso_ct_action) next; /* Pointer to the next ASO CT. */
+	union {
+		LIST_ENTRY(mlx5_aso_ct_action) next;
+		/* Pointer to the next ASO CT. Used only in SWS. */
+		struct mlx5_aso_ct_pool *pool;
+		/* Pointer to action pool. Used only in HWS. */
+	};
 	void *dr_action_orig; /* General action object for original dir. */
 	void *dr_action_rply; /* General action object for reply dir. */
 	uint32_t refcnt; /* Action used count in device flows. */
@@ -1184,16 +1189,30 @@ struct mlx5_aso_ct_action {
 	bool is_original; /* The direction of the DR action to be used. */
 };
 
+#ifdef PEDANTIC
+#pragma GCC diagnostic ignored "-Wpedantic"
+#endif
+
 /* ASO connection tracking software pool definition. */
 struct mlx5_aso_ct_pool {
 	uint32_t index; /* Pool index in pools array. */
+	struct mlx5_indexed_pool *cts;
+	/* Free ASO CT index in the pool. Used by HWS. */
 	struct mlx5_devx_obj *devx_obj;
 	/* The first devx object in the bulk, used for freeing (not yet). */
-	void *dummy_action;
-	/* Dummy action to increase the reference count in the driver. */
-	struct mlx5_aso_ct_action actions[MLX5_ASO_CT_ACTIONS_PER_POOL];
+	union {
+		void *dummy_action;
+		/* Dummy action to increase the reference count in the driver. */
+		struct mlx5dr_action *dr_action;
+		/* HWS action. */
+	};
+	struct mlx5_aso_ct_action actions[0];
 	/* CT action structures bulk. */
 };
+
+#ifdef PEDANTIC
+#pragma GCC diagnostic error "-Wpedantic"
+#endif
 
 LIST_HEAD(aso_ct_list, mlx5_aso_ct_action);
 
@@ -1683,6 +1702,7 @@ struct mlx5_priv {
 	/**< HW steering create ongoing rte flow table list header. */
 	struct mlx5_indexed_pool *acts_ipool; /* Action data indexed pool. */
 	struct mlx5_hws_cnt_pool *hws_cpool; /* HW steering's counter pool. */
+	struct mlx5_aso_ct_pool *hws_ctpool; /* HW steering's CT pool. */
 };
 
 #define PORT_ID(priv) ((priv)->dev_data->port_id)
