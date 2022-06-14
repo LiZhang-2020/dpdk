@@ -454,6 +454,7 @@ mlx5_hws_cnt_pool_get(struct mlx5_hws_cnt_pool *cpool,
 	__hws_cnt_query_raw(cpool, *cnt_id, &cpool->pool[iidx].reset.hits,
 			    &cpool->pool[iidx].reset.bytes);
 	rte_ring_dequeue_zc_elem_finish(qcache, 1);
+	cpool->pool[iidx].share = 0;
 	return 0;
 }
 
