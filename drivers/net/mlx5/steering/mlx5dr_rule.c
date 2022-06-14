@@ -61,13 +61,20 @@ static void mlx5dr_rule_init_dep_wqe(struct mlx5dr_send_ring_dep_wqe *dep_wqe,
 			dep_wqe->rtc_0 = matcher->match_ste.rtc_0->id;
 			dep_wqe->retry_rtc_0 = matcher->col_matcher ?
 					       matcher->col_matcher->match_ste.rtc_0->id : 0;
+		} else {
+			dep_wqe->rtc_0 = 0;
+			dep_wqe->retry_rtc_0 = 0;
 		}
 
 		if (!skip_tx) {
 			dep_wqe->rtc_1 = matcher->match_ste.rtc_1->id;
 			dep_wqe->retry_rtc_1 = matcher->col_matcher ?
 					       matcher->col_matcher->match_ste.rtc_1->id : 0;
+		} else {
+			dep_wqe->rtc_1 = 0;
+			dep_wqe->retry_rtc_1 = 0;
 		}
+
 		break;
 
 	default:
