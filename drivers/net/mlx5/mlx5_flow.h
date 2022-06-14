@@ -1498,6 +1498,13 @@ flow_hw_get_wire_port(struct ibv_context *ibctx)
 	return NULL;
 }
 
+extern uint32_t mlx5_flow_hw_flow_metadata_config_refcnt;
+extern uint8_t mlx5_flow_hw_flow_metadata_esw_en;
+extern uint8_t mlx5_flow_hw_flow_metadata_xmeta_en;
+
+void flow_hw_init_flow_metadata_config(struct rte_eth_dev *dev);
+void flow_hw_clear_flow_metadata_config(void);
+
 /*
  * Convert metadata or tag to the actual register.
  * META: Can only be used to match in the FDB in this stage, fixed C_1.
@@ -1509,7 +1516,20 @@ flow_hw_get_reg_id(enum rte_flow_item_type type, uint32_t id)
 {
 	switch (type) {
 	case RTE_FLOW_ITEM_TYPE_META:
-		return REG_C_1;
+		if (mlx5_flow_hw_flow_metadata_esw_en &&
+		    mlx5_flow_hw_flow_metadata_xmeta_en == MLX5_XMETA_MODE_META32_HWS) {
+			return REG_C_1;
+		}
+		/*
+		 * On root table - PMD allows only egress META matching, thus
+		 * REG_A matching is sufficient.
+		 *
+		 * On non-root tables - REG_A corresponds to general_purpose_lookup_field,
+		 * which translates to REG_A in NIC TX and to REG_B in NIC RX.
+		 * However, current FW does not implement REG_B case right now, so
+		 * REG_B case should be rejected on pattern template validation.
+		 */
+		return REG_A;
 	case RTE_FLOW_ITEM_TYPE_TAG:
 		MLX5_ASSERT(id < MLX5_FLOW_HW_TAGS_MAX);
 		return mlx5_flow_hw_avl_tags[id];

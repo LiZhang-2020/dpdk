@@ -1591,6 +1591,7 @@ err_secondary:
 		}
 		/* Only HWS requires this information. */
 		flow_hw_init_tags_set(eth_dev);
+		flow_hw_init_flow_metadata_config(eth_dev);
 		return eth_dev;
 	}
 	/* Port representor shares the same max prioirity with master. */

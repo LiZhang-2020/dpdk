@@ -3378,7 +3378,6 @@ flow_hw_pattern_validate(struct rte_eth_dev *dev,
 		{
 			const struct rte_flow_item_tag *tag =
 				(const struct rte_flow_item_tag *)items[i].spec;
-			struct mlx5_priv *priv = dev->data->dev_private;
 			uint8_t regcs = (uint8_t)priv->sh->cdev->config.hca_attr.set_reg_c;
 
 			if (!((1 << (tag->index - REG_C_0)) & regcs))
@@ -3395,6 +3394,17 @@ flow_hw_pattern_validate(struct rte_eth_dev *dev,
 						  "represented port item cannot be used"
 						  " when transfer attribute is set");
 			break;
+		case RTE_FLOW_ITEM_TYPE_META:
+			if (!priv->sh->config.dv_esw_en ||
+			    priv->sh->config.dv_xmeta_en != MLX5_XMETA_MODE_META32_HWS) {
+				if (attr->ingress)
+					return rte_flow_error_set(error, EINVAL,
+								  RTE_FLOW_ERROR_TYPE_ITEM, NULL,
+								  "META item is not supported"
+								  " on current FW with ingress"
+								  " attribute");
+			}
+			break;
 		case RTE_FLOW_ITEM_TYPE_VOID:
 		case RTE_FLOW_ITEM_TYPE_ETH:
 		case RTE_FLOW_ITEM_TYPE_VLAN:
@@ -3406,7 +3416,6 @@ flow_hw_pattern_validate(struct rte_eth_dev *dev,
 		case RTE_FLOW_ITEM_TYPE_GTP_PSC:
 		case RTE_FLOW_ITEM_TYPE_VXLAN:
 		case MLX5_RTE_FLOW_ITEM_TYPE_TX_QUEUE:
-		case RTE_FLOW_ITEM_TYPE_META:
 		case RTE_FLOW_ITEM_TYPE_GRE:
 		case RTE_FLOW_ITEM_TYPE_GRE_KEY:
 		case RTE_FLOW_ITEM_TYPE_GRE_OPTION:
@@ -4983,6 +4992,54 @@ void flow_hw_clear_tags_set(struct rte_eth_dev *dev)
 	if (!mlx5_flow_hw_avl_tags_init_cnt)
 		memset(mlx5_flow_hw_avl_tags, REG_NON,
 		       sizeof(enum modify_reg) * MLX5_FLOW_HW_TAGS_MAX);
+}
+
+uint32_t mlx5_flow_hw_flow_metadata_config_refcnt;
+uint8_t mlx5_flow_hw_flow_metadata_esw_en;
+uint8_t mlx5_flow_hw_flow_metadata_xmeta_en;
+
+/**
+ * Initializes static configuration of META flow items.
+ *
+ * As a temporary workaround, META flow item is translated to a register,
+ * based on statically saved dv_esw_en and dv_xmeta_en device arguments.
+ * It is a workaround for flow_hw_get_reg_id() where port specific information
+ * is not available at runtime.
+ *
+ * Values of dv_esw_en and dv_xmeta_en device arguments are taken from the first opened port.
+ * This means that each mlx5 port will use the same configuration for translation
+ * of META flow items.
+ *
+ * @param[in] dev
+ *    Pointer to Ethernet device.
+ */
+void
+flow_hw_init_flow_metadata_config(struct rte_eth_dev *dev)
+{
+	uint32_t refcnt;
+
+	refcnt = __atomic_fetch_add(&mlx5_flow_hw_flow_metadata_config_refcnt, 1,
+				    __ATOMIC_RELAXED);
+	if (refcnt > 0)
+		return;
+	mlx5_flow_hw_flow_metadata_esw_en = MLX5_SH(dev)->config.dv_esw_en;
+	mlx5_flow_hw_flow_metadata_xmeta_en = MLX5_SH(dev)->config.dv_xmeta_en;
+}
+
+/**
+ * Clears statically stored configuration related to META flow items.
+ */
+void
+flow_hw_clear_flow_metadata_config(void)
+{
+	uint32_t refcnt;
+
+	refcnt = __atomic_sub_fetch(&mlx5_flow_hw_flow_metadata_config_refcnt, 1,
+				    __ATOMIC_RELAXED);
+	if (refcnt > 0)
+		return;
+	mlx5_flow_hw_flow_metadata_esw_en = 0;
+	mlx5_flow_hw_flow_metadata_xmeta_en = 0;
 }
 
 /**
