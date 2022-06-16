@@ -5459,8 +5459,6 @@ flow_hw_configure(struct rte_eth_dev *dev,
 			goto err;
 		}
 	}
-	if (_queue_attr)
-		mlx5_free(_queue_attr);
 	if (port_attr->nb_cts) {
 		priv->hws_ctpool = flow_hw_ct_pool_create(dev, port_attr);
 		if (!priv->hws_ctpool)
@@ -5475,6 +5473,8 @@ flow_hw_configure(struct rte_eth_dev *dev,
 	ret = flow_hw_create_vlan(dev);
 	if (ret)
 		goto err;
+	if (_queue_attr)
+		mlx5_free(_queue_attr);
 	return 0;
 err:
 	if (priv->hws_ctpool) {
