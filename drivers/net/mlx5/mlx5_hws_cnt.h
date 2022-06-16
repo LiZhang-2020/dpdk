@@ -10,20 +10,19 @@
 #include "mlx5_flow.h"
 
 /*
- * COUNTER ID's layout
+ * HWS COUNTER ID's layout
  *       3                   2                   1                   0
  *     1 0 9 8 7 6 5 4 3 2 1 0 9 8 7 6 5 4 3 2 1 0 9 8 7 6 5 4 3 2 1 0
  *    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
- *    | T |       | D |                                               |
- *    ~ Y |       | C |                    IDX                        ~
- *    | P |       | S |                                               |
+ *    |  T  |     | D |                                               |
+ *    ~  Y  |     | C |                    IDX                        ~
+ *    |  P  |     | S |                                               |
  *    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
  *
- *    Bit 31:30 = TYPE = MLX5_INDIRECT_ACTION_TYPE_COUNT = b'10
+ *    Bit 31:29 = TYPE = MLX5_INDIRECT_ACTION_TYPE_COUNT = b'10
  *    Bit 25:24 = DCS index
  *    Bit 23:00 = IDX in this counter belonged DCS bulk.
  */
-typedef uint32_t cnt_id_t;
 
 #define MLX5_HWS_CNT_DCS_IDX_OFFSET 24
 #define MLX5_HWS_CNT_DCS_IDX_MASK 0x3
@@ -106,7 +105,7 @@ struct mlx5_hws_cnt_pool {
  * @return
  *   Internal index
  */
-static __rte_always_inline cnt_id_t
+static __rte_always_inline uint32_t
 mlx5_hws_cnt_iidx(struct mlx5_hws_cnt_pool *cpool, cnt_id_t cnt_id)
 {
 	uint8_t dcs_idx = cnt_id >> MLX5_HWS_CNT_DCS_IDX_OFFSET;
@@ -138,7 +137,7 @@ mlx5_hws_cnt_id_valid(cnt_id_t cnt_id)
  *   Counter id
  */
 static __rte_always_inline cnt_id_t
-mlx5_hws_cnt_id_gen(struct mlx5_hws_cnt_pool *cpool, cnt_id_t iidx)
+mlx5_hws_cnt_id_gen(struct mlx5_hws_cnt_pool *cpool, uint32_t iidx)
 {
 	struct mlx5_hws_cnt_dcs_mng *dcs_mng = &cpool->dcs_mng;
 	uint32_t idx;
@@ -343,7 +342,7 @@ mlx5_hws_cnt_pool_put(struct mlx5_hws_cnt_pool *cpool,
 	struct rte_ring_zc_data zcdr = {0};
 	struct rte_ring *qcache = NULL;
 	unsigned int wb_num = 0; /* cache write-back number. */
-	cnt_id_t iidx;
+	uint32_t iidx;
 
 	iidx = mlx5_hws_cnt_iidx(cpool, *cnt_id);
 	cpool->pool[iidx].query_gen_when_free =
@@ -399,8 +398,8 @@ mlx5_hws_cnt_pool_get(struct mlx5_hws_cnt_pool *cpool,
 	unsigned int ret;
 	struct rte_ring_zc_data zcdc = {0};
 	struct rte_ring *qcache = NULL;
-	uint32_t query_gen = 0;
-	cnt_id_t iidx, tmp_cid = 0;
+	uint32_t iidx, query_gen = 0;
+	cnt_id_t tmp_cid = 0;
 
 	if (likely(queue != NULL))
 		qcache = cpool->cache->qcache[*queue];

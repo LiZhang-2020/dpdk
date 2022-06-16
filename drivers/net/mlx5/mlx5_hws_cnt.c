@@ -24,8 +24,8 @@ __hws_cnt_id_load(struct mlx5_hws_cnt_pool *cpool)
 	uint32_t preload;
 	uint32_t q_num = cpool->cache->q_num;
 	uint32_t cnt_num = mlx5_hws_cnt_pool_get_size(cpool);
-	cnt_id_t cnt_id, iidx = 0;
-	uint32_t qidx;
+	cnt_id_t cnt_id;
+	uint32_t qidx, iidx = 0;
 	struct rte_ring *qcache = NULL;
 
 	/*

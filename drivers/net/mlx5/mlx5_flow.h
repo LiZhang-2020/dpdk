@@ -1140,6 +1140,23 @@ struct rte_flow {
 	};
 	uint32_t geneve_tlv_option; /**< Holds Geneve TLV option id. > */
 } __rte_packed;
+
+/*
+ * HWS COUNTER ID's layout
+ *       3                   2                   1                   0
+ *     1 0 9 8 7 6 5 4 3 2 1 0 9 8 7 6 5 4 3 2 1 0 9 8 7 6 5 4 3 2 1 0
+ *    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ *    |  T  |     | D |                                               |
+ *    ~  Y  |     | C |                    IDX                        ~
+ *    |  P  |     | S |                                               |
+ *    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ *
+ *    Bit 31:29 = TYPE = MLX5_INDIRECT_ACTION_TYPE_COUNT = b'10
+ *    Bit 25:24 = DCS index
+ *    Bit 23:00 = IDX in this counter belonged DCS bulk.
+ */
+typedef uint32_t cnt_id_t;
+
 /* HWS flow struct. */
 struct rte_flow_hw {
 	uint32_t idx; /* Flow index from indexed pool. */
@@ -1152,7 +1169,7 @@ struct rte_flow_hw {
 	/* The table flow allcated from. */
 	struct rte_flow_template_table *table;
 	struct mlx5dr_rule rule; /* HWS layer data struct. */
-	uint32_t cnt_id;
+	cnt_id_t cnt_id;
 	uint32_t mtr_id;
 } __rte_packed;
 
@@ -1198,7 +1215,7 @@ struct mlx5_action_construct_data {
 			uint32_t idx; /* Shared action index. */
 		} shared_rss;
 		struct {
-			uint32_t id;
+			cnt_id_t id;
 		} shared_counter;
 		struct {
 			uint32_t id;
@@ -1282,7 +1299,7 @@ struct mlx5_hw_actions {
 	struct mlx5_hw_encap_decap_action *encap_decap;
 	uint16_t encap_decap_pos; /* Encap/Decap action position. */
 	uint32_t mark:1; /* Indicate the mark action. */
-	uint32_t cnt_id; /* Counter id. */
+	cnt_id_t cnt_id; /* Counter id. */
 	uint32_t mtr_id; /* Meter id. */
 	/* Translated DR action array from action template. */
 	struct mlx5dr_rule_action rule_acts[MLX5_HW_MAX_ACTS];

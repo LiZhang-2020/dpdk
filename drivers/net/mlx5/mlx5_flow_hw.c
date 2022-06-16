@@ -474,7 +474,8 @@ __flow_hw_act_data_general_append(struct mlx5_priv *priv,
 				  enum rte_flow_action_type type,
 				  uint16_t action_src,
 				  uint16_t action_dst)
-{	struct mlx5_action_construct_data *act_data;
+{
+	struct mlx5_action_construct_data *act_data;
 
 	act_data = __flow_hw_act_data_alloc(priv, type, action_src, action_dst);
 	if (!act_data)
@@ -509,7 +510,8 @@ __flow_hw_act_data_encap_append(struct mlx5_priv *priv,
 				uint16_t action_src,
 				uint16_t action_dst,
 				uint16_t len)
-{	struct mlx5_action_construct_data *act_data;
+{
+	struct mlx5_action_construct_data *act_data;
 
 	act_data = __flow_hw_act_data_alloc(priv, type, action_src, action_dst);
 	if (!act_data)
@@ -531,7 +533,8 @@ __flow_hw_act_data_hdr_modify_append(struct mlx5_priv *priv,
 				     struct field_modify_info *field,
 				     struct field_modify_info *dcopy,
 				     uint32_t *mask)
-{	struct mlx5_action_construct_data *act_data;
+{
+	struct mlx5_action_construct_data *act_data;
 
 	act_data = __flow_hw_act_data_alloc(priv, type, action_src, action_dst);
 	if (!act_data)
@@ -578,7 +581,8 @@ __flow_hw_act_data_shared_rss_append(struct mlx5_priv *priv,
 				     uint16_t action_dst,
 				     uint32_t idx,
 				     struct mlx5_shared_action_rss *rss)
-{	struct mlx5_action_construct_data *act_data;
+{
+	struct mlx5_action_construct_data *act_data;
 
 	act_data = __flow_hw_act_data_alloc(priv, type, action_src, action_dst);
 	if (!act_data)
@@ -617,7 +621,8 @@ __flow_hw_act_data_shared_cnt_append(struct mlx5_priv *priv,
 				     uint16_t action_src,
 				     uint16_t action_dst,
 				     cnt_id_t cnt_id)
-{	struct mlx5_action_construct_data *act_data;
+{
+	struct mlx5_action_construct_data *act_data;
 
 	act_data = __flow_hw_act_data_alloc(priv, type, action_src, action_dst);
 	if (!act_data)
@@ -5892,7 +5897,7 @@ flow_hw_conntrack_create(struct rte_eth_dev *dev, uint32_t queue,
  * @param[in] dev
  *   Pointer to the rte_eth_dev structure.
  * @param[in] queue
- *   Which queue to be used..
+ *   Which queue to be used.
  * @param[in] attr
  *   Operation attribute.
  * @param[in] conf
@@ -5958,7 +5963,7 @@ flow_hw_action_handle_create(struct rte_eth_dev *dev, uint32_t queue,
  * @param[in] dev
  *   Pointer to the rte_eth_dev structure.
  * @param[in] queue
- *   Which queue to be used..
+ *   Which queue to be used.
  * @param[in] attr
  *   Operation attribute.
  * @param[in] handle
@@ -6041,7 +6046,7 @@ flow_hw_action_handle_update(struct rte_eth_dev *dev, uint32_t queue,
  * @param[in] dev
  *   Pointer to the rte_eth_dev structure.
  * @param[in] queue
- *   Which queue to be used..
+ *   Which queue to be used.
  * @param[in] attr
  *   Operation attribute.
  * @param[in] handle
