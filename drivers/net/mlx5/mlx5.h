@@ -1308,6 +1308,9 @@ struct mlx5_dev_ctx_shared {
 	uint32_t shared_mark_enabled:1;
 	/* If mark action is enabled on Rxqs (shared E-Switch domain). */
 	uint32_t hws_tags:1; /* Check if tags info for HWS initialized. */
+	uint32_t hws_max_log_bulk_sz:5;
+	/* Log of minimal HWS counters created hard coded. */
+	uint32_t hws_max_nb_counters; /* Maximal number for HWS counters. */
 	uint32_t eqn; /* Event Queue number. */
 	uint32_t max_port; /* Maximal IB device port index. */
 	struct mlx5_bond_info bond; /* Bonding information. */

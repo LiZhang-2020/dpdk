@@ -584,7 +584,7 @@ mlx5_flow_counter_mode_config(struct rte_eth_dev *dev __rte_unused)
 static void
 mlx5_flow_counters_mng_init(struct mlx5_dev_ctx_shared *sh)
 {
-	int i;
+	int i, j;
 
 	if (sh->config.dv_flow_en < 2) {
 		memset(&sh->sws_cmng, 0, sizeof(sh->sws_cmng));
@@ -597,6 +597,25 @@ mlx5_flow_counters_mng_init(struct mlx5_dev_ctx_shared *sh)
 			TAILQ_INIT(&sh->sws_cmng.counters[i]);
 			rte_spinlock_init(&sh->sws_cmng.csl[i]);
 		}
+	} else {
+		struct mlx5_hca_attr *attr = &sh->cdev->config.hca_attr;
+		uint32_t fw_max_nb_cnts = attr->max_flow_counter;
+		uint8_t log_dcs = log2above(fw_max_nb_cnts) - 1;
+		uint32_t max_nb_cnts = 0;
+
+		for (i = 0, j = 0; j < MLX5_HWS_CNT_DCS_NUM; ++i) {
+			int log_dcs_i = log_dcs - i;
+
+			if (log_dcs_i < 0)
+				break;
+			if ((max_nb_cnts | RTE_BIT32(log_dcs_i)) >
+			    fw_max_nb_cnts)
+				continue;
+			max_nb_cnts |= RTE_BIT32(log_dcs_i);
+			j++;
+		}
+		sh->hws_max_log_bulk_sz = log_dcs;
+		sh->hws_max_nb_counters = max_nb_cnts;
 	}
 }
 

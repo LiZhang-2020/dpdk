@@ -25,7 +25,6 @@
  */
 typedef uint32_t cnt_id_t;
 
-#define MLX5_HWS_CNT_DCS_NUM 4
 #define MLX5_HWS_CNT_DCS_IDX_OFFSET 24
 #define MLX5_HWS_CNT_DCS_IDX_MASK 0x3
 #define MLX5_HWS_CNT_IDX_MASK ((1UL << MLX5_HWS_CNT_DCS_IDX_OFFSET) - 1)
@@ -515,8 +514,9 @@ mlx5_hws_cnt_is_shared(struct mlx5_hws_cnt_pool *cpool, cnt_id_t cnt_id)
 
 /* init HWS counter pool. */
 struct mlx5_hws_cnt_pool *
-mlx5_hws_cnt_pool_init(const struct mlx5_hws_cnt_pool_cfg *pcfg,
-		const struct mlx5_hws_cache_param *ccfg);
+mlx5_hws_cnt_pool_init(struct mlx5_dev_ctx_shared *sh,
+		       const struct mlx5_hws_cnt_pool_cfg *pcfg,
+		       const struct mlx5_hws_cache_param *ccfg);
 
 void
 mlx5_hws_cnt_pool_deinit(struct mlx5_hws_cnt_pool *cntp);

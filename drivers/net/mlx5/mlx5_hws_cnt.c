@@ -158,8 +158,9 @@ mlx5_hws_cnt_svc(void *opaque)
 }
 
 struct mlx5_hws_cnt_pool *
-mlx5_hws_cnt_pool_init(const struct mlx5_hws_cnt_pool_cfg *pcfg,
-		const struct mlx5_hws_cache_param *ccfg)
+mlx5_hws_cnt_pool_init(struct mlx5_dev_ctx_shared *sh,
+		       const struct mlx5_hws_cnt_pool_cfg *pcfg,
+		       const struct mlx5_hws_cache_param *ccfg)
 {
 	char mz_name[RTE_MEMZONE_NAMESIZE];
 	struct mlx5_hws_cnt_pool *cntp;
@@ -185,16 +186,26 @@ mlx5_hws_cnt_pool_init(const struct mlx5_hws_cnt_pool_cfg *pcfg,
 	cntp->cache->preload_sz = ccfg->preload_sz;
 	cntp->cache->threshold = ccfg->threshold;
 	cntp->cache->q_num = ccfg->q_num;
+	if (pcfg->request_num > sh->hws_max_nb_counters) {
+		DRV_LOG(ERR, "Counter number %u "
+			"is greater than the maximum supported (%u).",
+			pcfg->request_num, sh->hws_max_nb_counters);
+		goto error;
+	}
 	cnt_num = pcfg->request_num * (100 + pcfg->alloc_factor) / 100;
 	if (cnt_num > UINT32_MAX) {
 		DRV_LOG(ERR, "counter number %lu is out of 32bit range",
 			cnt_num);
 		goto error;
 	}
+	/*
+	 * When counter request number is supported, but the factor takes it
+	 * out of size, the factor is reduced.
+	 */
+	cnt_num = RTE_MIN((uint32_t)cnt_num, sh->hws_max_nb_counters);
 	cntp->pool = mlx5_malloc(MLX5_MEM_ANY | MLX5_MEM_ZERO,
-			sizeof(struct mlx5_hws_cnt) *
-			pcfg->request_num * (100 + pcfg->alloc_factor) / 100,
-			0, SOCKET_ID_ANY);
+				 sizeof(struct mlx5_hws_cnt) * cnt_num,
+				 0, SOCKET_ID_ANY);
 	if (cntp->pool == NULL)
 		goto error;
 	snprintf(mz_name, sizeof(mz_name), "%s_F_RING", pcfg->name);
@@ -296,19 +307,17 @@ mlx5_hws_cnt_pool_dcs_alloc(struct mlx5_dev_ctx_shared *sh,
 			    struct mlx5_hws_cnt_pool *cpool)
 {
 	struct mlx5_hca_attr *hca_attr = &sh->cdev->config.hca_attr;
-	uint32_t max_log_bulk_sz = 0;
+	uint32_t max_log_bulk_sz = sh->hws_max_log_bulk_sz;
 	uint32_t log_bulk_sz;
-	uint32_t idx, alloced = 0;
+	uint32_t idx, alloc_candidate, alloced = 0;
 	unsigned int cnt_num = mlx5_hws_cnt_pool_get_size(cpool);
 	struct mlx5_devx_counter_attr attr = {0};
 	struct mlx5_devx_obj *dcs;
 
 	if (hca_attr->flow_counter_bulk_log_max_alloc == 0) {
-		DRV_LOG(ERR,
-			"Fw doesn't support bulk log max alloc");
+		DRV_LOG(ERR, "Fw doesn't support bulk log max alloc");
 		return -1;
 	}
-	max_log_bulk_sz = 23; /* hard code to 8M (1 << 23). */
 	cnt_num = RTE_ALIGN_CEIL(cnt_num, 4); /* minimal 4 counter in bulk. */
 	log_bulk_sz = RTE_MIN(max_log_bulk_sz, rte_log2_u32(cnt_num));
 	attr.pd = sh->cdev->pdn;
@@ -326,18 +335,23 @@ mlx5_hws_cnt_pool_dcs_alloc(struct mlx5_dev_ctx_shared *sh,
 	cpool->dcs_mng.dcs[0].iidx = 0;
 	alloced = cpool->dcs_mng.dcs[0].batch_sz;
 	if (cnt_num > cpool->dcs_mng.dcs[0].batch_sz) {
-		for (; idx < MLX5_HWS_CNT_DCS_NUM; idx++) {
+		while (idx < MLX5_HWS_CNT_DCS_NUM) {
 			attr.flow_counter_bulk_log_size = --max_log_bulk_sz;
+			alloc_candidate = RTE_BIT32(max_log_bulk_sz);
+			if (alloced + alloc_candidate > sh->hws_max_nb_counters)
+				continue;
 			dcs = mlx5_devx_cmd_flow_counter_alloc_general
 				(sh->cdev->ctx, &attr);
 			if (dcs == NULL)
 				goto error;
 			cpool->dcs_mng.dcs[idx].obj = dcs;
-			cpool->dcs_mng.dcs[idx].batch_sz =
-				(1 << max_log_bulk_sz);
+			cpool->dcs_mng.dcs[idx].batch_sz = alloc_candidate;
 			cpool->dcs_mng.dcs[idx].iidx = alloced;
 			alloced += cpool->dcs_mng.dcs[idx].batch_sz;
 			cpool->dcs_mng.batch_total++;
+			if (alloced >= cnt_num)
+				break;
+			idx++;
 		}
 	}
 	return 0;
@@ -444,7 +458,7 @@ mlx5_hws_cnt_pool_create(struct rte_eth_dev *dev,
 			dev->data->port_id);
 	pcfg.name = mp_name;
 	pcfg.request_num = pattr->nb_counters;
-	cpool = mlx5_hws_cnt_pool_init(&pcfg, &cparam);
+	cpool = mlx5_hws_cnt_pool_init(priv->sh, &pcfg, &cparam);
 	if (cpool == NULL)
 		goto error;
 	ret = mlx5_hws_cnt_pool_dcs_alloc(priv->sh, cpool);
