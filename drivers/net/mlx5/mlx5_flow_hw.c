@@ -4092,6 +4092,7 @@ flow_hw_info_get(struct rte_eth_dev *dev,
 		 struct rte_flow_queue_info *queue_info,
 		 struct rte_flow_error *error __rte_unused)
 {
+	struct mlx5_priv *priv = dev->data->dev_private;
 	uint16_t port_id = dev->data->port_id;
 	struct rte_mtr_capabilities mtr_cap;
 	int ret;
@@ -4108,6 +4109,7 @@ flow_hw_info_get(struct rte_eth_dev *dev,
 		port_info->max_nb_meter_profiles = UINT32_MAX;
 		port_info->max_nb_meter_policies = UINT32_MAX;
 	}
+	port_info->max_nb_counters = priv->sh->hws_max_nb_counters;
 	return 0;
 }
 
