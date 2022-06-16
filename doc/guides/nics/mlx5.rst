@@ -431,7 +431,7 @@ Limitations
 
 - Integrity:
 
-  - Integrity offload is enabled for **ConnectX-6** family.
+  - Integrity offload is enabled starting from **ConnectX-6 Dx**.
   - Verification bits provided by the hardware are ``l3_ok``, ``ipv4_csum_ok``, ``l4_ok``, ``l4_csum_ok``.
   - ``level`` value 0 references outer headers.
   - Negative integrity item verification is not supported
