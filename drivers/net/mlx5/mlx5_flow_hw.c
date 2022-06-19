@@ -2848,7 +2848,8 @@ flow_hw_actions_validate(struct rte_eth_dev *dev,
 		const struct rte_flow_action *mask = &masks[i];
 
 		MLX5_ASSERT(i < MLX5_HW_MAX_ACTS);
-		if (action->type != mask->type)
+		if (action->type != RTE_FLOW_ACTION_TYPE_INDIRECT &&
+		    action->type != mask->type)
 			return rte_flow_error_set(error, ENOTSUP,
 						  RTE_FLOW_ERROR_TYPE_ACTION,
 						  action,
@@ -2946,23 +2947,21 @@ flow_hw_dr_actions_template_handle_shared(const struct rte_flow_action *mask,
 					  uint16_t *curr_off,
 					  struct rte_flow_actions_template *at)
 {
-	uint32_t act_idx;
 	uint32_t type;
 
-	if (!mask->conf) {
+	if (!mask) {
 		DRV_LOG(WARNING, "Unable to determine indirect action type "
 			"without a mask specified");
 		return -EINVAL;
 	}
-	act_idx = (uint32_t)(uintptr_t)mask->conf;
-	type = act_idx >> MLX5_INDIRECT_ACTION_TYPE_OFFSET;
+	type = mask->type;
 	switch (type) {
-	case MLX5_INDIRECT_ACTION_TYPE_RSS:
+	case RTE_FLOW_ACTION_TYPE_RSS:
 		at->actions_off[action_src] = *curr_off;
 		action_types[*curr_off] = MLX5DR_ACTION_TYP_TIR;
 		*curr_off = *curr_off + 1;
 		break;
-	case MLX5_INDIRECT_ACTION_TYPE_COUNT:
+	case RTE_FLOW_ACTION_TYPE_COUNT:
 		at->actions_off[action_src] = *curr_off;
 		action_types[*curr_off] = MLX5DR_ACTION_TYP_CTR;
 		*curr_off = *curr_off + 1;
