@@ -1708,6 +1708,8 @@ struct mlx5_priv {
 	LIST_HEAD(flow_hw_at, rte_flow_actions_template) flow_hw_at;
 	struct mlx5dr_context *dr_ctx; /**< HW steering DR context. */
 	uint32_t nb_queue; /* HW steering queue number. */
+	uint32_t hws_strict_queue:1;
+	/**< Whether all operations strictly happen on the same HWS queue. */
 	struct mlx5_hw_q *hw_q;
 	/**< HW steering queue polling mechanism job descriptor LIFO. */
 	LIST_HEAD(flow_hw_tbl, rte_flow_template_table) flow_hw_tbl;
