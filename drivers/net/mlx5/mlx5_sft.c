@@ -586,6 +586,9 @@ mlx5_sft_verify_hit_actions(const struct rte_flow_action *hit_actions,
 		case MLX5_RTE_FLOW_ACTION_TYPE_DEFAULT_MISS:
 			action_flags |= MLX5_FLOW_ACTION_DEFAULT_MISS;
 			break;
+		case RTE_FLOW_ACTION_TYPE_SEND_TO_KERNEL:
+			action_flags |= MLX5_FLOW_ACTION_SEND_TO_KERNEL;
+			break;
 		default:
 			break;
 		}

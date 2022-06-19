@@ -6920,6 +6920,12 @@ flow_dv_validate(struct rte_eth_dev *dev, const struct rte_flow_attr *attr,
 			 * list it here as a supported type
 			 */
 			break;
+#ifdef HAVE_MLX5DV_DR_ACTION_CREATE_DEST_ROOT_TABLE
+		case RTE_FLOW_ACTION_TYPE_SEND_TO_KERNEL:
+			action_flags |= MLX5_FLOW_ACTION_SEND_TO_KERNEL;
+			++actions_n;
+			break;
+#endif
 		default:
 			return rte_flow_error_set(error, ENOTSUP,
 						  RTE_FLOW_ERROR_TYPE_ACTION,
@@ -13764,6 +13770,11 @@ flow_dv_translate(struct rte_eth_dev *dev,
 			}
 			actions_n++;
 			action_flags |= MLX5_FLOW_ACTION_CT;
+			break;
+		case RTE_FLOW_ACTION_TYPE_SEND_TO_KERNEL:
+			return rte_flow_error_set(error, ENOTSUP,
+				RTE_FLOW_ERROR_TYPE_ACTION,
+				NULL, "send to kernel action is not supported.");
 			break;
 		case RTE_FLOW_ACTION_TYPE_END:
 			actions_end = true;
