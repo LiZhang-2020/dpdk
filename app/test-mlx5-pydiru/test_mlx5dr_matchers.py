@@ -97,6 +97,12 @@ class Mlx5drMatcherTest(PydiruTrafficTestCase):
         val = RteFlowItemVlan(tci=tci)
         return RteFlowItem(p.RTE_FLOW_ITEM_TYPE_VLAN, val, mask)
 
+    @staticmethod
+    def create_eth_has_vlan_rte_item(has_vlan=0):
+        mask = RteFlowItemEth(has_vlan=0xffffffff)
+        val = RteFlowItemEth(has_vlan=has_vlan)
+        return RteFlowItem(p.RTE_FLOW_ITEM_TYPE_ETH, val, mask)
+
     def create_rx_rules(self, rte_item, root_rte_items=None):
         rte_items = [rte_item, RteFlowItemEnd()]
         if not root_rte_items:
@@ -106,6 +112,23 @@ class Mlx5drMatcherTest(PydiruTrafficTestCase):
         _, tir_ra = self.server.create_rule_action('tir')
         self.tir_rule = Mlx5drRule(self.server.matcher, 0, rte_items, 0, [tir_ra], 1,
                                    Mlx5drRuleAttr(user_data=bytes(8)), self.server.dr_ctx)
+
+    def test_mlx5dr_matcher_has_vlan(self):
+        """
+        Match on has_vlan attribute of RteFlowItemEth with different values.
+        """
+        # Match on has_vlan = 0
+        self.create_rx_rules(self.create_eth_has_vlan_rte_item())
+        vlan_packet = gen_packet(self.server.msg_size, with_vlan=True)
+        no_vlan_packet = gen_packet(self.server.msg_size)
+        packets = [no_vlan_packet, vlan_packet]
+        raw_traffic(**self.traffic_args, packets=packets)
+        # Match on has_vlan = 1
+        rte_has_vlan_1 = [self.create_eth_has_vlan_rte_item(has_vlan=1), RteFlowItemEnd()]
+        _, tir_ra = self.server.create_rule_action('tir')
+        self.tir_rule = Mlx5drRule(self.server.matcher, 0, rte_has_vlan_1, 0, [tir_ra], 1,
+                                   Mlx5drRuleAttr(user_data=bytes(8)), self.server.dr_ctx)
+        raw_traffic(**self.traffic_args, packets=packets, expected_packet=vlan_packet)
 
     def test_mlx5dr_matcher_ipv4(self):
         """
