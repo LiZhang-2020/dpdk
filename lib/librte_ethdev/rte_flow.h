@@ -5021,6 +5021,12 @@ rte_flow_info_get(uint16_t port_id,
 		  struct rte_flow_error *error);
 
 /**
+ * Indicate all operations for a given flow rule will _strictly_
+ * happen on the same queue (create/destroy/query/update).
+ */
+#define RTE_FLOW_PORT_FLAG_STRICT_QUEUE RTE_BIT32(0)
+
+/**
  * @warning
  * @b EXPERIMENTAL: this API may change without prior notice.
  *
@@ -5059,6 +5065,10 @@ struct rte_flow_port_attr {
 	 * @see RTE_FLOW_ACTION_TYPE_CONNTRACK
 	 */
 	uint32_t nb_cts;
+	/**
+	 * Port flags (RTE_FLOW_PORT_FLAG_*).
+	 */
+	uint32_t flags;
 };
 
 /**
