@@ -493,6 +493,10 @@ Limitations
   - When configure host shaper with MLX5_HOST_SHAPER_FLAG_LWM_TRIGGERED flag set,
     only rate 0 and 100Mbps are supported.
 
+- E-Switch Manager matching:
+
+  - For Bluefield with old FW which doesn't expose the E-Switch Manager vport ID in the capability, matching E-Switch Manager should be used only in Bluefield embedded CPU mode.
+
 Statistics
 ----------
 

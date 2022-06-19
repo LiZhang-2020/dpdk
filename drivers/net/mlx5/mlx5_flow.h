@@ -2561,4 +2561,8 @@ int mlx5_flow_pattern_validate(struct rte_eth_dev *dev,
 		const struct rte_flow_pattern_template_attr *attr,
 		const struct rte_flow_item items[],
 		struct rte_flow_error *error);
+
+#define MLX5_PF_VPORT_ID 0
+#define MLX5_ECPF_VPORT_ID 0xFFFE
+
 #endif /* RTE_PMD_MLX5_FLOW_H_ */
