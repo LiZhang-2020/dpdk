@@ -9397,11 +9397,11 @@ mlx5_flow_create_counter_stat_mem_mng(struct mlx5_dev_ctx_shared *sh)
 		mem_mng->raws[i].data = raw_data + i * MLX5_COUNTERS_PER_POOL;
 	}
 	for (i = 0; i < MLX5_MAX_PENDING_QUERIES; ++i)
-		LIST_INSERT_HEAD(&sh->cmng.free_stat_raws,
+		LIST_INSERT_HEAD(&sh->sws_cmng.free_stat_raws,
 				 mem_mng->raws + MLX5_CNT_CONTAINER_RESIZE + i,
 				 next);
-	LIST_INSERT_HEAD(&sh->cmng.mem_mngs, mem_mng, next);
-	sh->cmng.mem_mng = mem_mng;
+	LIST_INSERT_HEAD(&sh->sws_cmng.mem_mngs, mem_mng, next);
+	sh->sws_cmng.mem_mng = mem_mng;
 	return 0;
 }
 
@@ -9420,7 +9420,7 @@ static int
 mlx5_flow_set_counter_stat_mem(struct mlx5_dev_ctx_shared *sh,
 			       struct mlx5_flow_counter_pool *pool)
 {
-	struct mlx5_flow_counter_mng *cmng = &sh->cmng;
+	struct mlx5_flow_counter_mng *cmng = &sh->sws_cmng;
 	/* Resize statistic memory once used out. */
 	if (!(pool->index % MLX5_CNT_CONTAINER_RESIZE) &&
 	    mlx5_flow_create_counter_stat_mem_mng(sh)) {
@@ -9449,14 +9449,14 @@ mlx5_set_query_alarm(struct mlx5_dev_ctx_shared *sh)
 {
 	uint32_t pools_n, us;
 
-	pools_n = __atomic_load_n(&sh->cmng.n_valid, __ATOMIC_RELAXED);
+	pools_n = __atomic_load_n(&sh->sws_cmng.n_valid, __ATOMIC_RELAXED);
 	us = MLX5_POOL_QUERY_FREQ_US / pools_n;
 	DRV_LOG(DEBUG, "Set alarm for %u pools each %u us", pools_n, us);
 	if (rte_eal_alarm_set(us, mlx5_flow_query_alarm, sh)) {
-		sh->cmng.query_thread_on = 0;
+		sh->sws_cmng.query_thread_on = 0;
 		DRV_LOG(ERR, "Cannot reinitialize query alarm");
 	} else {
-		sh->cmng.query_thread_on = 1;
+		sh->sws_cmng.query_thread_on = 1;
 	}
 }
 
@@ -9472,12 +9472,12 @@ mlx5_flow_query_alarm(void *arg)
 {
 	struct mlx5_dev_ctx_shared *sh = arg;
 	int ret;
-	uint16_t pool_index = sh->cmng.pool_index;
-	struct mlx5_flow_counter_mng *cmng = &sh->cmng;
+	uint16_t pool_index = sh->sws_cmng.pool_index;
+	struct mlx5_flow_counter_mng *cmng = &sh->sws_cmng;
 	struct mlx5_flow_counter_pool *pool;
 	uint16_t n_valid;
 
-	if (sh->cmng.pending_queries >= MLX5_MAX_PENDING_QUERIES)
+	if (sh->sws_cmng.pending_queries >= MLX5_MAX_PENDING_QUERIES)
 		goto set_alarm;
 	rte_spinlock_lock(&cmng->pool_update_sl);
 	pool = cmng->pools[pool_index];
@@ -9490,7 +9490,7 @@ mlx5_flow_query_alarm(void *arg)
 		/* There is a pool query in progress. */
 		goto set_alarm;
 	pool->raw_hw =
-		LIST_FIRST(&sh->cmng.free_stat_raws);
+		LIST_FIRST(&sh->sws_cmng.free_stat_raws);
 	if (!pool->raw_hw)
 		/* No free counter statistics raw memory. */
 		goto set_alarm;
@@ -9516,12 +9516,12 @@ mlx5_flow_query_alarm(void *arg)
 		goto set_alarm;
 	}
 	LIST_REMOVE(pool->raw_hw, next);
-	sh->cmng.pending_queries++;
+	sh->sws_cmng.pending_queries++;
 	pool_index++;
 	if (pool_index >= n_valid)
 		pool_index = 0;
 set_alarm:
-	sh->cmng.pool_index = pool_index;
+	sh->sws_cmng.pool_index = pool_index;
 	mlx5_set_query_alarm(sh);
 }
 
@@ -9604,7 +9604,7 @@ mlx5_flow_async_pool_query_handle(struct mlx5_dev_ctx_shared *sh,
 		(struct mlx5_flow_counter_pool *)(uintptr_t)async_id;
 	struct mlx5_counter_stats_raw *raw_to_free;
 	uint8_t query_gen = pool->query_gen ^ 1;
-	struct mlx5_flow_counter_mng *cmng = &sh->cmng;
+	struct mlx5_flow_counter_mng *cmng = &sh->sws_cmng;
 	enum mlx5_counter_type cnt_type =
 		pool->is_aged ? MLX5_COUNTER_TYPE_AGE :
 				MLX5_COUNTER_TYPE_ORIGIN;
@@ -9627,9 +9627,9 @@ mlx5_flow_async_pool_query_handle(struct mlx5_dev_ctx_shared *sh,
 			rte_spinlock_unlock(&cmng->csl[cnt_type]);
 		}
 	}
-	LIST_INSERT_HEAD(&sh->cmng.free_stat_raws, raw_to_free, next);
+	LIST_INSERT_HEAD(&sh->sws_cmng.free_stat_raws, raw_to_free, next);
 	pool->raw_hw = NULL;
-	sh->cmng.pending_queries--;
+	sh->sws_cmng.pending_queries--;
 }
 
 static int
@@ -9990,7 +9990,7 @@ mlx5_flow_dev_dump_sh_all(struct rte_eth_dev *dev,
 	struct mlx5_list_inconst *l_inconst;
 	struct mlx5_list_entry *e;
 	int lcore_index;
-	struct mlx5_flow_counter_mng *cmng = &priv->sh->cmng;
+	struct mlx5_flow_counter_mng *cmng = &priv->sh->sws_cmng;
 	uint32_t max;
 	void *action;
 

@@ -568,8 +568,8 @@ mlx5_flow_counter_mode_config(struct rte_eth_dev *dev __rte_unused)
 			hca_attr->flow_counter_bulk_alloc_bitmap);
 	/* Initialize fallback mode only on the port initializes sh. */
 	if (sh->refcnt == 1)
-		sh->cmng.counter_fallback = fallback;
-	else if (fallback != sh->cmng.counter_fallback)
+		sh->sws_cmng.counter_fallback = fallback;
+	else if (fallback != sh->sws_cmng.counter_fallback)
 		DRV_LOG(WARNING, "Port %d in sh has different fallback mode "
 			"with others:%d.", PORT_ID(priv), fallback);
 #endif
@@ -586,15 +586,17 @@ mlx5_flow_counters_mng_init(struct mlx5_dev_ctx_shared *sh)
 {
 	int i;
 
-	memset(&sh->cmng, 0, sizeof(sh->cmng));
-	TAILQ_INIT(&sh->cmng.flow_counters);
-	sh->cmng.min_id = MLX5_CNT_BATCH_OFFSET;
-	sh->cmng.max_id = -1;
-	sh->cmng.last_pool_idx = POOL_IDX_INVALID;
-	rte_spinlock_init(&sh->cmng.pool_update_sl);
-	for (i = 0; i < MLX5_COUNTER_TYPE_MAX; i++) {
-		TAILQ_INIT(&sh->cmng.counters[i]);
-		rte_spinlock_init(&sh->cmng.csl[i]);
+	if (sh->config.dv_flow_en < 2) {
+		memset(&sh->sws_cmng, 0, sizeof(sh->sws_cmng));
+		TAILQ_INIT(&sh->sws_cmng.flow_counters);
+		sh->sws_cmng.min_id = MLX5_CNT_BATCH_OFFSET;
+		sh->sws_cmng.max_id = -1;
+		sh->sws_cmng.last_pool_idx = POOL_IDX_INVALID;
+		rte_spinlock_init(&sh->sws_cmng.pool_update_sl);
+		for (i = 0; i < MLX5_COUNTER_TYPE_MAX; i++) {
+			TAILQ_INIT(&sh->sws_cmng.counters[i]);
+			rte_spinlock_init(&sh->sws_cmng.csl[i]);
+		}
 	}
 }
 
@@ -635,13 +637,13 @@ mlx5_flow_counters_mng_close(struct mlx5_dev_ctx_shared *sh)
 		rte_pause();
 	}
 
-	if (sh->cmng.pools) {
+	if (sh->sws_cmng.pools) {
 		struct mlx5_flow_counter_pool *pool;
-		uint16_t n_valid = sh->cmng.n_valid;
-		bool fallback = sh->cmng.counter_fallback;
+		uint16_t n_valid = sh->sws_cmng.n_valid;
+		bool fallback = sh->sws_cmng.counter_fallback;
 
 		for (i = 0; i < n_valid; ++i) {
-			pool = sh->cmng.pools[i];
+			pool = sh->sws_cmng.pools[i];
 			if (!fallback && pool->min_dcs)
 				claim_zero(mlx5_devx_cmd_destroy
 							       (pool->min_dcs));
@@ -660,14 +662,14 @@ mlx5_flow_counters_mng_close(struct mlx5_dev_ctx_shared *sh)
 			}
 			mlx5_free(pool);
 		}
-		mlx5_free(sh->cmng.pools);
+		mlx5_free(sh->sws_cmng.pools);
 	}
-	mng = LIST_FIRST(&sh->cmng.mem_mngs);
+	mng = LIST_FIRST(&sh->sws_cmng.mem_mngs);
 	while (mng) {
 		mlx5_flow_destroy_counter_stat_mem_mng(mng);
-		mng = LIST_FIRST(&sh->cmng.mem_mngs);
+		mng = LIST_FIRST(&sh->sws_cmng.mem_mngs);
 	}
-	memset(&sh->cmng, 0, sizeof(sh->cmng));
+	memset(&sh->sws_cmng, 0, sizeof(sh->sws_cmng));
 }
 
 /**

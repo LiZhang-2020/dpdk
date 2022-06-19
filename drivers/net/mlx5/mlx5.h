@@ -1352,7 +1352,8 @@ struct mlx5_dev_ctx_shared {
 	struct mlx5_list *dest_array_list;
 	struct mlx5_list *flex_parsers_dv; /* Flex Item parsers. */
 	/* List of destination array actions. */
-	struct mlx5_flow_counter_mng cmng; /* Counters management structure. */
+	struct mlx5_flow_counter_mng sws_cmng;
+	/* SW steering counters management structure. */
 	void *default_miss_action; /* Default miss action. */
 	struct mlx5_indexed_pool *ipool[MLX5_IPOOL_MAX];
 	struct mlx5_indexed_pool **ipool_sft;
