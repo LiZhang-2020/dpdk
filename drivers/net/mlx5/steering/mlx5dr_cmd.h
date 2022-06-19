@@ -94,6 +94,10 @@ struct mlx5dr_cmd_stc_modify_attr {
 			uint32_t match_definer_id;
 			uint8_t log_hash_size;
 		} ste_table;
+		struct {
+			uint16_t start_anchor;
+			uint16_t num_of_words;
+		} remove_words;
 
 		uint32_t dest_table_id;
 		uint32_t dest_tir_num;

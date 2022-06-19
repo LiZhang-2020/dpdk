@@ -402,6 +402,14 @@ mlx5dr_cmd_stc_modify_set_stc_param(struct mlx5dr_cmd_stc_modify_attr *stc_attr,
 		MLX5_SET(stc_ste_param_ste_table, stc_parm, log_hash_size,
 			 stc_attr->ste_table.log_hash_size);
 		break;
+	case MLX5_IFC_STC_ACTION_TYPE_REMOVE_WORDS:
+		MLX5_SET(stc_ste_param_remove_words, stc_parm, action_type,
+			 MLX5_MODIFICATION_TYPE_REMOVE_WORDS);
+		MLX5_SET(stc_ste_param_remove_words, stc_parm, remove_start_anchor,
+			 stc_attr->remove_words.start_anchor);
+		MLX5_SET(stc_ste_param_remove_words, stc_parm,
+			 remove_size, stc_attr->remove_words.num_of_words);
+		break;
 	default:
 		DR_LOG(ERR, "not supported type %d", stc_attr->action_type);
 		rte_errno = EINVAL;
