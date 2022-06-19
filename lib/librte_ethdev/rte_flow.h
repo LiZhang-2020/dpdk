@@ -2853,6 +2853,11 @@ enum rte_flow_action_type {
 	 * See file rte_mtr.h for MTR profile object configuration.
 	 */
 	RTE_FLOW_ACTION_TYPE_METER_MARK,
+
+	/*
+	 * Send traffic to kernel.
+	 */
+	RTE_FLOW_ACTION_TYPE_SEND_TO_KERNEL,
 };
 
 /**
