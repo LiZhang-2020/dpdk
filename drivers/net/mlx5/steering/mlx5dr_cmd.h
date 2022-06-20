@@ -77,7 +77,8 @@ struct mlx5dr_cmd_stc_modify_attr {
 			uint8_t is_inline;
 			uint8_t encap;
 			uint16_t insert_anchor;
-		} reformat;
+			uint16_t insert_offset;
+		} insert_header;
 		struct {
 			uint8_t aso_type;
 			uint32_t devx_obj_id;
@@ -228,4 +229,3 @@ void mlx5dr_cmd_set_attr_connect_miss_tbl(struct mlx5dr_context *ctx,
 					  enum mlx5dr_table_type type,
 					  struct mlx5dr_cmd_ft_modify_attr *ft_attr);
 #endif
-

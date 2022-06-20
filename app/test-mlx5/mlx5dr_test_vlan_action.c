@@ -33,6 +33,24 @@ static int mlx5d_run_test_pop_vlan_action(struct mlx5dr_context *ctx)
 	return 0;
 }
 
+static int mlx5d_run_test_push_vlan_action(struct mlx5dr_context *ctx)
+{
+	struct mlx5dr_action *action1;
+	uint32_t flags;
+
+	flags = MLX5DR_ACTION_FLAG_HWS_RX;
+
+	action1 = mlx5dr_action_create_push_vlan(ctx, flags);
+	if (!action1) {
+		printf("failed to create action push_vlan, flags: 0x%x\n", flags);
+		return -1;
+	}
+
+	mlx5dr_action_destroy(action1);
+
+	return 0;
+}
+
 int run_test_vlan_action(struct ibv_context *ibv_ctx)
 {
 	struct mlx5dr_context *ctx;
@@ -53,6 +71,12 @@ int run_test_vlan_action(struct ibv_context *ibv_ctx)
 	ret = mlx5d_run_test_pop_vlan_action(ctx);
 	if (ret) {
 		printf("Failed to run pop_vlan_action test\n");
+		return -1;
+	}
+
+	ret = mlx5d_run_test_push_vlan_action(ctx);
+	if (ret) {
+		printf("Failed to run push_vlan_action test\n");
 		return -1;
 	}
 

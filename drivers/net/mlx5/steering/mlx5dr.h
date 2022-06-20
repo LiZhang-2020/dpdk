@@ -524,6 +524,16 @@ mlx5dr_action_create_aso_ct(struct mlx5dr_context *ctx,
 struct mlx5dr_action *
 mlx5dr_action_create_pop_vlan(struct mlx5dr_context *ctx, uint32_t flags);
 
+/* Create direct rule push vlan action.
+ * @param[in] ctx
+ *	The context in which the new action will be created.
+ * @param[in] flags
+ *	Action creation flags. (enum mlx5dr_action_flags)
+ * @return pointer to mlx5dr_action on success NULL otherwise.
+ */
+struct mlx5dr_action *
+mlx5dr_action_create_push_vlan(struct mlx5dr_context *ctx, uint32_t flags);
+
 /* Destroy direct rule action.
  *
  * @param[in] action

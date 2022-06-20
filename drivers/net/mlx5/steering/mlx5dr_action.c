@@ -18,6 +18,8 @@ static const uint32_t action_order_arr[MLX5DR_TABLE_TYPE_MAX][MLX5DR_ACTION_TYP_
 		BIT(MLX5DR_ACTION_TYP_TNL_L3_TO_L2),
 		BIT(MLX5DR_ACTION_TYP_POP_VLAN),
 		BIT(MLX5DR_ACTION_TYP_POP_VLAN),
+		BIT(MLX5DR_ACTION_TYP_PUSH_VLAN),
+		BIT(MLX5DR_ACTION_TYP_PUSH_VLAN),
 		BIT(MLX5DR_ACTION_TYP_MODIFY_HDR),
 		BIT(MLX5DR_ACTION_TYP_CTR),
 		BIT(MLX5DR_ACTION_TYP_ASO_METER),
@@ -35,6 +37,7 @@ static const uint32_t action_order_arr[MLX5DR_TABLE_TYPE_MAX][MLX5DR_ACTION_TYP_
 		BIT(MLX5DR_ACTION_TYP_POP_VLAN),
 		BIT(MLX5DR_ACTION_TYP_POP_VLAN),
 		BIT(MLX5DR_ACTION_TYP_PUSH_VLAN),
+		BIT(MLX5DR_ACTION_TYP_PUSH_VLAN),
 		BIT(MLX5DR_ACTION_TYP_MODIFY_HDR),
 		BIT(MLX5DR_ACTION_TYP_ASO_METER),
 		BIT(MLX5DR_ACTION_TYP_ASO_CT),
@@ -51,6 +54,7 @@ static const uint32_t action_order_arr[MLX5DR_TABLE_TYPE_MAX][MLX5DR_ACTION_TYP_
 		BIT(MLX5DR_ACTION_TYP_POP_VLAN),
 		BIT(MLX5DR_ACTION_TYP_POP_VLAN),
 		BIT(MLX5DR_ACTION_TYP_CTR),
+		BIT(MLX5DR_ACTION_TYP_PUSH_VLAN),
 		BIT(MLX5DR_ACTION_TYP_PUSH_VLAN),
 		BIT(MLX5DR_ACTION_TYP_MODIFY_HDR),
 		BIT(MLX5DR_ACTION_TYP_ASO_METER),
@@ -367,18 +371,18 @@ static void mlx5dr_action_fill_stc_attr(struct mlx5dr_action *action,
 	case MLX5DR_ACTION_TYP_L2_TO_TNL_L2:
 		attr->action_type = MLX5_IFC_STC_ACTION_TYPE_HEADER_INSERT;
 		attr->action_offset = MLX5DR_ACTION_OFFSET_DW6;
-		attr->reformat.encap = 1;
-		attr->reformat.insert_anchor = MLX5_HEADER_ANCHOR_PACKET_START;
-		attr->reformat.arg_id = action->reformat.arg_obj->id;
-		attr->reformat.header_size = action->reformat.header_size;
+		attr->insert_header.encap = 1;
+		attr->insert_header.insert_anchor = MLX5_HEADER_ANCHOR_PACKET_START;
+		attr->insert_header.arg_id = action->reformat.arg_obj->id;
+		attr->insert_header.header_size = action->reformat.header_size;
 		break;
 	case MLX5DR_ACTION_TYP_L2_TO_TNL_L3:
 		attr->action_type = MLX5_IFC_STC_ACTION_TYPE_HEADER_INSERT;
 		attr->action_offset = MLX5DR_ACTION_OFFSET_DW6;
-		attr->reformat.encap = 1;
-		attr->reformat.insert_anchor = MLX5_HEADER_ANCHOR_PACKET_START;
-		attr->reformat.arg_id = action->reformat.arg_obj->id;
-		attr->reformat.header_size = action->reformat.header_size;
+		attr->insert_header.encap = 1;
+		attr->insert_header.insert_anchor = MLX5_HEADER_ANCHOR_PACKET_START;
+		attr->insert_header.arg_id = action->reformat.arg_obj->id;
+		attr->insert_header.header_size = action->reformat.header_size;
 		break;
 	case MLX5DR_ACTION_TYP_ASO_METER:
 		attr->action_offset = MLX5DR_ACTION_OFFSET_DW6;
@@ -405,6 +409,15 @@ static void mlx5dr_action_fill_stc_attr(struct mlx5dr_action *action,
 		attr->action_offset = MLX5DR_ACTION_OFFSET_DW5;
 		attr->remove_words.start_anchor = MLX5_HEADER_ANCHOR_FIRST_VLAN_START;
 		attr->remove_words.num_of_words = MLX5DR_ACTION_HDR_LEN_L2_VLAN / 2;
+		break;
+	case MLX5DR_ACTION_TYP_PUSH_VLAN:
+		attr->action_type = MLX5_IFC_STC_ACTION_TYPE_HEADER_INSERT;
+		attr->action_offset = MLX5DR_ACTION_OFFSET_DW6;
+		attr->insert_header.encap = 0;
+		attr->insert_header.is_inline = 1;
+		attr->insert_header.insert_anchor = MLX5_HEADER_ANCHOR_PACKET_START;
+		attr->insert_header.insert_offset = MLX5DR_ACTION_HDR_LEN_L2_MACS;
+		attr->insert_header.header_size = MLX5DR_ACTION_HDR_LEN_L2_VLAN;
 		break;
 	default:
 		DR_LOG(ERR, "Invalid action type %d", action->type);
@@ -817,6 +830,35 @@ mlx5dr_action_create_dest_vport(struct mlx5dr_context *ctx,
 	ret = mlx5dr_action_create_dest_vport_hws(ctx, action, ib_port_num);
 	if (ret) {
 		DR_LOG(ERR, "Failed to create vport action HWS\n");
+		goto free_action;
+	}
+
+	return action;
+
+free_action:
+	simple_free(action);
+	return NULL;
+}
+
+struct mlx5dr_action *
+mlx5dr_action_create_push_vlan(struct mlx5dr_context *ctx, uint32_t flags)
+{
+	struct mlx5dr_action *action;
+	int ret;
+
+	if (mlx5dr_action_is_root_flags(flags)) {
+		DR_LOG(ERR, "push vlan action not supported for root");
+		rte_errno = ENOTSUP;
+		return NULL;
+	}
+
+	action = mlx5dr_action_create_generic(ctx, flags, MLX5DR_ACTION_TYP_PUSH_VLAN);
+	if (!action)
+		return NULL;
+
+	ret = mlx5dr_action_create_stcs(action, NULL);
+	if (ret) {
+		DR_LOG(ERR, "Failed creating stc for push vlan\n");
 		goto free_action;
 	}
 
@@ -1469,6 +1511,7 @@ static void mlx5dr_action_destroy_hws(struct mlx5dr_action *action)
 	case MLX5DR_ACTION_TYP_ASO_METER:
 	case MLX5DR_ACTION_TYP_ASO_CT:
 	case MLX5DR_ACTION_TYP_POP_VLAN:
+	case MLX5DR_ACTION_TYP_PUSH_VLAN:
 		mlx5dr_action_destroy_stcs(action);
 		break;
 	case MLX5DR_ACTION_TYP_TNL_L3_TO_L2:

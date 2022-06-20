@@ -357,16 +357,18 @@ mlx5dr_cmd_stc_modify_set_stc_param(struct mlx5dr_cmd_stc_modify_attr *stc_attr,
 		MLX5_SET(stc_ste_param_insert, stc_parm, action_type,
 			 MLX5_MODIFICATION_TYPE_INSERT);
 		MLX5_SET(stc_ste_param_insert, stc_parm, encap,
-			 stc_attr->reformat.encap);
+			 stc_attr->insert_header.encap);
 		MLX5_SET(stc_ste_param_insert, stc_parm, inline_data,
-			 stc_attr->reformat.is_inline);
+			 stc_attr->insert_header.is_inline);
 		MLX5_SET(stc_ste_param_insert, stc_parm, insert_anchor,
-			 stc_attr->reformat.insert_anchor);
-		/* HW gets that size in words */
+			 stc_attr->insert_header.insert_anchor);
+		/* HW gets the next 2 sizes in words */
 		MLX5_SET(stc_ste_param_insert, stc_parm, insert_size,
-			 stc_attr->reformat.header_size / 2);
+			 stc_attr->insert_header.header_size / 2);
+		MLX5_SET(stc_ste_param_insert, stc_parm, insert_offset,
+			 stc_attr->insert_header.insert_offset / 2);
 		MLX5_SET(stc_ste_param_insert, stc_parm, insert_argument,
-			 stc_attr->reformat.arg_id);
+			 stc_attr->insert_header.arg_id);
 		break;
 	case MLX5_IFC_STC_ACTION_TYPE_COPY:
 	case MLX5_IFC_STC_ACTION_TYPE_SET:
