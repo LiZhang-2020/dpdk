@@ -13,6 +13,7 @@ from pydiru.base import PydiruErrno
 from libc.stdint cimport uint8_t
 import weakref
 import struct
+import socket
 
 be64toh = lambda num: struct.unpack('Q'.encode(), struct.pack('!8s'.encode(), num))[0]
 
@@ -214,6 +215,32 @@ cdef class Mlx5drAsoFlowMeter(Mlx5drAction):
         aso_obj.add_ref(self)
 
 
+cdef class Mlx5drActionPushVlan(Mlx5drAction):
+    def __init__(self, Mlx5drContext ctx, flags):
+        """
+        Initializes a push VLAN action.
+        :param ctx: Mlx5drContext context
+        :param flags: Action flags
+        """
+        super().__init__(ctx)
+        self.action = mlx5._action_create_push_vlan(ctx.context, flags)
+        if self.action == NULL:
+            raise PydiruErrno('Mlx5drActionPushVlan creation failed.')
+
+
+cdef class Mlx5drActionPopVlan(Mlx5drAction):
+    def __init__(self, Mlx5drContext ctx, flags):
+        """
+        Initializes a pop VLAN action.
+        :param ctx: Mlx5drContext context
+        :param flags: Action flags
+        """
+        super().__init__(ctx)
+        self.action = mlx5._action_create_pop_vlan(ctx.context, flags)
+        if self.action == NULL:
+            raise PydiruErrno('Mlx5drActionPopVlan creation failed.')
+
+
 cdef class Mlx5drActionCtAso(Mlx5drAction):
     def __init__(self, Mlx5drContext ctx, Mlx5drDevxObj aso_obj, flags, reg_c=0):
         """
@@ -269,6 +296,8 @@ cdef class Mlx5drRuleAction(PydiruCM):
         elif isinstance(self.action, Mlx5drActionCtAso):
             self.ct_aso_offset = kwargs.get('offset', 0)
             self.direction = kwargs.get('direction', 0)
+        elif isinstance(self.action, Mlx5drActionPushVlan):
+            self.vlan_hdr = kwargs.get('vlan_hdr', 0)
 
     @property
     def tag_value(self):
@@ -370,6 +399,14 @@ cdef class Mlx5drRuleAction(PydiruCM):
     @direction.setter
     def direction(self, direction):
         self.rule_action.aso_ct.direction = direction
+
+    @property
+    def vlan_hdr(self):
+        return socket.ntohl(self.rule_action.push_vlan.vlan_hdr)
+
+    @vlan_hdr.setter
+    def vlan_hdr(self, vlan_hdr):
+        self.rule_action.push_vlan.vlan_hdr = socket.htonl(vlan_hdr)
 
     def __dealloc__(self):
         self.close()

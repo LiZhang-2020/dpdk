@@ -71,6 +71,9 @@ cdef extern  from '../../../../drivers/net/mlx5/steering/mlx5dr.h':
         uint32_t offset
         me.mlx5dr_action_aso_ct_flags direction
 
+    cdef struct push_vlan_:
+        uint32_t vlan_hdr
+
     cdef struct mlx5dr_rule_action:
         mlx5dr_action *action
         tag_ tag
@@ -80,6 +83,7 @@ cdef extern  from '../../../../drivers/net/mlx5/steering/mlx5dr.h':
         uint32_t vlan_hdr
         aso_meter_ aso_meter
         aso_ct_    aso_ct
+        push_vlan_ push_vlan
 
     cdef struct mlx5dr_rule:
         pass
@@ -140,6 +144,8 @@ cdef extern  from '../../../../drivers/net/mlx5/steering/mlx5dr.h':
                                                   uint8_t return_reg_c, uint32_t flags)
     mlx5dr_action *mlx5dr_action_create_aso_ct(mlx5dr_context *ctx, mlx5dr_devx_obj *devx_obj,
                                                uint8_t return_reg_c, uint32_t flags)
+    mlx5dr_action *mlx5dr_action_create_push_vlan(mlx5dr_context *ctx, uint32_t flags)
+    mlx5dr_action *mlx5dr_action_create_pop_vlan(mlx5dr_context *ctx, uint32_t flags)
     int mlx5dr_action_destroy(mlx5dr_action *action)
 
     int mlx5dr_send_queue_poll(mlx5dr_context *ctx, uint16_t queue_id, pdr.rte_flow_op_result *res,

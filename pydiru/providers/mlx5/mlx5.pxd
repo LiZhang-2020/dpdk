@@ -46,6 +46,8 @@ cdef dr.mlx5dr_action *_action_create_aso_flow_meter(dr.mlx5dr_context *ctx,
                                                      flags)
 cdef dr.mlx5dr_action *_action_create_ct_aso(dr.mlx5dr_context *ctx,
                                              dr.mlx5dr_devx_obj *devx_obj, return_reg_c, flags)
+cdef dr.mlx5dr_action *_action_create_push_vlan(dr.mlx5dr_context *ctx, flags)
+cdef dr.mlx5dr_action *_action_create_pop_vlan(dr.mlx5dr_context *ctx, flags)
 cdef _action_destroy(dr.mlx5dr_action *action)
 cdef int _rule_get_handle_size()
 cdef dv.flow_hw_port_info *_flow_hw_conv_port_id(uint16_t port_id)

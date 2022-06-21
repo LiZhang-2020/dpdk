@@ -91,6 +91,12 @@ cdef dr.mlx5dr_action *_action_create_ct_aso(dr.mlx5dr_context *ctx,
                                              dr.mlx5dr_devx_obj *devx_obj, return_reg_c, flags):
     return dr.mlx5dr_action_create_aso_ct(ctx, devx_obj, return_reg_c, flags)
 
+cdef dr.mlx5dr_action *_action_create_push_vlan(dr.mlx5dr_context *ctx, flags):
+    return dr.mlx5dr_action_create_push_vlan(ctx, flags)
+
+cdef dr.mlx5dr_action *_action_create_pop_vlan(dr.mlx5dr_context *ctx, flags):
+    return dr.mlx5dr_action_create_pop_vlan(ctx, flags)
+
 cdef _action_destroy(dr.mlx5dr_action *action):
     return dr.mlx5dr_action_destroy(action)
 
