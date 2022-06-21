@@ -582,6 +582,7 @@ enum mlx5_flow_fate_type {
 	MLX5_FLOW_FATE_SHARED_RSS,
 	MLX5_FLOW_FATE_SFT,
 	MLX5_FLOW_FATE_MTR,
+	MLX5_FLOW_FATE_SEND_TO_KERNEL,
 	MLX5_FLOW_FATE_MAX,
 };
 
@@ -830,7 +831,7 @@ struct mlx5_flow_handle {
 	void *drv_flow; /**< pointer to driver flow object. */
 	uint32_t split_flow_id:27; /**< Sub flow unique match flow id. */
 	uint32_t is_meter_flow_id:1; /**< Indicate if flow_id is for meter. */
-	uint32_t fate_action:3; /**< Fate action type. */
+	uint32_t fate_action:4; /**< Fate action type. */
 	union {
 		uint32_t rix_hrxq; /**< Hash Rx queue object index. */
 		uint32_t rix_jump; /**< Index to the jump action resource. */
