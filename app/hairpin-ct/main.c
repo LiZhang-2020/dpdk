@@ -41,7 +41,7 @@
 
 #define MAX_BATCHES_COUNT          100
 #define DEFAULT_RULES_COUNT     400000
-#define DEFAULT_RULES_BATCH     100
+#define DEFAULT_RULES_BATCH     1
 #define DEFAULT_GROUP                0
 #define METER_PROFILE_ALG_SRTCM_RFC2697    "srtcm_rfc2697"
 #define METER_PROFILE_ALG_SRTCMP           "srtcmp"
@@ -2447,6 +2447,11 @@ set_ports_per_ip(void)
 		ports_per_ip = rules_count / ips_range;
 	}
 	rules_batch = rules_count / 10;
+	if (rules_count < 10) {
+		ports_per_ip = 1;
+		ips_range = rules_count;
+		rules_batch = 1;
+	}
 	printf("\n::: Number of IPs: %d\n::: Port per IP: %ld\n", ips_range, ports_per_ip);
 }
 
