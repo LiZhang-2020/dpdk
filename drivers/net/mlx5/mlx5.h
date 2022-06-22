@@ -1629,6 +1629,8 @@ struct mlx5_priv {
 	LIST_HEAD(hw_ctrl_flow, mlx5_hw_ctrl_flow) hw_ctrl_flows;
 	struct mlx5dr_action *hw_drop[2];
 	struct mlx5dr_action *hw_tag[2];
+	struct mlx5dr_action *hw_push_vlan[MLX5DR_TABLE_TYPE_MAX];
+	struct mlx5dr_action *hw_pop_vlan[MLX5DR_TABLE_TYPE_MAX];
 	struct mlx5dr_action **hw_vport;
 	struct rte_flow_template_table *hw_esw_sq_miss_root_tbl;
 	struct rte_flow_template_table *hw_esw_sq_miss_tbl;
