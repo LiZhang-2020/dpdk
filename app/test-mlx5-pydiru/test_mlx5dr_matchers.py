@@ -266,9 +266,8 @@ class Mlx5drMatcherTest(PydiruTrafficTestCase):
         Match on vlan attributes.
         """
         self.create_rx_rules(self.create_vlan_rte_item())
-        exp_packet = gen_packet(self.server.msg_size, with_vlan=True)
-        un_exp_packet = gen_packet(self.server.msg_size, with_vlan=True,
-                                   vlan_id=UN_EXPECTED_VLAN_ID)
+        exp_packet = gen_packet(self.server.msg_size, num_vlans=1)
+        un_exp_packet = gen_packet(self.server.msg_size, num_vlans=1, vlan_id=UN_EXPECTED_VLAN_ID)
         packets = [exp_packet, un_exp_packet]
         raw_traffic(**self.traffic_args, packets=packets, expected_packet=exp_packet)
 
