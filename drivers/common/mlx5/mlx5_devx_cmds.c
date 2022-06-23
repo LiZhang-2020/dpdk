@@ -1034,6 +1034,10 @@ mlx5_devx_cmd_query_hca_attr(void *ctx,
 		attr->flow_counter_bulk_log_granularity =
 			MLX5_GET(cmd_hca_cap_2, hcattr,
 				 flow_counter_bulk_log_granularity);
+		attr->hairpin_sq_wqe_bb_size = MLX5_GET(cmd_hca_cap_2, hcattr,
+							hairpin_sq_wqe_bb_size);
+		attr->hairpin_sq_wq_in_host_mem = MLX5_GET(cmd_hca_cap_2, hcattr,
+							   hairpin_sq_wq_in_host_mem);
 	}
 	if (attr->log_min_stride_wqe_sz == 0)
 		attr->log_min_stride_wqe_sz = MLX5_MPRQ_LOG_MIN_STRIDE_WQE_SIZE;
@@ -1762,6 +1766,7 @@ mlx5_devx_cmd_create_sq(void *ctx,
 	MLX5_SET(sqc, sq_ctx, non_wire, sq_attr->non_wire);
 	MLX5_SET(sqc, sq_ctx, static_sq_wq, sq_attr->static_sq_wq);
 	MLX5_SET(sqc, sq_ctx, regexp_en, sq_attr->regexp_en);
+	MLX5_SET(sqc, sq_ctx, hairpin_wq_buffer_type, sq_attr->hairpin_wq_buffer_type);
 	MLX5_SET(sqc, sq_ctx, user_index, sq_attr->user_index);
 	MLX5_SET(sqc, sq_ctx, cqn, sq_attr->cqn);
 	MLX5_SET(sqc, sq_ctx, packet_pacing_rate_limit_index,

@@ -2118,7 +2118,11 @@ struct mlx5_ifc_cmd_hca_cap_2_bits {
 	u8 reserved_at_d8[0x3];
 	u8 log_max_conn_track_offload[0x5];
 	u8 reserved_at_e0[0x20]; /* End of DW7. */
-	u8 reserved_at_100[0x153];
+	u8 reserved_at_100[0x60];
+	u8 reserved_at_160[0x3];
+	u8 hairpin_sq_wqe_bb_size[0x5];
+	u8 hairpin_sq_wq_in_host_mem[0x1];
+	u8 reserved_at_169[0xea];
 	u8 flow_counter_bulk_log_max_alloc[0x5];
 	u8 reserved_at_258[0x3];
 	u8 flow_counter_bulk_log_granularity[0x5];
@@ -2827,6 +2831,11 @@ enum {
 	MLX5_SQC_STATE_ERR  = 0x3,
 };
 
+enum {
+	MLX5_SQC_HAIRPIN_WQ_BUFFER_TYPE_INTERNAL_BUFFER = 0x0,
+	MLX5_SQC_HAIRPIN_WQ_BUFFER_TYPE_HOST_MEMORY = 0x1,
+};
+
 struct mlx5_ifc_sqc_bits {
 	u8 rlky[0x1];
 	u8 cd_master[0x1];
@@ -2841,7 +2850,9 @@ struct mlx5_ifc_sqc_bits {
 	u8 non_wire[0x1];
 	u8 static_sq_wq[0x1];
 	u8 regexp_en[0x1];
-	u8 reserved_at_12[0x8];
+	u8 reserved_at_12[0x3];
+	u8 hairpin_wq_buffer_type[0x3];
+	u8 reserved_at_18[0x2];
 	u8 ts_format[0x02];
 	u8 reserved_at_1c[0x4];
 	u8 reserved_at_20[0x8];
