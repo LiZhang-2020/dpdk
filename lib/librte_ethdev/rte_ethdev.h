@@ -1087,6 +1087,28 @@ struct rte_eth_txconf {
  * @warning
  * @b EXPERIMENTAL: this API may change, or be removed, without prior notice
  *
+ * A structure used to return the Tx or Rx hairpin queue capabilities that are supported.
+ */
+struct rte_eth_hairpin_queue_cap {
+	/**
+	 * When set, a specialized on-device memory type can be used as a backing
+	 * storage for a given hairpin queue type.
+	 */
+	uint32_t locked_device_memory:1;
+
+	/**
+	 * When set, memory managed by DPDK can be used as a backing storage
+	 * for a given hairpin queue type.
+	 */
+	uint32_t rte_memory:1;
+
+	uint32_t reserved:30; /**< Reserved for future fields */
+};
+
+/**
+ * @warning
+ * @b EXPERIMENTAL: this API may change, or be removed, without prior notice
+ *
  * A structure used to return the hairpin capabilities that are supported.
  */
 struct rte_eth_hairpin_cap {
@@ -1097,6 +1119,8 @@ struct rte_eth_hairpin_cap {
 	/** Max number of Tx queues to be connected to one Rx queue. */
 	uint16_t max_tx_2_rx;
 	uint16_t max_nb_desc; /**< The max num of descriptors. */
+	struct rte_eth_hairpin_queue_cap rx_cap; /**< Rx hairpin queue capabilities. */
+	struct rte_eth_hairpin_queue_cap tx_cap; /**< Tx hairpin queue capabilities. */
 };
 
 #define RTE_ETH_MAX_HAIRPIN_PEERS 32
@@ -1144,7 +1168,46 @@ struct rte_eth_hairpin_conf {
 	 *   configured automatically during port start.
 	 */
 	uint32_t manual_bind:1;
-	uint32_t reserved:14; /**< Reserved bits. */
+
+	/**
+	 * Use locked device memory as a backing storage.
+	 *
+	 * - When set, PMD will attempt to use on-device memory as a backing storage for descriptors
+	 *   and/or data in hairpin queue.
+	 * - When set, PMD will use detault memory type as a backing storage. Please refer to PMD
+	 *   documentation for details.
+	 *
+	 * API user should check if PMD supports this configuration flag using
+	 * @see rte_eth_dev_hairpin_capability_get.
+	 */
+	uint32_t use_locked_device_memory:1;
+
+	/**
+	 * Use DPDK memory as backing storage.
+	 *
+	 * - When set, PMD will attempt to use memory managed by DPDK as a backing storage
+	 *   for descriptors and/or data in hairpin queue.
+	 * - When clear, PMD will use default memory type as a backing storage. Please refer
+	 *   to PMD documentation for details.
+	 *
+	 * API user should check if PMD supports this configuration flag using
+	 * @see rte_eth_dev_hairpin_capability_get.
+	 */
+	uint32_t use_rte_memory:1;
+
+	/**
+	 * Force usage of hairpin memory configuration.
+	 *
+	 * - When set, PMD will attempt to use specified memory settings and
+	 *   if resource allocation fails, then hairpin queue setup will result in an
+	 *   error.
+	 * - When clear, PMD will attempt to use specified memory settings and
+	 *   if resource allocation fails, then PMD will retry allocation with default
+	 *   configuration.
+	 */
+	uint32_t force_memory:1;
+
+	uint32_t reserved:11; /**< Reserved bits. */
 	struct rte_eth_hairpin_peer peers[RTE_ETH_MAX_HAIRPIN_PEERS];
 };
 
