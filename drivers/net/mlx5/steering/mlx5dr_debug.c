@@ -194,9 +194,14 @@ static int mlx5dr_debug_dump_matcher(FILE *f, struct mlx5dr_matcher *matcher)
 
 	ste = &matcher->match_ste.ste;
 	ste_pool = ctx->ste_pool[tbl_type];
-	ste_0 = mlx5dr_pool_chunk_get_base_devx_obj(ste_pool, ste);
-	if (tbl_type == MLX5DR_TABLE_TYPE_FDB)
-		ste_1 = mlx5dr_pool_chunk_get_base_devx_obj_mirror(ste_pool, ste);
+	if (ste_pool) {
+		ste_0 = mlx5dr_pool_chunk_get_base_devx_obj(ste_pool, ste);
+		if (tbl_type == MLX5DR_TABLE_TYPE_FDB)
+			ste_1 = mlx5dr_pool_chunk_get_base_devx_obj_mirror(ste_pool, ste);
+	} else {
+		ste_0 = NULL;
+		ste_1 = NULL;
+	}
 
 	ret = fprintf(f, ",%d,%d,%d,%d",
 		      matcher->match_ste.rtc_0 ? matcher->match_ste.rtc_0->id : 0,
