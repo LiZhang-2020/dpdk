@@ -8,6 +8,7 @@ import time
 
 from pydiru.rte_flow import RteFlowItem, RteFlowItemEth, RteFlowItemIpv4, RteFlowItemIpv6, \
     RteFlowItemUdp, RteFlowItemTcp, RteFlowItemGtp, RteFlowItemGtpPsc, RteFlowItemEnd, RteFlowItemTag
+from pydiru.providers.mlx5.steering.mlx5dr_rule import Mlx5drRuleAttr, Mlx5drRule
 from pydiru.providers.mlx5.steering.mlx5dr_devx_objects import Mlx5drDevxObj
 from pyverbs.pyverbs_error import PyverbsError, PyverbsRDMAError
 import pydiru.providers.mlx5.steering.mlx5dr_enums as me
@@ -714,3 +715,22 @@ def create_counter_action(test, agr_obj, flags=me.MLX5DR_ACTION_FLAG_HWS_RX, bul
     _, counter_ra = agr_obj.create_rule_action('counter', flags=flags, dr_counter=dr_counter)
     counter_ra.counter_offset = offset
     return devx_counter, counter_id, counter_ra
+
+
+def init_resources_and_add_rules(test, agr_obj, root_rte, rte_items_list, actions_types,
+                                 actions_list, table_type=me.MLX5DR_TABLE_TYPE_NIC_RX):
+    """
+    Inits steering resources and creates the rules on agr_obj with the provided
+    lists of rte items and actions.
+    The first set of items of rte_items_list are passed to the init_steering_resources()
+    function of the agr_obj.
+    """
+    agr_obj.init_steering_resources(rte_items_list[0], table_type= table_type,
+                                    root_rte_items=root_rte,
+                                    action_types_list=actions_types)
+    for i in range(len(rte_items_list)):
+        test.hws_rules.append(Mlx5drRule(agr_obj.matcher, mt_idx=0, rte_items=rte_items_list[i],
+                                         at_idx=i, rule_actions=actions_list[i],
+                                         num_of_actions=len(actions_list[i]),
+                                         rule_attr_create=Mlx5drRuleAttr(user_data=bytes(8)),
+                                         dr_ctx=agr_obj.dr_ctx))

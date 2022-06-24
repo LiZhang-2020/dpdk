@@ -10,6 +10,7 @@ from .prm_structs import SetActionIn, CopyActionIn, AddActionIn
 from .base import BaseDrResources, PydiruTrafficTestCase
 import pydiru.providers.mlx5.steering.mlx5dr_enums as me
 from pyverbs.pyverbs_error import PyverbsError
+from pydiru.pydiru_error import PydiruError
 from . import utils as u
 import struct
 import random
@@ -621,3 +622,36 @@ class Mlx5drTrafficTest(PydiruTrafficTestCase):
         # ipv4 id, checksum and total len)
         u.raw_traffic(self.client, self.server, self.server.num_msgs, [send_packet],
                       exp_packet, skip_idxs=[16, 17, 18, 19, 24, 25, 34, 35, 38, 39, 53, 75])
+
+    def test_mlx5dr_pop_vlan(self):
+        """
+        Pop VLAN action test
+        Create non root RX rule to pop VLAN and verify with traffic.
+        Create non root TX rule to pop VLAN twice and verify with traffic.
+        """
+        rx_rte_items = u.create_sipv4_rte_items(u.PacketConsts.SRC_IP)
+        tx_ip = "3.3.3.4"
+        tx_rte_items = u.create_sipv4_rte_items(tx_ip)
+        root_rte = u.create_dipv4_rte_items()
+        rx_actions_types = [[me.MLX5DR_ACTION_TYP_POP_VLAN, me.MLX5DR_ACTION_TYP_TIR,
+                             me.MLX5DR_ACTION_TYP_LAST],
+                            [me.MLX5DR_ACTION_TYP_TIR, me.MLX5DR_ACTION_TYP_LAST]]
+        tx_actions_types = [[me.MLX5DR_ACTION_TYP_POP_VLAN, me.MLX5DR_ACTION_TYP_POP_VLAN,
+                             me.MLX5DR_ACTION_TYP_LAST]]
+        _, rx_pop_ra = self.server.create_rule_action('pop')
+        _, tir_ra = self.server.create_rule_action('tir')
+        _, tx_pop_ra = self.client.create_rule_action('pop', flags=me.MLX5DR_ACTION_FLAG_HWS_TX)
+        u.init_resources_and_add_rules(self, self.server, root_rte,
+                                       [rx_rte_items, tx_rte_items], rx_actions_types,
+                                       [[rx_pop_ra, tir_ra],[tir_ra]])
+        u.init_resources_and_add_rules(self, self.client, None, [tx_rte_items], tx_actions_types,
+                                       [[tx_pop_ra, tx_pop_ra]],
+                                       table_type=me.MLX5DR_TABLE_TYPE_NIC_TX)
+        packet = u.gen_packet(self.server.msg_size, num_vlans=1)
+        exp_packet = u.gen_packet(self.server.msg_size - u.PacketConsts.VLAN_HEADER_SIZE,
+                                  num_vlans=0)
+        u.raw_traffic(self.client, self.server, self.server.num_msgs, [packet], exp_packet)
+        packet = u.gen_packet(self.server.msg_size, num_vlans=2, src_ip=tx_ip)
+        exp_packet = u.gen_packet(self.server.msg_size - 2 * u.PacketConsts.VLAN_HEADER_SIZE,
+                                  num_vlans=0, src_ip=tx_ip)
+        u.raw_traffic(self.client, self.server, self.server.num_msgs, [packet], exp_packet)
