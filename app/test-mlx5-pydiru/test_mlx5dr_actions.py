@@ -655,3 +655,37 @@ class Mlx5drTrafficTest(PydiruTrafficTestCase):
         exp_packet = u.gen_packet(self.server.msg_size - 2 * u.PacketConsts.VLAN_HEADER_SIZE,
                                   num_vlans=0, src_ip=tx_ip)
         u.raw_traffic(self.client, self.server, self.server.num_msgs, [packet], exp_packet)
+
+    def test_mlx5dr_push_vlan(self):
+        """
+        Push VLAN action test
+        Create non root TX rule to push VLAN and verify with traffic.
+        Create non root RX rule to push VLAN twice and verify with traffic.
+        """
+        tx_rte_items = u.create_sipv4_rte_items(u.PacketConsts.SRC_IP)
+        root_rte_item = u.create_dipv4_rte_items()
+        rx_ip = "3.3.3.4"
+        rx_rte_items = u.create_sipv4_rte_items(rx_ip)
+        tx_actions_types = [[me.MLX5DR_ACTION_TYP_PUSH_VLAN, me.MLX5DR_ACTION_TYP_LAST]]
+        rx_actions_types = [[me.MLX5DR_ACTION_TYP_PUSH_VLAN, me.MLX5DR_ACTION_TYP_PUSH_VLAN,
+                             me.MLX5DR_ACTION_TYP_TIR, me.MLX5DR_ACTION_TYP_LAST],
+                            [me.MLX5DR_ACTION_TYP_TIR, me.MLX5DR_ACTION_TYP_LAST]]
+        _, tx_push_ra = self.client.create_rule_action('push', flags=me.MLX5DR_ACTION_FLAG_HWS_TX)
+        _, rx_push_ra = self.server.create_rule_action('push')
+        _, tir_ra = self.server.create_rule_action('tir')
+        vlan_hdr = (u.PacketConsts.VLAN_TPID << 16) + (u.PacketConsts.VLAN_PRIO << 13) + \
+                   (u.PacketConsts.VLAN_CFI << 12) + u.PacketConsts.VLAN_ID
+        tx_push_ra.vlan_hdr = vlan_hdr
+        rx_push_ra.vlan_hdr = vlan_hdr
+        u.init_resources_and_add_rules(self, self.server, root_rte_item,
+                                       [rx_rte_items, tx_rte_items], rx_actions_types,
+                                       [[rx_push_ra, rx_push_ra, tir_ra],[tir_ra]])
+        u.init_resources_and_add_rules(self, self.client, None, [tx_rte_items], tx_actions_types,
+                                       [[tx_push_ra]], table_type=me.MLX5DR_TABLE_TYPE_NIC_TX)
+        packet = u.gen_packet(self.server.msg_size - u.PacketConsts.VLAN_HEADER_SIZE, num_vlans=0)
+        exp_packet = u.gen_packet(self.server.msg_size, num_vlans=1)
+        u.raw_traffic(self.client, self.server, self.server.num_msgs, [packet], exp_packet)
+        packet = u.gen_packet(self.server.msg_size - 2 * u.PacketConsts.VLAN_HEADER_SIZE,
+                              num_vlans=0, src_ip=rx_ip)
+        exp_packet = u.gen_packet(self.server.msg_size, num_vlans=2, src_ip=rx_ip)
+        u.raw_traffic(self.client, self.server, self.server.num_msgs, [packet], exp_packet)
