@@ -2108,7 +2108,7 @@ flow_hw_actions_construct(struct rte_eth_dev *dev,
 			break;
 		case RTE_FLOW_ACTION_TYPE_COUNT:
 			ret = mlx5_hws_cnt_pool_get(priv->hws_cpool, &queue,
-					&cnt_id);
+						    &cnt_id, 0);
 			if (ret != 0)
 				return ret;
 			ret = mlx5_hws_cnt_pool_get_action_offset

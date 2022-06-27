@@ -42,12 +42,22 @@ struct mlx5_hws_cnt_dcs_mng {
 
 struct mlx5_hws_cnt {
 	struct flow_counter_stats reset;
+	bool in_used; /* Indicator whether this counter in used or in pool. */
 	union {
-		uint32_t share: 1;
-		/*
-		 * share will be set to 1 when this counter is used as indirect
-		 * action. Only meaningful when user own this counter.
-		 */
+		struct {
+			uint32_t share:1;
+			/*
+			 * share will be set to 1 when this counter is used as
+			 * indirect action.
+			 */
+			uint32_t age_idx:24;
+			/*
+			 * When this counter uses for aging, it save the index
+			 * of AGE parameter. For pure counter (without aging)
+			 * this index is zero.
+			 */
+		};
+		/* This struct is only meaningful when user own this counter. */
 		uint32_t query_gen_when_free;
 		/*
 		 * When PMD own this counter (user put back counter to PMD
@@ -345,6 +355,7 @@ mlx5_hws_cnt_pool_put(struct mlx5_hws_cnt_pool *cpool,
 	uint32_t iidx;
 
 	iidx = mlx5_hws_cnt_iidx(cpool, *cnt_id);
+	cpool->pool[iidx].in_used = false;
 	cpool->pool[iidx].query_gen_when_free =
 		__atomic_load_n(&cpool->query_gen, __ATOMIC_RELAXED);
 	if (likely(queue != NULL))
@@ -386,14 +397,17 @@ mlx5_hws_cnt_pool_put(struct mlx5_hws_cnt_pool *cpool,
  *   A pointer to HWS queue. If null, it means fetch from common pool.
  * @param cnt_id
  *   A pointer to a cnt_id_t * pointer (counter id) that will be filled.
+ * @param age_idx
+ *   Index of AGE parameter using this counter, zero means there is no such AGE.
+ *
  * @return
  *   - 0: Success; objects taken.
  *   - -ENOENT: Not enough entries in the mempool; no object is retrieved.
  *   - -EAGAIN: counter is not ready; try again.
  */
 static __rte_always_inline int
-mlx5_hws_cnt_pool_get(struct mlx5_hws_cnt_pool *cpool,
-		uint32_t *queue, cnt_id_t *cnt_id)
+mlx5_hws_cnt_pool_get(struct mlx5_hws_cnt_pool *cpool, uint32_t *queue,
+		      cnt_id_t *cnt_id, uint32_t age_idx)
 {
 	unsigned int ret;
 	struct rte_ring_zc_data zcdc = {0};
@@ -420,6 +434,8 @@ mlx5_hws_cnt_pool_get(struct mlx5_hws_cnt_pool *cpool,
 		__hws_cnt_query_raw(cpool, *cnt_id,
 				    &cpool->pool[iidx].reset.hits,
 				    &cpool->pool[iidx].reset.bytes);
+		cpool->pool[iidx].in_used = true;
+		cpool->pool[iidx].age_idx = age_idx;
 		return 0;
 	}
 	ret = rte_ring_dequeue_zc_burst_elem_start(qcache, sizeof(cnt_id_t), 1,
@@ -453,6 +469,8 @@ mlx5_hws_cnt_pool_get(struct mlx5_hws_cnt_pool *cpool,
 			    &cpool->pool[iidx].reset.bytes);
 	rte_ring_dequeue_zc_elem_finish(qcache, 1);
 	cpool->pool[iidx].share = 0;
+	cpool->pool[iidx].in_used = true;
+	cpool->pool[iidx].age_idx = age_idx;
 	return 0;
 }
 
@@ -481,7 +499,7 @@ mlx5_hws_cnt_shared_get(struct mlx5_hws_cnt_pool *cpool, cnt_id_t *cnt_id)
 	int ret;
 	uint32_t iidx;
 
-	ret = mlx5_hws_cnt_pool_get(cpool, NULL, cnt_id);
+	ret = mlx5_hws_cnt_pool_get(cpool, NULL, cnt_id, 0);
 	if (ret != 0)
 		return ret;
 	iidx = mlx5_hws_cnt_iidx(cpool, *cnt_id);
