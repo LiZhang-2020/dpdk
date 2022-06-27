@@ -10,9 +10,15 @@ enum mlx5dr_context_flags {
 	MLX5DR_CONTEXT_FLAG_PRIVATE_PD = 1 << 1,
 };
 
+enum mlx5dr_context_shared_stc_type {
+	MLX5DR_CONTEXT_SHARED_STC_DECAP = 0,
+	MLX5DR_CONTEXT_SHARED_STC_POP = 1,
+	MLX5DR_CONTEXT_SHARED_STC_MAX = 2,
+};
+
 struct mlx5dr_context_common_res {
 	struct mlx5dr_action_default_stc *default_stc;
-	struct mlx5dr_action_shared_stc *shared_stc;
+	struct mlx5dr_action_shared_stc *shared_stc[MLX5DR_CONTEXT_SHARED_STC_MAX];
 	struct mlx5dr_cmd_forward_tbl *default_miss;
 };
 

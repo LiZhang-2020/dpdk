@@ -69,6 +69,162 @@ static const uint32_t action_order_arr[MLX5DR_TABLE_TYPE_MAX][MLX5DR_ACTION_TYP_
 	},
 };
 
+static int mlx5dr_action_get_shared_stc_nic(struct mlx5dr_context *ctx,
+					    enum mlx5dr_context_shared_stc_type stc_type,
+					    uint8_t tbl_type)
+{
+	struct mlx5dr_cmd_stc_modify_attr stc_attr = {0};
+	struct mlx5dr_action_shared_stc *shared_stc;
+	int ret;
+
+	pthread_spin_lock(&ctx->ctrl_lock);
+	if (ctx->common_res[tbl_type].shared_stc[stc_type]) {
+		rte_atomic32_add(&ctx->common_res[tbl_type].shared_stc[stc_type]->refcount, 1);
+		pthread_spin_unlock(&ctx->ctrl_lock);
+		return 0;
+	}
+
+	shared_stc = simple_calloc(1, sizeof(*shared_stc));
+	if (!shared_stc) {
+		DR_LOG(ERR, "Failed to allocate memory for shared STCs");
+		rte_errno = ENOMEM;
+		goto unlock_and_out;
+	}
+	switch (stc_type) {
+	case MLX5DR_CONTEXT_SHARED_STC_DECAP:
+		stc_attr.action_type = MLX5_IFC_STC_ACTION_TYPE_HEADER_REMOVE;
+		stc_attr.action_offset = MLX5DR_ACTION_OFFSET_DW5;
+		stc_attr.remove_header.decap = 0;
+		stc_attr.remove_header.start_anchor = MLX5_HEADER_ANCHOR_PACKET_START;
+		stc_attr.remove_header.end_anchor = MLX5_HEADER_ANCHOR_IPV6_IPV4;
+		break;
+	case MLX5DR_CONTEXT_SHARED_STC_POP:
+		stc_attr.action_type = MLX5_IFC_STC_ACTION_TYPE_REMOVE_WORDS;
+		stc_attr.action_offset = MLX5DR_ACTION_OFFSET_DW5;
+		stc_attr.remove_words.start_anchor = MLX5_HEADER_ANCHOR_FIRST_VLAN_START;
+		stc_attr.remove_words.num_of_words = MLX5DR_ACTION_HDR_LEN_L2_VLAN;
+		break;
+	default:
+		DR_LOG(ERR, "no such type : stc_type\n");
+		assert(false);
+		rte_errno = EINVAL;
+		goto unlock_and_out;
+	}
+
+	ret = mlx5dr_action_alloc_single_stc(ctx, &stc_attr, tbl_type,
+					     &shared_stc->remove_header);
+	if (ret) {
+		DR_LOG(ERR, "Failed to allocate shared decap l2 STC");
+		goto free_shared_stc;
+	}
+
+	ctx->common_res[tbl_type].shared_stc[stc_type] = shared_stc;
+
+	rte_atomic32_init(&ctx->common_res[tbl_type].shared_stc[stc_type]->refcount);
+	rte_atomic32_set(&ctx->common_res[tbl_type].shared_stc[stc_type]->refcount, 1);
+
+	pthread_spin_unlock(&ctx->ctrl_lock);
+
+	return 0;
+
+free_shared_stc:
+	simple_free(shared_stc);
+unlock_and_out:
+	pthread_spin_unlock(&ctx->ctrl_lock);
+	return rte_errno;
+}
+
+static void mlx5dr_action_put_shared_stc_nic(struct mlx5dr_context *ctx,
+					     enum mlx5dr_context_shared_stc_type stc_type,
+					     uint8_t tbl_type)
+{
+	struct mlx5dr_action_shared_stc *shared_stc;
+
+	pthread_spin_lock(&ctx->ctrl_lock);
+	if (!rte_atomic32_dec_and_test(&ctx->common_res[tbl_type].shared_stc[stc_type]->refcount)) {
+		pthread_spin_unlock(&ctx->ctrl_lock);
+		return;
+	}
+
+	shared_stc = ctx->common_res[tbl_type].shared_stc[stc_type];
+
+	mlx5dr_action_free_single_stc(ctx, tbl_type, &shared_stc->remove_header);
+	simple_free(shared_stc);
+	ctx->common_res[tbl_type].shared_stc[stc_type] = NULL;
+	pthread_spin_unlock(&ctx->ctrl_lock);
+}
+
+static int mlx5dr_action_get_shared_stc(struct mlx5dr_action *action,
+					enum mlx5dr_context_shared_stc_type stc_type)
+{
+	struct mlx5dr_context *ctx = action->ctx;
+	int ret;
+
+	if (stc_type >= MLX5DR_CONTEXT_SHARED_STC_MAX) {
+		assert(false);
+		rte_errno = EINVAL;
+		return rte_errno;
+	}
+
+	if (action->flags & MLX5DR_ACTION_FLAG_HWS_RX) {
+		ret = mlx5dr_action_get_shared_stc_nic(ctx, stc_type, MLX5DR_TABLE_TYPE_NIC_RX);
+		if (ret) {
+			DR_LOG(ERR, "Failed to allocate memory for RX shared STCs (type: %d)",
+			       stc_type);
+			return ret;
+		}
+	}
+
+	if (action->flags & MLX5DR_ACTION_FLAG_HWS_TX) {
+		ret = mlx5dr_action_get_shared_stc_nic(ctx, stc_type, MLX5DR_TABLE_TYPE_NIC_TX);
+		if (ret) {
+			DR_LOG(ERR, "Failed to allocate memory for TX shared STCs(type: %d)",
+			       stc_type);
+			goto clean_nic_rx_stc;
+		}
+	}
+
+	if (action->flags & MLX5DR_ACTION_FLAG_HWS_FDB) {
+		ret = mlx5dr_action_get_shared_stc_nic(ctx, stc_type, MLX5DR_TABLE_TYPE_FDB);
+		if (ret) {
+			DR_LOG(ERR, "Failed to allocate memory for FDB shared STCs (type: %d)",
+			       stc_type);
+			goto clean_nic_tx_stc;
+		}
+	}
+
+	return 0;
+
+clean_nic_tx_stc:
+	if (action->flags & MLX5DR_ACTION_FLAG_HWS_TX)
+		mlx5dr_action_put_shared_stc_nic(ctx, stc_type, MLX5DR_TABLE_TYPE_NIC_TX);
+clean_nic_rx_stc:
+	if (action->flags & MLX5DR_ACTION_FLAG_HWS_RX)
+		mlx5dr_action_put_shared_stc_nic(ctx, stc_type, MLX5DR_TABLE_TYPE_NIC_RX);
+
+	return ret;
+}
+
+static void mlx5dr_action_put_shared_stc(struct mlx5dr_action *action,
+					 enum mlx5dr_context_shared_stc_type stc_type)
+{
+	struct mlx5dr_context *ctx = action->ctx;
+
+	if (stc_type >= MLX5DR_CONTEXT_SHARED_STC_MAX) {
+		assert(false);
+		return;
+	}
+
+	if (action->flags & MLX5DR_ACTION_FLAG_HWS_RX)
+		mlx5dr_action_put_shared_stc_nic(ctx, stc_type, MLX5DR_TABLE_TYPE_NIC_RX);
+
+	if (action->flags & MLX5DR_ACTION_FLAG_HWS_TX)
+		mlx5dr_action_put_shared_stc_nic(ctx, stc_type, MLX5DR_TABLE_TYPE_NIC_TX);
+
+	if (action->flags & MLX5DR_ACTION_FLAG_HWS_FDB)
+		mlx5dr_action_put_shared_stc_nic(ctx, stc_type, MLX5DR_TABLE_TYPE_FDB);
+}
+
 static void mlx5dr_action_print_combo(enum mlx5dr_action_type *user_actions)
 {
 	DR_LOG(ERR, "Invalid action_type sequence");
@@ -884,14 +1040,23 @@ mlx5dr_action_create_pop_vlan(struct mlx5dr_context *ctx, uint32_t flags)
 	if (!action)
 		return NULL;
 
+	/* Optimization: get shared stc in case 2 pops will be needed */
+	ret = mlx5dr_action_get_shared_stc(action, MLX5DR_CONTEXT_SHARED_STC_POP);
+	if (ret) {
+		DR_LOG(ERR, "Failed to create remove stc for reformat");
+		goto free_action;
+	}
+
 	ret = mlx5dr_action_create_stcs(action, NULL);
 	if (ret) {
 		DR_LOG(ERR, "Failed creating stc for pop vlan\n");
-		goto free_action;
+		goto free_shared;
 	}
 
 	return action;
 
+free_shared:
+	mlx5dr_action_put_shared_stc(action, MLX5DR_CONTEXT_SHARED_STC_POP);
 free_action:
 	simple_free(action);
 	return NULL;
@@ -1071,133 +1236,10 @@ free_arg:
 	return ret;
 }
 
-static int mlx5dr_action_get_shared_stc_offset(struct mlx5dr_context_common_res *common_res)
+static int mlx5dr_action_get_shared_stc_offset(struct mlx5dr_context_common_res *common_res,
+					       enum mlx5dr_context_shared_stc_type stc_type)
 {
-	return common_res->shared_stc->remove_header.offset;
-}
-
-static int mlx5dr_action_get_shared_stc_nic(struct mlx5dr_context *ctx,
-				       uint8_t tbl_type)
-{
-	struct mlx5dr_cmd_stc_modify_attr stc_attr = {0};
-	struct mlx5dr_action_shared_stc *shared_stc;
-	int ret;
-
-	pthread_spin_lock(&ctx->ctrl_lock);
-	if (ctx->common_res[tbl_type].shared_stc) {
-		rte_atomic32_add(&ctx->common_res[tbl_type].shared_stc->refcount, 1);
-		pthread_spin_unlock(&ctx->ctrl_lock);
-		return 0;
-	}
-
-	shared_stc = simple_calloc(1, sizeof(*shared_stc));
-	if (!shared_stc) {
-		DR_LOG(ERR, "Failed to allocate memory for shared STCs");
-		rte_errno = ENOMEM;
-		goto unlock_and_out;
-	}
-
-	stc_attr.action_type = MLX5_IFC_STC_ACTION_TYPE_HEADER_REMOVE;
-	stc_attr.action_offset = MLX5DR_ACTION_OFFSET_DW5;
-	stc_attr.remove_header.decap = 0;
-	stc_attr.remove_header.start_anchor = MLX5_HEADER_ANCHOR_PACKET_START;
-	stc_attr.remove_header.end_anchor = MLX5_HEADER_ANCHOR_IPV6_IPV4;
-
-	ret = mlx5dr_action_alloc_single_stc(ctx, &stc_attr, tbl_type,
-					     &shared_stc->remove_header);
-	if (ret) {
-		DR_LOG(ERR, "Failed to allocate shared decap l2 STC");
-		goto free_shared_stc;
-	}
-
-	ctx->common_res[tbl_type].shared_stc = shared_stc;
-
-	rte_atomic32_init(&ctx->common_res[tbl_type].shared_stc->refcount);
-	rte_atomic32_set(&ctx->common_res[tbl_type].shared_stc->refcount, 1);
-
-	pthread_spin_unlock(&ctx->ctrl_lock);
-
-	return 0;
-
-free_shared_stc:
-	simple_free(shared_stc);
-unlock_and_out:
-	pthread_spin_unlock(&ctx->ctrl_lock);
-	return rte_errno;
-}
-
-static void mlx5dr_action_put_shared_stc_nic(struct mlx5dr_context *ctx,
-					  uint8_t tbl_type)
-{
-	struct mlx5dr_action_shared_stc *shared_stc;
-
-	pthread_spin_lock(&ctx->ctrl_lock);
-	if (!rte_atomic32_dec_and_test(&ctx->common_res[tbl_type].shared_stc->refcount)) {
-		pthread_spin_unlock(&ctx->ctrl_lock);
-		return;
-	}
-
-	shared_stc = ctx->common_res[tbl_type].shared_stc;
-
-	mlx5dr_action_free_single_stc(ctx, tbl_type, &shared_stc->remove_header);
-	simple_free(shared_stc);
-	ctx->common_res[tbl_type].shared_stc = NULL;
-	pthread_spin_unlock(&ctx->ctrl_lock);
-}
-
-static int mlx5dr_action_get_shared_stc(struct mlx5dr_action *action)
-{
-	struct mlx5dr_context *ctx = action->ctx;
-	int ret;
-
-	if (action->flags & MLX5DR_ACTION_FLAG_HWS_RX) {
-		ret = mlx5dr_action_get_shared_stc_nic(ctx, MLX5DR_TABLE_TYPE_NIC_RX);
-		if (ret) {
-			DR_LOG(ERR, "Failed to allocate memory for RX shared STCs");
-			return ret;
-		}
-	}
-
-	if (action->flags & MLX5DR_ACTION_FLAG_HWS_TX) {
-		ret = mlx5dr_action_get_shared_stc_nic(ctx, MLX5DR_TABLE_TYPE_NIC_TX);
-		if (ret) {
-			DR_LOG(ERR, "Failed to allocate memory for TX shared STCs");
-			goto clean_nic_rx_stc;
-		}
-	}
-
-	if (action->flags & MLX5DR_ACTION_FLAG_HWS_FDB) {
-		ret = mlx5dr_action_get_shared_stc_nic(ctx, MLX5DR_TABLE_TYPE_FDB);
-		if (ret) {
-			DR_LOG(ERR, "Failed to allocate memory for FDB shared STCs");
-			goto clean_nic_tx_stc;
-		}
-	}
-
-	return 0;
-
-clean_nic_tx_stc:
-	if (action->flags & MLX5DR_ACTION_FLAG_HWS_TX)
-		mlx5dr_action_put_shared_stc_nic(ctx, MLX5DR_TABLE_TYPE_NIC_TX);
-clean_nic_rx_stc:
-	if (action->flags & MLX5DR_ACTION_FLAG_HWS_RX)
-		mlx5dr_action_put_shared_stc_nic(ctx, MLX5DR_TABLE_TYPE_NIC_RX);
-
-	return ret;
-}
-
-static void mlx5dr_action_put_shared_stc(struct mlx5dr_action *action)
-{
-	struct mlx5dr_context *ctx = action->ctx;
-
-	if (action->flags & MLX5DR_ACTION_FLAG_HWS_RX)
-		mlx5dr_action_put_shared_stc_nic(ctx, MLX5DR_TABLE_TYPE_NIC_RX);
-
-	if (action->flags & MLX5DR_ACTION_FLAG_HWS_TX)
-		mlx5dr_action_put_shared_stc_nic(ctx, MLX5DR_TABLE_TYPE_NIC_TX);
-
-	if (action->flags & MLX5DR_ACTION_FLAG_HWS_FDB)
-		mlx5dr_action_put_shared_stc_nic(ctx, MLX5DR_TABLE_TYPE_FDB);
+	return common_res->shared_stc[stc_type]->remove_header.offset;
 }
 
 static int mlx5dr_action_handle_l2_to_tunnel_l3(struct mlx5dr_context *ctx,
@@ -1216,7 +1258,7 @@ static int mlx5dr_action_handle_l2_to_tunnel_l3(struct mlx5dr_context *ctx,
 	}
 
 	/* the action is remove-l2-header + insert-l3-header */
-	ret = mlx5dr_action_get_shared_stc(action);
+	ret = mlx5dr_action_get_shared_stc(action, MLX5DR_CONTEXT_SHARED_STC_DECAP);
 	if (ret) {
 		DR_LOG(ERR, "Failed to create remove stc for reformat");
 		goto free_arg;
@@ -1231,7 +1273,7 @@ static int mlx5dr_action_handle_l2_to_tunnel_l3(struct mlx5dr_context *ctx,
 	return 0;
 
 down_shared:
-	mlx5dr_action_put_shared_stc(action);
+	mlx5dr_action_put_shared_stc(action, MLX5DR_CONTEXT_SHARED_STC_DECAP);
 free_arg:
 	mlx5dr_cmd_destroy_obj(action->reformat.arg_obj);
 	return ret;
@@ -1510,9 +1552,12 @@ static void mlx5dr_action_destroy_hws(struct mlx5dr_action *action)
 	case MLX5DR_ACTION_TYP_TNL_L2_TO_L2:
 	case MLX5DR_ACTION_TYP_ASO_METER:
 	case MLX5DR_ACTION_TYP_ASO_CT:
-	case MLX5DR_ACTION_TYP_POP_VLAN:
 	case MLX5DR_ACTION_TYP_PUSH_VLAN:
 		mlx5dr_action_destroy_stcs(action);
+		break;
+	case MLX5DR_ACTION_TYP_POP_VLAN:
+		mlx5dr_action_destroy_stcs(action);
+		mlx5dr_action_put_shared_stc(action, MLX5DR_CONTEXT_SHARED_STC_POP);
 		break;
 	case MLX5DR_ACTION_TYP_TNL_L3_TO_L2:
 	case MLX5DR_ACTION_TYP_MODIFY_HDR:
@@ -1522,7 +1567,7 @@ static void mlx5dr_action_destroy_hws(struct mlx5dr_action *action)
 		break;
 	case MLX5DR_ACTION_TYP_L2_TO_TNL_L3:
 		mlx5dr_action_destroy_stcs(action);
-		mlx5dr_action_put_shared_stc(action);
+		mlx5dr_action_put_shared_stc(action, MLX5DR_CONTEXT_SHARED_STC_DECAP);
 		mlx5dr_cmd_destroy_obj(action->reformat.arg_obj);
 		break;
 	case MLX5DR_ACTION_TYP_L2_TO_TNL_L2:
@@ -1909,6 +1954,16 @@ mlx5dr_action_setter_single(struct mlx5dr_actions_apply_data *apply,
 }
 
 static void
+mlx5dr_action_setter_single_double_pop(struct mlx5dr_actions_apply_data *apply,
+				       __rte_unused struct mlx5dr_actions_wqe_setter *setter)
+{
+	apply->wqe_data[MLX5DR_ACTION_OFFSET_DW5] = 0;
+	apply->wqe_ctrl->stc_ix[MLX5DR_ACTION_STC_IDX_DW5] =
+		htobe32(mlx5dr_action_get_shared_stc_offset(apply->common_res,
+						    MLX5DR_CONTEXT_SHARED_STC_POP));
+}
+
+static void
 mlx5dr_action_setter_hit(struct mlx5dr_actions_apply_data *apply,
 			 struct mlx5dr_actions_wqe_setter *setter)
 {
@@ -1939,7 +1994,8 @@ mlx5dr_action_setter_common_decap(struct mlx5dr_actions_apply_data *apply,
 {
 	apply->wqe_data[MLX5DR_ACTION_OFFSET_DW5] = 0;
 	apply->wqe_ctrl->stc_ix[MLX5DR_ACTION_STC_IDX_DW5] =
-		htobe32(mlx5dr_action_get_shared_stc_offset(apply->common_res));
+		htobe32(mlx5dr_action_get_shared_stc_offset(apply->common_res,
+							    MLX5DR_CONTEXT_SHARED_STC_DECAP));
 }
 
 int mlx5dr_action_template_process(struct mlx5dr_action_template *at)
@@ -1947,6 +2003,7 @@ int mlx5dr_action_template_process(struct mlx5dr_action_template *at)
 	struct mlx5dr_actions_wqe_setter *start_setter = at->setters + 1;
 	enum mlx5dr_action_type *action_type = at->action_type_arr;
 	struct mlx5dr_actions_wqe_setter *setter = at->setters;
+	struct mlx5dr_actions_wqe_setter *pop_setter = NULL;
 	struct mlx5dr_actions_wqe_setter *last_setter;
 	int i;
 
@@ -1981,10 +2038,15 @@ int mlx5dr_action_template_process(struct mlx5dr_action_template *at)
 
 		case MLX5DR_ACTION_TYP_POP_VLAN:
 			/* Single remove header to header */
+			if (pop_setter) { /* we have 2 pops, use the shared */
+				pop_setter->set_single = &mlx5dr_action_setter_single_double_pop;
+				break;
+			}
 			setter = mlx5dr_action_setter_find_first(last_setter, ASF_SINGLE1 | ASF_MODIFY);
 			setter->flags |= ASF_SINGLE1 | ASF_REPARSE | ASF_REMOVE;
 			setter->set_single = &mlx5dr_action_setter_single;
 			setter->idx_single = i;
+			pop_setter = setter;
 			break;
 
 		case MLX5DR_ACTION_TYP_PUSH_VLAN:
