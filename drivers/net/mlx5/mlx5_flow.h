@@ -48,6 +48,7 @@ enum mlx5_rte_flow_action_type {
 	MLX5_RTE_FLOW_ACTION_TYPE_COUNT,
 	MLX5_RTE_FLOW_ACTION_TYPE_JUMP,
 	MLX5_RTE_FLOW_ACTION_TYPE_RSS,
+	MLX5_RTE_FLOW_ACTION_TYPE_METER_MARK,
 };
 
 /* Private (internal) Field IDs for MODIFY_FIELD action. */
@@ -56,13 +57,14 @@ enum mlx5_rte_flow_field_id {
 	MLX5_RTE_FLOW_FIELD_META_REG,
 };
 
-#define MLX5_INDIRECT_ACTION_TYPE_OFFSET 30
+#define MLX5_INDIRECT_ACTION_TYPE_OFFSET 29
 
 enum {
 	MLX5_INDIRECT_ACTION_TYPE_RSS,
 	MLX5_INDIRECT_ACTION_TYPE_AGE,
 	MLX5_INDIRECT_ACTION_TYPE_COUNT,
 	MLX5_INDIRECT_ACTION_TYPE_CT,
+	MLX5_INDIRECT_ACTION_TYPE_METER_MARK,
 };
 
 enum MLX5_SET_MATCHER {
@@ -77,14 +79,14 @@ enum MLX5_SET_MATCHER {
 #define MLX5_SET_MATCHER_V (MLX5_SET_MATCHER_SW_V | MLX5_SET_MATCHER_HS_V)
 #define MLX5_SET_MATCHER_M (MLX5_SET_MATCHER_SW_M | MLX5_SET_MATCHER_HS_M)
 
-/* Now, the maximal ports will be supported is 32, action number is 32M. */
-#define MLX5_ACTION_CTX_CT_MAX_PORT 0x20
+/* Now, the maximal ports will be supported is 16, action number is 32M. */
+#define MLX5_ACTION_CTX_CT_MAX_PORT 0x10
 
 #define MLX5_ACTION_CTX_CT_OWNER_SHIFT 25
 #define MLX5_ACTION_CTX_CT_OWNER_MASK (MLX5_ACTION_CTX_CT_MAX_PORT - 1)
 
 /*
- * 30-31: type, 25-29: owner port, 0-24: index.
+ * 29-31: type, 25-28: owner port, 0-24: index.
  * The last one is 0b1 000..., an overflow, 0 should be used instead.
  */
 #define MLX5_ACTION_CTX_CT_GEN_IDX(owner, index) \
@@ -1198,6 +1200,9 @@ struct mlx5_action_construct_data {
 		struct {
 			uint32_t id;
 		} shared_counter;
+		struct {
+			uint32_t id;
+		} shared_meter;
 	};
 };
 
