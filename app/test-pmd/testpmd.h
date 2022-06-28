@@ -504,7 +504,7 @@ extern uint32_t param_total_num_mbufs;
 
 extern uint16_t stats_period;
 
-extern uint16_t hairpin_mode;
+extern uint32_t hairpin_mode;
 
 #ifdef RTE_LIB_LATENCYSTATS
 extern uint8_t latencystats_enabled;
