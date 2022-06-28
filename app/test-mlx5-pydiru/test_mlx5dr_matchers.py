@@ -6,7 +6,7 @@ import socket
 
 from pydiru.rte_flow import RteFlowItem, RteFlowItemEth, RteFlowItemIpv4, RteFlowItemTcp, \
     RteFlowItemUdp, RteFlowItemEnd, RteFlowItemGtp, RteFlowItemGtpPsc, RteFlowItemIpv6, \
-    RteFlowItemVxlan, RteFlowItemVlan, RteFlowItemIcmp, RteFlowItemIcmp6
+    RteFlowItemVxlan, RteFlowItemVlan, RteFlowItemIcmp, RteFlowItemIcmp6, RteFlowItemGreOption
 from pydiru.providers.mlx5.steering.mlx5dr_rule import Mlx5drRuleAttr, Mlx5drRule
 import pydiru.pydiru_enums as p
 
@@ -23,7 +23,8 @@ UN_EXPECTED_VXLAN_VNI = 8888888
 UN_EXPECTED_VLAN_ID = 1212
 UN_EXPECTED_TOS = 0x44
 UN_EXPECTED_ICMP_TYPE = 14
-
+UN_EXPECTED_GRE_KEY = 22
+UN_EXPECTED_GRE_SEQUENCE_NUMBER = 25
 
 
 class Mlx5drMatcherTest(PydiruTrafficTestCase):
@@ -123,6 +124,12 @@ class Mlx5drMatcherTest(PydiruTrafficTestCase):
         mask = RteFlowItemEth(has_vlan=0xffffffff)
         val = RteFlowItemEth(has_vlan=has_vlan)
         return RteFlowItem(p.RTE_FLOW_ITEM_TYPE_ETH, val, mask)
+
+    @staticmethod
+    def create_rte_gre_opt_item(key=PacketConsts.GRE_KEY, sequence=PacketConsts.GRE_SEQUENCE_NUMBER):
+        mask = RteFlowItemGreOption(key=0xffffffff, sequence=0xffffffff)
+        val = RteFlowItemGreOption(key=key, sequence=sequence)
+        return RteFlowItem(p.RTE_FLOW_ITEM_TYPE_GRE_OPTION, val, mask)
 
     def create_rx_rules(self, rte_item, root_rte_items=None):
         rte_items = [rte_item, RteFlowItemEnd()]
@@ -295,5 +302,17 @@ class Mlx5drMatcherTest(PydiruTrafficTestCase):
                                 l4=PacketConsts.ICMPV6_PROTO)
         un_exp_packet = gen_packet(self.server.msg_size, l3=PacketConsts.IP_V6,
                                    l4=PacketConsts.ICMPV6_PROTO, icmp_type=UN_EXPECTED_ICMP_TYPE)
+        packets = [exp_packet, un_exp_packet]
+        raw_traffic(**self.traffic_args, packets=packets, expected_packet=exp_packet)
+
+    def test_mlx5dr_matcher_gre_option(self):
+        """
+        Match on GRE Option key and sequence number.
+        """
+        self.create_rx_rules(self.create_rte_gre_opt_item())
+        exp_packet = gen_packet(self.server.msg_size, l2=False, tunnel=TunnelType.GRE)
+        un_exp_packet = gen_packet(self.server.msg_size, l2=False, tunnel=TunnelType.GRE,
+                                   gre_key=UN_EXPECTED_GRE_KEY,
+                                   gre_seq=UN_EXPECTED_GRE_SEQUENCE_NUMBER)
         packets = [exp_packet, un_exp_packet]
         raw_traffic(**self.traffic_args, packets=packets, expected_packet=exp_packet)

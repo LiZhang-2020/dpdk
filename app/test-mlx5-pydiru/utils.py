@@ -37,6 +37,7 @@ class VendorPartID:
 class TunnelType:
     GTP_U = 'GPT-U'
     VXLAN = 'VXLAN'
+    GRE = 'GRE'
 
 
 class ModifyFieldId:
@@ -125,7 +126,10 @@ class PacketConsts:
     OUT_SMAC_47_16_FIELD_LENGTH = 32
     OUT_SMAC_15_0_FIELD_ID = 0x2
     OUT_SMAC_15_0_FIELD_LENGTH = 16
-
+    # GRE consts
+    GRE_FLAGS = 0x3
+    GRE_KEY = 0x12345678
+    GRE_SEQUENCE_NUMBER = 32
 
 def gen_outer_headers(msg_size, tunnel=TunnelType.GTP_U, **kwargs):
     """
@@ -149,10 +153,14 @@ def gen_outer_headers(msg_size, tunnel=TunnelType.GTP_U, **kwargs):
                         bytes.fromhex(PacketConsts.SRC_MAC.replace(':', '')))
     outer += PacketConsts.ETHER_TYPE_IPV4.to_bytes(2, 'big')
 
+    protocol = socket.IPPROTO_UDP
+
     if tunnel == TunnelType.GTP_U:
         dst_port = PacketConsts.GTP_U_PORT
     elif tunnel == TunnelType.VXLAN:
         dst_port = PacketConsts.VXLAN_PORT
+    elif tunnel == TunnelType.GRE:
+        protocol = socket.IPPROTO_GRE
 
     # IPv4 Header
     ttl = kwargs.get('ttl', PacketConsts.TTL_HOP_LIMIT)
@@ -160,12 +168,14 @@ def gen_outer_headers(msg_size, tunnel=TunnelType.GTP_U, **kwargs):
     outer += struct.pack('!2B3H2BH4s4s', (PacketConsts.IP_V4 << 4) +
                          PacketConsts.IHL, 0, ip_total_len, 0,
                          PacketConsts.IP_V4_FLAGS << 13,
-                         ttl, socket.IPPROTO_UDP, 0,
+                         ttl, protocol , 0,
                          socket.inet_aton(PacketConsts.SRC_IP),
                          socket.inet_aton(PacketConsts.DST_IP))
-    # UDP Header
-    udp_len = msg_size - PacketConsts.ETHER_HEADER_SIZE - PacketConsts.IPV4_HEADER_SIZE
-    outer += struct.pack('!4H', PacketConsts.SRC_PORT, dst_port, udp_len, 0)
+
+    if tunnel != TunnelType.GRE:
+        # UDP Header
+        udp_len = msg_size - PacketConsts.ETHER_HEADER_SIZE - PacketConsts.IPV4_HEADER_SIZE
+        outer += struct.pack('!4H', PacketConsts.SRC_PORT, dst_port, udp_len, 0)
 
     # GTP-U Header
     if tunnel == TunnelType.GTP_U:
@@ -185,10 +195,15 @@ def gen_outer_headers(msg_size, tunnel=TunnelType.GTP_U, **kwargs):
                                  PacketConsts.GTP_NPDU_NUMBER, PacketConsts.GTP_PSC_TYPE)
             outer += struct.pack('!BBBB', extention_header_len, (PacketConsts.GTP_PSC_PDU_TYPE << 4),
                                   gtp_psc_qfi, next_extention_type)
-    if tunnel == TunnelType.VXLAN:
+    elif tunnel == TunnelType.VXLAN:
         vxlan_flags = kwargs.get('vxlan_flags', PacketConsts.VXLAN_FLAGS)
         vxlan_vni = kwargs.get('vxlan_vni', PacketConsts.VXLAN_VNI)
         outer += struct.pack('!II', vxlan_flags << 24, vxlan_vni << 8)
+    elif tunnel == TunnelType.GRE:
+        gre_proto = kwargs.get('gre_proto', PacketConsts.ETHER_TYPE_IPV4)
+        gre_key = kwargs.get('gre_key', PacketConsts.GRE_KEY)
+        gre_seq = kwargs.get('gre_seq', PacketConsts.GRE_SEQUENCE_NUMBER)
+        outer += struct.pack('!HHII', PacketConsts.GRE_FLAGS << 12, gre_proto, gre_key, gre_seq)
 
     return outer
 
