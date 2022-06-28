@@ -5926,7 +5926,6 @@ flow_hw_action_handle_create(struct rte_eth_dev *dev, uint32_t queue,
 	cnt_id_t cnt_id;
 	uint32_t mtr_id;
 
-	RTE_SET_USED(queue);
 	RTE_SET_USED(attr);
 	RTE_SET_USED(user_data);
 	switch (action->type) {
@@ -5951,8 +5950,13 @@ flow_hw_action_handle_create(struct rte_eth_dev *dev, uint32_t queue,
 			MLX5_INDIRECT_ACTION_TYPE_OFFSET) | (aso_mtr->fm.meter_id);
 		handle = (struct rte_flow_action_handle *)(uintptr_t)mtr_id;
 		break;
-	default:
+	case RTE_FLOW_ACTION_TYPE_RSS:
 		handle = flow_dv_action_create(dev, conf, action, error);
+		break;
+	default:
+		rte_flow_error_set(error, ENOTSUP, RTE_FLOW_ERROR_TYPE_ACTION,
+				   NULL, "action type not supported");
+		return NULL;
 	}
 	return handle;
 }
@@ -5986,7 +5990,6 @@ flow_hw_action_handle_update(struct rte_eth_dev *dev, uint32_t queue,
 			     void *user_data,
 			     struct rte_flow_error *error)
 {
-	RTE_SET_USED(queue);
 	RTE_SET_USED(attr);
 	RTE_SET_USED(user_data);
 	struct mlx5_priv *priv = dev->data->dev_private;
@@ -6033,11 +6036,15 @@ flow_hw_action_handle_update(struct rte_eth_dev *dev, uint32_t queue,
 			return rte_flow_error_set(error, EINVAL,
 				RTE_FLOW_ERROR_TYPE_UNSPECIFIED,
 				NULL, "Unable to wait for ASO meter CQE");
-		return 0;
-	default:
 		break;
+	case MLX5_INDIRECT_ACTION_TYPE_RSS:
+		return flow_dv_action_update(dev, handle, update, error);
+	default:
+		return rte_flow_error_set(error, ENOTSUP,
+					  RTE_FLOW_ERROR_TYPE_ACTION, NULL,
+					  "action type not supported");
 	}
-	return flow_dv_action_update(dev, handle, update, error);
+	return 0;
 }
 
 /**
@@ -6102,10 +6109,15 @@ flow_hw_action_handle_destroy(struct rte_eth_dev *dev, uint32_t queue,
 				RTE_FLOW_ERROR_TYPE_UNSPECIFIED,
 				NULL, "Unable to wait for ASO meter CQE");
 		mlx5_ipool_free(pool->idx_pool, idx);
-		return 0;
-	default:
+		break;
+	case MLX5_INDIRECT_ACTION_TYPE_RSS:
 		return flow_dv_action_destroy(dev, handle, error);
+	default:
+		return rte_flow_error_set(error, ENOTSUP,
+					  RTE_FLOW_ERROR_TYPE_ACTION, NULL,
+					  "action type not supported");
 	}
+	return 0;
 }
 
 static int
@@ -6258,8 +6270,12 @@ flow_hw_action_query(struct rte_eth_dev *dev,
 		return flow_hw_query_counter(dev, act_idx, data, error);
 	case MLX5_INDIRECT_ACTION_TYPE_CT:
 		return flow_hw_conntrack_query(dev, act_idx, data, error);
-	default:
+	case MLX5_INDIRECT_ACTION_TYPE_RSS:
 		return flow_dv_action_query(dev, handle, data, error);
+	default:
+		return rte_flow_error_set(error, ENOTSUP,
+					  RTE_FLOW_ERROR_TYPE_ACTION, NULL,
+					  "action type not supported");
 	}
 }
 
