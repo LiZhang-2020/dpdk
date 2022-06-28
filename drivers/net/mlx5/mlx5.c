@@ -525,6 +525,12 @@ mlx5_flow_aging_init(struct mlx5_dev_ctx_shared *sh)
 	uint32_t i;
 	struct mlx5_age_info *age_info;
 
+	/*
+	 * In HW steering, aging information structure is initialized later
+	 * during configure function.
+	 */
+	if (sh->config.dv_flow_en == 2)
+		return;
 	for (i = 0; i < sh->max_port; i++) {
 		age_info = &sh->port[i].age_info;
 		age_info->flags = 0;

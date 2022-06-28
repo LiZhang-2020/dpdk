@@ -84,6 +84,99 @@ __mlx5_hws_cnt_svc(struct mlx5_dev_ctx_shared *sh,
 	} while (reset_cnt_num > 0);
 }
 
+/**
+ * Check and callback event for new aged flow in the HWS counter pool.
+ *
+ * @param[in] priv
+ *   Pointer to port private object.
+ * @param[in] cpool
+ *   Pointer to current counter pool.
+ */
+static void
+mlx5_hws_aging_check(struct mlx5_priv *priv, struct mlx5_hws_cnt_pool *cpool)
+{
+	struct mlx5_age_info *age_info = GET_PORT_AGE_INFO(priv);
+	struct flow_counter_stats *stats = cpool->raw_mng->raw;
+	struct mlx5_hws_age_param *param;
+	struct rte_ring *r;
+	const uint64_t curr_time = MLX5_CURR_TIME_SEC;
+	const uint32_t time_delta = curr_time - cpool->time_of_last_age_check;
+	uint32_t nb_alloc_cnts = mlx5_hws_cnt_pool_get_size(cpool);
+	uint16_t expected = HWS_AGE_CANDIDATE;
+	uint32_t i;
+
+	cpool->time_of_last_age_check = curr_time;
+	for (i = 0; i < nb_alloc_cnts; ++i) {
+		uint32_t age_idx = cpool->pool[i].age_idx;
+
+		if (!cpool->pool[i].in_used || age_idx == 0)
+			continue;
+		param = mlx5_ipool_get(age_info->ages_ipool, age_idx);
+		MLX5_ASSERT(param != NULL);
+		switch (__atomic_load_n(&param->state, __ATOMIC_RELAXED)) {
+		case HWS_AGE_AGED_OUT_NOT_REPORTED:
+		case HWS_AGE_AGED_OUT_REPORTED:
+			/* Already aged-out, no action is needed. */
+			continue;
+		case HWS_AGE_CANDIDATE:
+			/* This AGE candidate to be aged-out, go to checking. */
+			break;
+		case HWS_AGE_FREE:
+			/*
+			 * AGE parameter with state "FREE" couldn't be pointed
+			 * by any counter since counter is destroyed first.
+			 * Fall-through.
+			 */
+		default:
+			MLX5_ASSERT(0);
+			continue;
+		}
+		if (stats[i].hits != param->accumulator_last_hits) {
+			__atomic_store_n(&param->sec_since_last_hit, 0,
+					 __ATOMIC_RELAXED);
+			param->accumulator_last_hits = stats[i].hits;
+			continue;
+		}
+		if (__atomic_add_fetch(&param->sec_since_last_hit,
+				       time_delta,
+				       __ATOMIC_RELAXED) <= param->timeout)
+			continue;
+		/* Prepare the relevant ring for this AGE parameter */
+		if (priv->hws_strict_queue)
+			r = age_info->hw_q_age->aged_lists[param->queue_id];
+		else
+			r = age_info->hw_age.aged_list;
+		/* Changing the state atomically and insert it into the ring. */
+		if (__atomic_compare_exchange_n(&param->state, &expected,
+						HWS_AGE_AGED_OUT_NOT_REPORTED,
+						false, __ATOMIC_RELAXED,
+						__ATOMIC_RELAXED)) {
+			int ret = rte_ring_enqueue_burst_elem(r, &age_idx,
+							      sizeof(uint32_t),
+							      1, NULL);
+
+			/*
+			 * The ring doesn't have enough room for this entry,
+			 * it replace back the state for the next second.
+			 *
+			 * FIXME: if until next sec it get traffic, we are going
+			 *        to lose this "aged out", will be fixed later
+			 *        when optimise it to fill ring in bulks.
+			 */
+			if (ret < 0)
+				__atomic_store_n(&param->state,
+						 HWS_AGE_CANDIDATE,
+						 __ATOMIC_RELAXED);
+			/* The event is irrelevant in strict queue mode. */
+			if (!priv->hws_strict_queue)
+				MLX5_AGE_SET(age_info, MLX5_AGE_EVENT_NEW);
+		}
+	}
+	/* The event is irrelevant in strict queue mode. */
+	if (!priv->hws_strict_queue)
+		mlx5_age_event_prepare(priv->sh);
+}
+
 static void
 mlx5_hws_cnt_raw_data_free(struct mlx5_dev_ctx_shared *sh,
 			   struct mlx5_hws_cnt_raw_data_mng *mng)
@@ -145,6 +238,9 @@ mlx5_hws_cnt_svc(void *opaque)
 			    opriv->sh == sh &&
 			    opriv->hws_cpool != NULL) {
 				__mlx5_hws_cnt_svc(sh, opriv->hws_cpool);
+				if (opriv->hws_age_req)
+					mlx5_hws_aging_check(opriv,
+							     opriv->hws_cpool);
 			}
 		}
 		rte_spinlock_unlock(&sh->cnt_svc->query_cycle_l);
@@ -242,6 +338,8 @@ mlx5_hws_cnt_pool_init(struct mlx5_dev_ctx_shared *sh,
 		if (cntp->cache->qcache[qidx] == NULL)
 			goto error;
 	}
+	/* Initialize the time for aging-out calculation. */
+	cntp->time_of_last_age_check = MLX5_CURR_TIME_SEC;
 	return cntp;
 error:
 	mlx5_hws_cnt_pool_deinit(cntp);
@@ -545,4 +643,391 @@ mlx5_hws_cnt_svc_deinit(struct mlx5_dev_ctx_shared *sh)
 	mlx5_aso_cnt_queue_uninit(sh);
 	mlx5_free(sh->cnt_svc);
 	sh->cnt_svc = NULL;
+}
+
+/**
+ * Release AGE parameter.
+ *
+ * @param age_ipool
+ *   Pointer to AGE parameter indexed pool.
+ * @param idx
+ *   Index of AGE parameter in the indexed pool.
+ */
+static void
+mlx5_hws_age_param_free(struct mlx5_indexed_pool *age_ipool, uint32_t idx)
+{
+	mlx5_ipool_free(age_ipool, idx);
+}
+
+/**
+ * Destroy AGE action.
+ *
+ * @param priv
+ *   Pointer to the port private data structure.
+ * @param idx
+ *   Index of AGE parameter.
+ */
+void
+mlx5_hws_age_action_destroy(struct mlx5_priv *priv, uint32_t idx)
+{
+	struct mlx5_age_info *age_info = GET_PORT_AGE_INFO(priv);
+	struct mlx5_indexed_pool *ipool = age_info->ages_ipool;
+	struct mlx5_hws_age_param *param = mlx5_ipool_get(ipool, idx);
+
+	MLX5_ASSERT(param != NULL);
+	switch (__atomic_exchange_n(&param->state, HWS_AGE_FREE,
+				    __ATOMIC_RELAXED)) {
+	case HWS_AGE_CANDIDATE:
+	case HWS_AGE_AGED_OUT_REPORTED:
+		mlx5_hws_age_param_free(ipool, idx);
+		break;
+	case HWS_AGE_AGED_OUT_NOT_REPORTED:
+		/*
+		 * The AGE is inside the ring. Change the state here
+		 * and destroy it later when it is taken out of ring.
+		 */
+		break;
+	case HWS_AGE_FREE:
+		/* There is no chance to destroy AGE with FREE. */
+	default:
+		MLX5_ASSERT(0);
+		break;
+	}
+}
+
+/**
+ * Create AGE action parameter.
+ *
+ * @param[in] priv
+ *   Pointer to the port private data structure.
+ * @param[in] queue_id
+ *   Which HWS queue to be used.
+ * @param[in] flow_idx
+ *   Flow index from indexed pool.
+ * @param[in] age
+ *   Pointer to the aging action configuration.
+ * @param[out] error
+ *   Pointer to error structure.
+ *
+ * @return
+ *   Index to AGE action parameter on success, 0 otherwise.
+ */
+uint32_t
+mlx5_hws_age_action_create(struct mlx5_priv *priv, uint32_t queue_id,
+			   const struct rte_flow_action_age *age,
+			   uint32_t flow_idx, struct rte_flow_error *error)
+{
+	struct mlx5_age_info *age_info = GET_PORT_AGE_INFO(priv);
+	struct mlx5_indexed_pool *ipool = age_info->ages_ipool;
+	struct mlx5_hws_age_param *param;
+	uint32_t age_idx;
+
+	param = mlx5_ipool_malloc(ipool, &age_idx);
+	if (param == NULL) {
+		rte_flow_error_set(error, ENOMEM,
+				   RTE_FLOW_ERROR_TYPE_UNSPECIFIED, NULL,
+				   "cannot allocate AGE parameter");
+		return 0;
+	}
+	MLX5_ASSERT(__atomic_load_n(&param->state,
+				    __ATOMIC_RELAXED) == HWS_AGE_FREE);
+	param->context = age->context ? age->context :
+					(void *)(uintptr_t)flow_idx;
+	param->timeout = age->timeout;
+	param->queue_id = queue_id;
+	param->accumulator_last_hits = 0;
+	param->sec_since_last_hit = 0;
+	param->state = HWS_AGE_CANDIDATE;
+	return age_idx;
+}
+
+/**
+ * Get the AGE context if the aged-out index is still valid.
+ *
+ * @param priv
+ *   Pointer to the port private data structure.
+ * @param idx
+ *   Index of AGE parameter.
+ *
+ * @return
+ *   AGE context if the index is still aged-out, NULL otherwise.
+ */
+void *
+mlx5_hws_age_context_get(struct mlx5_priv *priv, uint32_t idx)
+{
+	struct mlx5_age_info *age_info = GET_PORT_AGE_INFO(priv);
+	struct mlx5_indexed_pool *ipool = age_info->ages_ipool;
+	struct mlx5_hws_age_param *param = mlx5_ipool_get(ipool, idx);
+	uint16_t expected = HWS_AGE_AGED_OUT_NOT_REPORTED;
+
+	MLX5_ASSERT(param != NULL);
+	if (__atomic_compare_exchange_n(&param->state, &expected,
+					HWS_AGE_AGED_OUT_REPORTED, false,
+					__ATOMIC_RELAXED, __ATOMIC_RELAXED))
+		return param->context;
+	switch (expected) {
+	case HWS_AGE_FREE:
+		/*
+		 * This AGE couldn't have been destroyed since it was inside
+		 * the ring. Its state has updated, and now it is actually
+		 * destroyed.
+		 */
+		mlx5_hws_age_param_free(ipool, idx);
+		break;
+	case HWS_AGE_CANDIDATE:
+		/*
+		 * Only BG thread pushes to ring and it never pushes this state.
+		 * When AGE inside the ring becomes candidate, it has a special
+		 * state called HWS_AGE_CANDIDATE_INSIDE_RING.
+		 * Fall-through.
+		 */
+	case HWS_AGE_AGED_OUT_REPORTED:
+		/*
+		 * Only this thread (doing query) may write this state, and it
+		 * happens only after the query thread takes it out of the ring.
+		 * Fall-through.
+		 */
+	case HWS_AGE_AGED_OUT_NOT_REPORTED:
+		/*
+		 * In this case the compare return true and function return
+		 * the context immediately.
+		 * Fall-through.
+		 */
+	default:
+		MLX5_ASSERT(0);
+		break;
+	}
+	return NULL;
+}
+
+#ifdef RTE_ARCH_64
+#define MLX5_HWS_AGED_OUT_RING_SIZE_MAX UINT32_MAX
+#else
+#define MLX5_HWS_AGED_OUT_RING_SIZE_MAX RTE_BIT32(8)
+#endif
+
+/**
+ * Get the size of aged out ring list for each queue.
+ *
+ * The size is one percent of nb_counters divided by nb_queues.
+ * The ring size must be power of 2, so it align up to power of 2.
+ * In 32 bit systems, the size is limited by 256.
+ *
+ * This function is called when RTE_FLOW_PORT_FLAG_STRICT_QUEUE is on.
+ *
+ * @param nb_counters
+ *   Final number of allocated counter in the pool.
+ * @param nb_queues
+ *   Number of HWS queues in this port.
+ *
+ * @return
+ *   Size of aged out ring per queue.
+ */
+static __rte_always_inline uint32_t
+mlx5_hws_aged_out_q_ring_size_get(uint32_t nb_counters, uint32_t nb_queues)
+{
+	uint32_t size = rte_align32pow2((nb_counters / 100) / nb_queues);
+	uint32_t max_size = MLX5_HWS_AGED_OUT_RING_SIZE_MAX;
+
+	return RTE_MIN(size, max_size);
+}
+
+/**
+ * Get the size of the aged out ring list.
+ *
+ * The size is one percent of nb_counters.
+ * The ring size must be power of 2, so it align up to power of 2.
+ * In 32 bit systems, the size is limited by 256.
+ *
+ * This function is called when RTE_FLOW_PORT_FLAG_STRICT_QUEUE is off.
+ *
+ * @param nb_counters
+ *   Final number of allocated counter in the pool.
+ *
+ * @return
+ *   Size of the aged out ring list.
+ */
+static __rte_always_inline uint32_t
+mlx5_hws_aged_out_ring_size_get(uint32_t nb_counters)
+{
+	uint32_t size = rte_align32pow2(nb_counters / 100);
+	uint32_t max_size = MLX5_HWS_AGED_OUT_RING_SIZE_MAX;
+
+	return RTE_MIN(size, max_size);
+}
+
+/**
+ * Initialize the shared aging list information per port.
+ *
+ * @param dev
+ *   Pointer to the rte_eth_dev structure.
+ * @param nb_queues
+ *   Number of HWS queues.
+ * @param strict_queue
+ *   Indicator whether is strict_queue mode.
+ * @param ring_size
+ *   Size of aged-out ring for creation.
+ *
+ * @return
+ *   0 on success, a negative errno value otherwise and rte_errno is set.
+ */
+static int
+mlx5_hws_age_info_init(struct rte_eth_dev *dev, uint16_t nb_queues,
+		       bool strict_queue, uint32_t ring_size)
+{
+	struct mlx5_priv *priv = dev->data->dev_private;
+	struct mlx5_age_info *age_info = GET_PORT_AGE_INFO(priv);
+	uint32_t flags = RING_F_SP_ENQ | RING_F_SC_DEQ | RING_F_EXACT_SZ;
+	char mz_name[RTE_MEMZONE_NAMESIZE];
+	struct rte_ring *r = NULL;
+	uint32_t qidx;
+
+	age_info->flags = 0;
+	if (strict_queue) {
+		size_t size = sizeof(*age_info->hw_q_age) +
+			      sizeof(struct rte_ring *) * nb_queues;
+
+		age_info->hw_q_age = mlx5_malloc(MLX5_MEM_ANY | MLX5_MEM_ZERO,
+						 size, 0, SOCKET_ID_ANY);
+		if (age_info->hw_q_age == NULL)
+			return -ENOMEM;
+		for (qidx = 0; qidx < nb_queues; ++qidx) {
+			snprintf(mz_name, sizeof(mz_name),
+				 "port_%u_queue_%u_aged_out_ring",
+				 dev->data->port_id, qidx);
+			r = rte_ring_create(mz_name, ring_size, SOCKET_ID_ANY,
+					    flags);
+			if (r == NULL) {
+				DRV_LOG(ERR, "\"%s\" creation failed: %s",
+					mz_name, rte_strerror(rte_errno));
+				goto error;
+			}
+			age_info->hw_q_age->aged_lists[qidx] = r;
+			DRV_LOG(DEBUG,
+				"\"%s\" is successfully created (size=%u).",
+				mz_name, ring_size);
+		}
+		age_info->hw_q_age->nb_rings = nb_queues;
+	} else {
+		snprintf(mz_name, sizeof(mz_name), "port_%u_aged_out_ring",
+			 dev->data->port_id);
+		r = rte_ring_create(mz_name, ring_size, SOCKET_ID_ANY, flags);
+		if (r == NULL) {
+			DRV_LOG(ERR, "\"%s\" creation failed: %s", mz_name,
+				rte_strerror(rte_errno));
+			return -rte_errno;
+		}
+		age_info->hw_age.aged_list = r;
+		DRV_LOG(DEBUG, "\"%s\" is successfully created (size=%u).",
+			mz_name, ring_size);
+		/* In non "strict_queue" mode, initialize the event. */
+		MLX5_AGE_SET(age_info, MLX5_AGE_TRIGGER);
+	}
+	return 0;
+error:
+	MLX5_ASSERT(strict_queue);
+	while (qidx--)
+		rte_ring_free(age_info->hw_q_age->aged_lists[qidx]);
+	rte_free(age_info->hw_q_age);
+	return -1;
+}
+
+/**
+ * Destroy the shared aging list information per port.
+ *
+ * @param priv
+ *   Pointer to port private object.
+ */
+static void
+mlx5_hws_age_info_destroy(struct mlx5_priv *priv)
+{
+	struct mlx5_age_info *age_info = GET_PORT_AGE_INFO(priv);
+	uint16_t nb_queues = age_info->hw_q_age->nb_rings;
+
+	if (priv->hws_strict_queue) {
+		uint32_t qidx;
+
+		for (qidx = 0; qidx < nb_queues; ++qidx)
+			rte_ring_free(age_info->hw_q_age->aged_lists[qidx]);
+		rte_free(age_info->hw_q_age);
+	} else {
+		rte_ring_free(age_info->hw_age.aged_list);
+	}
+}
+
+/**
+ * Initialize the aging mechanism per port.
+ *
+ * @param dev
+ *   Pointer to the rte_eth_dev structure.
+ * @param attr
+ *   Port configuration attributes.
+ * @param nb_queues
+ *   Number of HWS queues.
+ *
+ * @return
+ *   0 on success, a negative errno value otherwise and rte_errno is set.
+ */
+int
+mlx5_hws_age_pool_init(struct rte_eth_dev *dev,
+		       const struct rte_flow_port_attr *attr,
+		       uint16_t nb_queues)
+{
+	struct mlx5_priv *priv = dev->data->dev_private;
+	struct mlx5_age_info *age_info = GET_PORT_AGE_INFO(priv);
+	struct mlx5_indexed_pool_config cfg = {
+		.size =
+		      RTE_CACHE_LINE_ROUNDUP(sizeof(struct mlx5_hws_age_param)),
+		.need_lock = 1,
+		.release_mem_en = !!priv->sh->config.reclaim_mode,
+		.malloc = mlx5_malloc,
+		.free = mlx5_free,
+		.type = "mlx5_hws_age_pool",
+	};
+	bool strict_queue = !!(attr->flags & RTE_FLOW_PORT_FLAG_STRICT_QUEUE);
+	uint32_t nb_alloc_cnts;
+	uint32_t rsize;
+	uint32_t nb_ages_updated;
+	int ret;
+
+	MLX5_ASSERT(priv->hws_cpool);
+	nb_alloc_cnts = mlx5_hws_cnt_pool_get_size(priv->hws_cpool);
+	if (strict_queue) {
+		rsize = mlx5_hws_aged_out_q_ring_size_get(nb_alloc_cnts,
+							  nb_queues);
+		nb_ages_updated = rsize * nb_queues + attr->nb_aging_objects;
+	} else {
+		rsize = mlx5_hws_aged_out_ring_size_get(nb_alloc_cnts);
+		nb_ages_updated = rsize + attr->nb_aging_objects;
+	}
+	ret = mlx5_hws_age_info_init(dev, nb_queues, strict_queue, rsize);
+	if (ret < 0)
+		return ret;
+	cfg.trunk_size = rte_align32pow2(nb_ages_updated);
+	age_info->ages_ipool = mlx5_ipool_create(&cfg);
+	if (age_info->ages_ipool == NULL) {
+		mlx5_hws_age_info_destroy(priv);
+		rte_errno = ENOMEM;
+		return -rte_errno;
+	}
+	priv->hws_age_req = 1;
+	return 0;
+}
+
+/**
+ * Cleanup all aging resources per port.
+ *
+ * @param priv
+ *   Pointer to port private object.
+ */
+void
+mlx5_hws_age_pool_destroy(struct mlx5_priv *priv)
+{
+	struct mlx5_age_info *age_info = GET_PORT_AGE_INFO(priv);
+
+	MLX5_ASSERT(priv->hws_age_req);
+	mlx5_ipool_destroy(age_info->ages_ipool);
+	age_info->ages_ipool = NULL;
+	mlx5_hws_age_info_destroy(priv);
+	priv->hws_age_req = 0;
 }

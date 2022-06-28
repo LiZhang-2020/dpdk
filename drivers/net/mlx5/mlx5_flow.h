@@ -1170,6 +1170,7 @@ struct rte_flow_hw {
 	/* The table flow allcated from. */
 	struct rte_flow_template_table *table;
 	struct mlx5dr_rule rule; /* HWS layer data struct. */
+	uint32_t age_idx;
 	cnt_id_t cnt_id;
 	uint32_t mtr_id;
 } __rte_packed;
@@ -1645,6 +1646,12 @@ typedef int (*mlx5_flow_get_aged_flows_t)
 					 void **context,
 					 uint32_t nb_contexts,
 					 struct rte_flow_error *error);
+typedef int (*mlx5_flow_get_q_aged_flows_t)
+					(struct rte_eth_dev *dev,
+					 uint32_t queue_id,
+					 void **context,
+					 uint32_t nb_contexts,
+					 struct rte_flow_error *error);
 typedef int (*mlx5_flow_action_validate_t)
 				(struct rte_eth_dev *dev,
 				 const struct rte_flow_indir_action_conf *conf,
@@ -1848,6 +1855,7 @@ struct mlx5_flow_driver_ops {
 	mlx5_flow_counter_free_t counter_free;
 	mlx5_flow_counter_query_t counter_query;
 	mlx5_flow_get_aged_flows_t get_aged_flows;
+	mlx5_flow_get_q_aged_flows_t get_q_aged_flows;
 	mlx5_flow_action_validate_t action_validate;
 	mlx5_flow_action_create_t action_create;
 	mlx5_flow_action_destroy_t action_destroy;

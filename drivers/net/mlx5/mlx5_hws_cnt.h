@@ -104,7 +104,35 @@ struct mlx5_hws_cnt_pool {
 	struct rte_ring *free_list;
 	struct rte_ring *wait_reset_list;
 	struct mlx5_hws_cnt_pool_caches *cache;
+	uint64_t time_of_last_age_check;
 } __rte_cache_aligned;
+
+/* HWS AGE status. */
+enum {
+	HWS_AGE_FREE, /* Initialized state. */
+	HWS_AGE_CANDIDATE, /* AGE assigned to flows. */
+	HWS_AGE_AGED_OUT_REPORTED,
+	/*
+	 * Aged-out, reported by rte_flow_get_q_aged_flows and wait for destroy.
+	 */
+	HWS_AGE_AGED_OUT_NOT_REPORTED,
+	/*
+	 * Aged-out, inside the aged-out ring.
+	 * wait for rte_flow_get_q_aged_flows and destroy.
+	 */
+};
+
+/* HWS counter age parameter. */
+struct mlx5_hws_age_param {
+	uint32_t timeout; /* Aging timeout in seconds. */
+	uint32_t sec_since_last_hit;
+	/* Time in seconds since last hit (atomically accessed). */
+	uint16_t state; /* AGE state (atomically accessed). */
+	uint64_t accumulator_last_hits;
+	/* Last total value of hits for comparing. */
+	uint32_t queue_id; /* Queue id of the counter. */
+	void *context; /* Flow AGE context. */
+} __rte_packed __rte_cache_aligned;
 
 /**
  * Translate counter id into internal index (start from 0), which can be used
@@ -570,5 +598,24 @@ mlx5_hws_cnt_svc_init(struct mlx5_dev_ctx_shared *sh);
 
 void
 mlx5_hws_cnt_svc_deinit(struct mlx5_dev_ctx_shared *sh);
+
+void
+mlx5_hws_age_action_destroy(struct mlx5_priv *priv, uint32_t idx);
+
+uint32_t
+mlx5_hws_age_action_create(struct mlx5_priv *priv, uint32_t queue_id,
+			   const struct rte_flow_action_age *age,
+			   uint32_t flow_idx, struct rte_flow_error *error);
+
+void *
+mlx5_hws_age_context_get(struct mlx5_priv *priv, uint32_t idx);
+
+int
+mlx5_hws_age_pool_init(struct rte_eth_dev *dev,
+		       const struct rte_flow_port_attr *attr,
+		       uint16_t nb_queues);
+
+void
+mlx5_hws_age_pool_destroy(struct mlx5_priv *priv);
 
 #endif /* _MLX5_HWS_CNT_H_ */

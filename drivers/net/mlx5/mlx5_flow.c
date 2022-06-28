@@ -1055,6 +1055,7 @@ static const struct rte_flow_ops mlx5_flow_ops = {
 	.isolate = mlx5_flow_isolate,
 	.query = mlx5_flow_drv_query,
 	.dev_dump = mlx5_flow_dev_dump,
+	.get_q_aged_flows = mlx5_flow_get_q_aged_flows,
 	.get_aged_flows = mlx5_flow_get_aged_flows,
 	.action_handle_create = mlx5_action_handle_create,
 	.action_handle_destroy = mlx5_action_handle_destroy,
@@ -10181,6 +10182,47 @@ mlx5_flow_get_aged_flows(struct rte_eth_dev *dev, void **contexts,
 		"port %u get aged flows is not supported.",
 		 dev->data->port_id);
 	return -ENOTSUP;
+}
+
+/**
+ * Get aged-out flows per HWS queue.
+ *
+ * @param[in] dev
+ *   Pointer to the Ethernet device structure.
+ * @param[in] queue_id
+ *   Flow queue to query.
+ * @param[in] context
+ *   The address of an array of pointers to the aged-out flows contexts.
+ * @param[in] nb_countexts
+ *   The length of context array pointers.
+ * @param[out] error
+ *   Perform verbose error reporting if not NULL. Initialized in case of
+ *   error only.
+ *
+ * @return
+ *   how many contexts get in success, otherwise negative errno value.
+ *   if nb_contexts is 0, return the amount of all aged contexts.
+ *   if nb_contexts is not 0 , return the amount of aged flows reported
+ *   in the context array.
+ */
+int
+mlx5_flow_get_q_aged_flows(struct rte_eth_dev *dev, uint32_t queue_id,
+			   void **contexts, uint32_t nb_contexts,
+			   struct rte_flow_error *error)
+{
+	const struct mlx5_flow_driver_ops *fops;
+	struct rte_flow_attr attr = { 0 };
+
+	if (flow_get_drv_type(dev, &attr) == MLX5_FLOW_TYPE_HW) {
+		fops = flow_get_drv_ops(MLX5_FLOW_TYPE_HW);
+		return fops->get_q_aged_flows(dev, queue_id, contexts,
+					      nb_contexts, error);
+	}
+	DRV_LOG(ERR, "port %u queue %u get aged flows is not supported.",
+		dev->data->port_id, queue_id);
+	return rte_flow_error_set(error, ENOTSUP,
+				  RTE_FLOW_ERROR_TYPE_UNSPECIFIED, NULL,
+				  "get Q aged flows with incorrect steering mode");
 }
 
 /* Wrapper for driver action_validate op callback */

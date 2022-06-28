@@ -649,12 +649,45 @@ struct mlx5_geneve_tlv_option_resource {
 /* Current time in seconds. */
 #define MLX5_CURR_TIME_SEC	(rte_rdtsc() / rte_get_tsc_hz())
 
+/*
+ * HW steering queue oriented AGE info.
+ * It contains an array of rings, one for each HWS queue.
+ */
+struct mlx5_hws_q_age_info {
+	uint16_t nb_rings; /* Number of aged-out ring lists. */
+	struct rte_ring *aged_lists[]; /* Aged-out lists. */
+};
+
+/*
+ * HW steering AGE info.
+ * It has a ring list containing all aged out flow rules.
+ */
+struct mlx5_hws_age_info {
+	struct rte_ring *aged_list; /* Aged out lists. */
+};
+
 /* Aging information for per port. */
 struct mlx5_age_info {
 	uint8_t flags; /* Indicate if is new event or need to be triggered. */
-	struct mlx5_counters aged_counters; /* Aged counter list. */
-	struct aso_age_list aged_aso; /* Aged ASO actions list. */
-	rte_spinlock_t aged_sl; /* Aged flow list lock. */
+	union {
+		/* SW/FW steering AGE info. */
+		struct {
+			struct mlx5_counters aged_counters;
+			/* Aged counter list. */
+			struct aso_age_list aged_aso;
+			/* Aged ASO actions list. */
+			rte_spinlock_t aged_sl; /* Aged flow list lock. */
+		};
+		struct {
+			struct mlx5_indexed_pool *ages_ipool;
+			union {
+				struct mlx5_hws_age_info hw_age;
+				/* HW steering AGE info. */
+				struct mlx5_hws_q_age_info *hw_q_age;
+				/* HW steering queue oriented AGE info. */
+			};
+		};
+	};
 };
 
 /* Per port data of shared IB device. */
@@ -1710,6 +1743,7 @@ struct mlx5_priv {
 	uint32_t nb_queue; /* HW steering queue number. */
 	uint32_t hws_strict_queue:1;
 	/**< Whether all operations strictly happen on the same HWS queue. */
+	uint32_t hws_age_req:1; /**< Whether this port has AGE indexed pool. */
 	struct mlx5_hw_q *hw_q;
 	/**< HW steering queue polling mechanism job descriptor LIFO. */
 	LIST_HEAD(flow_hw_tbl, rte_flow_template_table) flow_hw_tbl;
@@ -2026,6 +2060,9 @@ int mlx5_flow_dev_dump_ipool(struct rte_eth_dev *dev, struct rte_flow *flow,
 void mlx5_flow_rxq_dynf_metadata_set(struct rte_eth_dev *dev);
 int mlx5_flow_get_aged_flows(struct rte_eth_dev *dev, void **contexts,
 			uint32_t nb_contexts, struct rte_flow_error *error);
+int mlx5_flow_get_q_aged_flows(struct rte_eth_dev *dev, uint32_t queue_id,
+			       void **contexts, uint32_t nb_contexts,
+			       struct rte_flow_error *error);
 struct rte_flow *mlx5_sft_ctrl_flow_create(struct rte_eth_dev *dev,
 					const struct rte_flow_attr *attr,
 					const struct rte_flow_item items[],

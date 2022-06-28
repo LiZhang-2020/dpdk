@@ -1246,8 +1246,6 @@ flow_hw_meter_mark_compile(struct rte_eth_dev *dev,
  *   Pointer to the rte_eth_dev structure.
  * @param[in] cfg
  *   Pointer to the table configuration.
- * @param[in] item_templates
- *   Item template array to be binded to the table.
  * @param[in/out] acts
  *   Pointer to the template HW steering DR actions.
  * @param[in] at
@@ -1256,7 +1254,7 @@ flow_hw_meter_mark_compile(struct rte_eth_dev *dev,
  *   Pointer to error structure.
  *
  * @return
- *    Table on success, NULL otherwise and rte_errno is set.
+ *   0 on success, a negative errno otherwise and rte_errno is set.
  */
 static int
 __flow_hw_actions_translate(struct rte_eth_dev *dev,
@@ -1519,7 +1517,20 @@ __flow_hw_actions_translate(struct rte_eth_dev *dev,
 							action_pos))
 				goto err;
 			break;
+		case RTE_FLOW_ACTION_TYPE_AGE:
+			action_pos = at->actions_off[actions - at->actions];
+			if (__flow_hw_act_data_general_append(priv, acts,
+							 actions->type,
+							 actions - action_start,
+							 action_pos))
+				goto err;
+			break;
 		case RTE_FLOW_ACTION_TYPE_COUNT:
+			if (at->action_flags & MLX5_FLOW_ACTION_AGE)
+				/*
+				 * The counter is created as part of AGE action.
+				 */
+				break;
 			action_pos = at->actions_off[actions - at->actions];
 			if (masks->conf &&
 			    ((const struct rte_flow_action_count *)
@@ -1928,7 +1939,8 @@ flow_hw_actions_construct(struct rte_eth_dev *dev,
 			  const uint8_t it_idx,
 			  const struct rte_flow_action actions[],
 			  struct mlx5dr_rule_action *rule_acts,
-			  uint32_t queue)
+			  uint32_t queue,
+			  struct rte_flow_error *error)
 {
 	struct mlx5_priv *priv = dev->data->dev_private;
 	struct mlx5_aso_mtr_pool *pool = priv->hws_mpool;
@@ -1940,6 +1952,7 @@ flow_hw_actions_construct(struct rte_eth_dev *dev,
 	const struct rte_flow_item *enc_item = NULL;
 	const struct rte_flow_action_ethdev *port_action = NULL;
 	const struct rte_flow_action_meter *meter = NULL;
+	const struct rte_flow_action_age *age = NULL;
 	uint8_t *buf = job->encap_data;
 	struct rte_flow_attr attr = {
 		.ingress = 1,
@@ -1979,10 +1992,11 @@ flow_hw_actions_construct(struct rte_eth_dev *dev,
 		uint64_t item_flags;
 		struct mlx5_hrxq *hrxq;
 		struct mlx5_hw_jump_action *jump;
-		int ret;
 		uint32_t ct_idx;
+		uint32_t age_idx = 0;
 		cnt_id_t cnt_id;
 		uint32_t mtr_id;
+		int ret;
 
 		action = &actions[act_data->action_src];
 		/*
@@ -2106,9 +2120,22 @@ flow_hw_actions_construct(struct rte_eth_dev *dev,
 			if (mlx5_aso_mtr_wait(priv->sh, aso_mtr))
 				return -1;
 			break;
+		case RTE_FLOW_ACTION_TYPE_AGE:
+			age = action->conf;
+			/*
+			 * First, create the AGE parameter, then create its
+			 * counter in next case.
+			 */
+			age_idx = mlx5_hws_age_action_create(priv, queue, age,
+							     job->flow->idx,
+							     error);
+			if (age_idx == 0)
+				return -rte_errno;
+			job->flow->age_idx = age_idx;
+			/* Fall-through. */
 		case RTE_FLOW_ACTION_TYPE_COUNT:
 			ret = mlx5_hws_cnt_pool_get(priv->hws_cpool, &queue,
-						    &cnt_id, 0);
+						    &cnt_id, age_idx);
 			if (ret != 0)
 				return ret;
 			ret = mlx5_hws_cnt_pool_get_action_offset
@@ -2309,8 +2336,10 @@ flow_hw_async_flow_create(struct rte_eth_dev *dev,
 	 * No need to copy and contrust a new "actions" list based on the
 	 * user's input, in order to save the cost.
 	 */
-	if (flow_hw_actions_construct(dev, job, &table->ats[action_template_index],
-				      pattern_template_index, actions, rule_acts, queue)) {
+	if (flow_hw_actions_construct(dev, job,
+				      &table->ats[action_template_index],
+				      pattern_template_index, actions,
+				      rule_acts, queue, error)) {
 		rte_errno = EINVAL;
 		goto free;
 	}
@@ -2447,6 +2476,11 @@ flow_hw_pull(struct rte_eth_dev *dev,
 				mlx5_hws_cnt_pool_put(priv->hws_cpool, &queue,
 						&job->flow->cnt_id);
 				job->flow->cnt_id = 0;
+			}
+			if (job->flow->age_idx) {
+				mlx5_hws_age_action_destroy(priv,
+							    job->flow->age_idx);
+				job->flow->age_idx = 0;
 			}
 			if (job->flow->mtr_id) {
 				mlx5_ipool_free(pool->idx_pool,	job->flow->mtr_id);
@@ -3106,7 +3140,7 @@ flow_hw_validate_action_represented_port(struct rte_eth_dev *dev,
 }
 
 /**
- * Validate count action.
+ * Validate AGE action.
  *
  * @param[in] dev
  *   Pointer to rte_eth_dev structure.
@@ -3114,6 +3148,59 @@ flow_hw_validate_action_represented_port(struct rte_eth_dev *dev,
  *   Pointer to the indirect action.
  * @param[in] action_flags
  *   Holds the actions detected until now.
+ * @param[in] cnt_shared_by_mask
+ *   Indicator if this list has a COUNT action shared by its mask.
+ * @param[out] error
+ *   Pointer to error structure.
+ *
+ * @return
+ *   0 on success, a negative errno value otherwise and rte_errno is set.
+ */
+static int
+flow_hw_validate_action_age(struct rte_eth_dev *dev,
+			    const struct rte_flow_action *action,
+			    uint64_t action_flags, bool cnt_shared_by_mask,
+			    struct rte_flow_error *error)
+{
+	struct mlx5_priv *priv = dev->data->dev_private;
+	struct mlx5_age_info *age_info = GET_PORT_AGE_INFO(priv);
+
+	if (!priv->sh->cdev->config.devx)
+		return rte_flow_error_set(error, ENOTSUP,
+					  RTE_FLOW_ERROR_TYPE_UNSPECIFIED,
+					  NULL, "AGE action not supported");
+	if (age_info->ages_ipool == NULL)
+		return rte_flow_error_set(error, EINVAL,
+					  RTE_FLOW_ERROR_TYPE_ACTION, NULL,
+					  "aging pool not initialized");
+	if (action_flags & MLX5_FLOW_ACTION_AGE)
+		return rte_flow_error_set(error, EINVAL,
+					  RTE_FLOW_ERROR_TYPE_ACTION, action,
+					  "duplicate AGE actions set");
+	if (cnt_shared_by_mask)
+		return rte_flow_error_set(error, EINVAL,
+					  RTE_FLOW_ERROR_TYPE_ACTION, action,
+					  "AGE and COUNT action shared by mask combination is not supported");
+	if (action_flags & MLX5_FLOW_ACTION_INDIRECT_COUNT)
+		return rte_flow_error_set(error, EINVAL,
+					  RTE_FLOW_ERROR_TYPE_ACTION, action,
+					  "AGE and indirect count combination is not supported");
+	return 0;
+}
+
+/**
+ * Validate count action.
+ *
+ * @param[in] dev
+ *   Pointer to rte_eth_dev structure.
+ * @param[in] action
+ *   Pointer to the indirect action.
+ * @param[in] mask
+ *   Pointer to the indirect action mask.
+ * @param[in] action_flags
+ *   Holds the actions detected until now.
+ * @param[in] shared
+ *   Indicator if action is shared.
  * @param[out] error
  *   Pointer to error structure.
  *
@@ -3123,10 +3210,12 @@ flow_hw_validate_action_represented_port(struct rte_eth_dev *dev,
 static int
 flow_hw_validate_action_count(struct rte_eth_dev *dev,
 			      const struct rte_flow_action *action,
-			      uint64_t action_flags,
+			      const struct rte_flow_action *mask,
+			      uint64_t action_flags, bool shared,
 			      struct rte_flow_error *error)
 {
 	struct mlx5_priv *priv = dev->data->dev_private;
+	const struct rte_flow_action_count *count = mask->conf;
 
 	if (!priv->sh->cdev->config.devx)
 		return rte_flow_error_set(error, ENOTSUP,
@@ -3141,6 +3230,14 @@ flow_hw_validate_action_count(struct rte_eth_dev *dev,
 		return rte_flow_error_set(error, EINVAL,
 					  RTE_FLOW_ERROR_TYPE_ACTION, action,
 					  "duplicate count actions set");
+	if (count && count->id && (action_flags & MLX5_FLOW_ACTION_AGE))
+		return rte_flow_error_set(error, EINVAL,
+					  RTE_FLOW_ERROR_TYPE_ACTION, mask,
+					  "AGE and COUNT action shared by mask combination is not supported");
+	if (shared && (action_flags & MLX5_FLOW_ACTION_AGE))
+		return rte_flow_error_set(error, EINVAL,
+					  RTE_FLOW_ERROR_TYPE_ACTION, action,
+					  "AGE and indirect count combination is not supported");
 	return 0;
 }
 
@@ -3190,8 +3287,8 @@ flow_hw_validate_action_indirect(struct rte_eth_dev *dev,
 		*action_flags |= MLX5_FLOW_ACTION_CT;
 		break;
 	case RTE_FLOW_ACTION_TYPE_COUNT:
-		ret = flow_hw_validate_action_count(dev, action, *action_flags,
-						    error);
+		ret = flow_hw_validate_action_count(dev, action, mask,
+						    *action_flags, true, error);
 		if (ret < 0)
 			return ret;
 		*action_flags |= MLX5_FLOW_ACTION_INDIRECT_COUNT;
@@ -3312,6 +3409,8 @@ mlx5_flow_hw_actions_validate(struct rte_eth_dev *dev,
 			      struct rte_flow_error *error)
 {
 	struct mlx5_priv *priv = dev->data->dev_private;
+	const struct rte_flow_action_count *count_mask = NULL;
+	bool cnt_shared_by_mask = false;
 	uint64_t action_flags = 0;
 	uint16_t i;
 	bool actions_end = false;
@@ -3412,12 +3511,24 @@ mlx5_flow_hw_actions_validate(struct rte_eth_dev *dev,
 				return ret;
 			action_flags |= MLX5_FLOW_ACTION_PORT_ID;
 			break;
-		case RTE_FLOW_ACTION_TYPE_COUNT:
-			ret = flow_hw_validate_action_count(dev, action,
-							    action_flags,
-							    error);
+		case RTE_FLOW_ACTION_TYPE_AGE:
+			if (count_mask && count_mask->id)
+				cnt_shared_by_mask = true;
+			ret = flow_hw_validate_action_age(dev, action,
+							  action_flags,
+							  cnt_shared_by_mask,
+							  error);
 			if (ret < 0)
 				return ret;
+			action_flags |= MLX5_FLOW_ACTION_AGE;
+			break;
+		case RTE_FLOW_ACTION_TYPE_COUNT:
+			ret = flow_hw_validate_action_count(dev, action, mask,
+							    action_flags,
+							    false, error);
+			if (ret < 0)
+				return ret;
+			count_mask = mask->conf;
 			action_flags |= MLX5_FLOW_ACTION_COUNT;
 			break;
 		case RTE_FLOW_ACTION_TYPE_CONNTRACK:
@@ -3479,7 +3590,6 @@ static enum mlx5dr_action_type mlx5_hw_dr_action_types[] = {
 	[RTE_FLOW_ACTION_TYPE_NVGRE_DECAP] = MLX5DR_ACTION_TYP_TNL_L2_TO_L2,
 	[RTE_FLOW_ACTION_TYPE_MODIFY_FIELD] = MLX5DR_ACTION_TYP_MODIFY_HDR,
 	[RTE_FLOW_ACTION_TYPE_REPRESENTED_PORT] = MLX5DR_ACTION_TYP_VPORT,
-	[RTE_FLOW_ACTION_TYPE_COUNT] = MLX5DR_ACTION_TYP_CTR,
 	[RTE_FLOW_ACTION_TYPE_CONNTRACK] = MLX5DR_ACTION_TYP_ASO_CT,
 	[RTE_FLOW_ACTION_TYPE_OF_POP_VLAN] = MLX5DR_ACTION_TYP_POP_VLAN,
 	[RTE_FLOW_ACTION_TYPE_OF_PUSH_VLAN] = MLX5DR_ACTION_TYP_PUSH_VLAN,
@@ -3548,6 +3658,7 @@ flow_hw_dr_actions_template_create(struct rte_flow_actions_template *at)
 	enum mlx5dr_action_type reformat_act_type = MLX5DR_ACTION_TYP_TNL_L2_TO_L2;
 	uint16_t reformat_off = UINT16_MAX;
 	uint16_t mhdr_off = UINT16_MAX;
+	uint16_t cnt_off = UINT16_MAX;
 	int ret;
 	for (i = 0, curr_off = 0; at->actions[i].type != RTE_FLOW_ACTION_TYPE_END; ++i) {
 		const struct rte_flow_action_raw_encap *raw_encap_data;
@@ -3617,6 +3728,19 @@ flow_hw_dr_actions_template_create(struct rte_flow_actions_template *at)
 			action_types[curr_off++] = MLX5DR_ACTION_TYP_ASO_METER;
 			if (curr_off >= MLX5_HW_MAX_ACTS)
 				goto err_actions_num;
+			break;
+		case RTE_FLOW_ACTION_TYPE_AGE:
+		case RTE_FLOW_ACTION_TYPE_COUNT:
+			/*
+			 * Both AGE and COUNT action need counter, the first
+			 * one fills the action_types array, and the second only
+			 * saves the offset.
+			 */
+			if (cnt_off == UINT16_MAX) {
+				cnt_off = curr_off++;
+				action_types[cnt_off] = MLX5DR_ACTION_TYP_CTR;
+			}
+			at->actions_off[i] = cnt_off;
 			break;
 		default:
 			type = mlx5_hw_dr_action_types[at->actions[i].type];
@@ -4264,6 +4388,7 @@ flow_hw_info_get(struct rte_eth_dev *dev,
 		port_info->max_nb_meter_policies = UINT32_MAX;
 	}
 	port_info->max_nb_counters = priv->sh->hws_max_nb_counters;
+	port_info->max_nb_aging_objects = port_info->max_nb_counters;
 	return 0;
 }
 
@@ -5622,8 +5747,26 @@ flow_hw_configure(struct rte_eth_dev *dev,
 	}
 	if (port_attr->nb_counters) {
 		priv->hws_cpool = mlx5_hws_cnt_pool_create(dev, port_attr,
-				nb_queue);
+							   nb_queue);
 		if (priv->hws_cpool == NULL)
+			goto err;
+	}
+	if (port_attr->nb_aging_objects) {
+		if (port_attr->nb_counters == 0) {
+			/*
+			 * Aging management uses counter. Number counters
+			 * requesting should take into account a counter for
+			 * each flow rules containing AGE without counter.
+			 */
+			DRV_LOG(ERR, "Port %u AGE objects are requested (%u) "
+				"without counters requesting.",
+				dev->data->port_id,
+				port_attr->nb_aging_objects);
+			rte_errno = EINVAL;
+			goto err;
+		}
+		ret = mlx5_hws_age_pool_init(dev, port_attr, nb_queue);
+		if (ret < 0)
 			goto err;
 	}
 	ret = flow_hw_create_vlan(dev);
@@ -5639,6 +5782,10 @@ err:
 		flow_hw_ct_pool_destroy(dev, priv->hws_ctpool);
 		priv->hws_ctpool = NULL;
 	}
+	if (priv->hws_age_req)
+		mlx5_hws_age_pool_destroy(priv);
+	if (priv->hws_cpool)
+		mlx5_hws_cnt_pool_destroy(priv->sh, priv->hws_cpool);
 	flow_hw_free_vport_actions(priv);
 	for (i = 0; i < MLX5_HW_ACTION_FLAG_MAX; i++) {
 		if (priv->hw_drop[i])
@@ -5711,6 +5858,8 @@ flow_hw_resource_release(struct rte_eth_dev *dev)
 		mlx5_ipool_destroy(priv->acts_ipool);
 		priv->acts_ipool = NULL;
 	}
+	if (priv->hws_age_req)
+		mlx5_hws_age_pool_destroy(priv);
 	if (priv->hws_cpool)
 		mlx5_hws_cnt_pool_destroy(priv->sh, priv->hws_cpool);
 	if (priv->hws_ctpool) {
@@ -6430,6 +6579,66 @@ flow_hw_action_query(struct rte_eth_dev *dev,
 	}
 }
 
+/**
+ * Get aged-out flows of a given port on the given HWS flow queue.
+ *
+ * @param[in] dev
+ *   Pointer to the Ethernet device structure.
+ * @param[in] queue_id
+ *   Flow queue to query. Ignored when RTE_FLOW_PORT_FLAG_STRICT_QUEUE not set.
+ * @param[in, out] contexts
+ *   The address of an array of pointers to the aged-out flows contexts.
+ * @param[in] nb_contexts
+ *   The length of context array pointers.
+ * @param[out] error
+ *   Perform verbose error reporting if not NULL. Initialized in case of
+ *   error only.
+ *
+ * @return
+ *   if nb_contexts is 0, return the amount of all aged contexts.
+ *   if nb_contexts is not 0 , return the amount of aged flows reported
+ *   in the context array, otherwise negative errno value.
+ */
+static int
+flow_hw_get_q_aged_flows(struct rte_eth_dev *dev, uint32_t queue_id,
+			 void **contexts, uint32_t nb_contexts,
+			 struct rte_flow_error *error)
+{
+	struct mlx5_priv *priv = dev->data->dev_private;
+	struct mlx5_age_info *age_info = GET_PORT_AGE_INFO(priv);
+	struct rte_ring *r;
+	int nb_flows = 0;
+
+	if (nb_contexts && !contexts)
+		return rte_flow_error_set(error, EINVAL,
+					  RTE_FLOW_ERROR_TYPE_UNSPECIFIED,
+					  NULL, "empty context");
+	if (priv->hws_strict_queue) {
+		if (queue_id >= age_info->hw_q_age->nb_rings)
+			return rte_flow_error_set(error, EINVAL,
+						RTE_FLOW_ERROR_TYPE_UNSPECIFIED,
+						NULL, "invalid queue id");
+		r = age_info->hw_q_age->aged_lists[queue_id];
+	} else {
+		r = age_info->hw_age.aged_list;
+		MLX5_AGE_SET(age_info, MLX5_AGE_TRIGGER);
+	}
+	if (nb_contexts == 0)
+		return rte_ring_count(r);
+	while ((uint32_t)nb_flows < nb_contexts) {
+		uint32_t age_idx;
+
+		if (rte_ring_dequeue_elem(r, &age_idx, sizeof(uint32_t)) < 0)
+			break;
+		/* get the AGE context if the aged-out index is still valid. */
+		contexts[nb_flows] = mlx5_hws_age_context_get(priv, age_idx);
+		if (!contexts[nb_flows])
+			continue;
+		nb_flows++;
+	}
+	return nb_flows;
+}
+
 const struct mlx5_flow_driver_ops mlx5_flow_hw_drv_ops = {
 	.info_get = flow_hw_info_get,
 	.configure = flow_hw_configure,
@@ -6454,6 +6663,7 @@ const struct mlx5_flow_driver_ops mlx5_flow_hw_drv_ops = {
 	.action_update = flow_hw_action_update,
 	.action_query = flow_hw_action_query,
 	.query = flow_hw_query,
+	.get_q_aged_flows = flow_hw_get_q_aged_flows,
 };
 
 /**
