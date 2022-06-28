@@ -1916,10 +1916,10 @@ mlx5_aso_meter_by_idx(struct mlx5_priv *priv, uint32_t idx)
 	struct mlx5_aso_mtr_pools_mng *pools_mng =
 				&priv->sh->mtrmng->pools_mng;
 
-	if (priv->mtr_bulk.aso)
-		return priv->mtr_bulk.aso + idx;
 	/* Decrease to original index. */
 	idx--;
+	if (priv->mtr_bulk.aso)
+		return priv->mtr_bulk.aso + idx;
 	MLX5_ASSERT(idx / MLX5_ASO_MTRS_PER_POOL < pools_mng->n);
 	rte_rwlock_read_lock(&pools_mng->resize_mtrwl);
 	pool = pools_mng->pools[idx / MLX5_ASO_MTRS_PER_POOL];

@@ -3016,7 +3016,7 @@ mlx5_flow_meter_flush(struct rte_eth_dev *dev, struct rte_mtr_error *error)
 		}
 	}
 	if (priv->mtr_bulk.aso) {
-		for (i = 0; i < priv->mtr_config.nb_meter_profiles; i++) {
+		for (i = 1; i <= priv->mtr_config.nb_meter_profiles; i++) {
 			aso_mtr = mlx5_aso_meter_by_idx(priv, i);
 			fm = &aso_mtr->fm;
 			if (fm->initialized)
