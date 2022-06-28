@@ -32,7 +32,7 @@ from pydiru.providers.mlx5.steering.mlx5dr_devx_objects import Mlx5drDevxObj
 import pydiru.providers.mlx5.steering.mlx5dr_enums as me
 
 from .prm_structs import Tirc, CreateTirIn, AsoCtrl, AsoData, CTAsoData
-from .utils import MAX_DIFF_PACKETS, POLLING_TIMEOUT
+from .utils import MAX_DIFF_PACKETS, POLLING_TIMEOUT, create_sipv4_rte_items
 from args_parser import parser
 
 NUM_OF_QUEUES = 16
@@ -242,7 +242,7 @@ class BaseDrResources(object):
         if action_types_list is None:
             action_types_list = [[me.MLX5DR_ACTION_TYP_TIR, me.MLX5DR_ACTION_TYP_LAST]]
         if rte_items is None:
-            rte_items = self.create_sipv4_rte_item()
+            rte_items = create_sipv4_rte_items()
         self.root_table = self.create_table(0, table_type=table_type)
         self.table = self.create_table(table_type=table_type)
         root_rte_items = root_rte_items if root_rte_items is not None else rte_items
