@@ -1507,6 +1507,8 @@ struct mlx5_txq_obj {
 			struct mlx5_devx_obj *sq;
 			/* DevX object for Sx queue. */
 			struct mlx5_devx_obj *tis; /* The TIS object. */
+			void *umem_buf_wq_buffer;
+			struct mlx5dv_devx_umem *umem_obj_wq_buffer;
 		};
 		struct {
 			struct rte_eth_dev *dev;
