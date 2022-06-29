@@ -3485,6 +3485,7 @@ flow_hw_pattern_validate(struct rte_eth_dev *dev,
 		case RTE_FLOW_ITEM_TYPE_ICMP:
 		case RTE_FLOW_ITEM_TYPE_ICMP6:
 		case RTE_FLOW_ITEM_TYPE_CONNTRACK:
+		case RTE_FLOW_ITEM_TYPE_INTEGRITY:
 			break;
 		case RTE_FLOW_ITEM_TYPE_END:
 			items_end = true;
