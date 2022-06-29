@@ -2376,8 +2376,9 @@ flow_hw_table_create(struct rte_eth_dev *dev,
 		cfg.per_core_cache = MLX5_HW_TABLE_FLOW_CACHE_MIN;
 	}
 	/* Check if we requires too many templates. */
-	if (nb_item_templates > max_tpl ||
-	    nb_action_templates > MLX5_HW_TBL_MAX_ACTION_TEMPLATE) {
+	if (nb_item_templates > max_tpl || attr->flow_attr.transfer_mode > 2 ||
+	    nb_action_templates > MLX5_HW_TBL_MAX_ACTION_TEMPLATE ||
+	    (attr->flow_attr.transfer_mode && !attr->flow_attr.transfer)) {
 		rte_errno = EINVAL;
 		goto error;
 	}
@@ -2400,6 +2401,9 @@ flow_hw_table_create(struct rte_eth_dev *dev,
 	matcher_attr.priority = attr->flow_attr.priority;
 	matcher_attr.optimize_using_rule_idx = true;
 	matcher_attr.mode = MLX5DR_MATCHER_RESOURCE_MODE_RULE;
+	if (attr->flow_attr.transfer_mode)
+		matcher_attr.optimize_flow_src = attr->flow_attr.transfer_mode == 1 ?
+				MLX5DR_MATCHER_FLOW_SRC_WIRE : MLX5DR_MATCHER_FLOW_SRC_VPORT;
 	matcher_attr.rule.num_log = rte_log2_u32(nb_flows);
 	/* Build the item template. */
 	for (i = 0; i < nb_item_templates; i++) {

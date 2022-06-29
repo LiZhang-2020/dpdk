@@ -4,12 +4,20 @@
 
 #include "mlx5dr_internal.h"
 
-static void mlx5dr_rule_skip(struct mlx5dr_match_template *mt,
+static void mlx5dr_rule_skip(struct mlx5dr_matcher *matcher,
 			     const struct rte_flow_item *items,
 			     bool *skip_rx, bool *skip_tx)
 {
+	struct mlx5dr_match_template *mt = matcher->mt[0];
 	const struct rte_flow_item_ethdev *v;
 	const struct flow_hw_port_info *vport;
+
+	/* flow_src is the 1st priority */
+	if (matcher->attr.optimize_flow_src) {
+		*skip_tx = matcher->attr.optimize_flow_src == MLX5DR_MATCHER_FLOW_SRC_WIRE;
+		*skip_rx = matcher->attr.optimize_flow_src == MLX5DR_MATCHER_FLOW_SRC_VPORT;
+		return;
+	}
 
 	/* By default FDB rules are added to both RX and TX */
 	*skip_rx = false;
@@ -55,7 +63,7 @@ static void mlx5dr_rule_init_dep_wqe(struct mlx5dr_send_ring_dep_wqe *dep_wqe,
 		break;
 
 	case MLX5DR_TABLE_TYPE_FDB:
-		mlx5dr_rule_skip(matcher->mt[0], items, &skip_rx, &skip_tx);
+		mlx5dr_rule_skip(matcher, items, &skip_rx, &skip_tx);
 
 		if (!skip_rx) {
 			dep_wqe->rtc_0 = matcher->match_ste.rtc_0->id;

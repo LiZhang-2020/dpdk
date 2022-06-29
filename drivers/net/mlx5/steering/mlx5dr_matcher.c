@@ -150,6 +150,25 @@ static int mlx5dr_matcher_disconnect(struct mlx5dr_matcher *matcher)
 	return 0;
 }
 
+static void mlx5dr_matcher_set_rtc_attr_sz(struct mlx5dr_matcher *matcher,
+					   struct mlx5dr_cmd_rtc_create_attr *rtc_attr,
+					   bool is_match_rtc,
+					   bool is_mirror)
+{
+	struct mlx5dr_pool_chunk *ste = &matcher->action_ste.ste;
+
+	if ((matcher->attr.optimize_flow_src == MLX5DR_MATCHER_FLOW_SRC_VPORT && !is_mirror) ||
+	    (matcher->attr.optimize_flow_src == MLX5DR_MATCHER_FLOW_SRC_WIRE && is_mirror)) {
+		/* Optimize FDB RTC */
+		rtc_attr->log_size = 0;
+		rtc_attr->log_depth = 0;
+	} else {
+		/* Keep original values */
+		rtc_attr->log_size = is_match_rtc ? matcher->attr.table.sz_row_log : ste->order;
+		rtc_attr->log_depth = is_match_rtc ? matcher->attr.table.sz_col_log : 0;
+	}
+}
+
 static int mlx5dr_matcher_create_rtc(struct mlx5dr_matcher *matcher,
 				     bool is_match_rtc)
 {
@@ -206,6 +225,7 @@ static int mlx5dr_matcher_create_rtc(struct mlx5dr_matcher *matcher,
 	rtc_attr.ste_base = devx_obj->id;
 	rtc_attr.ste_offset = ste->offset;
 	rtc_attr.table_type = mlx5dr_table_get_res_fw_ft_type(tbl->type, false);
+	mlx5dr_matcher_set_rtc_attr_sz(matcher, &rtc_attr, is_match_rtc, false);
 
 	/* STC is a single resource (devx_obj), use any STC for the ID */
 	stc_pool = ctx->stc_pool[tbl->type];
@@ -226,6 +246,7 @@ static int mlx5dr_matcher_create_rtc(struct mlx5dr_matcher *matcher,
 
 		devx_obj = mlx5dr_pool_chunk_get_base_devx_obj_mirror(stc_pool, &default_stc->default_hit);
 		rtc_attr.stc_base = devx_obj->id;
+		mlx5dr_matcher_set_rtc_attr_sz(matcher, &rtc_attr, is_match_rtc, true);
 
 		*rtc_1 = mlx5dr_cmd_rtc_create(ctx->ibv_ctx, &rtc_attr);
 		if (!*rtc_1) {
@@ -272,6 +293,21 @@ static void mlx5dr_matcher_destroy_rtc(struct mlx5dr_matcher *matcher,
 		mlx5dr_pool_chunk_free(ste_pool, ste);
 }
 
+static void mlx5dr_matcher_set_pool_attr(struct mlx5dr_pool_attr *attr,
+					 struct mlx5dr_matcher *matcher)
+{
+	switch (matcher->attr.optimize_flow_src) {
+	case MLX5DR_MATCHER_FLOW_SRC_VPORT:
+		attr->opt_type = MLX5DR_POOL_OPTIMIZE_ORIG;
+		break;
+	case MLX5DR_MATCHER_FLOW_SRC_WIRE:
+		attr->opt_type = MLX5DR_POOL_OPTIMIZE_MIRROR;
+		break;
+	default:
+		break;
+	}
+}
+
 static int mlx5dr_matcher_bind_at(struct mlx5dr_matcher *matcher)
 {
 	bool is_jumbo = mlx5dr_definer_is_jumbo(matcher->mt[0]->definer);
@@ -316,6 +352,7 @@ static int mlx5dr_matcher_bind_at(struct mlx5dr_matcher *matcher)
 	pool_attr.flags = MLX5DR_POOL_FLAGS_FOR_STE_ACTION_POOL;
 	pool_attr.alloc_log_sz = rte_log2_u32(matcher->action_ste.max_stes) +
 				 matcher->attr.table.sz_row_log;
+	mlx5dr_matcher_set_pool_attr(&pool_attr, matcher);
 	matcher->action_ste.pool = mlx5dr_pool_create(ctx, &pool_attr);
 	if (!matcher->action_ste.pool) {
 		DR_LOG(ERR, "Failed to create action ste pool");
@@ -398,6 +435,7 @@ static int mlx5dr_matcher_bind_mt(struct mlx5dr_matcher *matcher)
 	pool_attr.alloc_log_sz = matcher->attr.table.sz_col_log +
 		matcher->attr.table.sz_row_log;
 	pool_attr.table_type = matcher->tbl->type;
+	mlx5dr_matcher_set_pool_attr(&pool_attr, matcher);
 
 	matcher->match_ste.pool = mlx5dr_pool_create(ctx, &pool_attr);
 	if (!matcher->match_ste.pool) {
@@ -426,12 +464,23 @@ static void mlx5dr_matcher_unbind_mt(struct mlx5dr_matcher *matcher)
 
 static int
 mlx5dr_matcher_process_attr(struct mlx5dr_cmd_query_caps *caps,
-			    struct mlx5dr_matcher_attr *attr,
+			    struct mlx5dr_matcher *matcher,
 			    bool is_root)
 {
+	struct mlx5dr_matcher_attr *attr = &matcher->attr;
+
+	if (matcher->tbl->type != MLX5DR_TABLE_TYPE_FDB  && attr->optimize_flow_src) {
+		DR_LOG(ERR, "NIC domain doesn't support flow_src");
+		goto not_supported;
+	}
+
 	if (is_root) {
 		if (attr->mode != MLX5DR_MATCHER_RESOURCE_MODE_RULE) {
 			DR_LOG(ERR, "Root matcher supports only rule resource mode");
+			goto not_supported;
+		}
+		if (attr->optimize_flow_src) {
+			DR_LOG(ERR, "Root matcher can't specify FDB direction");
 			goto not_supported;
 		}
 		return 0;
@@ -541,12 +590,13 @@ mlx5dr_matcher_create_col_matcher(struct mlx5dr_matcher *matcher)
 
 	col_matcher->attr.priority = matcher->attr.priority;
 	col_matcher->attr.mode = MLX5DR_MATCHER_RESOURCE_MODE_HTABLE;
+	col_matcher->attr.optimize_flow_src = matcher->attr.optimize_flow_src;
 	col_matcher->attr.table.sz_row_log = matcher->attr.rule.num_log;
 	col_matcher->attr.table.sz_col_log = MLX5DR_MATCHER_ASSURED_COL_TBL_DEPTH;
 	if (col_matcher->attr.table.sz_row_log > MLX5DR_MATCHER_ASSURED_ROW_RATIO)
 		col_matcher->attr.table.sz_row_log -= MLX5DR_MATCHER_ASSURED_ROW_RATIO;
 
-	ret = mlx5dr_matcher_process_attr(ctx->caps, &col_matcher->attr, false);
+	ret = mlx5dr_matcher_process_attr(ctx->caps, col_matcher, false);
 	if (ret)
 		goto free_col_matcher;
 
@@ -776,7 +826,7 @@ mlx5dr_matcher_create(struct mlx5dr_table *tbl,
 	matcher->num_of_at = num_of_at;
 	memcpy(matcher->at, at, num_of_at * sizeof(*at));
 
-	ret = mlx5dr_matcher_process_attr(tbl->ctx->caps, &matcher->attr, is_root);
+	ret = mlx5dr_matcher_process_attr(tbl->ctx->caps, matcher, is_root);
 	if (ret)
 		goto free_matcher;
 

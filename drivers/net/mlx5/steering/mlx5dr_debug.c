@@ -156,14 +156,15 @@ static int mlx5dr_debug_dump_matcher_attr(FILE *f, struct mlx5dr_matcher *matche
 	struct mlx5dr_matcher_attr *attr = &matcher->attr;
 	int ret;
 
-	ret = fprintf(f, "%d,0x%" PRIx64 ",%d,%d,%d,%d,%d\n",
+	ret = fprintf(f, "%d,0x%" PRIx64 ",%d,%d,%d,%d,%d,%d\n",
 		      MLX5DR_DEBUG_RES_TYPE_MATCHER_ATTR,
 		      (uint64_t)(uintptr_t)matcher,
 		      attr->priority,
 		      attr->mode,
 		      attr->table.sz_row_log,
 		      attr->table.sz_col_log,
-		      attr->optimize_using_rule_idx);
+		      attr->optimize_using_rule_idx,
+		      attr->optimize_flow_src);
 	if (ret < 0) {
 		rte_errno = EINVAL;
 		return rte_errno;

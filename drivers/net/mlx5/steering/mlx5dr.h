@@ -102,6 +102,12 @@ struct mlx5dr_table_attr {
 	uint32_t level;
 };
 
+enum mlx5dr_matcher_flow_src {
+	MLX5DR_MATCHER_FLOW_SRC_ANY = 0x0,
+	MLX5DR_MATCHER_FLOW_SRC_WIRE = 0x1,
+	MLX5DR_MATCHER_FLOW_SRC_VPORT = 0x2,
+};
+
 struct mlx5dr_matcher_attr {
 	/* Processing priority inside table */
 	uint32_t priority;
@@ -109,6 +115,8 @@ struct mlx5dr_matcher_attr {
 	bool optimize_using_rule_idx;
 	/* Resource mode and corresponding size */
 	enum mlx5dr_matcher_resource_mode mode;
+	/* Optimize insertion in case packet origin is the same for all rules */
+	enum mlx5dr_matcher_flow_src optimize_flow_src;
 	union {
 		struct {
 			uint8_t sz_row_log;

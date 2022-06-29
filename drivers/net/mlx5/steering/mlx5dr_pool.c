@@ -27,8 +27,8 @@ static void mlx5dr_pool_resource_free(struct mlx5dr_pool *pool,
 }
 
 static struct mlx5dr_pool_resource *
-mlx5dr_pool_crete_one_resource(struct mlx5dr_pool *pool, uint32_t log_range,
-			       uint32_t fw_ft_type)
+mlx5dr_pool_create_one_resource(struct mlx5dr_pool *pool, uint32_t log_range,
+				uint32_t fw_ft_type)
 {
 	struct mlx5dr_cmd_ste_create_attr ste_attr;
 	struct mlx5dr_cmd_stc_create_attr stc_attr;
@@ -78,10 +78,11 @@ static int
 mlx5dr_pool_resource_alloc(struct mlx5dr_pool *pool, uint32_t log_range, int idx)
 {
 	struct mlx5dr_pool_resource *resource;
-	uint32_t fw_ft_type;
+	uint32_t fw_ft_type, opt_log_range;
 
 	fw_ft_type = mlx5dr_table_get_res_fw_ft_type(pool->tbl_type, false);
-	resource = mlx5dr_pool_crete_one_resource(pool, log_range, fw_ft_type);
+	opt_log_range = pool->opt_type == MLX5DR_POOL_OPTIMIZE_ORIG ? 0 : log_range;
+	resource = mlx5dr_pool_create_one_resource(pool, opt_log_range, fw_ft_type);
 	if (!resource) {
 		DR_LOG(ERR, "Failed allocating resource");
 		return rte_errno;
@@ -92,7 +93,8 @@ mlx5dr_pool_resource_alloc(struct mlx5dr_pool *pool, uint32_t log_range, int idx
 		struct mlx5dr_pool_resource *mir_resource;
 
 		fw_ft_type = mlx5dr_table_get_res_fw_ft_type(pool->tbl_type, true);
-		mir_resource = mlx5dr_pool_crete_one_resource(pool, log_range, fw_ft_type);
+		opt_log_range = pool->opt_type == MLX5DR_POOL_OPTIMIZE_MIRROR ? 0 : log_range;
+		mir_resource = mlx5dr_pool_create_one_resource(pool, opt_log_range, fw_ft_type);
 		if (!mir_resource) {
 			DR_LOG(ERR, "Failed allocating mirrored resource");
 			mlx5dr_pool_free_one_resource(resource);
@@ -627,6 +629,7 @@ mlx5dr_pool_create(struct mlx5dr_context *ctx, struct mlx5dr_pool_attr *pool_att
 	pool->alloc_log_sz = pool_attr->alloc_log_sz;
 	pool->flags = pool_attr->flags;
 	pool->tbl_type = pool_attr->table_type;
+	pool->opt_type = pool_attr->opt_type;
 
 	pthread_spin_init(&pool->lock, PTHREAD_PROCESS_PRIVATE);
 

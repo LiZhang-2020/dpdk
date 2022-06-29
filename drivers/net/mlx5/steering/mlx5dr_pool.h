@@ -54,10 +54,17 @@ enum mlx5dr_pool_flags {
 		MLX5DR_POOL_FLAGS_ALLOC_MEM_ON_CREATE,
 };
 
+enum mlx5dr_pool_optimize {
+	MLX5DR_POOL_OPTIMIZE_NONE = 0x0,
+	MLX5DR_POOL_OPTIMIZE_ORIG = 0x1,
+	MLX5DR_POOL_OPTIMIZE_MIRROR = 0x2,
+};
+
 struct mlx5dr_pool_attr {
 	enum mlx5dr_pool_type pool_type;
 	enum mlx5dr_table_type table_type;
 	enum mlx5dr_pool_flags flags;
+	enum mlx5dr_pool_optimize opt_type;
 	/* Allocation size once memory is depleted */
 	size_t alloc_log_sz;
 };
@@ -106,6 +113,7 @@ struct mlx5dr_pool {
 	pthread_spinlock_t lock;
 	size_t alloc_log_sz;
 	enum mlx5dr_table_type tbl_type;
+	enum mlx5dr_pool_optimize opt_type;
 	struct mlx5dr_pool_resource *resource[MLX5DR_POOL_RESOURCE_ARR_SZ];
 	struct mlx5dr_pool_resource *mirror_resource[MLX5DR_POOL_RESOURCE_ARR_SZ];
 	/* db */
