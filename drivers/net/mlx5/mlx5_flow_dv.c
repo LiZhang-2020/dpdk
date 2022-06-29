@@ -12470,7 +12470,7 @@ flow_dv_translate_create_conntrack(struct rte_eth_dev *dev,
 		return idx;
 	}
 	ct = flow_aso_ct_get_by_dev_idx(dev, idx);
-	if (mlx5_aso_ct_update_by_wqe(sh, ct, pro)) {
+	if (mlx5_aso_ct_update_by_wqe(sh, MLX5_HW_INV_QUEUE, ct, pro)) {
 		flow_dv_aso_ct_dev_release(dev, idx);
 		rte_flow_error_set(error, EBUSY,
 				   RTE_FLOW_ERROR_TYPE_ACTION, NULL,
@@ -13769,7 +13769,7 @@ flow_dv_translate(struct rte_eth_dev *dev,
 						NULL,
 						"Failed to get CT object.");
 #ifdef MLX5_ASO_CT_SYNC_UPDATE
-			if (mlx5_aso_ct_available(priv->sh, ct))
+			if (mlx5_aso_ct_available(priv->sh, MLX5_HW_INV_QUEUE, ct))
 				return rte_flow_error_set(error, rte_errno,
 						RTE_FLOW_ERROR_TYPE_ACTION,
 						NULL,
@@ -15450,7 +15450,8 @@ __flow_dv_action_ct_update(struct rte_eth_dev *dev, uint32_t idx,
 		ret = mlx5_validate_action_ct(dev, new_prf, error);
 		if (ret)
 			return ret;
-		ret = mlx5_aso_ct_update_by_wqe(priv->sh, ct, new_prf);
+		ret = mlx5_aso_ct_update_by_wqe(priv->sh, MLX5_HW_INV_QUEUE,
+						ct, new_prf);
 		if (ret)
 			return rte_flow_error_set(error, EIO,
 					RTE_FLOW_ERROR_TYPE_UNSPECIFIED,
@@ -15458,7 +15459,7 @@ __flow_dv_action_ct_update(struct rte_eth_dev *dev, uint32_t idx,
 					"Failed to send CT context update WQE");
 #ifdef MLX5_ASO_CT_SYNC_UPDATE
 		/* Block until ready or a failure, default is asynchronous. */
-		ret = mlx5_aso_ct_available(priv->sh, ct);
+		ret = mlx5_aso_ct_available(priv->sh, MLX5_HW_INV_QUEUE, ct);
 		if (ret)
 			rte_flow_error_set(error, rte_errno,
 					   RTE_FLOW_ERROR_TYPE_UNSPECIFIED,
@@ -16280,7 +16281,7 @@ flow_dv_action_query(struct rte_eth_dev *dev,
 							ct->peer;
 		((struct rte_flow_action_conntrack *)data)->is_original_dir =
 							ct->is_original;
-		if (mlx5_aso_ct_query_by_wqe(priv->sh, ct, data))
+		if (mlx5_aso_ct_query_by_wqe(priv->sh, MLX5_HW_INV_QUEUE, ct, data))
 			return rte_flow_error_set(error, EIO,
 					RTE_FLOW_ERROR_TYPE_UNSPECIFIED,
 					NULL,

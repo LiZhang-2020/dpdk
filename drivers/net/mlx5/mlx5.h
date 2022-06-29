@@ -38,6 +38,8 @@
 
 #define MLX5_SH(dev) (((struct mlx5_priv *)(dev)->data->dev_private)->sh)
 
+#define MLX5_HW_INV_QUEUE UINT32_MAX
+
 /*
  * Number of modification commands.
  * The maximal actions amount in FW is some constant, and it is 16 in the
@@ -1245,13 +1247,11 @@ struct mlx5_aso_ct_pool {
 		struct mlx5dr_action *dr_action;
 		/* HWS action. */
 	};
+	struct mlx5_aso_sq *sq; /* Async ASO SQ. */
+	struct mlx5_aso_sq *shared_sq; /* Shared ASO SQ. */
 	struct mlx5_aso_ct_action actions[0];
 	/* CT action structures bulk. */
 };
-
-#ifdef PEDANTIC
-#pragma GCC diagnostic error "-Wpedantic"
-#endif
 
 LIST_HEAD(aso_ct_list, mlx5_aso_ct_action);
 
@@ -1262,11 +1262,16 @@ struct mlx5_aso_ct_pools_mng {
 	struct mlx5_aso_ct_pool **pools;
 	uint32_t n; /* Total number of pools. */
 	uint32_t next; /* Number of pools in use, index of next free pool. */
+	uint32_t nb_sq; /* Number of ASO SQ. */
 	rte_spinlock_t ct_sl; /* The ASO CT free list lock. */
 	rte_rwlock_t resize_rwl; /* The ASO CT pool resize lock. */
 	struct aso_ct_list free_cts; /* Free ASO CT objects list. */
-	struct mlx5_aso_sq aso_sqs[MLX5_ASO_CT_SQ_NUM]; /* ASO queue objects. */
+	struct mlx5_aso_sq aso_sqs[0]; /* ASO queue objects. */
 };
+
+#ifdef PEDANTIC
+#pragma GCC diagnostic error "-Wpedantic"
+#endif
 
 /* LAG attr. */
 struct mlx5_lag {
@@ -1418,8 +1423,7 @@ struct mlx5_dev_ctx_shared {
 	rte_spinlock_t geneve_tlv_opt_sl; /* Lock for geneve tlv resource */
 	struct mlx5_flow_mtr_mng *mtrmng;
 	/* Meter management structure. */
-	struct mlx5_aso_ct_pools_mng *ct_mng;
-	/* Management data for ASO connection tracking. */
+	struct mlx5_aso_ct_pools_mng *ct_mng; /* Management data for ASO CT in HWS only. */
 	struct mlx5_lb_ctx self_lb; /* QP to enable self loopback for Devx. */
 	unsigned int flow_max_priority;
 	enum modify_reg flow_mreg_c[MLX5_MREG_C_NUM];
@@ -1752,6 +1756,8 @@ struct mlx5_priv {
 	/**< HW steering create ongoing rte flow table list header. */
 	struct mlx5_indexed_pool *acts_ipool; /* Action data indexed pool. */
 	struct mlx5_hws_cnt_pool *hws_cpool; /* HW steering's counter pool. */
+	struct mlx5_aso_ct_pools_mng *ct_mng;
+	/* Management data for ASO connection tracking. */
 	struct mlx5_aso_ct_pool *hws_ctpool; /* HW steering's CT pool. */
 	struct mlx5_aso_mtr_pool *hws_mpool; /* Meter mark indexed pool. */
 };
@@ -2168,22 +2174,26 @@ int mlx5_aso_meter_update_by_wqe(struct mlx5_dev_ctx_shared *sh,
 		struct mlx5_aso_mtr *mtr, struct mlx5_mtr_bulk *bulk);
 int mlx5_aso_mtr_wait(struct mlx5_dev_ctx_shared *sh,
 		struct mlx5_aso_mtr *mtr);
-int mlx5_aso_ct_update_by_wqe(struct mlx5_dev_ctx_shared *sh,
+int mlx5_aso_ct_update_by_wqe(struct mlx5_dev_ctx_shared *sh, uint32_t queue,
 			      struct mlx5_aso_ct_action *ct,
 			      const struct rte_flow_action_conntrack *profile);
-int mlx5_aso_ct_wait_ready(struct mlx5_dev_ctx_shared *sh,
+int mlx5_aso_ct_wait_ready(struct mlx5_dev_ctx_shared *sh, uint32_t queue,
 			   struct mlx5_aso_ct_action *ct, char *buf);
-int mlx5_aso_ct_query_by_wqe(struct mlx5_dev_ctx_shared *sh,
+int mlx5_aso_ct_query_by_wqe(struct mlx5_dev_ctx_shared *sh, uint32_t queue,
 			     struct mlx5_aso_ct_action *ct,
 			     struct rte_flow_action_conntrack *profile);
-int mlx5_aso_ct_available(struct mlx5_dev_ctx_shared *sh,
+int mlx5_aso_ct_available(struct mlx5_dev_ctx_shared *sh, uint32_t queue,
 			  struct mlx5_aso_ct_action *ct);
 void mlx5_sft_deactivate(struct rte_eth_dev *dev);
 int mlx5_aso_cnt_queue_init(struct mlx5_dev_ctx_shared *sh);
 void mlx5_aso_cnt_queue_uninit(struct mlx5_dev_ctx_shared *sh);
 int mlx5_aso_cnt_query(struct mlx5_dev_ctx_shared *sh,
 		struct mlx5_hws_cnt_pool *cpool);
-
+int mlx5_aso_ct_queue_init(struct mlx5_dev_ctx_shared *sh,
+			   struct mlx5_aso_ct_pools_mng *ct_mng,
+			   uint32_t nb_queues);
+int mlx5_aso_ct_queue_uninit(struct mlx5_dev_ctx_shared *sh,
+			     struct mlx5_aso_ct_pools_mng *ct_mng);
 /* mlx5_sft.c */
 
 int mlx5_sft_ops_get(struct rte_eth_dev * dev, void * arg);

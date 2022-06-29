@@ -11,8 +11,6 @@
 #include "mlx5dr_send.h"
 #include "mlx5_hws_cnt.h"
 
-#define MLX5_HW_INV_QUEUE UINT32_MAX
-
 /* The maximum actions support in the flow. */
 #define MLX5_HW_MAX_ACTS 16
 
@@ -346,14 +344,15 @@ flow_hw_tir_action_register(struct rte_eth_dev *dev,
 }
 
 static __rte_always_inline int
-flow_hw_ct_compile(struct rte_eth_dev *dev, uint32_t idx,
+flow_hw_ct_compile(struct rte_eth_dev *dev,
+		   uint32_t queue, uint32_t idx,
 		   struct mlx5dr_rule_action *rule_act)
 {
 	struct mlx5_priv *priv = dev->data->dev_private;
 	struct mlx5_aso_ct_action *ct;
 
 	ct = mlx5_ipool_get(priv->hws_ctpool->cts, idx);
-	if (!ct || mlx5_aso_ct_available(priv->sh, ct))
+	if (!ct || mlx5_aso_ct_available(priv->sh, queue, ct))
 		return -1;
 	rule_act->action = priv->hws_ctpool->dr_action;
 	rule_act->aso_ct.offset = ct->offset;
@@ -723,7 +722,8 @@ flow_hw_shared_action_translate(struct rte_eth_dev *dev,
 		MLX5_ASSERT(0);
 		break;
 	case MLX5_INDIRECT_ACTION_TYPE_CT:
-		if (flow_hw_ct_compile(dev, idx, &acts->rule_acts[action_dst]))
+		if (flow_hw_ct_compile(dev, MLX5_HW_INV_QUEUE,
+				       idx, &acts->rule_acts[action_dst]))
 			return -1;
 		break;
 	case MLX5_INDIRECT_ACTION_TYPE_METER_MARK:
@@ -1556,7 +1556,7 @@ __flow_hw_actions_translate(struct rte_eth_dev *dev,
 			if (masks->conf) {
 				ct_idx = MLX5_ACTION_CTX_CT_GET_IDX
 					 ((uint32_t)(uintptr_t)actions->conf);
-				if (flow_hw_ct_compile(dev, ct_idx,
+				if (flow_hw_ct_compile(dev, MLX5_HW_INV_QUEUE, ct_idx,
 						       &acts->rule_acts[action_pos]))
 					goto err;
 			} else if (__flow_hw_act_data_general_append
@@ -1756,6 +1756,8 @@ flow_hw_shared_action_get(struct rte_eth_dev *dev,
  *
  * @param[in] dev
  *   Pointer to the rte_eth_dev data structure.
+ * @param[in] queue
+ *   The flow creation queue index.
  * @param[in] action
  *   Pointer to the shared indirect rte_flow action.
  * @param[in] table
@@ -1773,7 +1775,7 @@ flow_hw_shared_action_get(struct rte_eth_dev *dev,
  *    0 on success, negative value otherwise and rte_errno is set.
  */
 static __rte_always_inline int
-flow_hw_shared_action_construct(struct rte_eth_dev *dev,
+flow_hw_shared_action_construct(struct rte_eth_dev *dev, uint32_t queue,
 				const struct rte_flow_action *action,
 				struct rte_flow_template_table *table,
 				const uint8_t it_idx, uint64_t action_flags,
@@ -1858,7 +1860,7 @@ flow_hw_shared_action_construct(struct rte_eth_dev *dev,
 			return -1;
 		break;
 	case MLX5_INDIRECT_ACTION_TYPE_CT:
-		if (flow_hw_ct_compile(dev, idx, rule_act))
+		if (flow_hw_ct_compile(dev, queue, idx, rule_act))
 			return -1;
 		break;
 	case MLX5_INDIRECT_ACTION_TYPE_METER_MARK:
@@ -2066,7 +2068,7 @@ flow_hw_actions_construct(struct rte_eth_dev *dev,
 		switch (act_data->type) {
 		case RTE_FLOW_ACTION_TYPE_INDIRECT:
 			if (flow_hw_shared_action_construct
-					(dev, action, table, it_idx,
+					(dev, queue, action, table, it_idx,
 					 at->action_flags, job->flow,
 					 &rule_acts[act_data->action_dst]))
 				return -1;
@@ -2226,7 +2228,7 @@ flow_hw_actions_construct(struct rte_eth_dev *dev,
 		case RTE_FLOW_ACTION_TYPE_CONNTRACK:
 			ct_idx = MLX5_ACTION_CTX_CT_GET_IDX
 				 ((uint32_t)(uintptr_t)action->conf);
-			if (flow_hw_ct_compile(dev, ct_idx,
+			if (flow_hw_ct_compile(dev, queue, ct_idx,
 					       &rule_acts[act_data->action_dst]))
 				return -1;
 			break;
@@ -5617,6 +5619,16 @@ error:
 }
 
 static void
+flow_hw_ct_mng_destroy(struct rte_eth_dev *dev,
+		       struct mlx5_aso_ct_pools_mng *ct_mng)
+{
+	struct mlx5_priv *priv = dev->data->dev_private;
+
+	mlx5_aso_ct_queue_uninit(priv->sh, ct_mng);
+	mlx5_free(ct_mng);
+}
+
+static void
 flow_hw_ct_pool_destroy(struct rte_eth_dev *dev __rte_unused,
 			struct mlx5_aso_ct_pool *pool)
 {
@@ -5688,6 +5700,9 @@ flow_hw_ct_pool_create(struct rte_eth_dev *dev,
 	pool->cts = mlx5_ipool_create(&cfg);
 	if (!pool->cts)
 		goto err;
+	pool->sq = priv->ct_mng->aso_sqs;
+	/* Assign the last extra ASO SQ as public SQ. */
+	pool->shared_sq = &priv->ct_mng->aso_sqs[priv->nb_queue - 1];
 	return pool;
 err:
 	flow_hw_ct_pool_destroy(dev, pool);
@@ -5920,9 +5935,18 @@ flow_hw_configure(struct rte_eth_dev *dev,
 		}
 	}
 	if (port_attr->nb_cts) {
+		mem_size = sizeof(struct mlx5_aso_sq) * nb_q_updated +
+			   sizeof(*priv->ct_mng);
+		priv->ct_mng = mlx5_malloc(MLX5_MEM_ZERO, mem_size,
+					   RTE_CACHE_LINE_SIZE, SOCKET_ID_ANY);
+		if (!priv->ct_mng)
+			goto err;
+		if (mlx5_aso_ct_queue_init(priv->sh, priv->ct_mng, nb_q_updated))
+			goto err;
 		priv->hws_ctpool = flow_hw_ct_pool_create(dev, port_attr);
 		if (!priv->hws_ctpool)
 			goto err;
+		priv->sh->ct_aso_en = 1;
 	}
 	if (port_attr->nb_counters) {
 		priv->hws_cpool = mlx5_hws_cnt_pool_create(dev, port_attr,
@@ -5960,6 +5984,10 @@ err:
 	if (priv->hws_ctpool) {
 		flow_hw_ct_pool_destroy(dev, priv->hws_ctpool);
 		priv->hws_ctpool = NULL;
+	}
+	if (priv->ct_mng) {
+		flow_hw_ct_mng_destroy(dev, priv->ct_mng);
+		priv->ct_mng = NULL;
 	}
 	if (priv->hws_age_req)
 		mlx5_hws_age_pool_destroy(priv);
@@ -6044,6 +6072,10 @@ flow_hw_resource_release(struct rte_eth_dev *dev)
 	if (priv->hws_ctpool) {
 		flow_hw_ct_pool_destroy(dev, priv->hws_ctpool);
 		priv->hws_ctpool = NULL;
+	}
+	if (priv->ct_mng) {
+		flow_hw_ct_mng_destroy(dev, priv->ct_mng);
+		priv->ct_mng = NULL;
 	}
 	mlx5_free(priv->hw_q);
 	priv->hw_q = NULL;
@@ -6258,7 +6290,7 @@ flow_hw_conntrack_query(struct rte_eth_dev *dev, uint32_t idx,
 	}
 	profile->peer_port = ct->peer;
 	profile->is_original_dir = ct->is_original;
-	if (mlx5_aso_ct_query_by_wqe(priv->sh, ct, profile))
+	if (mlx5_aso_ct_query_by_wqe(priv->sh, MLX5_HW_INV_QUEUE, ct, profile))
 		return rte_flow_error_set(error, EIO,
 				RTE_FLOW_ERROR_TYPE_UNSPECIFIED,
 				NULL,
@@ -6301,7 +6333,7 @@ flow_hw_conntrack_update(struct rte_eth_dev *dev, uint32_t queue,
 		ret = mlx5_validate_action_ct(dev, new_prf, error);
 		if (ret)
 			return ret;
-		ret = mlx5_aso_ct_update_by_wqe(priv->sh, ct, new_prf);
+		ret = mlx5_aso_ct_update_by_wqe(priv->sh, queue, ct, new_prf);
 		if (ret)
 			return rte_flow_error_set(error, EIO,
 					RTE_FLOW_ERROR_TYPE_UNSPECIFIED,
@@ -6310,7 +6342,7 @@ flow_hw_conntrack_update(struct rte_eth_dev *dev, uint32_t queue,
 		if (queue != MLX5_HW_INV_QUEUE)
 			return 0;
 		/* Block until ready or a failure in synchronous mode. */
-		ret = mlx5_aso_ct_available(priv->sh, ct);
+		ret = mlx5_aso_ct_available(priv->sh, queue, ct);
 		if (ret)
 			rte_flow_error_set(error, rte_errno,
 					   RTE_FLOW_ERROR_TYPE_UNSPECIFIED,
@@ -6330,6 +6362,7 @@ flow_hw_conntrack_create(struct rte_eth_dev *dev, uint32_t queue,
 	struct mlx5_aso_ct_action *ct;
 	uint32_t ct_idx = 0;
 	int ret;
+	bool async = !!(queue != MLX5_HW_INV_QUEUE);
 
 	if (!pool) {
 		rte_flow_error_set(error, EINVAL,
@@ -6348,15 +6381,15 @@ flow_hw_conntrack_create(struct rte_eth_dev *dev, uint32_t queue,
 	ct->is_original = !!pro->is_original_dir;
 	ct->peer = pro->peer_port;
 	ct->pool = pool;
-	if (mlx5_aso_ct_update_by_wqe(priv->sh, ct, pro)) {
+	if (mlx5_aso_ct_update_by_wqe(priv->sh, queue, ct, pro)) {
 		mlx5_ipool_free(pool->cts, ct_idx);
 		rte_flow_error_set(error, EBUSY,
 				   RTE_FLOW_ERROR_TYPE_ACTION, NULL,
 				   "Failed to update CT");
 		return 0;
 	}
-	if (queue == MLX5_HW_INV_QUEUE) {
-		ret = mlx5_aso_ct_available(priv->sh, ct);
+	if (!async) {
+		ret = mlx5_aso_ct_available(priv->sh, queue, ct);
 		if (ret) {
 			mlx5_ipool_free(pool->cts, ct_idx);
 			rte_flow_error_set(error, rte_errno,
