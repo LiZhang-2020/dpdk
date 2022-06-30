@@ -485,7 +485,6 @@ mlx5_hws_cnt_shared_get(struct mlx5_hws_cnt_pool *cpool, cnt_id_t *cnt_id)
 	if (ret != 0)
 		return ret;
 	iidx = mlx5_hws_cnt_iidx(cpool, *cnt_id);
-	MLX5_ASSERT(cpool->pool[iidx].share == 0);
 	cpool->pool[iidx].share = 1;
 	return 0;
 }
