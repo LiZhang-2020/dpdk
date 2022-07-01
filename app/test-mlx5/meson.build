@@ -14,6 +14,7 @@ sources = files(
 	'mlx5dr_test_pool.c',
 	'mlx5dr_test_rte_insert.c',
 	'mlx5dr_test_vlan_action.c',
+	'mlx5dr_test_rte_insert_mult.c',
 )
 else
 	sources = files('mlx5dr_test_dummy.c')

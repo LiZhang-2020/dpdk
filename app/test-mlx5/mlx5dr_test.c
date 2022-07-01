@@ -18,6 +18,7 @@ struct test_structs {
 
 static struct test_structs tests[] = {
 	MLX5DR_INIT_TEST(rte_insert, run_test_rte_insert),
+	MLX5DR_INIT_TEST(rte_insert_mult, run_test_rte_insert_mult),
 	MLX5DR_INIT_TEST(rule_insert, run_test_rule_insert),
 	MLX5DR_INIT_TEST(rule_insert_mult, run_test_rule_insert_mult),
 	MLX5DR_INIT_TEST(post_send, run_test_post_send),
