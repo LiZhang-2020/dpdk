@@ -6447,12 +6447,63 @@ flow_hw_query_counter(const struct rte_eth_dev *dev, uint32_t counter,
 	return 0;
 }
 
+/**
+ * Query a flow rule AGE action for aging information.
+ *
+ * @param[in] dev
+ *   Pointer to Ethernet device.
+ * @param[in] age_idx
+ *   Index of AGE action parameter.
+ * @param[out] data
+ *   Data retrieved by the query.
+ * @param[out] error
+ *   Perform verbose error reporting if not NULL.
+ *
+ * @return
+ *   0 on success, a negative errno value otherwise and rte_errno is set.
+ */
 static int
-flow_hw_query(const struct rte_eth_dev *dev,
-	      struct rte_flow *flow __rte_unused,
-	      const struct rte_flow_action *actions __rte_unused,
-	      void *data __rte_unused,
-	      struct rte_flow_error *error __rte_unused)
+flow_hw_query_age(const struct rte_eth_dev *dev, uint32_t age_idx, void *data,
+		  struct rte_flow_error *error)
+{
+	struct mlx5_priv *priv = dev->data->dev_private;
+	struct mlx5_age_info *age_info = GET_PORT_AGE_INFO(priv);
+	struct mlx5_indexed_pool *ipool = age_info->ages_ipool;
+	struct mlx5_hws_age_param *param = mlx5_ipool_get(ipool, age_idx);
+	struct rte_flow_query_age *resp = data;
+
+	if (!param || !param->timeout)
+		return rte_flow_error_set(error, EINVAL,
+					  RTE_FLOW_ERROR_TYPE_UNSPECIFIED,
+					  NULL, "age data not available");
+	switch (__atomic_load_n(&param->state, __ATOMIC_RELAXED)) {
+	case HWS_AGE_AGED_OUT_REPORTED:
+	case HWS_AGE_AGED_OUT_NOT_REPORTED:
+		resp->aged = 1;
+		break;
+	case HWS_AGE_CANDIDATE:
+		resp->aged = 0;
+		break;
+	case HWS_AGE_FREE:
+		/*
+		 * When state is FREE the flow itself should be invalid.
+		 * Fall-through.
+		 */
+	default:
+		MLX5_ASSERT(0);
+		break;
+	}
+	resp->sec_since_last_hit_valid = !resp->aged;
+	if (resp->sec_since_last_hit_valid)
+		resp->sec_since_last_hit = __atomic_load_n
+				 (&param->sec_since_last_hit, __ATOMIC_RELAXED);
+	return 0;
+}
+
+static int
+flow_hw_query(const struct rte_eth_dev *dev, struct rte_flow *flow,
+	      const struct rte_flow_action *actions, void *data,
+	      struct rte_flow_error *error)
 {
 	int ret = -EINVAL;
 	struct rte_flow_hw *hw_flow = (struct rte_flow_hw *)flow;
@@ -6463,7 +6514,11 @@ flow_hw_query(const struct rte_eth_dev *dev,
 			break;
 		case RTE_FLOW_ACTION_TYPE_COUNT:
 			ret = flow_hw_query_counter(dev, hw_flow->cnt_id, data,
-						  error);
+						    error);
+			break;
+		case RTE_FLOW_ACTION_TYPE_AGE:
+			ret = flow_hw_query_age(dev, hw_flow->age_idx, data,
+						error);
 			break;
 		default:
 			return rte_flow_error_set(error, ENOTSUP,
