@@ -18,6 +18,7 @@
 
 #include <mlx5_prm.h>
 #include <mlx5_common.h>
+#include <rte_pmd_mlx5.h>
 
 #include "mlx5_autoconf.h"
 #include "mlx5_defs.h"
@@ -1387,7 +1388,7 @@ end:
  *   - EIO    - the register access command meets IO error.
  */
 static int
-mlxreg_config_host_shaper(struct rte_eth_dev *dev,
+mlxreg_host_shaper_config(struct rte_eth_dev *dev,
 			  bool lwm_triggered, uint8_t rate)
 {
 #ifdef HAVE_MLX5_MSTFLINT
@@ -1441,13 +1442,13 @@ mlxreg_config_host_shaper(struct rte_eth_dev *dev,
 #endif
 }
 
-int rte_pmd_mlx5_config_host_shaper(int port_id, uint8_t rate,
+int rte_pmd_mlx5_host_shaper_config(int port_id, uint8_t rate,
 				    uint32_t flags)
 {
 	struct rte_eth_dev *dev = &rte_eth_devices[port_id];
 	struct mlx5_priv *priv = dev->data->dev_private;
 	bool lwm_triggered =
-		!!(flags & RTE_BIT32(MLX5_HOST_SHAPER_FLAG_LWM_TRIGGERED));
+	     !!(flags & RTE_BIT32(MLX5_HOST_SHAPER_FLAG_AVAIL_THRESH_TRIGGERED));
 
 	if (!lwm_triggered) {
 		priv->sh->host_shaper_rate = rate;
@@ -1465,6 +1466,6 @@ int rte_pmd_mlx5_config_host_shaper(int port_id, uint8_t rate,
 			return -ENOTSUP;
 		}
 	}
-	return mlxreg_config_host_shaper(dev, priv->sh->lwm_triggered,
+	return mlxreg_host_shaper_config(dev, priv->sh->lwm_triggered,
 					 priv->sh->host_shaper_rate);
 }

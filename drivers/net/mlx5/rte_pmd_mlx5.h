@@ -107,15 +107,15 @@ int rte_pmd_mlx5_external_rx_queue_id_unmap(uint16_t port_id,
 
 /**
  * The rate of the host port shaper will be updated directly at the next
- * LWM event to the rate that comes with this flag set; set rate 0
- * to disable this rate update.
+ * available descriptor threshold event to the rate that comes with this flag set;
+ * set rate 0 to disable this rate update.
  * Unset this flag to update the rate of the host port shaper directly in
  * the API call; use rate 0 to disable the current shaper.
  */
-#define MLX5_HOST_SHAPER_FLAG_LWM_TRIGGERED 0
+#define MLX5_HOST_SHAPER_FLAG_AVAIL_THRESH_TRIGGERED 0
 
 /**
- * Configure an HW shaper to limit Rx rate for a host port.
+ * Configure a HW shaper to limit Tx rate for a host port.
  * The configuration will affect all the ethdev ports belonging to
  * the same rte_device.
  *
@@ -133,7 +133,7 @@ int rte_pmd_mlx5_external_rx_queue_id_unmap(uint16_t port_id,
  *   - EIO    - the register access command meets IO error.
  */
 __rte_experimental
-int rte_pmd_mlx5_config_host_shaper(int port_id, uint8_t rate, uint32_t flags);
+int rte_pmd_mlx5_host_shaper_config(int port_id, uint8_t rate, uint32_t flags);
 
 #ifdef __cplusplus
 }

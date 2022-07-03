@@ -16,7 +16,7 @@ if dlopen_ibverbs
 	]
 endif
 
-libnames = [ 'mlx5', 'ibverbs']
+libnames = [ 'mlx5', 'ibverbs' ]
 libs = []
 foreach libname:libnames
 	lib = dependency('lib' + libname, static:static_ibverbs,
@@ -217,8 +217,7 @@ has_sym_args = [
 ]
 if  libmtcr_ul_found
     has_sym_args += [
-        [  'HAVE_MLX5_MSTFLINT', 'mstflint/mtcr.h',
-            'mopen'],
+        [ 'HAVE_MLX5_MSTFLINT', 'mstflint/mtcr.h', 'mopen' ],
     ]
 endif
 config = configuration_data()
