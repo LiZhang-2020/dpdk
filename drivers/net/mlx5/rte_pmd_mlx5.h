@@ -105,38 +105,6 @@ __rte_experimental
 int rte_pmd_mlx5_external_rx_queue_id_unmap(uint16_t port_id,
 					    uint16_t dpdk_idx);
 
-typedef void (*lwm_event_rxq_limit_reached_t)(uint16_t port_id,
-					      uint16_t rxq_id);
-/**
- * Arm an Rx queue LWM(limit watermark) event.
- * While the Rx queue fullness reaches the LWM limit, the driver catches
- * an HW event and invokes the user event callback.
- * After the last event handling, the user needs to call this API again
- * to arm an additional event.
- *
- * @param[in] port_id
- *   The port identifier of the Ethernet device.
- * @param[in] rxq_id
- *   The rxq id.
- * @param[in] lwm
- *   The LWM value, is defined by a percentage of the Rx queue size.
- *   [1-99] to set a new LWM (update the old value).
- *   0 to unarm the event.
- * @param[in] cb
- *   The LWM event callback.
- *
- * @return
- *   0 : operation success.
- *   Otherwise:
- *   - ENOMEM - not enough memory to create LWM event channel.
- *   - EINVAL - the input Rxq is not created by devx.
- *   - E2BIG  - lwm is bigger than 99.
- */
-__rte_experimental
-int rte_pmd_mlx5_config_rxq_lwm(uint16_t port_id, uint16_t rxq_id,
-				uint8_t lwm,
-				lwm_event_rxq_limit_reached_t cb);
-
 /**
  * The rate of the host port shaper will be updated directly at the next
  * LWM event to the rate that comes with this flag set; set rate 0

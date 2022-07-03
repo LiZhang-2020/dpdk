@@ -89,7 +89,7 @@ Features
 - 21844 flow priorities for ingress or egress flow groups greater than 0 and for any transfer
   flow group.
 - Rx queue delay drop.
-- Rx queue LWM (Limit WaterMark) configuration.
+- Rx queue available descriptor threshold event.
 - Host shaper support.
 
 Limitations
@@ -485,9 +485,8 @@ Limitations
 
 - The NIC egress flow rules on representor port are not supported.
 
-
-- LWM:
-  - Doesn't support shared Rx queue and Hairpin Rx queue.
+- Available descriptor threshold event:
+  - Does not support shared Rx queue and hairpin Rx queue.
 
 - Host shaper:
 
