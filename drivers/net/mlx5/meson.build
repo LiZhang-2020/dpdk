@@ -63,5 +63,8 @@ if get_option('buildtype').contains('debug')
 else
 	cflags += [ '-UPEDANTIC' ]
 endif
+
+testpmd_sources += files('mlx5_testpmd.c')
+
 subdir(exec_env)
 subdir('steering')

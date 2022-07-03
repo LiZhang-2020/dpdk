@@ -40,7 +40,6 @@
 #include <rte_flow.h>
 #include <rte_mtr.h>
 #include <rte_errno.h>
-#include <rte_alarm.h>
 #ifdef RTE_NET_IXGBE
 #include <rte_pmd_ixgbe.h>
 #endif
@@ -52,9 +51,6 @@
 #endif
 #include <rte_gro.h>
 #include <rte_hexdump.h>
-#ifdef RTE_NET_MLX5
-#include <rte_pmd_mlx5.h>
-#endif
 
 #include "testpmd.h"
 #include "cmdline_mtr.h"
@@ -6498,122 +6494,3 @@ show_mcast_macs(portid_t port_id)
 		printf("  %s\n", buf);
 	}
 }
-
-#ifdef RTE_NET_MLX5
-static uint8_t lwms[RTE_MAX_ETHPORTS][RTE_MAX_QUEUES_PER_PORT+1];
-static uint8_t host_shaper_lwm_triggered[RTE_MAX_ETHPORTS];
-
-#define SHAPER_DISABLE_DELAY_US 100000 /* 100ms */
-static void
-lwm_event_rxq_limit_reached(uint16_t port_id, uint16_t rxq_id);
-
-static void
-mlx5_shaper_disable(void *args)
-{
-	uint32_t port_rxq_id = (uint32_t)(uint64_t)args;
-	uint16_t port_id = port_rxq_id & 0xffff;
-	unsigned int qid;
-
-	printf("%s disable shaper\n", __func__);
-	/* Need rearm all previous configured rxqs. */
-	for (qid = 0; qid < nb_rxq; qid++) {
-		/* Configure with rxq's saved LWM value to rearm LWM event */
-		if (rte_pmd_mlx5_config_rxq_lwm(port_id, qid,
-						lwms[port_id][qid],
-						lwm_event_rxq_limit_reached))
-			printf("config lwm returns error\n");
-	}
-	/* Only disable the shaper when lwm_triggered is set. */
-	if (host_shaper_lwm_triggered[port_id] &&
-	    rte_pmd_mlx5_config_host_shaper(port_id, 0, 0))
-		printf("%s disable shaper returns error\n", __func__);
-}
-
-static void
-lwm_event_rxq_limit_reached(uint16_t port_id, uint16_t rxq_id)
-{
-	uint32_t port_rxq_id = port_id | (rxq_id << 16);
-	rte_eal_alarm_set(SHAPER_DISABLE_DELAY_US,
-			  mlx5_shaper_disable, (void *)(uintptr_t)port_rxq_id);
-	printf("%s port_id:%u rxq_id:%u\n", __func__, port_id, rxq_id);
-}
-
-static void
-mlx5_lwm_intr_handle_cancel_alarm(uint16_t port_id, uint16_t qid)
-{
-	uint32_t port_rxq_id = port_id | (qid << 16);
-	int retries = 1024;
-
-	rte_errno = 0;
-	while (--retries) {
-		rte_eal_alarm_cancel(mlx5_shaper_disable,
-				     (void *)(uintptr_t)port_rxq_id);
-		if (rte_errno != EINPROGRESS)
-			break;
-		rte_pause();
-	}
-}
-
-int
-set_rxq_lwm(portid_t port_id, uint16_t queue_idx, uint16_t lwm)
-{
-	struct rte_eth_link link;
-	int ret;
-
-	if (port_id_is_invalid(port_id, ENABLED_WARN))
-		return -EINVAL;
-	ret = eth_link_get_nowait_print_err(port_id, &link);
-	if (ret < 0)
-		return -EINVAL;
-	if (lwm > 99)
-		return -EINVAL;
-	/* When disable LWM, needs cancal alarm. */
-	if (!lwm)
-		mlx5_lwm_intr_handle_cancel_alarm(port_id, queue_idx);
-	ret = rte_pmd_mlx5_config_rxq_lwm(port_id, queue_idx, lwm,
-						lwm_event_rxq_limit_reached);
-	/* Save the input lwm. */
-	lwms[port_id][queue_idx] = lwm;
-	if (ret)
-		return ret;
-	return 0;
-}
-
-/** Configure host shaper's lwm_triggered and current rate.
- *
- * @param[in] lwm_triggered
- *   Disable/enable lwm_triggered.
- * @param[in] rate
- *   Configure current host shaper rate.
- * @return
- *   On success, returns 0.
- *   On failure, returns < 0.
- */
-int
-set_port_host_shaper(portid_t port_id, uint16_t lwm_triggered, uint8_t rate)
-{
-	struct rte_eth_link link;
-	int ret;
-
-	if (port_id_is_invalid(port_id, ENABLED_WARN))
-		return -EINVAL;
-	ret = eth_link_get_nowait_print_err(port_id, &link);
-	if (ret < 0)
-		return ret;
-	host_shaper_lwm_triggered[port_id] = lwm_triggered ? 1 : 0;
-	if (!lwm_triggered) {
-		ret = rte_pmd_mlx5_config_host_shaper(port_id, 0,
-		RTE_BIT32(MLX5_HOST_SHAPER_FLAG_LWM_TRIGGERED));
-	} else {
-		ret = rte_pmd_mlx5_config_host_shaper(port_id, 1,
-		RTE_BIT32(MLX5_HOST_SHAPER_FLAG_LWM_TRIGGERED));
-	}
-	if (ret)
-		return ret;
-	ret = rte_pmd_mlx5_config_host_shaper(port_id, rate, 0);
-	if (ret)
-		return ret;
-	return 0;
-}
-
-#endif

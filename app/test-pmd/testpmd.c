@@ -61,7 +61,7 @@
 #include <rte_latencystats.h>
 #endif
 #ifdef RTE_NET_MLX5
-#include <rte_pmd_mlx5.h>
+#include "mlx5_testpmd.h"
 #endif
 
 #include "testpmd.h"
@@ -3296,6 +3296,10 @@ eth_event_callback(portid_t port_id, enum rte_eth_event_type type, void *param,
 				break;
 			printf("Received avail_thresh event, port: %u, rxq_id: %u\n",
 			       port_id, rxq_id);
+
+#ifdef RTE_NET_MLX5
+			mlx5_test_avail_thresh_event_handler(port_id, rxq_id);
+#endif
 		}
 		break;
 	}
