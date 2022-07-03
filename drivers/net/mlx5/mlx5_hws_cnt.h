@@ -556,6 +556,16 @@ mlx5_hws_cnt_is_shared(struct mlx5_hws_cnt_pool *cpool, cnt_id_t cnt_id)
 	return cpool->pool[iidx].share ? true : false;
 }
 
+static __rte_always_inline void
+mlx5_hws_cnt_age_set(struct mlx5_hws_cnt_pool *cpool, cnt_id_t cnt_id,
+		     uint32_t age_idx)
+{
+	uint32_t iidx = mlx5_hws_cnt_iidx(cpool, cnt_id);
+
+	MLX5_ASSERT(cpool->pool[iidx].share);
+	cpool->pool[iidx].age_idx = age_idx;
+}
+
 /* init HWS counter pool. */
 struct mlx5_hws_cnt_pool *
 mlx5_hws_cnt_pool_init(struct mlx5_dev_ctx_shared *sh,

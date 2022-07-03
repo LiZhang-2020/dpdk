@@ -1528,7 +1528,9 @@ __flow_hw_actions_translate(struct rte_eth_dev *dev,
 		case RTE_FLOW_ACTION_TYPE_COUNT:
 			if (at->action_flags & MLX5_FLOW_ACTION_AGE)
 				/*
-				 * The counter is created as part of AGE action.
+				 * When both COUNT and AGE are requested, it is
+				 * saved as AGE action which creates also the
+				 * counter.
 				 */
 				break;
 			action_pos = at->actions_off[actions - at->actions];
@@ -1755,6 +1757,8 @@ flow_hw_shared_action_get(struct rte_eth_dev *dev,
  *   Pointer to the flow table.
  * @param[in] it_idx
  *   Item template index the action template refer to.
+ * @param[in, out] flow
+ *   Pointer to the flow containing the counter.
  * @param[in] rule_act
  *   Pointer to the shared action's destination rule DR action.
  *
@@ -1766,6 +1770,7 @@ flow_hw_shared_action_construct(struct rte_eth_dev *dev,
 				const struct rte_flow_action *action,
 				struct rte_flow_template_table *table,
 				const uint8_t it_idx,
+				struct rte_flow_hw *flow,
 				struct mlx5dr_rule_action *rule_act)
 {
 	struct mlx5_priv *priv = dev->data->dev_private;
@@ -1803,6 +1808,7 @@ flow_hw_shared_action_construct(struct rte_eth_dev *dev,
 				&rule_act->action,
 				&rule_act->counter.offset))
 			return -1;
+		flow->cnt_id = act_idx;
 		break;
 	case MLX5_INDIRECT_ACTION_TYPE_CT:
 		if (flow_hw_ct_compile(dev, idx, rule_act))
@@ -1959,6 +1965,7 @@ flow_hw_actions_construct(struct rte_eth_dev *dev,
 	};
 	uint32_t ft_flag;
 	size_t encap_len = 0;
+	uint32_t age_idx = 0;
 	struct mlx5_action_construct_data *act_data;
 	struct mlx5_aso_mtr *aso_mtr;
 
@@ -1993,7 +2000,6 @@ flow_hw_actions_construct(struct rte_eth_dev *dev,
 		struct mlx5_hrxq *hrxq;
 		struct mlx5_hw_jump_action *jump;
 		uint32_t ct_idx;
-		uint32_t age_idx = 0;
 		cnt_id_t cnt_id;
 		uint32_t mtr_id;
 		int ret;
@@ -2013,7 +2019,7 @@ flow_hw_actions_construct(struct rte_eth_dev *dev,
 		switch (act_data->type) {
 		case RTE_FLOW_ACTION_TYPE_INDIRECT:
 			if (flow_hw_shared_action_construct
-					(dev, action, table, it_idx,
+					(dev, action, table, it_idx, job->flow,
 					 &rule_acts[act_data->action_dst]))
 				return -1;
 			break;
@@ -2124,7 +2130,9 @@ flow_hw_actions_construct(struct rte_eth_dev *dev,
 			age = action->conf;
 			/*
 			 * First, create the AGE parameter, then create its
-			 * counter in next case.
+			 * counter later:
+			 * Regular counter - in next case.
+			 * Indirect counter - update it after the loop.
 			 */
 			age_idx = mlx5_hws_age_action_create(priv, queue, age,
 							     job->flow->idx,
@@ -2132,6 +2140,13 @@ flow_hw_actions_construct(struct rte_eth_dev *dev,
 			if (age_idx == 0)
 				return -rte_errno;
 			job->flow->age_idx = age_idx;
+			if (at->action_flags & MLX5_FLOW_ACTION_INDIRECT_COUNT)
+				/*
+				 * When AGE uses indirect counter, no need to
+				 * create counter but need to update it with the
+				 * AGE parameter, will be done after the loop.
+				 */
+				break;
 			/* Fall-through. */
 		case RTE_FLOW_ACTION_TYPE_COUNT:
 			ret = mlx5_hws_cnt_pool_get(priv->hws_cpool, &queue,
@@ -2191,6 +2206,14 @@ flow_hw_actions_construct(struct rte_eth_dev *dev,
 		default:
 			break;
 		}
+	}
+	if (at->action_flags & MLX5_FLOW_ACTION_INDIRECT_COUNT) {
+		/*
+		 * Update this indirect counter the indirect/direct AGE in which
+		 * using it.
+		 */
+		mlx5_hws_cnt_age_set(priv->hws_cpool, job->flow->cnt_id,
+				     age_idx);
 	}
 	if (hw_acts->encap_decap && !hw_acts->encap_decap->shared) {
 		rule_acts[hw_acts->encap_decap_pos].reformat.offset =
@@ -2425,6 +2448,36 @@ error:
 }
 
 /**
+ * Release the AGE and counter for given flow.
+ *
+ * @param[in] priv
+ *   Pointer to the port private data structure.
+ * @param[in] queue
+ *   The queue to release the counter.
+ * @param[in, out] flow
+ *   Pointer to the flow containing the counter.
+ */
+static void
+flow_hw_age_count_release(struct mlx5_priv *priv, uint32_t queue,
+			  struct rte_flow_hw *flow)
+{
+	bool is_shared = mlx5_hws_cnt_is_shared(priv->hws_cpool, flow->cnt_id);
+
+	if (!is_shared) {
+		mlx5_hws_cnt_pool_put(priv->hws_cpool, &queue, &flow->cnt_id);
+		flow->cnt_id = 0;
+	}
+	if (flow->age_idx) {
+		if (is_shared)
+			/* Remove this AGE parameter from indirect counter.  */
+			mlx5_hws_cnt_age_set(priv->hws_cpool, flow->cnt_id, 0);
+		/* Release the AGE parameter. */
+		mlx5_hws_age_action_destroy(priv, flow->age_idx);
+		flow->age_idx = 0;
+	}
+}
+
+/**
  * Pull the enqueued flows.
  *
  * For flows enqueued from creation/destruction, the status should be
@@ -2470,18 +2523,9 @@ flow_hw_pull(struct rte_eth_dev *dev,
 				mlx5_hrxq_obj_release(dev, job->flow->hrxq);
 			else if (job->flow->fate_type == MLX5_FLOW_FATE_JUMP)
 				flow_hw_jump_release(dev, job->flow->jump);
-			if (mlx5_hws_cnt_id_valid(job->flow->cnt_id) &&
-			    mlx5_hws_cnt_is_shared
-				(priv->hws_cpool, job->flow->cnt_id) == false) {
-				mlx5_hws_cnt_pool_put(priv->hws_cpool, &queue,
-						&job->flow->cnt_id);
-				job->flow->cnt_id = 0;
-			}
-			if (job->flow->age_idx) {
-				mlx5_hws_age_action_destroy(priv,
-							    job->flow->age_idx);
-				job->flow->age_idx = 0;
-			}
+			if (mlx5_hws_cnt_id_valid(job->flow->cnt_id))
+				flow_hw_age_count_release(priv, queue,
+							  job->flow);
 			if (job->flow->mtr_id) {
 				mlx5_ipool_free(pool->idx_pool,	job->flow->mtr_id);
 				job->flow->mtr_id = 0;
@@ -3148,8 +3192,8 @@ flow_hw_validate_action_represented_port(struct rte_eth_dev *dev,
  *   Pointer to the indirect action.
  * @param[in] action_flags
  *   Holds the actions detected until now.
- * @param[in] cnt_shared_by_mask
- *   Indicator if this list has a COUNT action shared by its mask.
+ * @param[in] fixed_cnt
+ *   Indicator if this list has a fixed COUNT action.
  * @param[out] error
  *   Pointer to error structure.
  *
@@ -3159,7 +3203,7 @@ flow_hw_validate_action_represented_port(struct rte_eth_dev *dev,
 static int
 flow_hw_validate_action_age(struct rte_eth_dev *dev,
 			    const struct rte_flow_action *action,
-			    uint64_t action_flags, bool cnt_shared_by_mask,
+			    uint64_t action_flags, bool fixed_cnt,
 			    struct rte_flow_error *error)
 {
 	struct mlx5_priv *priv = dev->data->dev_private;
@@ -3177,14 +3221,10 @@ flow_hw_validate_action_age(struct rte_eth_dev *dev,
 		return rte_flow_error_set(error, EINVAL,
 					  RTE_FLOW_ERROR_TYPE_ACTION, action,
 					  "duplicate AGE actions set");
-	if (cnt_shared_by_mask)
+	if (fixed_cnt)
 		return rte_flow_error_set(error, EINVAL,
 					  RTE_FLOW_ERROR_TYPE_ACTION, action,
-					  "AGE and COUNT action shared by mask combination is not supported");
-	if (action_flags & MLX5_FLOW_ACTION_INDIRECT_COUNT)
-		return rte_flow_error_set(error, EINVAL,
-					  RTE_FLOW_ERROR_TYPE_ACTION, action,
-					  "AGE and indirect count combination is not supported");
+					  "AGE and fixed COUNT combination is not supported");
 	return 0;
 }
 
@@ -3199,8 +3239,6 @@ flow_hw_validate_action_age(struct rte_eth_dev *dev,
  *   Pointer to the indirect action mask.
  * @param[in] action_flags
  *   Holds the actions detected until now.
- * @param[in] shared
- *   Indicator if action is shared.
  * @param[out] error
  *   Pointer to error structure.
  *
@@ -3211,7 +3249,7 @@ static int
 flow_hw_validate_action_count(struct rte_eth_dev *dev,
 			      const struct rte_flow_action *action,
 			      const struct rte_flow_action *mask,
-			      uint64_t action_flags, bool shared,
+			      uint64_t action_flags,
 			      struct rte_flow_error *error)
 {
 	struct mlx5_priv *priv = dev->data->dev_private;
@@ -3234,10 +3272,6 @@ flow_hw_validate_action_count(struct rte_eth_dev *dev,
 		return rte_flow_error_set(error, EINVAL,
 					  RTE_FLOW_ERROR_TYPE_ACTION, mask,
 					  "AGE and COUNT action shared by mask combination is not supported");
-	if (shared && (action_flags & MLX5_FLOW_ACTION_AGE))
-		return rte_flow_error_set(error, EINVAL,
-					  RTE_FLOW_ERROR_TYPE_ACTION, action,
-					  "AGE and indirect count combination is not supported");
 	return 0;
 }
 
@@ -3252,6 +3286,8 @@ flow_hw_validate_action_count(struct rte_eth_dev *dev,
  *   Pointer to the indirect action mask.
  * @param[in, out] action_flags
  *   Holds the actions detected until now.
+ * @param[out] fixed_cnt
+ *   Pointer to indicator if this list has a fixed COUNT action.
  * @param[out] error
  *   Pointer to error structure.
  *
@@ -3262,7 +3298,7 @@ static int
 flow_hw_validate_action_indirect(struct rte_eth_dev *dev,
 				 const struct rte_flow_action *action,
 				 const struct rte_flow_action *mask,
-				 uint64_t *action_flags,
+				 uint64_t *action_flags, bool *fixed_cnt,
 				 struct rte_flow_error *error)
 {
 	uint32_t type;
@@ -3287,8 +3323,20 @@ flow_hw_validate_action_indirect(struct rte_eth_dev *dev,
 		*action_flags |= MLX5_FLOW_ACTION_CT;
 		break;
 	case RTE_FLOW_ACTION_TYPE_COUNT:
+		if (action->conf && mask->conf) {
+			if (*action_flags & MLX5_FLOW_ACTION_AGE)
+				/*
+				 * AGE cannot use indirect counter which is
+				 * shared with enother flow rules.
+				 */
+				return rte_flow_error_set(error, EINVAL,
+						  RTE_FLOW_ERROR_TYPE_ACTION,
+						  NULL,
+						  "AGE and fixed COUNT combination is not supported");
+			*fixed_cnt = true;
+		}
 		ret = flow_hw_validate_action_count(dev, action, mask,
-						    *action_flags, true, error);
+						    *action_flags, error);
 		if (ret < 0)
 			return ret;
 		*action_flags |= MLX5_FLOW_ACTION_INDIRECT_COUNT;
@@ -3410,7 +3458,7 @@ mlx5_flow_hw_actions_validate(struct rte_eth_dev *dev,
 {
 	struct mlx5_priv *priv = dev->data->dev_private;
 	const struct rte_flow_action_count *count_mask = NULL;
-	bool cnt_shared_by_mask = false;
+	bool fixed_cnt = false;
 	uint64_t action_flags = 0;
 	uint16_t i;
 	bool actions_end = false;
@@ -3440,6 +3488,7 @@ mlx5_flow_hw_actions_validate(struct rte_eth_dev *dev,
 			ret = flow_hw_validate_action_indirect(dev, action,
 							       mask,
 							       &action_flags,
+							       &fixed_cnt,
 							       error);
 			if (ret < 0)
 				return ret;
@@ -3513,11 +3562,10 @@ mlx5_flow_hw_actions_validate(struct rte_eth_dev *dev,
 			break;
 		case RTE_FLOW_ACTION_TYPE_AGE:
 			if (count_mask && count_mask->id)
-				cnt_shared_by_mask = true;
+				fixed_cnt = true;
 			ret = flow_hw_validate_action_age(dev, action,
 							  action_flags,
-							  cnt_shared_by_mask,
-							  error);
+							  fixed_cnt, error);
 			if (ret < 0)
 				return ret;
 			action_flags |= MLX5_FLOW_ACTION_AGE;
@@ -3525,7 +3573,7 @@ mlx5_flow_hw_actions_validate(struct rte_eth_dev *dev,
 		case RTE_FLOW_ACTION_TYPE_COUNT:
 			ret = flow_hw_validate_action_count(dev, action, mask,
 							    action_flags,
-							    false, error);
+							    error);
 			if (ret < 0)
 				return ret;
 			count_mask = mask->conf;
@@ -3599,7 +3647,7 @@ static int
 flow_hw_dr_actions_template_handle_shared(const struct rte_flow_action *mask,
 					  unsigned int action_src,
 					  enum mlx5dr_action_type *action_types,
-					  uint16_t *curr_off,
+					  uint16_t *curr_off, uint16_t *cnt_off,
 					  struct rte_flow_actions_template *at)
 {
 	uint32_t type;
@@ -3617,9 +3665,16 @@ flow_hw_dr_actions_template_handle_shared(const struct rte_flow_action *mask,
 		*curr_off = *curr_off + 1;
 		break;
 	case RTE_FLOW_ACTION_TYPE_COUNT:
-		at->actions_off[action_src] = *curr_off;
-		action_types[*curr_off] = MLX5DR_ACTION_TYP_CTR;
-		*curr_off = *curr_off + 1;
+		/*
+		 * Both AGE and COUNT action need counter, the first one fills
+		 * the action_types array, and the second only saves the offset.
+		 */
+		if (*cnt_off == UINT16_MAX) {
+			*cnt_off = *curr_off;
+			action_types[*cnt_off] = MLX5DR_ACTION_TYP_CTR;
+			*curr_off = *curr_off + 1;
+		}
+		at->actions_off[action_src] = *cnt_off;
 		break;
 	case RTE_FLOW_ACTION_TYPE_CONNTRACK:
 		at->actions_off[action_src] = *curr_off;
@@ -3671,9 +3726,12 @@ flow_hw_dr_actions_template_create(struct rte_flow_actions_template *at)
 		case RTE_FLOW_ACTION_TYPE_VOID:
 			break;
 		case RTE_FLOW_ACTION_TYPE_INDIRECT:
-			ret = flow_hw_dr_actions_template_handle_shared(&at->masks[i], i,
-									action_types,
-									&curr_off, at);
+			ret = flow_hw_dr_actions_template_handle_shared
+								 (&at->masks[i],
+								  i,
+								  action_types,
+								  &curr_off,
+								  &cnt_off, at);
 			if (ret)
 				return NULL;
 			break;
