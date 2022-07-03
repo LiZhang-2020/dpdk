@@ -46,6 +46,15 @@
 #define METER_PROFILE_ALG_SRTCM_RFC2697    "srtcm_rfc2697"
 #define DEFAULT_METER_PROFILE_ALG          METER_PROFILE_ALG_SRTCM_RFC2697
 
+#define HAIRPIN_RX_CONF_FORCE_MEMORY  (0x0001)
+#define HAIRPIN_TX_CONF_FORCE_MEMORY  (0x0002)
+
+#define HAIRPIN_RX_CONF_LOCKED_MEMORY (0x0010)
+#define HAIRPIN_RX_CONF_RTE_MEMORY    (0x0020)
+
+#define HAIRPIN_TX_CONF_LOCKED_MEMORY (0x0100)
+#define HAIRPIN_TX_CONF_RTE_MEMORY    (0x0200)
+
 struct rte_flow *flow;
 static uint8_t flow_group;
 
@@ -58,6 +67,7 @@ static uint64_t flow_attrs[MAX_ATTRS_NUM];
 static uint8_t items_idx, actions_idx, attrs_idx;
 
 static uint64_t ports_mask;
+static uint64_t hairpin_conf_mask;
 static uint16_t dst_ports[RTE_MAX_ETHPORTS];
 static volatile bool force_quit;
 static bool dump_iterations;
@@ -143,6 +153,7 @@ usage(char *progname)
 	printf("  --enable-fwd: To enable packets forwarding"
 		" after insertion\n");
 	printf("  --portmask=N: hexadecimal bitmask of ports used\n");
+	printf("  --hairpin-conf=0xXXXX: hexadecimal bitmask of hairpin queue configuration\n");
 	printf("  --unique-data: flag to set using unique data for all"
 		" actions that support data, such as header modify and encap actions\n");
 
@@ -242,6 +253,7 @@ static void
 args_parse(int argc, char **argv)
 {
 	uint64_t pm;
+	uint64_t hp_conf;
 	char **argvopt;
 	char *token;
 	char *end;
@@ -591,6 +603,7 @@ args_parse(int argc, char **argv)
 		{ "enable-fwd",                 0, 0, 0 },
 		{ "unique-data",                0, 0, 0 },
 		{ "portmask",                   1, 0, 0 },
+		{ "hairpin-conf",               1, 0, 0 },
 		{ "cores",                      1, 0, 0 },
 		{ "meter-profile-alg",          1, 0, 0 },
 		{ "rxq",                        1, 0, 0 },
@@ -816,6 +829,13 @@ args_parse(int argc, char **argv)
 				if ((optarg[0] == '\0') || (end == NULL) || (*end != '\0'))
 					rte_exit(EXIT_FAILURE, "Invalid fwd port mask\n");
 				ports_mask = pm;
+			}
+			if (strcmp(lgopts[opt_idx].name, "hairpin-conf") == 0) {
+				end = NULL;
+				hp_conf = strtoull(optarg, &end, 16);
+				if ((optarg[0] == '\0') || (end == NULL) || (*end != '\0'))
+					rte_exit(EXIT_FAILURE, "Invalid hairpin config mask\n");
+				hairpin_conf_mask = hp_conf;
 			}
 			if (strcmp(lgopts[opt_idx].name,
 					"port-id") == 0) {
@@ -1893,6 +1913,12 @@ init_port(void)
 				hairpin_conf.peers[0].port = port_id;
 				hairpin_conf.peers[0].queue =
 					std_queue + tx_queues_count;
+				hairpin_conf.use_locked_device_memory =
+					!!(hairpin_conf_mask & HAIRPIN_RX_CONF_LOCKED_MEMORY);
+				hairpin_conf.use_rte_memory =
+					!!(hairpin_conf_mask & HAIRPIN_RX_CONF_RTE_MEMORY);
+				hairpin_conf.force_memory =
+					!!(hairpin_conf_mask & HAIRPIN_RX_CONF_FORCE_MEMORY);
 				ret = rte_eth_rx_hairpin_queue_setup(
 						port_id, hairpin_queue,
 						rxd_count, &hairpin_conf);
@@ -1908,6 +1934,12 @@ init_port(void)
 				hairpin_conf.peers[0].port = port_id;
 				hairpin_conf.peers[0].queue =
 					std_queue + rx_queues_count;
+				hairpin_conf.use_locked_device_memory =
+					!!(hairpin_conf_mask & HAIRPIN_TX_CONF_LOCKED_MEMORY);
+				hairpin_conf.use_rte_memory =
+					!!(hairpin_conf_mask & HAIRPIN_TX_CONF_RTE_MEMORY);
+				hairpin_conf.force_memory =
+					!!(hairpin_conf_mask & HAIRPIN_TX_CONF_FORCE_MEMORY);
 				ret = rte_eth_tx_hairpin_queue_setup(
 						port_id, hairpin_queue,
 						txd_count, &hairpin_conf);
