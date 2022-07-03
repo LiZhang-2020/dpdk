@@ -10172,15 +10172,14 @@ mlx5_flow_get_aged_flows(struct rte_eth_dev *dev, void **contexts,
 {
 	const struct mlx5_flow_driver_ops *fops;
 	struct rte_flow_attr attr = { .transfer = 0 };
+	enum mlx5_flow_drv_type type = flow_get_drv_type(dev, &attr);
 
-	if (flow_get_drv_type(dev, &attr) == MLX5_FLOW_TYPE_DV) {
-		fops = flow_get_drv_ops(MLX5_FLOW_TYPE_DV);
-		return fops->get_aged_flows(dev, contexts, nb_contexts,
-						    error);
+	if (type == MLX5_FLOW_TYPE_DV || type == MLX5_FLOW_TYPE_HW) {
+		fops = flow_get_drv_ops(type);
+		return fops->get_aged_flows(dev, contexts, nb_contexts, error);
 	}
-	DRV_LOG(ERR,
-		"port %u get aged flows is not supported.",
-		 dev->data->port_id);
+	DRV_LOG(ERR, "port %u get aged flows is not supported.",
+		dev->data->port_id);
 	return -ENOTSUP;
 }
 

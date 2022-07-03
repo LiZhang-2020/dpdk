@@ -6639,6 +6639,40 @@ flow_hw_get_q_aged_flows(struct rte_eth_dev *dev, uint32_t queue_id,
 	return nb_flows;
 }
 
+/**
+ * Get aged-out flows.
+ *
+ * This function is relevant only if RTE_FLOW_PORT_FLAG_STRICT_QUEUE isn't set.
+ *
+ * @param[in] dev
+ *   Pointer to the Ethernet device structure.
+ * @param[in] contexts
+ *   The address of an array of pointers to the aged-out flows contexts.
+ * @param[in] nb_contexts
+ *   The length of context array pointers.
+ * @param[out] error
+ *   Perform verbose error reporting if not NULL. Initialized in case of
+ *   error only.
+ *
+ * @return
+ *   how many contexts get in success, otherwise negative errno value.
+ *   if nb_contexts is 0, return the amount of all aged contexts.
+ *   if nb_contexts is not 0 , return the amount of aged flows reported
+ *   in the context array.
+ */
+static int
+flow_hw_get_aged_flows(struct rte_eth_dev *dev, void **contexts,
+		       uint32_t nb_contexts, struct rte_flow_error *error)
+{
+	struct mlx5_priv *priv = dev->data->dev_private;
+
+	if (priv->hws_strict_queue)
+		DRV_LOG(WARNING,
+			"port %u get aged flows called in strict queue mode.",
+			dev->data->port_id);
+	return flow_hw_get_q_aged_flows(dev, 0, contexts, nb_contexts, error);
+}
+
 const struct mlx5_flow_driver_ops mlx5_flow_hw_drv_ops = {
 	.info_get = flow_hw_info_get,
 	.configure = flow_hw_configure,
@@ -6663,6 +6697,7 @@ const struct mlx5_flow_driver_ops mlx5_flow_hw_drv_ops = {
 	.action_update = flow_hw_action_update,
 	.action_query = flow_hw_action_query,
 	.query = flow_hw_query,
+	.get_aged_flows = flow_hw_get_aged_flows,
 	.get_q_aged_flows = flow_hw_get_q_aged_flows,
 };
 
