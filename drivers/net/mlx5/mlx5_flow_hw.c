@@ -3177,11 +3177,17 @@ flow_hw_validate_action_indirect(struct rte_eth_dev *dev,
 					  "Unable to determine indirect action type without a mask specified");
 	type = mask->type;
 	switch (type) {
+	case RTE_FLOW_ACTION_TYPE_METER_MARK:
+		/* TODO: Validation logic (same as flow_hw_actions_validate) */
+		*action_flags |= MLX5_FLOW_ACTION_METER;
+		break;
 	case RTE_FLOW_ACTION_TYPE_RSS:
 		/* TODO: Validation logic (same as flow_hw_actions_validate) */
+		*action_flags |= MLX5_FLOW_ACTION_RSS;
 		break;
 	case RTE_FLOW_ACTION_TYPE_CONNTRACK:
 		/* TODO: Validation logic (same as flow_hw_actions_validate) */
+		*action_flags |= MLX5_FLOW_ACTION_CT;
 		break;
 	case RTE_FLOW_ACTION_TYPE_COUNT:
 		ret = flow_hw_validate_action_count(dev, action, *action_flags,
@@ -3298,11 +3304,12 @@ flow_hw_validate_action_push_vlan(struct rte_eth_dev *dev,
 }
 
 static int
-flow_hw_actions_validate(struct rte_eth_dev *dev,
-			const struct rte_flow_actions_template_attr *attr,
-			const struct rte_flow_action actions[],
-			const struct rte_flow_action masks[],
-			struct rte_flow_error *error)
+mlx5_flow_hw_actions_validate(struct rte_eth_dev *dev,
+			      const struct rte_flow_actions_template_attr *attr,
+			      const struct rte_flow_action actions[],
+			      const struct rte_flow_action masks[],
+			      uint64_t *act_flags,
+			      struct rte_flow_error *error)
 {
 	struct mlx5_priv *priv = dev->data->dev_private;
 	uint64_t action_flags = 0;
@@ -3340,42 +3347,55 @@ flow_hw_actions_validate(struct rte_eth_dev *dev,
 			break;
 		case RTE_FLOW_ACTION_TYPE_MARK:
 			/* TODO: Validation logic */
+			action_flags |= MLX5_FLOW_ACTION_MARK;
 			break;
 		case RTE_FLOW_ACTION_TYPE_DROP:
 			/* TODO: Validation logic */
+			action_flags |= MLX5_FLOW_ACTION_DROP;
 			break;
 		case RTE_FLOW_ACTION_TYPE_JUMP:
 			/* TODO: Validation logic */
+			action_flags |= MLX5_FLOW_ACTION_JUMP;
 			break;
 		case RTE_FLOW_ACTION_TYPE_QUEUE:
 			/* TODO: Validation logic */
+			action_flags |= MLX5_FLOW_ACTION_QUEUE;
 			break;
 		case RTE_FLOW_ACTION_TYPE_RSS:
 			/* TODO: Validation logic */
+			action_flags |= MLX5_FLOW_ACTION_RSS;
 			break;
 		case RTE_FLOW_ACTION_TYPE_VXLAN_ENCAP:
 			/* TODO: Validation logic */
+			action_flags |= MLX5_FLOW_ACTION_ENCAP;
 			break;
 		case RTE_FLOW_ACTION_TYPE_NVGRE_ENCAP:
 			/* TODO: Validation logic */
+			action_flags |= MLX5_FLOW_ACTION_ENCAP;
 			break;
 		case RTE_FLOW_ACTION_TYPE_VXLAN_DECAP:
 			/* TODO: Validation logic */
+			action_flags |= MLX5_FLOW_ACTION_DECAP;
 			break;
 		case RTE_FLOW_ACTION_TYPE_NVGRE_DECAP:
 			/* TODO: Validation logic */
+			action_flags |= MLX5_FLOW_ACTION_DECAP;
 			break;
 		case RTE_FLOW_ACTION_TYPE_RAW_ENCAP:
 			/* TODO: Validation logic */
+			action_flags |= MLX5_FLOW_ACTION_ENCAP;
 			break;
 		case RTE_FLOW_ACTION_TYPE_RAW_DECAP:
 			/* TODO: Validation logic */
+			action_flags |= MLX5_FLOW_ACTION_DECAP;
 			break;
 		case RTE_FLOW_ACTION_TYPE_METER:
 			/* TODO: Validation logic */
+			action_flags |= MLX5_FLOW_ACTION_METER;
 			break;
 		case RTE_FLOW_ACTION_TYPE_METER_MARK:
 			/* TODO: Validation logic */
+			action_flags |= MLX5_FLOW_ACTION_METER;
 			break;
 		case RTE_FLOW_ACTION_TYPE_MODIFY_FIELD:
 			ret = flow_hw_validate_action_modify_field(action,
@@ -3383,12 +3403,14 @@ flow_hw_actions_validate(struct rte_eth_dev *dev,
 									error);
 			if (ret < 0)
 				return ret;
+			action_flags |= MLX5_FLOW_ACTION_MODIFY_FIELD;
 			break;
 		case RTE_FLOW_ACTION_TYPE_REPRESENTED_PORT:
 			ret = flow_hw_validate_action_represented_port
 					(dev, action, mask, error);
 			if (ret < 0)
 				return ret;
+			action_flags |= MLX5_FLOW_ACTION_PORT_ID;
 			break;
 		case RTE_FLOW_ACTION_TYPE_COUNT:
 			ret = flow_hw_validate_action_count(dev, action,
@@ -3400,9 +3422,13 @@ flow_hw_actions_validate(struct rte_eth_dev *dev,
 			break;
 		case RTE_FLOW_ACTION_TYPE_CONNTRACK:
 			/* TODO: Validation logic */
+			action_flags |= MLX5_FLOW_ACTION_CT;
 			break;
 		case RTE_FLOW_ACTION_TYPE_OF_POP_VLAN:
+			action_flags |= MLX5_FLOW_ACTION_OF_POP_VLAN;
+			break;
 		case RTE_FLOW_ACTION_TYPE_OF_SET_VLAN_VID:
+			action_flags |= MLX5_FLOW_ACTION_OF_SET_VLAN_VID;
 			break;
 		case RTE_FLOW_ACTION_TYPE_OF_PUSH_VLAN:
 			ret = flow_hw_validate_action_push_vlan
@@ -3412,6 +3438,7 @@ flow_hw_actions_validate(struct rte_eth_dev *dev,
 			i += is_of_vlan_pcp_present(action) ?
 				MLX5_HW_VLAN_PUSH_PCP_IDX :
 				MLX5_HW_VLAN_PUSH_VID_IDX;
+			action_flags |= MLX5_FLOW_ACTION_OF_PUSH_VLAN;
 			break;
 		case RTE_FLOW_ACTION_TYPE_END:
 			actions_end = true;
@@ -3423,8 +3450,22 @@ flow_hw_actions_validate(struct rte_eth_dev *dev,
 						  "action not supported in template API");
 		}
 	}
+	if (act_flags != NULL)
+		*act_flags = action_flags;
 	return 0;
 }
+
+static int
+flow_hw_actions_validate(struct rte_eth_dev *dev,
+			 const struct rte_flow_actions_template_attr *attr,
+			 const struct rte_flow_action actions[],
+			 const struct rte_flow_action masks[],
+			 struct rte_flow_error *error)
+{
+	return mlx5_flow_hw_actions_validate(dev, attr, actions, masks, NULL,
+					     error);
+}
+
 
 static enum mlx5dr_action_type mlx5_hw_dr_action_types[] = {
 	[RTE_FLOW_ACTION_TYPE_MARK] = MLX5DR_ACTION_TYP_TAG,
@@ -3722,6 +3763,7 @@ flow_hw_actions_template_create(struct rte_eth_dev *dev,
 	unsigned int i;
 	struct rte_flow_actions_template *at = NULL;
 	uint16_t pos = MLX5_HW_MAX_ACTS;
+	uint64_t action_flags = 0;
 	struct rte_flow_action tmp_action[MLX5_HW_MAX_ACTS];
 	struct rte_flow_action tmp_mask[MLX5_HW_MAX_ACTS];
 	struct rte_flow_action *ra = (void *)(uintptr_t)actions;
@@ -3764,7 +3806,8 @@ flow_hw_actions_template_create(struct rte_eth_dev *dev,
 		.conf = &rx_mreg_mask,
 	};
 
-	if (flow_hw_actions_validate(dev, attr, actions, masks, error))
+	if (mlx5_flow_hw_actions_validate(dev, attr, actions, masks,
+					  &action_flags, error))
 		return NULL;
 	if (priv->sh->config.dv_xmeta_en == MLX5_XMETA_MODE_META32_HWS &&
 	    priv->sh->config.dv_esw_en) {
@@ -3858,6 +3901,7 @@ flow_hw_actions_template_create(struct rte_eth_dev *dev,
 	at->tmpl = flow_hw_dr_actions_template_create(at);
 	if (!at->tmpl)
 		goto error;
+	at->action_flags = action_flags;
 	__atomic_fetch_add(&at->refcnt, 1, __ATOMIC_RELAXED);
 	LIST_INSERT_HEAD(&priv->flow_hw_at, at, next);
 	return at;
