@@ -226,6 +226,7 @@ enum index {
 	CONFIG_METER_PROFILES_NUMBER,
 	CONFIG_METER_POLICIES_NUMBER,
 	CONFIG_CT_NUMBER,
+	CONFIG_FLAGS,
 	CONFIG_QUEUES_SIZE,
 
 	/* Indirect action arguments */
@@ -1094,6 +1095,7 @@ static const enum index next_config_attr[] = {
 	CONFIG_METER_PROFILES_NUMBER,
 	CONFIG_METER_POLICIES_NUMBER,
 	CONFIG_CT_NUMBER,
+	CONFIG_FLAGS,
 	END,
 	ZERO,
 };
@@ -2701,6 +2703,14 @@ static const struct token token_list[] = {
 			     NEXT_ENTRY(UNSIGNED)),
 		.args = ARGS(ARGS_ENTRY(struct buffer,
 					args.configure.port_attr.nb_cts)),
+	},
+	[CONFIG_FLAGS] = {
+		.name = "flags",
+		.help = "configuration flags",
+		.next = NEXT(next_config_attr,
+			     NEXT_ENTRY(UNSIGNED)),
+		.args = ARGS(ARGS_ENTRY(struct buffer,
+					args.configure.port_attr.flags)),
 	},
 	[CONFIG_QUEUES_SIZE] = {
 		.name = "queues_size",

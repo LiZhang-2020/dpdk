@@ -3315,6 +3315,7 @@ following sections.
        [queues_number {number}] [queues_size {size}]
        [counters_number {number}] [aging_counters_number {number}]
        [meters_number {number}] [fixed_resource_size {boolean}]
+       [flags {number}]
 
 - Create an item template::
    flow item_template {port_id} create [item_template_id {id}]
@@ -3466,6 +3467,7 @@ for asynchronous flow creation/destruction operations. It is bound to
        [queues_number {number}] [queues_size {size}]
        [counters_number {number}] [aging_counters_number {number}]
        [meters_number {number}] [fixed_resource_size {boolean}]
+       [flags {number}]
 
 If successful, it will show::
 
