@@ -368,6 +368,7 @@ enum mlx5_feature_name {
 #define MLX5_FLOW_ACTION_SFT (1ull << 41)
 #define MLX5_FLOW_ACTION_CT (1ull << 42)
 #define MLX5_FLOW_ACTION_INDIRECT_COUNT (1ull << 43)
+#define MLX5_FLOW_ACTION_INDIRECT_AGE (1ull << 44)
 
 #define MLX5_FLOW_FATE_ACTIONS \
 	(MLX5_FLOW_ACTION_DROP | MLX5_FLOW_ACTION_QUEUE | \

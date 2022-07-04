@@ -130,7 +130,10 @@ struct mlx5_hws_age_param {
 	uint16_t state; /* AGE state (atomically accessed). */
 	uint64_t accumulator_last_hits;
 	/* Last total value of hits for comparing. */
+	uint32_t nb_cnts; /* Number counters used by this AGE. */
 	uint32_t queue_id; /* Queue id of the counter. */
+	cnt_id_t own_cnt_index;
+	/* Counter action created specifically for this AGE action. */
 	void *context; /* Flow AGE context. */
 } __rte_packed __rte_cache_aligned;
 
@@ -522,12 +525,13 @@ mlx5_hws_cnt_pool_get_action_offset(struct mlx5_hws_cnt_pool *cpool,
 }
 
 static __rte_always_inline int
-mlx5_hws_cnt_shared_get(struct mlx5_hws_cnt_pool *cpool, cnt_id_t *cnt_id)
+mlx5_hws_cnt_shared_get(struct mlx5_hws_cnt_pool *cpool, cnt_id_t *cnt_id,
+			uint32_t age_idx)
 {
 	int ret;
 	uint32_t iidx;
 
-	ret = mlx5_hws_cnt_pool_get(cpool, NULL, cnt_id, 0);
+	ret = mlx5_hws_cnt_pool_get(cpool, NULL, cnt_id, age_idx);
 	if (ret != 0)
 		return ret;
 	iidx = mlx5_hws_cnt_iidx(cpool, *cnt_id);
@@ -564,6 +568,20 @@ mlx5_hws_cnt_age_set(struct mlx5_hws_cnt_pool *cpool, cnt_id_t cnt_id,
 
 	MLX5_ASSERT(cpool->pool[iidx].share);
 	cpool->pool[iidx].age_idx = age_idx;
+}
+
+static __rte_always_inline cnt_id_t
+mlx5_hws_age_cnt_get(struct mlx5_priv *priv, struct mlx5_hws_age_param *param,
+		     uint32_t age_idx)
+{
+	if (!param->own_cnt_index) {
+		/* Create indirect counter one for internal usage. */
+		if (mlx5_hws_cnt_shared_get(priv->hws_cpool,
+					    &param->own_cnt_index, age_idx) < 0)
+			return 0;
+		param->nb_cnts++;
+	}
+	return param->own_cnt_index;
 }
 
 /* init HWS counter pool. */
@@ -609,12 +627,13 @@ mlx5_hws_cnt_svc_init(struct mlx5_dev_ctx_shared *sh);
 void
 mlx5_hws_cnt_svc_deinit(struct mlx5_dev_ctx_shared *sh);
 
-void
-mlx5_hws_age_action_destroy(struct mlx5_priv *priv, uint32_t idx);
+int
+mlx5_hws_age_action_destroy(struct mlx5_priv *priv, uint32_t idx,
+			    struct rte_flow_error *error);
 
 uint32_t
 mlx5_hws_age_action_create(struct mlx5_priv *priv, uint32_t queue_id,
-			   const struct rte_flow_action_age *age,
+			   bool shared, const struct rte_flow_action_age *age,
 			   uint32_t flow_idx, struct rte_flow_error *error);
 
 void *

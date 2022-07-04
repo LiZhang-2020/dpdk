@@ -648,14 +648,26 @@ mlx5_hws_cnt_svc_deinit(struct mlx5_dev_ctx_shared *sh)
 /**
  * Release AGE parameter.
  *
+ * @param priv
+ *   Pointer to the port private data structure.
+ * @param own_cnt_index
+ *   Counter ID to created only for this AGE to release.
+ *   Zero means there is no such counter.
  * @param age_ipool
  *   Pointer to AGE parameter indexed pool.
  * @param idx
  *   Index of AGE parameter in the indexed pool.
  */
 static void
-mlx5_hws_age_param_free(struct mlx5_indexed_pool *age_ipool, uint32_t idx)
+mlx5_hws_age_param_free(struct mlx5_priv *priv, cnt_id_t own_cnt_index,
+			struct mlx5_indexed_pool *age_ipool, uint32_t idx)
 {
+	if (own_cnt_index) {
+		struct mlx5_hws_cnt_pool *cpool = priv->hws_cpool;
+
+		MLX5_ASSERT(mlx5_hws_cnt_is_shared(cpool, own_cnt_index));
+		mlx5_hws_cnt_shared_put(cpool, &own_cnt_index);
+	}
 	mlx5_ipool_free(age_ipool, idx);
 }
 
@@ -666,20 +678,29 @@ mlx5_hws_age_param_free(struct mlx5_indexed_pool *age_ipool, uint32_t idx)
  *   Pointer to the port private data structure.
  * @param idx
  *   Index of AGE parameter.
+ * @param error
+ *   Pointer to error structure.
+ *
+ * @return
+ *   0 on success, a negative errno value otherwise and rte_errno is set.
  */
-void
-mlx5_hws_age_action_destroy(struct mlx5_priv *priv, uint32_t idx)
+int
+mlx5_hws_age_action_destroy(struct mlx5_priv *priv, uint32_t idx,
+			    struct rte_flow_error *error)
 {
 	struct mlx5_age_info *age_info = GET_PORT_AGE_INFO(priv);
 	struct mlx5_indexed_pool *ipool = age_info->ages_ipool;
 	struct mlx5_hws_age_param *param = mlx5_ipool_get(ipool, idx);
 
-	MLX5_ASSERT(param != NULL);
+	if (param == NULL)
+		return rte_flow_error_set(error, EINVAL,
+					  RTE_FLOW_ERROR_TYPE_UNSPECIFIED, NULL,
+					  "invalid AGE parameter index");
 	switch (__atomic_exchange_n(&param->state, HWS_AGE_FREE,
 				    __ATOMIC_RELAXED)) {
 	case HWS_AGE_CANDIDATE:
 	case HWS_AGE_AGED_OUT_REPORTED:
-		mlx5_hws_age_param_free(ipool, idx);
+		mlx5_hws_age_param_free(priv, param->own_cnt_index, ipool, idx);
 		break;
 	case HWS_AGE_AGED_OUT_NOT_REPORTED:
 		/*
@@ -688,11 +709,19 @@ mlx5_hws_age_action_destroy(struct mlx5_priv *priv, uint32_t idx)
 		 */
 		break;
 	case HWS_AGE_FREE:
-		/* There is no chance to destroy AGE with FREE. */
+		/*
+		 * If index is valid and state is FREE, it says this AGE has
+		 * been freed for the user but not for the PMD since it is
+		 * inside the ring.
+		 */
+		return rte_flow_error_set(error, EINVAL,
+					  RTE_FLOW_ERROR_TYPE_UNSPECIFIED, NULL,
+					  "this AGE has already been released");
 	default:
 		MLX5_ASSERT(0);
 		break;
 	}
+	return 0;
 }
 
 /**
@@ -702,8 +731,11 @@ mlx5_hws_age_action_destroy(struct mlx5_priv *priv, uint32_t idx)
  *   Pointer to the port private data structure.
  * @param[in] queue_id
  *   Which HWS queue to be used.
+ * @param[in] shared
+ *   Whether it indirect AGE action.
  * @param[in] flow_idx
  *   Flow index from indexed pool.
+ *   For indirect AGE action it doesn't affect.
  * @param[in] age
  *   Pointer to the aging action configuration.
  * @param[out] error
@@ -714,7 +746,7 @@ mlx5_hws_age_action_destroy(struct mlx5_priv *priv, uint32_t idx)
  */
 uint32_t
 mlx5_hws_age_action_create(struct mlx5_priv *priv, uint32_t queue_id,
-			   const struct rte_flow_action_age *age,
+			   bool shared, const struct rte_flow_action_age *age,
 			   uint32_t flow_idx, struct rte_flow_error *error)
 {
 	struct mlx5_age_info *age_info = GET_PORT_AGE_INFO(priv);
@@ -731,11 +763,18 @@ mlx5_hws_age_action_create(struct mlx5_priv *priv, uint32_t queue_id,
 	}
 	MLX5_ASSERT(__atomic_load_n(&param->state,
 				    __ATOMIC_RELAXED) == HWS_AGE_FREE);
+	if (shared) {
+		param->nb_cnts = 0;
+		flow_idx = age_idx;
+	} else {
+		param->nb_cnts = 1;
+	}
 	param->context = age->context ? age->context :
 					(void *)(uintptr_t)flow_idx;
 	param->timeout = age->timeout;
 	param->queue_id = queue_id;
 	param->accumulator_last_hits = 0;
+	param->own_cnt_index = 0;
 	param->sec_since_last_hit = 0;
 	param->state = HWS_AGE_CANDIDATE;
 	return age_idx;
@@ -772,7 +811,7 @@ mlx5_hws_age_context_get(struct mlx5_priv *priv, uint32_t idx)
 		 * the ring. Its state has updated, and now it is actually
 		 * destroyed.
 		 */
-		mlx5_hws_age_param_free(ipool, idx);
+		mlx5_hws_age_param_free(priv, param->own_cnt_index, ipool, idx);
 		break;
 	case HWS_AGE_CANDIDATE:
 		/*
