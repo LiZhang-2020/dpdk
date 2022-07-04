@@ -3105,6 +3105,100 @@ flow_hw_validate_action_represented_port(struct rte_eth_dev *dev,
 	return 0;
 }
 
+/**
+ * Validate count action.
+ *
+ * @param[in] dev
+ *   Pointer to rte_eth_dev structure.
+ * @param[in] action
+ *   Pointer to the indirect action.
+ * @param[in] action_flags
+ *   Holds the actions detected until now.
+ * @param[out] error
+ *   Pointer to error structure.
+ *
+ * @return
+ *   0 on success, a negative errno value otherwise and rte_errno is set.
+ */
+static int
+flow_hw_validate_action_count(struct rte_eth_dev *dev,
+			      const struct rte_flow_action *action,
+			      uint64_t action_flags,
+			      struct rte_flow_error *error)
+{
+	struct mlx5_priv *priv = dev->data->dev_private;
+
+	if (!priv->sh->cdev->config.devx)
+		return rte_flow_error_set(error, ENOTSUP,
+					  RTE_FLOW_ERROR_TYPE_ACTION, action,
+					  "count action not supported");
+	if (!priv->hws_cpool)
+		return rte_flow_error_set(error, EINVAL,
+					  RTE_FLOW_ERROR_TYPE_ACTION, action,
+					  "counters pool not initialized");
+	if ((action_flags & MLX5_FLOW_ACTION_COUNT) ||
+	    (action_flags & MLX5_FLOW_ACTION_INDIRECT_COUNT))
+		return rte_flow_error_set(error, EINVAL,
+					  RTE_FLOW_ERROR_TYPE_ACTION, action,
+					  "duplicate count actions set");
+	return 0;
+}
+
+/**
+ * Validate indirect action.
+ *
+ * @param[in] dev
+ *   Pointer to rte_eth_dev structure.
+ * @param[in] action
+ *   Pointer to the indirect action.
+ * @param[in] mask
+ *   Pointer to the indirect action mask.
+ * @param[in, out] action_flags
+ *   Holds the actions detected until now.
+ * @param[out] error
+ *   Pointer to error structure.
+ *
+ * @return
+ *   0 on success, a negative errno value otherwise and rte_errno is set.
+ */
+static int
+flow_hw_validate_action_indirect(struct rte_eth_dev *dev,
+				 const struct rte_flow_action *action,
+				 const struct rte_flow_action *mask,
+				 uint64_t *action_flags,
+				 struct rte_flow_error *error)
+{
+	uint32_t type;
+	int ret;
+
+	if (!mask)
+		return rte_flow_error_set(error, EINVAL,
+					  RTE_FLOW_ERROR_TYPE_UNSPECIFIED, NULL,
+					  "Unable to determine indirect action type without a mask specified");
+	type = mask->type;
+	switch (type) {
+	case RTE_FLOW_ACTION_TYPE_RSS:
+		/* TODO: Validation logic (same as flow_hw_actions_validate) */
+		break;
+	case RTE_FLOW_ACTION_TYPE_CONNTRACK:
+		/* TODO: Validation logic (same as flow_hw_actions_validate) */
+		break;
+	case RTE_FLOW_ACTION_TYPE_COUNT:
+		ret = flow_hw_validate_action_count(dev, action, *action_flags,
+						    error);
+		if (ret < 0)
+			return ret;
+		*action_flags |= MLX5_FLOW_ACTION_INDIRECT_COUNT;
+		break;
+	default:
+		DRV_LOG(WARNING, "Unsupported shared action type: %d", type);
+		return rte_flow_error_set(error, ENOTSUP,
+					  RTE_FLOW_ERROR_TYPE_UNSPECIFIED, mask,
+					  "Unsupported indirect action type");
+	}
+	return 0;
+}
+
 static inline int
 flow_hw_action_meta_copy_insert(const struct rte_flow_action actions[],
 				const struct rte_flow_action masks[],
@@ -3211,6 +3305,7 @@ flow_hw_actions_validate(struct rte_eth_dev *dev,
 			struct rte_flow_error *error)
 {
 	struct mlx5_priv *priv = dev->data->dev_private;
+	uint64_t action_flags = 0;
 	uint16_t i;
 	bool actions_end = false;
 	int ret;
@@ -3236,7 +3331,12 @@ flow_hw_actions_validate(struct rte_eth_dev *dev,
 		case RTE_FLOW_ACTION_TYPE_VOID:
 			break;
 		case RTE_FLOW_ACTION_TYPE_INDIRECT:
-			/* TODO: Validation logic */
+			ret = flow_hw_validate_action_indirect(dev, action,
+							       mask,
+							       &action_flags,
+							       error);
+			if (ret < 0)
+				return ret;
 			break;
 		case RTE_FLOW_ACTION_TYPE_MARK:
 			/* TODO: Validation logic */
@@ -3291,7 +3391,12 @@ flow_hw_actions_validate(struct rte_eth_dev *dev,
 				return ret;
 			break;
 		case RTE_FLOW_ACTION_TYPE_COUNT:
-			/* TODO: Validation logic */
+			ret = flow_hw_validate_action_count(dev, action,
+							    action_flags,
+							    error);
+			if (ret < 0)
+				return ret;
+			action_flags |= MLX5_FLOW_ACTION_COUNT;
 			break;
 		case RTE_FLOW_ACTION_TYPE_CONNTRACK:
 			/* TODO: Validation logic */
