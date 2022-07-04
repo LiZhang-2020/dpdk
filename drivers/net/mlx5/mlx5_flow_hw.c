@@ -4881,8 +4881,8 @@ flow_hw_configure(struct rte_eth_dev *dev,
 					    &priv->hw_q[nb_q_updated];
 		else
 			priv->hw_q[i].job = (struct mlx5_hw_q_job **)
-				&job[_queue_attr[i - 1]->size - 1].encap_data
-				 [MLX5_ENCAP_MAX_LEN];
+				&job[_queue_attr[i - 1]->size - 1].items
+				 [MLX5_HW_MAX_ITEMS];
 		job = (struct mlx5_hw_q_job *)
 		      &priv->hw_q[i].job[_queue_attr[i]->size];
 		mhdr_cmd = (struct mlx5_modification_cmd *)
