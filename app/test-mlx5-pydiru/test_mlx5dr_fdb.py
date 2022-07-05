@@ -20,6 +20,10 @@ import pydiru.pydiru_enums as p
 import unittest
 import struct
 import errno
+import os
+import csv
+
+MLX5DR_DEBUG_RES_TYPE_MATCHER_ATTR = 4201
 
 
 class Mlx5drFDBTest(PydiruTrafficTestCase):
@@ -236,3 +240,50 @@ class Mlx5drFDBTest(PydiruTrafficTestCase):
         self.ft_rule = Mlx5drRule(table2_matcher, 0, src_ip_rte_items, 0, [vport_ra], 1,
                                   Mlx5drRuleAttr(user_data=bytes(8)), self.server.dr_ctx)
         self.create_tmp_rule_and_verify(3, [tbl_ra], [packet, packet_drop], packet)
+
+    def verify_fdb_matcher_with_flow_src(self, flow_src=me.MLX5DR_MATCHER_FLOW_SRC_ANY):
+        """
+        Create FDB matcher with specific flow_src.
+        Use flow_dump to verify the matcher attribute.
+        """
+
+        actions = [[me.MLX5DR_ACTION_TYP_DROP, me.MLX5DR_ACTION_TYP_LAST]]
+        self.server.init_steering_resources(table_type=me.MLX5DR_TABLE_TYPE_FDB,
+                                            action_types_list=actions,
+                                            flow_src=flow_src)
+        dump_path = '/tmp/hws_dump'
+        os.remove(dump_path)
+        self.server.dr_ctx.dump(dump_path)
+        data = {}
+        self.assertTrue(os.path.isfile(dump_path), 'Dump file does not exist.')
+        keys = ["mlx5dr_debug_res_type", "matcher_id", "priority", "mode", "sz_row_log",
+                "sz_col_log", "use_rule_idx", "flow_src"]
+        csv_file = open(dump_path, 'r+')
+        csv_reader = csv.reader(csv_file)
+        for line in csv_reader:
+            if int(line[0]) == MLX5DR_DEBUG_RES_TYPE_MATCHER_ATTR:
+                data = dict(zip(keys, line + [None] * (len(keys) - len(line))))
+                # skip root matcher
+                if int(data['mode']) == me.MLX5DR_MATCHER_RESOURCE_MODE_HTABLE:
+                    break
+        csv_file.close()
+        self.assertGreater(len(data), 0, 'Empty HWS matcher attribute')
+        self.assertTrue(int(data['flow_src']) == flow_src, 'Matcher attribute is not right')
+
+    def test_mlx5dr_check_ingress_attr(self):
+        """
+        Create FDB ingress only matcher and check attribute
+        """
+        self.verify_fdb_matcher_with_flow_src(flow_src=me.MLX5DR_MATCHER_FLOW_SRC_WIRE)
+
+    def test_mlx5dr_check_egress_attr(self):
+        """
+        Create FDB egress only matcher and check attribute
+        """
+        self.verify_fdb_matcher_with_flow_src(flow_src=me.MLX5DR_MATCHER_FLOW_SRC_VPORT)
+
+    def test_mlx5dr_check_bidirectional_attr(self):
+        """
+        Create FDB bi-direction matcher and check attribute
+        """
+        self.verify_fdb_matcher_with_flow_src(flow_src=me.MLX5DR_MATCHER_FLOW_SRC_ANY)
