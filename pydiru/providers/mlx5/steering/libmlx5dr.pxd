@@ -43,6 +43,7 @@ cdef extern  from '../../../../drivers/net/mlx5/steering/mlx5dr.h':
         uint32_t priority
         uint8_t optimize_using_rule_idx
         me.mlx5dr_matcher_resource_mode mode
+        me.mlx5dr_matcher_flow_src optimize_flow_src
         table_ table
         rule_ rule
 

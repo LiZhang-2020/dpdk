@@ -50,7 +50,8 @@ cdef class Mlx5drMacherTemplate(PydiruCM):
 
 
 cdef class Mlx5drMatcherAttr(PydiruObject):
-    def __init__(self, priority, mode, row_log=0, col_log=0, rule_log=0, rule_idx_opt=False):
+    def __init__(self, priority, mode, row_log=0, col_log=0, rule_log=0, rule_idx_opt=False,
+                 flow_src=me.MLX5DR_MATCHER_FLOW_SRC_ANY):
         """
          Initialize a Mlx5drMatcherAttr object representing mlx5dr_matcher_attr C struct.
         :param priority: Table priority
@@ -63,6 +64,7 @@ cdef class Mlx5drMatcherAttr(PydiruObject):
         :param col_log: Hint for the log number of colunms to be created
         :param rule_log: Hint for the log number of rules to be created
         :param rule_idx_opt: Determine if to use rule index optimization
+        :param flow_src: Determine if to optimize FDB flow rule by single direction
         """
         super().__init__()
         self.attr.priority = priority
@@ -73,6 +75,7 @@ cdef class Mlx5drMatcherAttr(PydiruObject):
             self.attr.table.sz_col_log = col_log
         else:
             self.attr.rule.num_log = rule_log
+        self.attr.optimize_flow_src = flow_src
 
 
 cdef class Mlx5drMatcher(PydiruCM):
