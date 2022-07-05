@@ -1913,6 +1913,10 @@ mlx5dr_action_setter_aso(struct mlx5dr_actions_apply_data *apply,
 		offset = rule_action->aso_ct.offset / MLX5_ASO_CT_NUM_PER_OBJ;
 		exe_aso_ctrl = rule_action->aso_ct.direction;
 		break;
+	default:
+		DR_LOG(ERR, "Unsupported ASO action type: %d", rule_action->action->type);
+		rte_errno = ENOTSUP;
+		return;
 	}
 
 	/* aso_object_offset format: [24B] */
