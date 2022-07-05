@@ -212,8 +212,9 @@ class BaseDrResources(object):
 
     def create_matcher(self, table, matcher_templates, action_templates,
                        mode=me.MLX5DR_MATCHER_RESOURCE_MODE_RULE,
-                       prio=1, log_row=0, log_col=0, log_rules=2):
-        attr = Mlx5drMatcherAttr(prio, mode, log_row, log_col, log_rules)
+                       prio=1, log_row=0, log_col=0, log_rules=2,
+                       flow_src=me.MLX5DR_MATCHER_FLOW_SRC_ANY):
+        attr = Mlx5drMatcherAttr(prio, mode, log_row, log_col, log_rules, flow_src=flow_src)
         return Mlx5drMatcher(table, matcher_templates, len(matcher_templates), attr, action_templates)
 
     def create_root_fwd_rule(self, rte_items, level=1, table_type=me.MLX5DR_TABLE_TYPE_NIC_RX,
@@ -230,7 +231,8 @@ class BaseDrResources(object):
         return root_matcher, table, rule
 
     def init_steering_resources(self, rte_items=None, table_type=me.MLX5DR_TABLE_TYPE_NIC_RX,
-                                root_rte_items=None, action_types_list=None):
+                                root_rte_items=None, action_types_list=None,
+                                flow_src=me.MLX5DR_MATCHER_FLOW_SRC_ANY):
         """
         Init the basic steering resources.
         :param rte_items: The rte_items to use in the matchers. If not set, use sipv4 rte item.
@@ -259,7 +261,8 @@ class BaseDrResources(object):
         self.matcher_templates = [Mlx5drMacherTemplate(rte_items, flags=template_relaxed_match)]
         self.matcher = self.create_matcher(self.table, self.matcher_templates, action_templates,
                                            log_row=MATCHER_ROW,
-                                           mode=me.MLX5DR_MATCHER_RESOURCE_MODE_HTABLE)
+                                           mode=me.MLX5DR_MATCHER_RESOURCE_MODE_HTABLE,
+                                           flow_src=flow_src)
 
     def create_rule_action(self, action_str, flags=me.MLX5DR_ACTION_FLAG_HWS_RX, **kwargs):
         if action_str == 'tir':
