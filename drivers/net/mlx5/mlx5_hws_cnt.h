@@ -113,6 +113,11 @@ struct mlx5_hws_cnt_pool {
 enum {
 	HWS_AGE_FREE, /* Initialized state. */
 	HWS_AGE_CANDIDATE, /* AGE assigned to flows. */
+	HWS_AGE_CANDIDATE_INSIDE_RING,
+	/*
+	 * AGE assigned to flows but it still in ring. It was aged-out but the
+	 * timeout was changed, so it in ring but stiil candidate.
+	 */
 	HWS_AGE_AGED_OUT_REPORTED,
 	/*
 	 * Aged-out, reported by rte_flow_get_q_aged_flows and wait for destroy.
@@ -126,7 +131,7 @@ enum {
 
 /* HWS counter age parameter. */
 struct mlx5_hws_age_param {
-	uint32_t timeout; /* Aging timeout in seconds. */
+	uint32_t timeout; /* Aging timeout in seconds (atomically accessed). */
 	uint32_t sec_since_last_hit;
 	/* Time in seconds since last hit (atomically accessed). */
 	uint16_t state; /* AGE state (atomically accessed). */
@@ -679,6 +684,10 @@ uint32_t
 mlx5_hws_age_action_create(struct mlx5_priv *priv, uint32_t queue_id,
 			   bool shared, const struct rte_flow_action_age *age,
 			   uint32_t flow_idx, struct rte_flow_error *error);
+
+int
+mlx5_hws_age_action_update(struct mlx5_priv *priv, uint32_t idx,
+			   const void *update, struct rte_flow_error *error);
 
 void *
 mlx5_hws_age_context_get(struct mlx5_priv *priv, uint32_t idx);

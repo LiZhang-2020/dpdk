@@ -6462,6 +6462,8 @@ flow_hw_action_handle_update(struct rte_eth_dev *dev, uint32_t queue,
 	uint32_t idx = act_idx & ((1u << MLX5_INDIRECT_ACTION_TYPE_OFFSET) - 1);
 
 	switch (type) {
+	case MLX5_INDIRECT_ACTION_TYPE_AGE:
+		return mlx5_hws_age_action_update(priv, idx, update, error);
 	case MLX5_INDIRECT_ACTION_TYPE_CT:
 		return flow_hw_conntrack_update(dev, queue, update, act_idx, error);
 	case MLX5_INDIRECT_ACTION_TYPE_METER_MARK:
@@ -6650,6 +6652,7 @@ flow_hw_query_age(const struct rte_eth_dev *dev, uint32_t age_idx, void *data,
 		resp->aged = 1;
 		break;
 	case HWS_AGE_CANDIDATE:
+	case HWS_AGE_CANDIDATE_INSIDE_RING:
 		resp->aged = 0;
 		break;
 	case HWS_AGE_FREE:
