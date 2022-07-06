@@ -2932,6 +2932,33 @@ struct rte_flow_query_age {
  * @warning
  * @b EXPERIMENTAL: this structure may change without prior notice
  *
+ * RTE_FLOW_ACTION_TYPE_AGE
+ *
+ * Update indirect AGE action attributes:
+ *  - Timeout can be updated including stop/start action:
+ *     +-------------+-------------+------------------------------+
+ *     | Old Timeout | New Timeout | Updating                     |
+ *     +=============+=============+==============================+
+ *     | 0           | positive    | Start aging with new value   |
+ *     +-------------+-------------+------------------------------+
+ *     | positive    | 0           | Stop aging			  |
+ *     +-------------+-------------+------------------------------+
+ *     | positive    | positive    | Change timeout to new value  |
+ *     +-------------+-------------+------------------------------+
+ *  - sec_since_last_hit can be reset.
+ */
+struct rte_flow_update_age {
+	uint32_t reserved:6; /**< Reserved, must be zero. */
+	uint32_t timeout_valid:1; /**< The timeout is valid for update. */
+	uint32_t timeout:24; /**< Time in seconds. */
+	uint32_t touch:1;
+	/**< Means that aging should assume packet passed the aging. */
+};
+
+/**
+ * @warning
+ * @b EXPERIMENTAL: this structure may change without prior notice
+ *
  * RTE_FLOW_ACTION_TYPE_COUNT
  *
  * Adds a counter action to a matched flow.
