@@ -1281,6 +1281,12 @@ mlx5_txq_verify(struct rte_eth_dev *dev)
 	return ret;
 }
 
+int
+mlx5_txq_get_sqn(struct mlx5_txq_ctrl *txq)
+{
+	return txq->is_hairpin ? txq->obj->sq->id : txq->obj->sq_obj.sq->id;
+}
+
 /**
  * Set the Tx queue dynamic timestamp (mask and offset)
  *

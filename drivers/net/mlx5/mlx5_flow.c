@@ -598,8 +598,8 @@ mlx5_flow_expand_rss(struct mlx5_flow_expand_rss *buf, size_t size,
  *   Buffer size in bytes. If 0, @p buf can be NULL.
  * @param[in] pattern
  *   User flow pattern.
- * @param[in] txq_specs
- *   Buffer to store txq spec.
+ * @param[in] sq_specs
+ *   Buffer to store sq spec.
  *
  * @return
  *   0 for success and negative value for failure
@@ -608,11 +608,12 @@ mlx5_flow_expand_rss(struct mlx5_flow_expand_rss *buf, size_t size,
 static int
 mlx5_flow_expand_sqn(struct mlx5_flow_expand_sqn *buf, size_t size,
 		     const struct rte_flow_item *pattern,
-		     struct mlx5_rte_flow_item_tx_queue *txq_specs)
+		     struct mlx5_rte_flow_item_sq *sq_specs)
 {
 	const struct rte_flow_item *item;
 	bool port_representor = false;
 	size_t user_pattern_size = 0;
+	struct rte_eth_dev *dev;
 	struct mlx5_priv *priv;
 	void *addr = NULL;
 	uint16_t port_id;
@@ -634,7 +635,8 @@ mlx5_flow_expand_sqn(struct mlx5_flow_expand_sqn *buf, size_t size,
 	}
 	if (!port_representor)
 		return 0;
-	priv = rte_eth_devices[port_id].data->dev_private;
+	dev = &rte_eth_devices[port_id];
+	priv = dev->data->dev_private;
 	buf->entry[0].pattern = (void *)&buf->entry[priv->txqs_n];
 	lsize = offsetof(struct mlx5_flow_expand_sqn, entry) +
 		sizeof(buf->entry[0]) * priv->txqs_n;
@@ -645,16 +647,20 @@ mlx5_flow_expand_sqn(struct mlx5_flow_expand_sqn *buf, size_t size,
 		struct rte_flow_item pattern_add[] = {
 			{
 				.type = (enum rte_flow_item_type)
-					MLX5_RTE_FLOW_ITEM_TYPE_TX_QUEUE,
-				.spec = &txq_specs[i],
+					MLX5_RTE_FLOW_ITEM_TYPE_SQ,
+				.spec = &sq_specs[i],
 			},
 			{
 				.type = RTE_FLOW_ITEM_TYPE_END,
 			},
 		};
+		struct mlx5_txq_ctrl *txq = mlx5_txq_get(dev, i);
 
+		if (txq == NULL)
+			return -EINVAL;
 		buf->entry[i].pattern = addr;
-		txq_specs[i].queue = i;
+		sq_specs[i].queue = mlx5_txq_get_sqn(txq);
+		mlx5_txq_release(dev, i);
 		rte_memcpy(addr, pattern, user_pattern_size);
 		addr = (void *)(((uintptr_t)addr) + user_pattern_size);
 		rte_memcpy(addr, pattern_add, sizeof(struct rte_flow_item) * elt);
@@ -7173,7 +7179,7 @@ flow_list_create(struct rte_eth_dev *dev, enum mlx5_flow_type type,
 		struct rte_flow_action actions[MLX5_MAX_SPLIT_ACTIONS];
 		uint8_t buffer[2048];
 	} actions_translate;
-	struct mlx5_rte_flow_item_tx_queue txq_specs[RTE_MAX_QUEUES_PER_PORT];
+	struct mlx5_rte_flow_item_sq sq_specs[RTE_MAX_QUEUES_PER_PORT];
 	struct mlx5_flow_expand_rss *buf = &expand_buffer.buf;
 	struct mlx5_flow_rss_desc *rss_desc;
 	const struct rte_flow_action *p_actions_rx;
@@ -7267,7 +7273,7 @@ flow_list_create(struct rte_eth_dev *dev, enum mlx5_flow_type type,
 	} else {
 		ret = mlx5_flow_expand_sqn((struct mlx5_flow_expand_sqn *)buf,
 					   sizeof(expand_buffer.buffer),
-					   items, txq_specs);
+					   items, sq_specs);
 		if (ret) {
 			rte_flow_error_set(error, ENOMEM, RTE_FLOW_ERROR_TYPE_HANDLE,
 					   NULL, "not enough memory for rte_flow");
@@ -7503,14 +7509,14 @@ mlx5_flow_create_esw_table_zero_flow(struct rte_eth_dev *dev)
  *
  * @param dev
  *   Pointer to Ethernet device.
- * @param txq
- *   Txq index.
+ * @param sq_num
+ *   SQ number.
  *
  * @return
  *   Flow ID on success, 0 otherwise and rte_errno is set.
  */
 uint32_t
-mlx5_flow_create_devx_sq_miss_flow(struct rte_eth_dev *dev, uint32_t txq)
+mlx5_flow_create_devx_sq_miss_flow(struct rte_eth_dev *dev, uint32_t sq_num)
 {
 	struct rte_flow_attr attr = {
 		.group = 0,
@@ -7522,8 +7528,8 @@ mlx5_flow_create_devx_sq_miss_flow(struct rte_eth_dev *dev, uint32_t txq)
 	struct rte_flow_item_port_id port_spec = {
 		.id = MLX5_PORT_ESW_MGR,
 	};
-	struct mlx5_rte_flow_item_tx_queue txq_spec = {
-		.queue = txq,
+	struct mlx5_rte_flow_item_sq sq_spec = {
+		.queue = sq_num,
 	};
 	struct rte_flow_item pattern[] = {
 		{
@@ -7532,8 +7538,8 @@ mlx5_flow_create_devx_sq_miss_flow(struct rte_eth_dev *dev, uint32_t txq)
 		},
 		{
 			.type = (enum rte_flow_item_type)
-				MLX5_RTE_FLOW_ITEM_TYPE_TX_QUEUE,
-			.spec = &txq_spec,
+				MLX5_RTE_FLOW_ITEM_TYPE_SQ,
+			.spec = &sq_spec,
 		},
 		{
 			.type = RTE_FLOW_ITEM_TYPE_END,
@@ -8012,30 +8018,30 @@ mlx5_flow_verify(struct rte_eth_dev *dev __rte_unused)
  *
  * @param dev
  *   Pointer to Ethernet device.
- * @param queue
- *   The queue index.
+ * @param sq_num
+ *   The SQ hw number.
  *
  * @return
  *   0 on success, a negative errno value otherwise and rte_errno is set.
  */
 int
 mlx5_ctrl_flow_source_queue(struct rte_eth_dev *dev,
-			    uint32_t queue)
+			    uint32_t sq_num)
 {
 	const struct rte_flow_attr attr = {
 		.egress = 1,
 		.priority = 0,
 	};
-	struct mlx5_rte_flow_item_tx_queue queue_spec = {
-		.queue = queue,
+	struct mlx5_rte_flow_item_sq queue_spec = {
+		.queue = sq_num,
 	};
-	struct mlx5_rte_flow_item_tx_queue queue_mask = {
+	struct mlx5_rte_flow_item_sq queue_mask = {
 		.queue = UINT32_MAX,
 	};
 	struct rte_flow_item items[] = {
 		{
 			.type = (enum rte_flow_item_type)
-				MLX5_RTE_FLOW_ITEM_TYPE_TX_QUEUE,
+				MLX5_RTE_FLOW_ITEM_TYPE_SQ,
 			.spec = &queue_spec,
 			.last = NULL,
 			.mask = &queue_mask,

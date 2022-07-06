@@ -257,7 +257,7 @@ struct mlx5dr_definer_conv_data {
 	X(SET,		gtp_ext_hdr_qfi,	v->qfi,			rte_flow_item_gtp_psc) \
 	X(SET,		vxlan_flags,		v->flags,		rte_flow_item_vxlan) \
 	X(SET,		vxlan_udp_port,		ETH_VXLAN_DEFAULT_PORT,	rte_flow_item_vxlan) \
-	X(SET,		source_qp,		v->queue,		mlx5_rte_flow_item_tx_queue) \
+	X(SET,		source_qp,		v->queue,		mlx5_rte_flow_item_sq) \
 	X(SET,		tag,			v->data,		rte_flow_item_tag) \
 	X(SET,		metadata,		v->data,		rte_flow_item_meta) \
 	X(SET_BE16,	gre_c_ver,		v->c_rsvd0_ver,		rte_flow_item_gre) \
@@ -1243,11 +1243,11 @@ mlx5dr_definer_conv_item_metadata(struct mlx5dr_definer_conv_data *cd,
 }
 
 static int
-mlx5dr_definer_conv_item_tx_queue(struct mlx5dr_definer_conv_data *cd,
-				  struct rte_flow_item *item,
-				  int item_idx)
+mlx5dr_definer_conv_item_sq(struct mlx5dr_definer_conv_data *cd,
+			    struct rte_flow_item *item,
+			    int item_idx)
 {
-	const struct mlx5_rte_flow_item_tx_queue *m = item->mask;
+	const struct mlx5_rte_flow_item_sq *m = item->mask;
 	struct mlx5dr_definer_fc *fc;
 
 	if (!m)
@@ -1616,9 +1616,9 @@ mlx5dr_definer_conv_items_to_hl(struct mlx5dr_context *ctx,
 			ret = mlx5dr_definer_conv_item_vxlan(&cd, items, i);
 			item_flags |= MLX5_FLOW_LAYER_VXLAN;
 			break;
-		case MLX5_RTE_FLOW_ITEM_TYPE_TX_QUEUE:
-			ret = mlx5dr_definer_conv_item_tx_queue(&cd, items, i);
-			item_flags |= MLX5_FLOW_ITEM_TX_QUEUE;
+		case MLX5_RTE_FLOW_ITEM_TYPE_SQ:
+			ret = mlx5dr_definer_conv_item_sq(&cd, items, i);
+			item_flags |= MLX5_FLOW_ITEM_SQ;
 			break;
 		case RTE_FLOW_ITEM_TYPE_TAG:
 		case MLX5_RTE_FLOW_ITEM_TYPE_TAG:

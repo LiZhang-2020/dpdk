@@ -31,7 +31,7 @@
 enum mlx5_rte_flow_item_type {
 	MLX5_RTE_FLOW_ITEM_TYPE_END = INT_MIN,
 	MLX5_RTE_FLOW_ITEM_TYPE_TAG,
-	MLX5_RTE_FLOW_ITEM_TYPE_TX_QUEUE,
+	MLX5_RTE_FLOW_ITEM_TYPE_SQ,
 	MLX5_RTE_FLOW_ITEM_TYPE_VLAN,
 	MLX5_RTE_FLOW_ITEM_TYPE_TUNNEL,
 };
@@ -162,8 +162,8 @@ struct mlx5_flow_action_copy_mreg {
 };
 
 /* Matches on source queue. */
-struct mlx5_rte_flow_item_tx_queue {
-	uint32_t queue;
+struct mlx5_rte_flow_item_sq {
+	uint32_t queue; /* DevX SQ number */
 };
 
 __extension__
@@ -247,7 +247,7 @@ enum mlx5_feature_name {
 #define MLX5_FLOW_LAYER_GENEVE (1u << 26)
 
 /* Queue items. */
-#define MLX5_FLOW_ITEM_TX_QUEUE (1u << 27)
+#define MLX5_FLOW_ITEM_SQ (1u << 27)
 
 /* Pattern tunnel Layer bits (continued). */
 #define MLX5_FLOW_LAYER_GTP (1u << 28)
@@ -2625,7 +2625,7 @@ int mlx5_flow_hw_flush_ctrl_flows(struct rte_eth_dev *dev);
 
 int mlx5_flow_hw_esw_create_mgr_sq_miss_flow(struct rte_eth_dev *dev);
 int mlx5_flow_hw_esw_create_sq_miss_flow(struct rte_eth_dev *dev,
-					 uint32_t txq);
+					 uint32_t sqn);
 int mlx5_flow_hw_esw_create_default_jump_flow(struct rte_eth_dev *dev);
 int mlx5_flow_hw_create_tx_default_mreg_copy_flow(struct rte_eth_dev *dev);
 int flow_hw_table_update(struct rte_eth_dev *dev,

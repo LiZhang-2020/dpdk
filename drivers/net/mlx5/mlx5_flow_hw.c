@@ -4574,7 +4574,7 @@ flow_hw_pattern_validate(struct rte_eth_dev *dev,
 		case RTE_FLOW_ITEM_TYPE_GTP:
 		case RTE_FLOW_ITEM_TYPE_GTP_PSC:
 		case RTE_FLOW_ITEM_TYPE_VXLAN:
-		case MLX5_RTE_FLOW_ITEM_TYPE_TX_QUEUE:
+		case MLX5_RTE_FLOW_ITEM_TYPE_SQ:
 		case RTE_FLOW_ITEM_TYPE_GRE:
 		case RTE_FLOW_ITEM_TYPE_GRE_KEY:
 		case RTE_FLOW_ITEM_TYPE_GRE_OPTION:
@@ -5135,7 +5135,7 @@ flow_hw_create_ctrl_regc_sq_pattern_template(struct rte_eth_dev *dev)
 	struct rte_flow_item_tag reg_c0_mask = {
 		.index = 0xff,
 	};
-	struct mlx5_rte_flow_item_tx_queue queue_mask = {
+	struct mlx5_rte_flow_item_sq queue_mask = {
 		.queue = UINT32_MAX,
 	};
 	struct rte_flow_item items[] = {
@@ -5147,7 +5147,7 @@ flow_hw_create_ctrl_regc_sq_pattern_template(struct rte_eth_dev *dev)
 		},
 		{
 			.type = (enum rte_flow_item_type)
-				MLX5_RTE_FLOW_ITEM_TYPE_TX_QUEUE,
+				MLX5_RTE_FLOW_ITEM_TYPE_SQ,
 			.mask = &queue_mask,
 		},
 		{
@@ -7736,7 +7736,7 @@ mlx5_flow_hw_esw_create_mgr_sq_miss_flow(struct rte_eth_dev *dev)
 }
 
 int
-mlx5_flow_hw_esw_create_sq_miss_flow(struct rte_eth_dev *dev, uint32_t txq)
+mlx5_flow_hw_esw_create_sq_miss_flow(struct rte_eth_dev *dev, uint32_t sq_num)
 {
 	uint16_t port_id = dev->data->port_id;
 	struct rte_flow_item_tag reg_c0_spec = {
@@ -7745,10 +7745,10 @@ mlx5_flow_hw_esw_create_sq_miss_flow(struct rte_eth_dev *dev, uint32_t txq)
 	struct rte_flow_item_tag reg_c0_mask = {
 		.index = 0xff,
 	};
-	struct mlx5_rte_flow_item_tx_queue queue_spec = {
-		.queue = txq,
+	struct mlx5_rte_flow_item_sq queue_spec = {
+		.queue = sq_num,
 	};
-	struct mlx5_rte_flow_item_tx_queue queue_mask = {
+	struct mlx5_rte_flow_item_sq queue_mask = {
 		.queue = UINT32_MAX,
 	};
 	struct rte_flow_item items[] = {
@@ -7760,7 +7760,7 @@ mlx5_flow_hw_esw_create_sq_miss_flow(struct rte_eth_dev *dev, uint32_t txq)
 		},
 		{
 			.type = (enum rte_flow_item_type)
-				MLX5_RTE_FLOW_ITEM_TYPE_TX_QUEUE,
+				MLX5_RTE_FLOW_ITEM_TYPE_SQ,
 			.spec = &queue_spec,
 			.mask = &queue_mask,
 		},
@@ -7786,7 +7786,6 @@ mlx5_flow_hw_esw_create_sq_miss_flow(struct rte_eth_dev *dev, uint32_t txq)
 	uint32_t marker_bit;
 	int ret;
 
-	RTE_SET_USED(txq);
 	ret = rte_flow_pick_transfer_proxy(port_id, &proxy_port_id, NULL);
 	if (ret) {
 		DRV_LOG(ERR, "Unable to pick proxy port for port %u", port_id);

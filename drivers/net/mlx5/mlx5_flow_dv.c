@@ -6200,8 +6200,8 @@ flow_dv_validate(struct rte_eth_dev *dev, const struct rte_flow_attr *attr,
 				return ret;
 			last_item = MLX5_FLOW_ITEM_TAG;
 			break;
-		case MLX5_RTE_FLOW_ITEM_TYPE_TX_QUEUE:
-			last_item = MLX5_FLOW_ITEM_TX_QUEUE;
+		case MLX5_RTE_FLOW_ITEM_TYPE_SQ:
+			last_item = MLX5_FLOW_ITEM_SQ;
 			break;
 		case MLX5_RTE_FLOW_ITEM_TYPE_TAG:
 			break;
@@ -7179,7 +7179,7 @@ flow_dv_validate(struct rte_eth_dev *dev, const struct rte_flow_attr *attr,
 	 * work due to metadata regC0 mismatch.
 	 */
 	if ((!attr->transfer && attr->egress) && priv->representor &&
-	    !(item_flags & MLX5_FLOW_ITEM_TX_QUEUE))
+	    !(item_flags & MLX5_FLOW_ITEM_SQ))
 		return rte_flow_error_set(error, EINVAL,
 					  RTE_FLOW_ERROR_TYPE_ITEM,
 					  NULL,
@@ -10661,10 +10661,8 @@ flow_dv_translate_create_counter(struct rte_eth_dev *dev,
 }
 
 /**
- * Add Tx queue matcher
+ * Add SQ matcher
  *
- * @param[in] dev
- *   Pointer to the dev struct.
  * @param[in, out] matcher
  *   Flow matcher.
  * @param[in, out] key
@@ -10675,48 +10673,29 @@ flow_dv_translate_create_counter(struct rte_eth_dev *dev,
  *   Item is inner pattern.
  */
 static void
-flow_dv_translate_item_tx_queue(struct rte_eth_dev *dev,
-				void *key,
-				const struct rte_flow_item *item,
-				const struct rte_flow_item *port_representor_item,
-				uint32_t key_type)
+flow_dv_translate_item_sq(void *key,
+			  const struct rte_flow_item *item,
+			  uint32_t key_type)
 {
-	const struct mlx5_rte_flow_item_tx_queue *queue_m;
-	const struct mlx5_rte_flow_item_tx_queue *queue_v;
-	const struct rte_flow_item_ethdev *pid_v;
-	const struct mlx5_rte_flow_item_tx_queue queue_mask = {
+	const struct mlx5_rte_flow_item_sq *queue_m;
+	const struct mlx5_rte_flow_item_sq *queue_v;
+	const struct mlx5_rte_flow_item_sq queue_mask = {
 		.queue = UINT32_MAX,
 	};
 	void *misc_v = MLX5_ADDR_OF(fte_match_param, key, misc_parameters);
-	struct mlx5_txq_ctrl *txq = NULL;
 	uint32_t queue;
 
 	MLX5_ITEM_UPDATE(item, key_type, queue_v, queue_m, &queue_mask);
 	if (!queue_m || !queue_v)
 		return;
 	if (key_type & MLX5_SET_MATCHER_V) {
-		if (port_representor_item) {
-			pid_v = port_representor_item->spec;
-			if (pid_v)
-				dev = &rte_eth_devices[pid_v->port_id];
-			else
-				return;
-		}
-		txq = mlx5_txq_get(dev, queue_v->queue);
-		if (!txq)
-			return;
-		if (txq->is_hairpin)
-			queue = txq->obj->sq->id;
-		else
-			queue = txq->obj->sq_obj.sq->id;
+		queue = queue_v->queue;
 		if (key_type == MLX5_SET_MATCHER_SW_V)
 			queue &= queue_m->queue;
 	} else {
 		queue = queue_m->queue;
 	}
 	MLX5_SET(fte_match_set_misc, misc_v, source_sqn, queue);
-	if (txq)
-		mlx5_txq_release(dev, queue_v->queue);
 }
 
 /**
@@ -12775,9 +12754,9 @@ flow_dv_translate_items(struct rte_eth_dev *dev,
 		flow_dv_translate_mlx5_item_tag(dev, key, items, key_type);
 		last_item = MLX5_FLOW_ITEM_TAG;
 		break;
-	case MLX5_RTE_FLOW_ITEM_TYPE_TX_QUEUE:
-		flow_dv_translate_item_tx_queue(dev, key, items, NULL, key_type);
-		last_item = MLX5_FLOW_ITEM_TX_QUEUE;
+	case MLX5_RTE_FLOW_ITEM_TYPE_SQ:
+		flow_dv_translate_item_sq(key, items, key_type);
+		last_item = MLX5_FLOW_ITEM_SQ;
 		break;
 	case RTE_FLOW_ITEM_TYPE_GTP:
 		flow_dv_translate_item_gtp(key, items, tunnel, key_type);
@@ -12966,7 +12945,6 @@ flow_dv_translate_items_sws(struct rte_eth_dev *dev,
 	struct mlx5_dv_matcher_workspace wks_m = wks;
 	const struct rte_flow_item *integrity_items[2] = {NULL, NULL};
 	const struct rte_flow_item *gre_item = NULL;
-	const struct rte_flow_item *port_representor_item = NULL;
 	int item_type;
 	int tunnel;
 	int ret;
@@ -13002,13 +12980,11 @@ flow_dv_translate_items_sws(struct rte_eth_dev *dev,
 			wks.last_item = tunnel ? MLX5_FLOW_ITEM_INNER_FLEX :
 						 MLX5_FLOW_ITEM_OUTER_FLEX;
 			break;
-		case MLX5_RTE_FLOW_ITEM_TYPE_TX_QUEUE:
-			flow_dv_translate_item_tx_queue(dev, match_value, items,
-							port_representor_item,
-							MLX5_SET_MATCHER_SW_V);
-			flow_dv_translate_item_tx_queue(dev, match_mask, items,
-							port_representor_item,
-							MLX5_SET_MATCHER_SW_M);
+		case MLX5_RTE_FLOW_ITEM_TYPE_SQ:
+			flow_dv_translate_item_sq(match_value, items,
+						  MLX5_SET_MATCHER_SW_V);
+			flow_dv_translate_item_sq(match_mask, items,
+						  MLX5_SET_MATCHER_SW_M);
 			break;
 		default:
 			ret = flow_dv_translate_items(dev, items, &wks_m,
@@ -13021,8 +12997,6 @@ flow_dv_translate_items_sws(struct rte_eth_dev *dev,
 				return ret;
 			if (items->type == RTE_FLOW_ITEM_TYPE_GRE)
 				gre_item = items;
-			if (items->type == RTE_FLOW_ITEM_TYPE_PORT_REPRESENTOR)
-				port_representor_item = items;
 			break;
 		}
 		wks.item_flags |= wks.last_item;
