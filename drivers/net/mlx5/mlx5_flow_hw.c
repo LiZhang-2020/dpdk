@@ -6793,8 +6793,11 @@ flow_hw_action_query(struct rte_eth_dev *dev,
 {
 	uint32_t act_idx = (uint32_t)(uintptr_t)handle;
 	uint32_t type = act_idx >> MLX5_INDIRECT_ACTION_TYPE_OFFSET;
+	uint32_t age_idx = act_idx & MLX5_HWS_AGE_IDX_MASK;
 
 	switch (type) {
+	case MLX5_INDIRECT_ACTION_TYPE_AGE:
+		return flow_hw_query_age(dev, age_idx, data, error);
 	case MLX5_INDIRECT_ACTION_TYPE_COUNT:
 		return flow_hw_query_counter(dev, act_idx, data, error);
 	case MLX5_INDIRECT_ACTION_TYPE_CT:
