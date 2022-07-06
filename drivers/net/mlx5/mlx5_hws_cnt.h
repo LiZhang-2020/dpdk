@@ -28,6 +28,8 @@
 #define MLX5_HWS_CNT_DCS_IDX_MASK 0x3
 #define MLX5_HWS_CNT_IDX_MASK ((1UL << MLX5_HWS_CNT_DCS_IDX_OFFSET) - 1)
 
+#define MLX5_HWS_AGE_IDX_MASK (RTE_BIT32(MLX5_INDIRECT_ACTION_TYPE_OFFSET) - 1)
+
 struct mlx5_hws_cnt_dcs {
 	void *dr_action;
 	uint32_t batch_sz;
@@ -130,6 +132,10 @@ struct mlx5_hws_age_param {
 	uint16_t state; /* AGE state (atomically accessed). */
 	uint64_t accumulator_last_hits;
 	/* Last total value of hits for comparing. */
+	uint64_t accumulator_hits;
+	/* Accumulator for hits coming from several counters. */
+	uint32_t accumulator_cnt;
+	/* Number counters which already updated the accumulator in this sec. */
 	uint32_t nb_cnts; /* Number counters used by this AGE. */
 	uint32_t queue_id; /* Queue id of the counter. */
 	cnt_id_t own_cnt_index;
@@ -570,6 +576,15 @@ mlx5_hws_cnt_age_set(struct mlx5_hws_cnt_pool *cpool, cnt_id_t cnt_id,
 	cpool->pool[iidx].age_idx = age_idx;
 }
 
+static __rte_always_inline uint32_t
+mlx5_hws_cnt_age_get(struct mlx5_hws_cnt_pool *cpool, cnt_id_t cnt_id)
+{
+	uint32_t iidx = mlx5_hws_cnt_iidx(cpool, cnt_id);
+
+	MLX5_ASSERT(cpool->pool[iidx].share);
+	return cpool->pool[iidx].age_idx;
+}
+
 static __rte_always_inline cnt_id_t
 mlx5_hws_age_cnt_get(struct mlx5_priv *priv, struct mlx5_hws_age_param *param,
 		     uint32_t age_idx)
@@ -582,6 +597,35 @@ mlx5_hws_age_cnt_get(struct mlx5_priv *priv, struct mlx5_hws_age_param *param,
 		param->nb_cnts++;
 	}
 	return param->own_cnt_index;
+}
+
+static __rte_always_inline void
+mlx5_hws_age_nb_cnt_increase(struct mlx5_priv *priv, uint32_t age_idx)
+{
+	struct mlx5_age_info *age_info = GET_PORT_AGE_INFO(priv);
+	struct mlx5_indexed_pool *ipool = age_info->ages_ipool;
+	struct mlx5_hws_age_param *param = mlx5_ipool_get(ipool, age_idx);
+
+	MLX5_ASSERT(param != NULL);
+	param->nb_cnts++;
+}
+
+static __rte_always_inline void
+mlx5_hws_age_nb_cnt_decrease(struct mlx5_priv *priv, uint32_t age_idx)
+{
+	struct mlx5_age_info *age_info = GET_PORT_AGE_INFO(priv);
+	struct mlx5_indexed_pool *ipool = age_info->ages_ipool;
+	struct mlx5_hws_age_param *param = mlx5_ipool_get(ipool, age_idx);
+
+	if (param != NULL)
+		param->nb_cnts--;
+}
+
+static __rte_always_inline bool
+mlx5_hws_age_is_indirect(uint32_t age_idx)
+{
+	return (age_idx >> MLX5_INDIRECT_ACTION_TYPE_OFFSET) ==
+		MLX5_INDIRECT_ACTION_TYPE_AGE ? true : false;
 }
 
 /* init HWS counter pool. */

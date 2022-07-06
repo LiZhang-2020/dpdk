@@ -108,11 +108,24 @@ mlx5_hws_aging_check(struct mlx5_priv *priv, struct mlx5_hws_cnt_pool *cpool)
 	cpool->time_of_last_age_check = curr_time;
 	for (i = 0; i < nb_alloc_cnts; ++i) {
 		uint32_t age_idx = cpool->pool[i].age_idx;
+		uint64_t hits;
 
 		if (!cpool->pool[i].in_used || age_idx == 0)
 			continue;
 		param = mlx5_ipool_get(age_info->ages_ipool, age_idx);
-		MLX5_ASSERT(param != NULL);
+		if (unlikely(param == NULL)) {
+			/*
+			 * When AGE which used indirect counter it is user
+			 * responsibility not using this indirect counter
+			 * without this AGE.
+			 * If this counter is used after the AGE was freed, the
+			 * AGE index is invalid and using it here will cause a
+			 * segmentation fault.
+			 */
+			DRV_LOG(WARNING,
+				"Counter %u is lost his AGE, it is unused.", i);
+			continue;
+		}
 		switch (__atomic_load_n(&param->state, __ATOMIC_RELAXED)) {
 		case HWS_AGE_AGED_OUT_NOT_REPORTED:
 		case HWS_AGE_AGED_OUT_REPORTED:
@@ -131,14 +144,32 @@ mlx5_hws_aging_check(struct mlx5_priv *priv, struct mlx5_hws_cnt_pool *cpool)
 			MLX5_ASSERT(0);
 			continue;
 		}
-		if (stats[i].hits != param->accumulator_last_hits) {
-			__atomic_store_n(&param->sec_since_last_hit, 0,
-					 __ATOMIC_RELAXED);
-			param->accumulator_last_hits = stats[i].hits;
-			continue;
+		hits = rte_be_to_cpu_64(stats[i].hits);
+		if (param->nb_cnts == 1) {
+			if (stats[i].hits != param->accumulator_last_hits) {
+				__atomic_store_n(&param->sec_since_last_hit, 0,
+						 __ATOMIC_RELAXED);
+				param->accumulator_last_hits = hits;
+				continue;
+			}
+		} else {
+			param->accumulator_hits += hits;
+			param->accumulator_cnt++;
+			if (param->accumulator_cnt < param->nb_cnts)
+				continue;
+			param->accumulator_cnt = 0;
+			if (param->accumulator_last_hits !=
+						param->accumulator_hits) {
+				__atomic_store_n(&param->sec_since_last_hit,
+						 0, __ATOMIC_RELAXED);
+				param->accumulator_last_hits =
+							param->accumulator_hits;
+				param->accumulator_hits = 0;
+				continue;
+			}
+			param->accumulator_hits = 0;
 		}
-		if (__atomic_add_fetch(&param->sec_since_last_hit,
-				       time_delta,
+		if (__atomic_add_fetch(&param->sec_since_last_hit, time_delta,
 				       __ATOMIC_RELAXED) <= param->timeout)
 			continue;
 		/* Prepare the relevant ring for this AGE parameter */
@@ -765,6 +796,8 @@ mlx5_hws_age_action_create(struct mlx5_priv *priv, uint32_t queue_id,
 				    __ATOMIC_RELAXED) == HWS_AGE_FREE);
 	if (shared) {
 		param->nb_cnts = 0;
+		param->accumulator_hits = 0;
+		param->accumulator_cnt = 0;
 		flow_idx = age_idx;
 	} else {
 		param->nb_cnts = 1;

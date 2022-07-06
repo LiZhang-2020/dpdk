@@ -1842,6 +1842,7 @@ flow_hw_shared_action_construct(struct rte_eth_dev *dev,
 						  idx) < 0)
 				return -1;
 			flow->cnt_id = age_cnt;
+			param->nb_cnts++;
 		} else {
 			/*
 			 * Get the counter of this indirect AGE or create one
@@ -2256,6 +2257,17 @@ flow_hw_actions_construct(struct rte_eth_dev *dev,
 		}
 	}
 	if (at->action_flags & MLX5_FLOW_ACTION_INDIRECT_COUNT) {
+		if (at->action_flags & MLX5_FLOW_ACTION_INDIRECT_AGE) {
+			age_idx = job->flow->age_idx & MLX5_HWS_AGE_IDX_MASK;
+			if (mlx5_hws_cnt_age_get(priv->hws_cpool,
+						 job->flow->cnt_id) != age_idx)
+				/*
+				 * This is first use of this indirect counter
+				 * for this indirect AGE, need to increase the
+				 * number of counters.
+				 */
+				mlx5_hws_age_nb_cnt_increase(priv, age_idx);
+		}
 		/*
 		 * Update this indirect counter the indirect/direct AGE in which
 		 * using it.
@@ -2512,18 +2524,28 @@ flow_hw_age_count_release(struct mlx5_priv *priv, uint32_t queue,
 			  struct rte_flow_hw *flow,
 			  struct rte_flow_error *error)
 {
-	bool shared_cnt = mlx5_hws_cnt_is_shared(priv->hws_cpool, flow->cnt_id);
-
-	if (!shared_cnt) {
-		mlx5_hws_cnt_pool_put(priv->hws_cpool, &queue, &flow->cnt_id);
-		flow->cnt_id = 0;
-	}
-	if (flow->age_idx) {
-		if (shared_cnt)
+	if (mlx5_hws_cnt_is_shared(priv->hws_cpool, flow->cnt_id)) {
+		if (flow->age_idx && !mlx5_hws_age_is_indirect(flow->age_idx)) {
 			/* Remove this AGE parameter from indirect counter. */
 			mlx5_hws_cnt_age_set(priv->hws_cpool, flow->cnt_id, 0);
-		/* Release the AGE parameter. */
-		mlx5_hws_age_action_destroy(priv, flow->age_idx, error);
+			/* Release the AGE parameter. */
+			mlx5_hws_age_action_destroy(priv, flow->age_idx, error);
+			flow->age_idx = 0;
+		}
+		return;
+	}
+	/* Put the counter first to reduce the race risk in BG thread. */
+	mlx5_hws_cnt_pool_put(priv->hws_cpool, &queue, &flow->cnt_id);
+	flow->cnt_id = 0;
+	if (flow->age_idx) {
+		if (mlx5_hws_age_is_indirect(flow->age_idx)) {
+			uint32_t idx = flow->age_idx & MLX5_HWS_AGE_IDX_MASK;
+
+			mlx5_hws_age_nb_cnt_decrease(priv, idx);
+		} else {
+			/* Release the AGE parameter. */
+			mlx5_hws_age_action_destroy(priv, flow->age_idx, error);
+		}
 		flow->age_idx = 0;
 	}
 }
@@ -6511,6 +6533,7 @@ flow_hw_action_handle_destroy(struct rte_eth_dev *dev, uint32_t queue,
 {
 	uint32_t act_idx = (uint32_t)(uintptr_t)handle;
 	uint32_t type = act_idx >> MLX5_INDIRECT_ACTION_TYPE_OFFSET;
+	uint32_t age_idx = act_idx & MLX5_HWS_AGE_IDX_MASK;
 	uint32_t idx = act_idx & ((1u << MLX5_INDIRECT_ACTION_TYPE_OFFSET) - 1);
 	struct mlx5_priv *priv = dev->data->dev_private;
 	struct mlx5_aso_mtr_pool *pool = priv->hws_mpool;
@@ -6522,8 +6545,15 @@ flow_hw_action_handle_destroy(struct rte_eth_dev *dev, uint32_t queue,
 	RTE_SET_USED(user_data);
 	switch (type) {
 	case MLX5_INDIRECT_ACTION_TYPE_AGE:
-		return mlx5_hws_age_action_destroy(priv, idx, error);
+		return mlx5_hws_age_action_destroy(priv, age_idx, error);
 	case MLX5_INDIRECT_ACTION_TYPE_COUNT:
+		age_idx = mlx5_hws_cnt_age_get(priv->hws_cpool, act_idx);
+		if (age_idx != 0)
+			/*
+			 * If this counter belongs to indirect AGE, here is the
+			 * time to update the AGE.
+			 */
+			mlx5_hws_age_nb_cnt_decrease(priv, age_idx);
 		return mlx5_hws_cnt_shared_put(priv->hws_cpool, &act_idx);
 	case MLX5_INDIRECT_ACTION_TYPE_CT:
 		return flow_hw_conntrack_destroy(dev, act_idx, error);
