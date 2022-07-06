@@ -106,6 +106,23 @@ int rte_pmd_mlx5_external_rx_queue_id_unmap(uint16_t port_id,
 					    uint16_t dpdk_idx);
 
 /**
+ * Enable traffic for external SQ.
+ *
+ * @param[in] port_id
+ *   The port identifier of the Ethernet device.
+ * @param[in] sq_num
+ *   SQ HW number.
+ *
+ * @return
+ *   0 on success, a negative errno value otherwise and rte_errno is set.
+ *   Possible values for rte_errno:
+ *   - EINVAL - invalid sq_number or port type.
+ *   - ENODEV - there is no Ethernet device for this port id.
+ */
+__rte_experimental
+int rte_pmd_mlx5_external_sq_enable(uint16_t port_id, uint32_t sq_num);
+
+/**
  * The rate of the host port shaper will be updated directly at the next
  * available descriptor threshold event to the rate that comes with this flag set;
  * set rate 0 to disable this rate update.
