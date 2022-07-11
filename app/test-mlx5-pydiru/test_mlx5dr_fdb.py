@@ -148,7 +148,11 @@ class Mlx5drFDBTest(PydiruTrafficTestCase):
         Sends and verifies packets.
         Removes the rule.
         """
-        rte_items = create_sipv4_rte_items(PacketConsts.SRC_IP)
+        rte_items = [create_ipv4_rte_item(src_addr=PacketConsts.SRC_IP)]
+        mask = Mlx5RteFlowItemTxQueue(qp_num=0xffffffff)
+        val = Mlx5RteFlowItemTxQueue(qp_num=self.client.qp.qp_num)
+        rte_items.append(RteFlowItem(me.MLX5_RTE_FLOW_ITEM_TYPE_TX_QUEUE, val, mask))
+        rte_items.append(RteFlowItemEnd())
         self.tmp_rule = Mlx5drRule(self.server.matcher, 0, rte_items, at_idx, actions, len(actions),
                                    Mlx5drRuleAttr(user_data=bytes(8)), self.server.dr_ctx)
         raw_traffic(self.client, self.vf, self.server.num_msgs, send_packets,
@@ -166,7 +170,12 @@ class Mlx5drFDBTest(PydiruTrafficTestCase):
         """
         ib_port = self.vf_to_ib_port(self.vf_name)
         eth_rte_items = [create_eth_rte_item(), RteFlowItemEnd()]
-        src_ip_rte_items = create_sipv4_rte_items(PacketConsts.SRC_IP)
+        src_ip_rte_items = [create_ipv4_rte_item(src_addr=PacketConsts.SRC_IP)]
+        mask = Mlx5RteFlowItemTxQueue(qp_num=0xffffffff)
+        val = Mlx5RteFlowItemTxQueue(qp_num=self.client.qp.qp_num)
+        qpn_rte_item = RteFlowItem(me.MLX5_RTE_FLOW_ITEM_TYPE_TX_QUEUE, val, mask)
+        src_ip_rte_items.append(qpn_rte_item)
+        src_ip_rte_items.append(RteFlowItemEnd())
         dst_ip_items = [create_ipv4_rte_item(dst_addr=PacketConsts.DST_IP), RteFlowItemEnd()]
         action_types_list = [[me.MLX5DR_ACTION_TYP_DROP, me.MLX5DR_ACTION_TYP_LAST],
                              [me.MLX5DR_ACTION_TYP_CTR, me.MLX5DR_ACTION_TYP_VPORT,
@@ -190,7 +199,8 @@ class Mlx5drFDBTest(PydiruTrafficTestCase):
         drop_ip = "1.1.1.3"
         _, drop_ra = self.server.create_rule_action('drop', flags=me.MLX5DR_ACTION_FLAG_HWS_FDB)
         packet_drop = gen_packet(self.server.msg_size, src_ip=drop_ip)
-        self.drop_rule = Mlx5drRule(self.server.matcher, 0, create_sipv4_rte_items(drop_ip), 0,
+        drop_rte_items = [create_ipv4_rte_item(src_addr=drop_ip), qpn_rte_item, RteFlowItemEnd()]
+        self.drop_rule = Mlx5drRule(self.server.matcher, 0, drop_rte_items, 0,
                                     [drop_ra], 1, Mlx5drRuleAttr(user_data=bytes(8)),
                                     self.server.dr_ctx)
         # Counter
