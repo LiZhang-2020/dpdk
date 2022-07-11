@@ -1037,6 +1037,8 @@ struct mlx5_aso_mtr_pool {
 	struct mlx5dr_action *action; /* HWS action. */
 	struct mlx5_indexed_pool *idx_pool; /* HWS index pool. */
 	uint32_t index; /* Pool index in management structure. */
+	uint32_t nb_sq; /* Number of ASO SQ. */
+	struct mlx5_aso_sq *sq; /* ASO SQs. */
 };
 
 LIST_HEAD(aso_meter_list, mlx5_aso_mtr);
@@ -1759,7 +1761,7 @@ struct mlx5_priv {
 	struct mlx5_aso_ct_pools_mng *ct_mng;
 	/* Management data for ASO connection tracking. */
 	struct mlx5_aso_ct_pool *hws_ctpool; /* HW steering's CT pool. */
-	struct mlx5_aso_mtr_pool *hws_mpool; /* Meter mark indexed pool. */
+	struct mlx5_aso_mtr_pool *hws_mpool; /* HW steering's Meter pool. */
 };
 
 #define PORT_ID(priv) ((priv)->dev_data->port_id)
@@ -2096,7 +2098,8 @@ void mlx5_pmd_socket_uninit(void);
 int mlx5_flow_meter_init(struct rte_eth_dev *dev,
 			 uint32_t nb_meters,
 			 uint32_t nb_meter_profiles,
-			 uint32_t nb_meter_policies);
+			 uint32_t nb_meter_policies,
+			 uint32_t nb_queues);
 int mlx5_flow_meter_ops_get(struct rte_eth_dev *dev, void *arg);
 struct mlx5_flow_meter_info *mlx5_flow_meter_find(struct mlx5_priv *priv,
 		uint32_t meter_id, uint32_t *mtr_idx);
@@ -2164,15 +2167,24 @@ eth_tx_burst_t mlx5_select_tx_function(struct rte_eth_dev *dev);
 
 /* mlx5_flow_aso.c */
 
+int mlx5_aso_mtr_queue_init(struct mlx5_dev_ctx_shared *sh,
+			    struct mlx5_aso_mtr_pool *hws_pool,
+			    struct mlx5_aso_mtr_pools_mng *pool_mng,
+			    uint32_t nb_queues);
+void mlx5_aso_mtr_queue_uninit(struct mlx5_dev_ctx_shared *sh,
+			       struct mlx5_aso_mtr_pool *hws_pool,
+			       struct mlx5_aso_mtr_pools_mng *pool_mng);
 int mlx5_aso_queue_init(struct mlx5_dev_ctx_shared *sh,
-		enum mlx5_access_aso_opc_mod aso_opc_mod);
+			enum mlx5_access_aso_opc_mod aso_opc_mode,
+			uint32_t nb_queues);
 int mlx5_aso_flow_hit_queue_poll_start(struct mlx5_dev_ctx_shared *sh);
 int mlx5_aso_flow_hit_queue_poll_stop(struct mlx5_dev_ctx_shared *sh);
 void mlx5_aso_queue_uninit(struct mlx5_dev_ctx_shared *sh,
-		enum mlx5_access_aso_opc_mod aso_opc_mod);
-int mlx5_aso_meter_update_by_wqe(struct mlx5_dev_ctx_shared *sh,
-		struct mlx5_aso_mtr *mtr, struct mlx5_mtr_bulk *bulk);
-int mlx5_aso_mtr_wait(struct mlx5_dev_ctx_shared *sh,
+			   enum mlx5_access_aso_opc_mod aso_opc_mod);
+int mlx5_aso_meter_update_by_wqe(struct mlx5_dev_ctx_shared *sh, uint32_t queue,
+				 struct mlx5_aso_mtr *mtr,
+				 struct mlx5_mtr_bulk *bulk);
+int mlx5_aso_mtr_wait(struct mlx5_dev_ctx_shared *sh, uint32_t queue,
 		struct mlx5_aso_mtr *mtr);
 int mlx5_aso_ct_update_by_wqe(struct mlx5_dev_ctx_shared *sh, uint32_t queue,
 			      struct mlx5_aso_ct_action *ct,

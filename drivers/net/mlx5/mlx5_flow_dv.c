@@ -5353,7 +5353,7 @@ flow_dv_mtr_container_resize(struct rte_eth_dev *dev)
 		return -ENOMEM;
 	}
 	if (!pools_mng->n)
-		if (mlx5_aso_queue_init(priv->sh, ASO_OPC_MOD_POLICER)) {
+		if (mlx5_aso_queue_init(priv->sh, ASO_OPC_MOD_POLICER, 1)) {
 			mlx5_free(pools);
 			return -ENOMEM;
 		}

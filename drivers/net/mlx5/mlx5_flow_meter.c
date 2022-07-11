@@ -37,6 +37,7 @@ mlx5_flow_meter_uninit(struct rte_eth_dev *dev)
 		priv->mtr_profile_arr = NULL;
 	}
 	if (priv->hws_mpool) {
+		mlx5_aso_mtr_queue_uninit(priv->sh, priv->hws_mpool, NULL);
 		mlx5_ipool_destroy(priv->hws_mpool->idx_pool);
 		mlx5_free(priv->hws_mpool);
 		priv->hws_mpool = NULL;
@@ -61,7 +62,8 @@ int
 mlx5_flow_meter_init(struct rte_eth_dev *dev,
 		     uint32_t nb_meters,
 		     uint32_t nb_meter_profiles,
-		     uint32_t nb_meter_policies)
+		     uint32_t nb_meter_policies,
+			 uint32_t nb_queues)
 {
 	struct mlx5_priv *priv = dev->data->dev_private;
 	struct mlx5_devx_obj *dcs = NULL;
@@ -100,13 +102,6 @@ mlx5_flow_meter_init(struct rte_eth_dev *dev,
 		goto err;
 	}
 	priv->mtr_config.nb_meters = nb_meters;
-	if (mlx5_aso_queue_init(priv->sh, ASO_OPC_MOD_POLICER)) {
-		ret = ENOMEM;
-		rte_mtr_error_set(&error, ENOMEM,
-				  RTE_MTR_ERROR_TYPE_UNSPECIFIED,
-				  NULL, "Meter ASO queue allocation failed.");
-		goto err;
-	}
 	log_obj_size = rte_log2_u32(nb_meters >> 1);
 	dcs = mlx5_devx_cmd_create_flow_meter_aso_obj
 		(priv->sh->cdev->ctx, priv->sh->cdev->pdn,
@@ -172,6 +167,15 @@ mlx5_flow_meter_init(struct rte_eth_dev *dev,
 	}
 	priv->hws_mpool->devx_obj = priv->mtr_bulk.devx_obj;
 	priv->hws_mpool->action = priv->mtr_bulk.action;
+	priv->hws_mpool->nb_sq = nb_queues;
+	if (mlx5_aso_mtr_queue_init(priv->sh, priv->hws_mpool,
+				    NULL, nb_queues)) {
+		ret = ENOMEM;
+		rte_mtr_error_set(&error, ENOMEM,
+				  RTE_MTR_ERROR_TYPE_UNSPECIFIED,
+				  NULL, "Meter ASO queue allocation failed.");
+		goto err;
+	}
 	/*
 	 * No need for local cache if Meter number is a small number.
 	 * Since flow insertion rate will be very limited in that case.
@@ -1830,11 +1834,11 @@ mlx5_flow_meter_action_modify(struct mlx5_priv *priv,
 	if (priv->sh->meter_aso_en) {
 		fm->is_enable = !!is_enable;
 		aso_mtr = container_of(fm, struct mlx5_aso_mtr, fm);
-		ret = mlx5_aso_meter_update_by_wqe(priv->sh, aso_mtr,
-						   &priv->mtr_bulk);
+		ret = mlx5_aso_meter_update_by_wqe(priv->sh, MLX5_HW_INV_QUEUE,
+						   aso_mtr, &priv->mtr_bulk);
 		if (ret)
 			return ret;
-		ret = mlx5_aso_mtr_wait(priv->sh, aso_mtr);
+		ret = mlx5_aso_mtr_wait(priv->sh, MLX5_HW_INV_QUEUE, aso_mtr);
 		if (ret)
 			return ret;
 	} else {
@@ -2080,8 +2084,8 @@ mlx5_flow_meter_create(struct rte_eth_dev *dev, uint32_t meter_id,
 	/* If ASO meter supported, update ASO flow meter by wqe. */
 	if (priv->sh->meter_aso_en) {
 		aso_mtr = container_of(fm, struct mlx5_aso_mtr, fm);
-		ret = mlx5_aso_meter_update_by_wqe(priv->sh, aso_mtr,
-						   &priv->mtr_bulk);
+		ret = mlx5_aso_meter_update_by_wqe(priv->sh, MLX5_HW_INV_QUEUE,
+						   aso_mtr, &priv->mtr_bulk);
 		if (ret)
 			goto error;
 		if (!priv->mtr_idx_tbl) {
@@ -2187,7 +2191,7 @@ mlx5_flow_meter_hws_create(struct rte_eth_dev *dev, uint32_t meter_id,
 	fm->shared = !!shared;
 	fm->initialized = 1;
 	/* Update ASO flow meter by wqe. */
-	ret = mlx5_aso_meter_update_by_wqe(priv->sh, aso_mtr,
+	ret = mlx5_aso_meter_update_by_wqe(priv->sh, MLX5_HW_INV_QUEUE, aso_mtr,
 					   &priv->mtr_bulk);
 	if (ret)
 		return -rte_mtr_error_set(error, ENOTSUP,
@@ -2835,7 +2839,7 @@ mlx5_flow_meter_attach(struct mlx5_priv *priv,
 		struct mlx5_aso_mtr *aso_mtr;
 
 		aso_mtr = container_of(fm, struct mlx5_aso_mtr, fm);
-		if (mlx5_aso_mtr_wait(priv->sh, aso_mtr)) {
+		if (mlx5_aso_mtr_wait(priv->sh, MLX5_HW_INV_QUEUE, aso_mtr)) {
 			return rte_flow_error_set(error, ENOENT,
 					RTE_FLOW_ERROR_TYPE_UNSPECIFIED,
 					NULL,

@@ -1099,7 +1099,7 @@ flow_hw_meter_compile(struct rte_eth_dev *dev,
 	acts->rule_acts[jump_pos].action = (!!group) ?
 				    acts->jump->hws_action :
 				    acts->jump->root_action;
-	if (mlx5_aso_mtr_wait(priv->sh, aso_mtr))
+	if (mlx5_aso_mtr_wait(priv->sh, MLX5_HW_INV_QUEUE, aso_mtr))
 		return -ENOMEM;
 	return 0;
 }
@@ -1175,7 +1175,8 @@ static rte_be32_t vlan_hdr_to_be32(const struct rte_flow_action *actions)
 
 static __rte_always_inline struct mlx5_aso_mtr *
 flow_hw_meter_mark_alloc(struct rte_eth_dev *dev,
-			   const struct rte_flow_action *action)
+			   const struct rte_flow_action *action,
+			   uint32_t queue)
 {
 	struct mlx5_priv *priv = dev->data->dev_private;
 	struct mlx5_aso_mtr_pool *pool = priv->hws_mpool;
@@ -1200,12 +1201,14 @@ flow_hw_meter_mark_alloc(struct rte_eth_dev *dev,
 	aso_mtr->init_color = (meter_mark->color_mode) ?
 		meter_mark->init_color : RTE_COLOR_GREEN;
 	/* Update ASO flow meter by wqe. */
-	if (mlx5_aso_meter_update_by_wqe(priv->sh, aso_mtr, &priv->mtr_bulk)) {
+	if (mlx5_aso_meter_update_by_wqe(priv->sh, queue, aso_mtr,
+					 &priv->mtr_bulk)) {
 		mlx5_ipool_free(pool->idx_pool, mtr_id);
 		return NULL;
 	}
 	/* Wait for ASO object completion. */
-	if (mlx5_aso_mtr_wait(priv->sh, aso_mtr)) {
+	if (queue == MLX5_HW_INV_QUEUE &&
+	    mlx5_aso_mtr_wait(priv->sh, MLX5_HW_INV_QUEUE, aso_mtr)) {
 		mlx5_ipool_free(pool->idx_pool, mtr_id);
 		return NULL;
 	}
@@ -1217,13 +1220,14 @@ flow_hw_meter_mark_compile(struct rte_eth_dev *dev,
 			   uint16_t aso_mtr_pos,
 			   const struct rte_flow_action *action,
 			   struct mlx5dr_rule_action *acts,
-			   uint32_t *index)
+			   uint32_t *index,
+			   uint32_t queue)
 {
 	struct mlx5_priv *priv = dev->data->dev_private;
 	struct mlx5_aso_mtr_pool *pool = priv->hws_mpool;
 	struct mlx5_aso_mtr *aso_mtr;
 
-	aso_mtr = flow_hw_meter_mark_alloc(dev, action);
+	aso_mtr = flow_hw_meter_mark_alloc(dev, action, queue);
 	if (!aso_mtr)
 		return -1;
 
@@ -1573,7 +1577,8 @@ __flow_hw_actions_translate(struct rte_eth_dev *dev,
 				ret = flow_hw_meter_mark_compile(dev,
 							action_pos, actions,
 							acts->rule_acts,
-							&acts->mtr_id);
+							&acts->mtr_id,
+							MLX5_HW_INV_QUEUE);
 				if (ret)
 					goto err;
 			} else if (__flow_hw_act_data_general_append(priv, acts,
@@ -2173,7 +2178,7 @@ flow_hw_actions_construct(struct rte_eth_dev *dev,
 							 jump->root_action;
 			job->flow->jump = jump;
 			job->flow->fate_type = MLX5_FLOW_FATE_JUMP;
-			if (mlx5_aso_mtr_wait(priv->sh, aso_mtr))
+			if (mlx5_aso_mtr_wait(priv->sh, MLX5_HW_INV_QUEUE, aso_mtr))
 				return -1;
 			break;
 		case RTE_FLOW_ACTION_TYPE_AGE:
@@ -2250,7 +2255,7 @@ flow_hw_actions_construct(struct rte_eth_dev *dev,
 		case RTE_FLOW_ACTION_TYPE_METER_MARK:
 			ret = flow_hw_meter_mark_compile(dev,
 				act_data->action_dst, action,
-				rule_acts, &job->flow->mtr_id);
+				rule_acts, &job->flow->mtr_id, queue);
 			if (ret != 0)
 				return ret;
 			break;
@@ -5905,7 +5910,8 @@ flow_hw_configure(struct rte_eth_dev *dev,
 		if (mlx5_flow_meter_init(dev,
 					port_attr->nb_meters,
 					port_attr->nb_meter_profiles,
-					port_attr->nb_meter_policies))
+					port_attr->nb_meter_policies,
+					nb_q_updated))
 			goto err;
 	/* Add global actions. */
 	for (i = 0; i < MLX5_HW_ACTION_FLAG_MAX; i++) {
@@ -6512,7 +6518,7 @@ flow_hw_action_handle_create(struct rte_eth_dev *dev, uint32_t queue,
 		handle = flow_hw_conntrack_create(dev, queue, action->conf, error);
 		break;
 	case RTE_FLOW_ACTION_TYPE_METER_MARK:
-		aso_mtr = flow_hw_meter_mark_alloc(dev, action);
+		aso_mtr = flow_hw_meter_mark_alloc(dev, action, queue);
 		if (!aso_mtr)
 			break;
 		mtr_id = (MLX5_INDIRECT_ACTION_TYPE_METER_MARK <<
@@ -6597,13 +6603,14 @@ flow_hw_action_handle_update(struct rte_eth_dev *dev, uint32_t queue,
 		if (upd_meter_mark->state_valid)
 			fm->is_enable = meter_mark->state;
 		/* Update ASO flow meter by wqe. */
-		if (mlx5_aso_meter_update_by_wqe(priv->sh, aso_mtr,
-						 &priv->mtr_bulk))
+		if (mlx5_aso_meter_update_by_wqe(priv->sh, queue,
+						 aso_mtr, &priv->mtr_bulk))
 			return rte_flow_error_set(error, EINVAL,
 				RTE_FLOW_ERROR_TYPE_UNSPECIFIED,
 				NULL, "Unable to update ASO meter WQE");
 		/* Wait for ASO object completion. */
-		if (mlx5_aso_mtr_wait(priv->sh, aso_mtr))
+		if (queue == MLX5_HW_INV_QUEUE &&
+		    mlx5_aso_mtr_wait(priv->sh, MLX5_HW_INV_QUEUE, aso_mtr))
 			return rte_flow_error_set(error, EINVAL,
 				RTE_FLOW_ERROR_TYPE_UNSPECIFIED,
 				NULL, "Unable to wait for ASO meter CQE");
@@ -6679,13 +6686,14 @@ flow_hw_action_handle_destroy(struct rte_eth_dev *dev, uint32_t queue,
 		fm = &aso_mtr->fm;
 		fm->is_enable = 0;
 		/* Update ASO flow meter by wqe. */
-		if (mlx5_aso_meter_update_by_wqe(priv->sh, aso_mtr,
+		if (mlx5_aso_meter_update_by_wqe(priv->sh, queue, aso_mtr,
 						 &priv->mtr_bulk))
 			return rte_flow_error_set(error, EINVAL,
 				RTE_FLOW_ERROR_TYPE_UNSPECIFIED,
 				NULL, "Unable to update ASO meter WQE");
 		/* Wait for ASO object completion. */
-		if (mlx5_aso_mtr_wait(priv->sh, aso_mtr))
+		if (queue == MLX5_HW_INV_QUEUE &&
+		    mlx5_aso_mtr_wait(priv->sh, MLX5_HW_INV_QUEUE, aso_mtr))
 			return rte_flow_error_set(error, EINVAL,
 				RTE_FLOW_ERROR_TYPE_UNSPECIFIED,
 				NULL, "Unable to wait for ASO meter CQE");
@@ -6867,8 +6875,8 @@ flow_hw_action_create(struct rte_eth_dev *dev,
 		DRV_LOG(WARNING,
 			"port %u create indirect action called in strict queue mode.",
 			dev->data->port_id);
-	return flow_hw_action_handle_create(dev, UINT32_MAX, NULL, conf, action,
-					    NULL, err);
+	return flow_hw_action_handle_create(dev, MLX5_HW_INV_QUEUE,
+					    NULL, conf, action, NULL, err);
 }
 
 /**
@@ -6893,8 +6901,8 @@ flow_hw_action_destroy(struct rte_eth_dev *dev,
 		       struct rte_flow_action_handle *handle,
 		       struct rte_flow_error *error)
 {
-	return flow_hw_action_handle_destroy(dev, UINT32_MAX, NULL, handle,
-			NULL, error);
+	return flow_hw_action_handle_destroy(dev, MLX5_HW_INV_QUEUE,
+			NULL, handle, NULL, error);
 }
 
 /**
@@ -6922,8 +6930,8 @@ flow_hw_action_update(struct rte_eth_dev *dev,
 		      const void *update,
 		      struct rte_flow_error *err)
 {
-	return flow_hw_action_handle_update(dev, UINT32_MAX, NULL, handle,
-			update, NULL, err);
+	return flow_hw_action_handle_update(dev, MLX5_HW_INV_QUEUE,
+			NULL, handle, update, NULL, err);
 }
 
 static int
