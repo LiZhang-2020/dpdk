@@ -8,6 +8,7 @@
 #include <rte_ring.h>
 #include <mlx5_devx_cmds.h>
 #include <rte_cycles.h>
+#include <rte_eal_paging.h>
 
 #include "mlx5_utils.h"
 #include "mlx5_hws_cnt.h"
@@ -270,12 +271,14 @@ mlx5_hws_cnt_raw_data_alloc(struct mlx5_dev_ctx_shared *sh, uint32_t n)
 	struct mlx5_hws_cnt_raw_data_mng *mng = NULL;
 	int ret;
 	size_t sz = n * sizeof(struct flow_counter_stats);
+	size_t pgsz = rte_mem_page_size();
 
+	MLX5_ASSERT(pgsz > 0);
 	mng = mlx5_malloc(MLX5_MEM_ANY | MLX5_MEM_ZERO, sizeof(*mng), 0,
 			SOCKET_ID_ANY);
 	if (mng == NULL)
 		goto error;
-	mng->raw = mlx5_malloc(MLX5_MEM_ANY | MLX5_MEM_ZERO, sz, 0,
+	mng->raw = mlx5_malloc(MLX5_MEM_ANY | MLX5_MEM_ZERO, sz, pgsz,
 			SOCKET_ID_ANY);
 	if (mng->raw == NULL)
 		goto error;
