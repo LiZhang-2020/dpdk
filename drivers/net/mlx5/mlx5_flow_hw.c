@@ -3584,28 +3584,76 @@ flow_hw_action_meta_copy_insert(const struct rte_flow_action actions[],
 				uint16_t *ins_pos)
 {
 	uint16_t idx, total = 0;
-	bool ins = false;
+	uint16_t end_idx = UINT16_MAX;
 	bool act_end = false;
+	bool modify_field = false;
+	bool rss_or_queue = false;
 
 	MLX5_ASSERT(actions && masks);
 	MLX5_ASSERT(new_actions && new_masks);
 	MLX5_ASSERT(ins_actions && ins_masks);
 	for (idx = 0; !act_end; idx++) {
-		if (idx >= MLX5_HW_MAX_ACTS)
-			return -1;
-		if (actions[idx].type == RTE_FLOW_ACTION_TYPE_RSS ||
-		    actions[idx].type == RTE_FLOW_ACTION_TYPE_QUEUE) {
-			ins = true;
-			*ins_pos = idx;
-		}
-		if (actions[idx].type == RTE_FLOW_ACTION_TYPE_END)
+		switch (actions[idx].type) {
+		case RTE_FLOW_ACTION_TYPE_RSS:
+		case RTE_FLOW_ACTION_TYPE_QUEUE:
+			/* It is assumed that application provided only single RSS/QUEUE action. */
+			MLX5_ASSERT(!rss_or_queue);
+			rss_or_queue = true;
+			break;
+		case RTE_FLOW_ACTION_TYPE_MODIFY_FIELD:
+			modify_field = true;
+			break;
+		case RTE_FLOW_ACTION_TYPE_END:
+			end_idx = idx;
 			act_end = true;
+			break;
+		default:
+			break;
+		}
 	}
-	if (!ins)
+	if (!rss_or_queue)
 		return 0;
-	else if (idx == MLX5_HW_MAX_ACTS)
+	else if (idx >= MLX5_HW_MAX_ACTS)
 		return -1; /* No more space. */
 	total = idx;
+	/*
+	 * If actions template contains MODIFY_FIELD action, then meta copy action can be inserted
+	 * at the template's end. Position of MODIFY_HDR action is based on the position of the
+	 * first MODIFY_FIELD flow action.
+	 */
+	if (modify_field) {
+		*ins_pos = end_idx;
+		goto insert_meta_copy;
+	}
+	/*
+	 * If actions template does not contain MODIFY_FIELD action, then meta copy action must be
+	 * inserted at aplace conforming with action order defined in steering/mlx5dr_action.c.
+	 */
+	act_end = false;
+	for (idx = 0; !act_end; idx++) {
+		switch (actions[idx].type) {
+		case RTE_FLOW_ACTION_TYPE_COUNT:
+		case RTE_FLOW_ACTION_TYPE_METER:
+		case RTE_FLOW_ACTION_TYPE_METER_MARK:
+		case RTE_FLOW_ACTION_TYPE_CONNTRACK:
+		case RTE_FLOW_ACTION_TYPE_VXLAN_ENCAP:
+		case RTE_FLOW_ACTION_TYPE_NVGRE_ENCAP:
+		case RTE_FLOW_ACTION_TYPE_RAW_ENCAP:
+		case RTE_FLOW_ACTION_TYPE_RSS:
+		case RTE_FLOW_ACTION_TYPE_QUEUE:
+			*ins_pos = idx;
+			act_end = true;
+			break;
+		case RTE_FLOW_ACTION_TYPE_END:
+			act_end = true;
+			break;
+		default:
+			break;
+		}
+	}
+insert_meta_copy:
+	MLX5_ASSERT(*ins_pos != UINT16_MAX);
+	MLX5_ASSERT(*ins_pos < total);
 	/* Before the position, no change for the actions. */
 	for (idx = 0; idx < *ins_pos; idx++) {
 		new_actions[idx] = actions[idx];
@@ -4167,7 +4215,7 @@ flow_hw_actions_template_create(struct rte_eth_dev *dev,
 	unsigned int act_num;
 	unsigned int i;
 	struct rte_flow_actions_template *at = NULL;
-	uint16_t pos = MLX5_HW_MAX_ACTS;
+	uint16_t pos = UINT16_MAX;
 	uint64_t action_flags = 0;
 	struct rte_flow_action tmp_action[MLX5_HW_MAX_ACTS];
 	struct rte_flow_action tmp_mask[MLX5_HW_MAX_ACTS];
@@ -4223,7 +4271,7 @@ flow_hw_actions_template_create(struct rte_eth_dev *dev,
 					   RTE_FLOW_ERROR_TYPE_ACTION, NULL,
 					   "Failed to concatenate new action/mask");
 			return NULL;
-		} else if (pos != MLX5_HW_MAX_ACTS) {
+		} else if (pos != UINT16_MAX) {
 			ra = tmp_action;
 			rm = tmp_mask;
 		}
