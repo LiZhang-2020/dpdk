@@ -295,14 +295,15 @@ int mlx5dr_action_root_build_attr(struct mlx5dr_rule_action rule_actions[],
 			attr[i].type = MLX5DV_FLOW_ACTION_IBV_FLOW_ACTION;
 			attr[i].action = action->flow_action;
 			break;
-#ifndef HAVE_IBV_FLOW_DEVX_COUNTERS
+#ifdef HAVE_IBV_FLOW_DEVX_COUNTERS
 		case MLX5DR_ACTION_TYP_CTR:
 			attr[i].type = MLX5DV_FLOW_ACTION_COUNTERS_DEVX;
 			attr[i].obj = action->devx_obj;
 
 			if (rule_actions[i].counter.offset) {
-				attr_aux[i].type = MLX5_FLOW_ACTION_COUNTER_OFFSET;
-				attr_aux[i].offset = rule_actions[i].counter.offset;
+				DR_LOG(ERR, "Counter offset not supported over root");
+				rte_errno = ENOTSUP;
+				return rte_errno;
 			}
 			break;
 #endif
