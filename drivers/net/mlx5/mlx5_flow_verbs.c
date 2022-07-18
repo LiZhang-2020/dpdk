@@ -1458,7 +1458,8 @@ flow_verbs_validate(struct rte_eth_dev *dev,
 			action_flags |= MLX5_FLOW_ACTION_MARK;
 			break;
 		case RTE_FLOW_ACTION_TYPE_DROP:
-			ret = mlx5_flow_validate_action_drop(action_flags,
+			ret = mlx5_flow_validate_action_drop(dev,
+							     action_flags,
 							     attr,
 							     error);
 			if (ret < 0)
