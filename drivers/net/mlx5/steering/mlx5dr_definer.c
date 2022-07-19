@@ -1303,6 +1303,7 @@ mlx5dr_definer_conv_item_gre(struct mlx5dr_definer_conv_data *cd,
 		fc->item_idx = item_idx;
 		fc->tag_set = &mlx5dr_definer_gre_protocol_type_set;
 		DR_CALC_SET_HDR(fc, tunnel_header, tunnel_header_0);
+		fc->byte_off += MLX5_BYTE_OFF(header_gre, gre_protocol);
 		fc->bit_mask = __mlx5_mask(header_gre, gre_protocol);
 		fc->bit_off = __mlx5_dw_bit_off(header_gre, gre_protocol);
 	}
