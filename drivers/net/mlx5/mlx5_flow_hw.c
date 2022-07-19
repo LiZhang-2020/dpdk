@@ -3350,6 +3350,39 @@ flow_hw_validate_action_count(struct rte_eth_dev *dev,
 }
 
 /**
+ * Validate meter_mark action.
+ *
+ * @param[in] dev
+ *   Pointer to rte_eth_dev structure.
+ * @param[in] action
+ *   Pointer to the indirect action.
+ * @param[out] error
+ *   Pointer to error structure.
+ *
+ * @return
+ *   0 on success, a negative errno value otherwise and rte_errno is set.
+ */
+static int
+flow_hw_validate_action_meter_mark(struct rte_eth_dev *dev,
+			      const struct rte_flow_action *action,
+			      struct rte_flow_error *error)
+{
+	struct mlx5_priv *priv = dev->data->dev_private;
+
+	RTE_SET_USED(action);
+
+	if (!priv->sh->cdev->config.devx)
+		return rte_flow_error_set(error, ENOTSUP,
+					  RTE_FLOW_ERROR_TYPE_ACTION, action,
+					  "meter_mark action not supported");
+	if (!priv->hws_mpool)
+		return rte_flow_error_set(error, EINVAL,
+					  RTE_FLOW_ERROR_TYPE_ACTION, action,
+					  "meter_mark pool not initialized");
+	return 0;
+}
+
+/**
  * Validate indirect action.
  *
  * @param[in] dev
@@ -3385,7 +3418,9 @@ flow_hw_validate_action_indirect(struct rte_eth_dev *dev,
 	type = mask->type;
 	switch (type) {
 	case RTE_FLOW_ACTION_TYPE_METER_MARK:
-		/* TODO: Validation logic (same as flow_hw_actions_validate) */
+		ret = flow_hw_validate_action_meter_mark(dev, mask, error);
+		if (ret < 0)
+			return ret;
 		*action_flags |= MLX5_FLOW_ACTION_METER;
 		break;
 	case RTE_FLOW_ACTION_TYPE_RSS:
@@ -3624,7 +3659,10 @@ mlx5_flow_hw_actions_validate(struct rte_eth_dev *dev,
 			action_flags |= MLX5_FLOW_ACTION_METER;
 			break;
 		case RTE_FLOW_ACTION_TYPE_METER_MARK:
-			/* TODO: Validation logic */
+			ret = flow_hw_validate_action_meter_mark(dev, action,
+								 error);
+			if (ret < 0)
+				return ret;
 			action_flags |= MLX5_FLOW_ACTION_METER;
 			break;
 		case RTE_FLOW_ACTION_TYPE_MODIFY_FIELD:
@@ -6333,6 +6371,46 @@ flow_hw_conntrack_create(struct rte_eth_dev *dev, uint32_t queue,
 }
 
 /**
+ * Validate shared action.
+ *
+ * @param[in] dev
+ *   Pointer to the rte_eth_dev structure.
+ * @param[in] queue
+ *   Which queue to be used.
+ * @param[in] attr
+ *   Operation attribute.
+ * @param[in] conf
+ *   Indirect action configuration.
+ * @param[in] action
+ *   rte_flow action detail.
+ * @param[in] user_data
+ *   Pointer to the user_data.
+ * @param[out] error
+ *   Pointer to error structure.
+ *
+ * @return
+ *   0 on success, otherwise negative errno value.
+ */
+static int
+flow_hw_action_handle_validate(struct rte_eth_dev *dev, uint32_t queue,
+			       const struct rte_flow_op_attr *attr,
+			       const struct rte_flow_indir_action_conf *conf,
+			       const struct rte_flow_action *action,
+			       void *user_data,
+			       struct rte_flow_error *error)
+{
+	RTE_SET_USED(attr);
+	RTE_SET_USED(queue);
+	RTE_SET_USED(user_data);
+	switch (action->type) {
+	case RTE_FLOW_ACTION_TYPE_METER_MARK:
+		return flow_hw_validate_action_meter_mark(dev, action, error);
+	default:
+		return flow_dv_action_validate(dev, conf, action, error);
+	}
+}
+
+/**
  * Create shared action.
  *
  * @param[in] dev
@@ -6702,6 +6780,32 @@ flow_hw_query(const struct rte_eth_dev *dev, struct rte_flow *flow,
 }
 
 /**
+ * Validate indirect action.
+ *
+ * @param[in] dev
+ *   Pointer to the Ethernet device structure.
+ * @param[in] conf
+ *   Shared action configuration.
+ * @param[in] action
+ *   Action specification used to create indirect action.
+ * @param[out] error
+ *   Perform verbose error reporting if not NULL. Initialized in case of
+ *   error only.
+ *
+ * @return
+ *   0 on success, otherwise negative errno value.
+ */
+static int
+flow_hw_action_validate(struct rte_eth_dev *dev,
+			const struct rte_flow_indir_action_conf *conf,
+			const struct rte_flow_action *action,
+			struct rte_flow_error *err)
+{
+	return flow_hw_action_handle_validate(dev, MLX5_HW_INV_QUEUE, NULL,
+					      conf, action, NULL, err);
+}
+
+/**
  * Create indirect action.
  *
  * @param[in] dev
@@ -6926,7 +7030,7 @@ const struct mlx5_flow_driver_ops mlx5_flow_hw_drv_ops = {
 	.async_action_create = flow_hw_action_handle_create,
 	.async_action_destroy = flow_hw_action_handle_destroy,
 	.async_action_update = flow_hw_action_handle_update,
-	.action_validate = flow_dv_action_validate,
+	.action_validate = flow_hw_action_validate,
 	.action_create = flow_hw_action_create,
 	.action_destroy = flow_hw_action_destroy,
 	.action_update = flow_hw_action_update,
