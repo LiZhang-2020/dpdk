@@ -88,7 +88,7 @@ class Mlx5drMatcherTest(PydiruAPITestCase):
         Create HWS resources then open dump file and verify it's created and not
         empty.
         """
-        dump_path = '/tmp/hws_dump'
+        dump_path = '/tmp/hws_dump/dump_sanity_check'
         rte_items = create_sipv4_rte_items(PacketConsts.SRC_IP)
         self.resources.init_steering_resources(rte_items=rte_items)
         self.resources.dr_ctx.dump(dump_path)

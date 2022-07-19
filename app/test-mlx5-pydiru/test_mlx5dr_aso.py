@@ -160,6 +160,8 @@ class Mlx5drAsoTest(PydiruTrafficTestCase):
 
         self.create_aso_rules(self.client, me.MLX5DR_ACTION_FLAG_HWS_TX, rte_items, tx_fm_ra,
                               counter_green_ra_tx, counter_red_ra_tx, reg_c_tx)
+        self.server.dr_ctx.dump('/tmp/hws_dump/test_mlx5dr_aso_flow_meter_rx')
+        self.client.dr_ctx.dump('/tmp/hws_dump/test_mlx5dr_aso_flow_meter_tx')
         # Lower message size to keep sending rate not too high
         self.client.msg_size = 500
         packet = u.gen_packet(self.client.msg_size)
@@ -276,6 +278,9 @@ class Mlx5drAsoTest(PydiruTrafficTestCase):
         rx_matcher2 = self.server.create_matcher(rx_tbl2, reg_c_matcher_template, tir_at)
         rx_tir_rule = Mlx5drRule(rx_matcher2, 0, reg_c_rte, 0, [tir_ra], 1,
                                  Mlx5drRuleAttr(user_data=bytes(8)), self.server.dr_ctx)
+        if synd == CT_VALID_SYND:
+            self.server.dr_ctx.dump('/tmp/hws_dump/test_mlx5dr_ct_aso_valid_rx')
+            self.client.dr_ctx.dump('/tmp/hws_dump/test_mlx5dr_ct_aso_valid_tx')
         packet = u.gen_packet(self.server.msg_size)
         u.raw_traffic(self.client, self.server, self.server.num_msgs, [packet])
         u.verify_counter(self, self.client, devx_counter_tx, counter_id_tx)

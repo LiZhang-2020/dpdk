@@ -75,6 +75,7 @@ class Mlx5drTrafficTest(PydiruTrafficTestCase):
         tir_a, tir_ra = self.server.create_rule_action('tir')
         self.hws_rules.append(Mlx5drRule(self.server.matcher, 0, tir_rte_items, 0, [tir_ra], 1,
                               Mlx5drRuleAttr(user_data=bytes(8)), self.server.dr_ctx))
+        self.server.dr_ctx.dump('/tmp/hws_dump/test_mlx5dr_tir')
         packet = u.gen_packet(self.server.msg_size)
         u.raw_traffic(self.client, self.server, self.server.num_msgs, [packet])
         self.verify_rule_removal(tir_rte_items, [self.server], packet)
@@ -93,6 +94,7 @@ class Mlx5drTrafficTest(PydiruTrafficTestCase):
                                    at_idx=0, rule_actions=[tag_ra, tir_ra], num_of_actions=2,
                                    rule_attr_create=Mlx5drRuleAttr(user_data=bytes(8)),
                                    dr_ctx=self.server.dr_ctx))
+        self.server.dr_ctx.dump('/tmp/hws_dump/test_mlx5dr_tag')
         packet = u.gen_packet(self.server.msg_size)
         u.raw_traffic(self.client, self.server, self.server.num_msgs, [packet],
                       tag_value=0x1234)
@@ -182,6 +184,7 @@ class Mlx5drTrafficTest(PydiruTrafficTestCase):
                                              num_of_actions=2,rule_attr_create=dr_rule_attr,
                                              dr_ctx=self.server.dr_ctx))
         exp_src_mac = struct.pack('!6s', bytes.fromhex(u.NEW_MAC_STR.replace(':', '')))
+        self.server.dr_ctx.dump('/tmp/hws_dump/test_mlx5dr_modify_shared')
         for i in range(1, 4):
             sip = f'{i}.{i}.{i}.{i}'
             exp_packet = u.gen_packet(self.server.msg_size, src_ip=sip, src_mac=exp_src_mac)
@@ -294,6 +297,8 @@ class Mlx5drTrafficTest(PydiruTrafficTestCase):
         # Traffic
         packet1 = u.gen_packet(self.server.msg_size)
         packet2 = u.gen_packet(self.server.msg_size, src_ip=sip_miss)
+        self.server.dr_ctx.dump('/tmp/hws_dump/test_mlx5dr_default_miss_rx')
+        self.client.dr_ctx.dump('/tmp/hws_dump/test_mlx5dr_default_miss_tx')
         u.raw_traffic(self.client, self.server, self.server.num_msgs, [packet1, packet2],
                       expected_packet=packet1)
         # Verify counter
@@ -310,6 +315,7 @@ class Mlx5drTrafficTest(PydiruTrafficTestCase):
         tir_rte_items = u.create_sipv4_rte_items(u.PacketConsts.SRC_IP)
         _, tir_ra = self.server.create_rule_action('tir')
         if decap_type == me.MLX5DR_ACTION_REFORMAT_TYPE_TNL_L3_TO_L2:
+            dump_file = '/tmp/hws_dump/test_mlx5dr_decap_l3'
             action_enum = me.MLX5DR_ACTION_TYP_TNL_L3_TO_L2
             outer = u.gen_outer_headers(self.server.msg_size, tunnel=u.TunnelType.GTP_U)
             l2_hdr = u.get_l2_header()
@@ -320,6 +326,7 @@ class Mlx5drTrafficTest(PydiruTrafficTestCase):
                                                                bulk_size=12)
             exp_packet = l2_hdr + inner
         else:
+            dump_file = '/tmp/hws_dump/test_mlx5dr_decap_l2'
             action_enum = me.MLX5DR_ACTION_TYP_TNL_L2_TO_L2
             outer = u.gen_outer_headers(self.server.msg_size, tunnel=u.TunnelType.VXLAN)
             inner_len = self.server.msg_size - len(outer)
@@ -332,6 +339,7 @@ class Mlx5drTrafficTest(PydiruTrafficTestCase):
         self.hws_rules.append(Mlx5drRule(self.server.matcher, 0, tir_rte_items, 0,
                                          [decap_ra, tir_ra], 2, Mlx5drRuleAttr(user_data=bytes(8)),
                                          self.server.dr_ctx))
+        self.server.dr_ctx.dump(dump_file)
         u.raw_traffic(self.client, self.server, self.server.num_msgs, [packet], exp_packet)
         self.verify_rule_removal(tir_rte_items, [self.server], packet)
 
@@ -342,8 +350,10 @@ class Mlx5drTrafficTest(PydiruTrafficTestCase):
         tir_rte_items = u.create_sipv4_rte_items(u.PacketConsts.SRC_IP)
         self.server.init_steering_resources(rte_items=tir_rte_items)
         action_enum = me.MLX5DR_ACTION_TYP_L2_TO_TNL_L2
+        dump_file = '/tmp/hws_dump/test_mlx5dr_encap_l2'
         if encap_type != me.MLX5DR_ACTION_REFORMAT_TYPE_L2_TO_TNL_L2:
             action_enum = me.MLX5DR_ACTION_TYP_L2_TO_TNL_L3
+            dump_file = '/tmp/hws_dump/test_mlx5dr_encap_l3'
         actions_types = [[action_enum, me.MLX5DR_ACTION_TYP_LAST]]
         self.client.init_steering_resources(rte_items=tir_rte_items, action_types_list=actions_types,
                                             table_type=me.MLX5DR_TABLE_TYPE_NIC_TX)
@@ -365,6 +375,7 @@ class Mlx5drTrafficTest(PydiruTrafficTestCase):
         expected_packet = encap_data + exp_inner
         # Skip indexes which are offloaded by HW(UDP source port and len, ipv4 id, checksum and
         # total len)
+        self.client.dr_ctx.dump(dump_file)
         u.raw_traffic(self.client, self.server, self.server.num_msgs, [send_packet], expected_packet,
                       skip_idxs=[16, 17, 18, 19, 24, 25, 34, 35, 38, 39, 53, 75])
         self.verify_rule_removal(tir_rte_items, [self.server, self.client], send_packet)
@@ -436,6 +447,7 @@ class Mlx5drTrafficTest(PydiruTrafficTestCase):
         for i in [3, 2, 1]:
             src_ip = '.'.join(str(i) * 4)
             packets.append(u.gen_packet(self.server.msg_size, src_ip=src_ip))
+        self.server.dr_ctx.dump('/tmp/hws_dump/test_mlx5dr_drop')
         u.raw_traffic(self.client, self.server, self.server.num_msgs, packets, packets[2])
         self.verify_rule_removal(dip_rte_items, [self.server, self.client], packets[2])
 
@@ -471,6 +483,7 @@ class Mlx5drTrafficTest(PydiruTrafficTestCase):
                                   self.client.dr_ctx)
         packet = u.gen_packet(self.server.msg_size)
         u.raw_traffic(self.client, self.server, self.server.num_msgs, [packet])
+        self.server.dr_ctx.dump('/tmp/hws_dump/test_mlx5dr_counter')
         # Verify counters
         u.verify_counter(self, self.client, tx_devx_counter, tx_counter_id, tx_offset)
         # RX steering counters include FCS\VCRC in the byte count on cx6dx.
@@ -509,6 +522,7 @@ class Mlx5drTrafficTest(PydiruTrafficTestCase):
                                         u.create_sipv4_rte_items(u.PacketConsts.DST_IP), 1,
                                         [tag_ra], 1, Mlx5drRuleAttr(user_data=bytes(8)),
                                         self.server.dr_ctx)
+            self.server.dr_ctx.dump('/tmp/hws_dump/test_mlx5dr_burst')
         else:
             self.server.dr_ctx.send_queue_action(0, me.MLX5DR_SEND_QUEUE_ACTION_DRAIN)
         res = []
@@ -578,6 +592,7 @@ class Mlx5drTrafficTest(PydiruTrafficTestCase):
                                    [decap_ra, modify_ra, tir_ra], 3,
                                    Mlx5drRuleAttr(user_data=bytes(8)),
                                    self.server.dr_ctx)
+        self.server.dr_ctx.dump('/tmp/hws_dump/test_mlx5dr_complex_rule_decap_modify')
         u.raw_traffic(self.client, self.server, self.server.num_msgs, [packet], exp_packet)
 
     def test_mlx5dr_complex_rule_modify_encap(self):
@@ -620,6 +635,8 @@ class Mlx5drTrafficTest(PydiruTrafficTestCase):
                                   self.server.dr_ctx)
         # Skip indexes which are offloaded by HW (UDP source port and len,
         # ipv4 id, checksum and total len)
+        dump_file = '/tmp/hws_dump/test_mlx5dr_complex_rule_modify_encap'
+        self.client.dr_ctx.dump(dump_file)
         u.raw_traffic(self.client, self.server, self.server.num_msgs, [send_packet],
                       exp_packet, skip_idxs=[16, 17, 18, 19, 24, 25, 34, 35, 38, 39, 53, 75])
 
@@ -654,6 +671,8 @@ class Mlx5drTrafficTest(PydiruTrafficTestCase):
         packet = u.gen_packet(self.server.msg_size, num_vlans=2, src_ip=tx_ip)
         exp_packet = u.gen_packet(self.server.msg_size - 2 * u.PacketConsts.VLAN_HEADER_SIZE,
                                   num_vlans=0, src_ip=tx_ip)
+        self.server.dr_ctx.dump('/tmp/hws_dump/test_mlx5dr_pop_vlan_rx')
+        self.client.dr_ctx.dump('/tmp/hws_dump/test_mlx5dr_pop_vlan_tx')
         u.raw_traffic(self.client, self.server, self.server.num_msgs, [packet], exp_packet)
 
     def test_mlx5dr_push_vlan(self):
@@ -688,4 +707,6 @@ class Mlx5drTrafficTest(PydiruTrafficTestCase):
         packet = u.gen_packet(self.server.msg_size - 2 * u.PacketConsts.VLAN_HEADER_SIZE,
                               num_vlans=0, src_ip=rx_ip)
         exp_packet = u.gen_packet(self.server.msg_size, num_vlans=2, src_ip=rx_ip)
+        self.server.dr_ctx.dump('/tmp/hws_dump/test_mlx5dr_push_vlan_rx')
+        self.client.dr_ctx.dump('/tmp/hws_dump/test_mlx5dr_push_vlan_tx')
         u.raw_traffic(self.client, self.server, self.server.num_msgs, [packet], exp_packet)

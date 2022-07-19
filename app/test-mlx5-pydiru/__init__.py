@@ -6,6 +6,10 @@ import os
 
 from args_parser import parser
 
+if not os.path.exists('/tmp/hws_dump'):
+    os.mkdir('/tmp/hws_dump')
+    os.chmod('/tmp/hws_dump', mode=0o777)
+
 # Load every test as a module in the system so that unittest's loader can find it
 def _load_tests():
     res = []

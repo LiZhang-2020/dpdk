@@ -240,6 +240,8 @@ class Mlx5drFDBTest(PydiruTrafficTestCase):
         self.ft_rule = Mlx5drRule(table2_matcher, 0, src_ip_rte_items, 0, [vport_ra], 1,
                                   Mlx5drRuleAttr(user_data=bytes(8)), self.server.dr_ctx)
         self.create_tmp_rule_and_verify(3, [tbl_ra], [packet, packet_drop], packet)
+        self.vf.dr_ctx.dump('/tmp/hws_dump/test_mlx5dr_fdb_actions_vf')
+        self.server.dr_ctx.dump('/tmp/hws_dump/test_mlx5dr_fdb_actions_fdb')
 
     def verify_fdb_matcher_with_flow_src(self, flow_src=me.MLX5DR_MATCHER_FLOW_SRC_ANY):
         """
