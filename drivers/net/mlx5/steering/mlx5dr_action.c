@@ -1329,6 +1329,7 @@ static void mlx5dr_action_prepare_decap_l3_actions(size_t data_sz,
 static int
 mlx5dr_action_handle_tunnel_l3_to_l2(struct mlx5dr_context *ctx,
 				     size_t data_sz,
+				     void *data,
 				     uint32_t bulk_size,
 				     struct mlx5dr_action *action)
 {
@@ -1359,8 +1360,23 @@ mlx5dr_action_handle_tunnel_l3_to_l2(struct mlx5dr_context *ctx,
 	if (ret)
 		goto free_mh_obj;
 
+	if (action->flags & MLX5DR_ACTION_FLAG_SHARED) {
+		mlx5dr_action_prepare_decap_l3_data(data, mh_data, num_of_actions);
+		ret = mlx5dr_arg_write_inline_arg_data(ctx,
+						       action->modify_header.arg_obj->id,
+						       (uint8_t *)mh_data,
+						       num_of_actions *
+						       MLX5DR_MODIFY_ACTION_SIZE);
+		if (ret) {
+			DR_LOG(ERR, "failed writing INLINE arg decap_l3");
+			goto clean_stc;
+		}
+	}
+
 	return 0;
 
+clean_stc:
+	mlx5dr_action_destroy_stcs(action);
 free_mh_obj:
 	mlx5dr_pat_arg_destroy_modify_header(ctx, action);
 	return ret;
@@ -1386,7 +1402,7 @@ mlx5dr_action_create_reformat_hws(struct mlx5dr_context *ctx,
 		ret = mlx5dr_action_handle_l2_to_tunnel_l3(ctx, data_sz, data, bulk_size, action);
 		break;
 	case MLX5DR_ACTION_TYP_TNL_L3_TO_L2:
-		ret = mlx5dr_action_handle_tunnel_l3_to_l2(ctx, data_sz, bulk_size, action);
+		ret = mlx5dr_action_handle_tunnel_l3_to_l2(ctx, data_sz, data, bulk_size, action);
 		break;
 
 	default:
