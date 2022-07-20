@@ -1318,15 +1318,14 @@ mlx5dr_definer_conv_item_gre_opt(struct mlx5dr_definer_conv_data *cd,
 {
 	const struct rte_flow_item_gre_opt *m = item->mask;
 	struct mlx5dr_definer_fc *fc;
-	bool inner = cd->tunnel;
 
 	if (!cd->relaxed) {
-		fc = &cd->fc[DR_CALC_FNAME(IP_PROTOCOL, inner)];
+		fc = &cd->fc[DR_CALC_FNAME(IP_PROTOCOL, false)];
 		if(!fc->tag_set) {
 			fc->item_idx = item_idx;
 			fc->tag_mask_set = &mlx5dr_definer_ones_set;
 			fc->tag_set = &mlx5dr_definer_ipv4_protocol_gre_set;
-			DR_CALC_SET(fc, eth_l3, protocol_next_header, inner);
+			DR_CALC_SET(fc, eth_l3, protocol_next_header, false);
 		}
 	}
 
@@ -1364,15 +1363,14 @@ mlx5dr_definer_conv_item_gre_key(struct mlx5dr_definer_conv_data *cd,
 {
 	const rte_be32_t *m = item->mask;
 	struct mlx5dr_definer_fc *fc;
-	bool inner = cd->tunnel;
 
 	if (!cd->relaxed) {
-		fc = &cd->fc[DR_CALC_FNAME(IP_PROTOCOL, inner)];
+		fc = &cd->fc[DR_CALC_FNAME(IP_PROTOCOL, false)];
 		if(!fc->tag_set) {
 			fc->item_idx = item_idx;
 			fc->tag_mask_set = &mlx5dr_definer_ones_set;
 			fc->tag_set = &mlx5dr_definer_ipv4_protocol_gre_set;
-			DR_CALC_SET(fc, eth_l3, protocol_next_header, inner);
+			DR_CALC_SET(fc, eth_l3, protocol_next_header, false);
 		}
 	}
 
