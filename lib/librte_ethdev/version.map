@@ -296,6 +296,7 @@ EXPERIMENTAL {
 	rte_flow_get_q_aged_flows;
 	rte_eth_rx_avail_thresh_query;
 	rte_eth_rx_avail_thresh_set;
+	rte_flow_async_action_handle_query;
 };
 
 INTERNAL {
