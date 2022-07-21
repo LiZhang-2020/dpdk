@@ -6967,13 +6967,14 @@ flow_hw_query_counter(const struct rte_eth_dev *dev, uint32_t counter,
 	struct mlx5_priv *priv = dev->data->dev_private;
 	struct mlx5_hws_cnt *cnt;
 	struct rte_flow_query_count *qc = data;
-	uint32_t iidx = mlx5_hws_cnt_iidx(priv->hws_cpool, counter);
+	uint32_t iidx;
 	uint64_t pkts, bytes;
 
 	if (!mlx5_hws_cnt_id_valid(counter))
 		return rte_flow_error_set(error, EINVAL,
 				RTE_FLOW_ERROR_TYPE_UNSPECIFIED, NULL,
 				"counter are not available");
+	iidx = mlx5_hws_cnt_iidx(priv->hws_cpool, counter);
 	cnt = &priv->hws_cpool->pool[iidx];
 	__hws_cnt_query_raw(priv->hws_cpool, counter, &pkts, &bytes);
 	qc->hits_set = 1;
