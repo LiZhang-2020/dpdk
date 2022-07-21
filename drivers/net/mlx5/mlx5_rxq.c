@@ -357,7 +357,7 @@ mlx5_get_rx_queue_offloads(struct rte_eth_dev *dev)
 			     DEV_RX_OFFLOAD_TCP_CKSUM);
 	if (priv->sh->dev_cap.hw_vlan_strip)
 		offloads |= DEV_RX_OFFLOAD_VLAN_STRIP;
-	if (priv->sh->dev_cap.lro_supported)
+	if (priv->sh->config.lro_allowed)
 		offloads |= DEV_RX_OFFLOAD_TCP_LRO;
 	return offloads;
 }
@@ -824,9 +824,9 @@ mlx5_rx_queue_setup(struct rte_eth_dev *dev, uint16_t idx, uint16_t desc,
 			    dev->data->dev_conf.rxmode.offloads;
 
 	if ((offloads & DEV_RX_OFFLOAD_TCP_LRO) &&
-	    !priv->sh->dev_cap.lro_supported) {
+	    !priv->sh->config.lro_allowed) {
 		DRV_LOG(ERR,
-			"Port %u queue %u LRO is configured but not supported.",
+			"Port %u queue %u LRO is configured but not allowed.",
 			dev->data->port_id, idx);
 		rte_errno = EINVAL;
 		return -rte_errno;

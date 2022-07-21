@@ -153,7 +153,6 @@ struct mlx5_dev_cap {
 	/* HW has bug working with tunnel packet decap and scatter FCS. */
 	uint32_t hw_fcs_strip:1; /* FCS stripping is supported. */
 	uint32_t rt_timestamp:1; /* Realtime timestamp format. */
-	uint32_t lro_supported:1; /* Whether LRO is supported. */
 	uint32_t rq_delay_drop_en:1; /* Enable RxQ delay drop. */
 	uint32_t tunnel_en:3;
 	/* Whether tunnel stateless offloads are supported. */
@@ -313,6 +312,7 @@ struct mlx5_sh_config {
 	uint32_t decap_en:1; /* Whether decap will be used or not. */
 	uint32_t hw_fcs_strip:1; /* FCS stripping is supported. */
 	uint32_t allow_duplicate_pattern:1;
+	uint32_t lro_allowed:1; /* Whether LRO is allowed. */
 	struct {
 		uint16_t service_core;
 		uint32_t cycle_time; /* query cycle time in milli-second. */
