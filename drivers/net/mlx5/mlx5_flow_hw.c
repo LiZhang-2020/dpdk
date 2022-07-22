@@ -4057,27 +4057,21 @@ err_actions_num:
 
 static void
 flow_hw_set_vlan_vid(struct rte_eth_dev *dev,
-		     const struct rte_flow_action *actions,
-		     const struct rte_flow_action *masks,
-		     struct rte_flow_action *ra, struct rte_flow_action *rm,
+		     struct rte_flow_action *ra,
+		     struct rte_flow_action *rm,
 		     struct rte_flow_action_modify_field *spec,
 		     struct rte_flow_action_modify_field *mask,
-		     uint32_t act_num, int set_vlan_vid_ix)
+		     int set_vlan_vid_ix)
 {
 	struct rte_flow_error error;
-	const bool masked = masks[set_vlan_vid_ix].conf &&
+	const bool masked = rm[set_vlan_vid_ix].conf &&
 		(((const struct rte_flow_action_of_set_vlan_vid *)
-			masks[set_vlan_vid_ix].conf)->vlan_vid != 0);
+			rm[set_vlan_vid_ix].conf)->vlan_vid != 0);
 	const struct rte_flow_action_of_set_vlan_vid *conf =
-		actions[set_vlan_vid_ix].conf;
+		ra[set_vlan_vid_ix].conf;
 	rte_be16_t vid = masked ? conf->vlan_vid : 0;
 	int width = mlx5_flow_item_field_width(dev, RTE_FLOW_FIELD_VLAN_ID, 0,
 					       NULL, &error);
-	if (actions == ra) {
-		size_t copy_sz = sizeof(ra[0]) * act_num;
-		rte_memcpy(ra, actions, copy_sz);
-		rte_memcpy(rm, masks, copy_sz);
-	}
 	*spec = (typeof(*spec)) {
 		.operation = RTE_FLOW_MODIFY_SET,
 		.dst = {
@@ -4169,7 +4163,8 @@ flow_hw_actions_template_create(struct rte_eth_dev *dev,
 			struct rte_flow_error *error)
 {
 	struct mlx5_priv *priv = dev->data->dev_private;
-	int len, act_num, act_len, mask_len;
+	int len, act_len, mask_len;
+	unsigned int act_num;
 	unsigned int i;
 	struct rte_flow_actions_template *at = NULL;
 	uint16_t pos = MLX5_HW_MAX_ACTS;
@@ -4248,15 +4243,32 @@ flow_hw_actions_template_create(struct rte_eth_dev *dev,
 				break;
 			}
 	}
-	/* Count flow actions to allocate required space for storing DR offsets. */
-	act_num = i;
-	if (act_num >= MLX5_HW_MAX_ACTS)
+	/*
+	 * Count flow actions to allocate required space for storing DR offsets and to check
+	 * if temporary buffer would not be overrun.
+	 */
+	act_num = i + 1;
+	if (act_num >= MLX5_HW_MAX_ACTS) {
 		rte_flow_error_set(error, EINVAL,
 				   RTE_FLOW_ERROR_TYPE_ACTION, NULL, "Too many actions");
-	if (set_vlan_vid_ix != -1)
-		flow_hw_set_vlan_vid(dev, actions, masks, ra, rm,
+		return NULL;
+	}
+	if (set_vlan_vid_ix != -1) {
+		/* If temporary action buffer was not used, copy template actions to it */
+		if (ra == actions && rm == masks) {
+			for (i = 0; i < act_num; ++i) {
+				tmp_action[i] = actions[i];
+				tmp_mask[i] = masks[i];
+				if (actions[i].type == RTE_FLOW_ACTION_TYPE_END)
+					break;
+			}
+			ra = tmp_action;
+			rm = tmp_mask;
+		}
+		flow_hw_set_vlan_vid(dev, ra, rm,
 				     &set_vlan_vid_spec, &set_vlan_vid_mask,
-				     act_num, set_vlan_vid_ix);
+				     set_vlan_vid_ix);
+	}
 	act_len = rte_flow_conv(RTE_FLOW_CONV_OP_ACTIONS, NULL, 0, ra, error);
 	if (act_len <= 0)
 		return NULL;
