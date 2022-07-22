@@ -3598,6 +3598,33 @@ flow_hw_validate_action_indirect(struct rte_eth_dev *dev,
 	return 0;
 }
 
+/**
+ * Validate raw_encap action.
+ *
+ * @param[in] dev
+ *   Pointer to rte_eth_dev structure.
+ * @param[in] action
+ *   Pointer to the indirect action.
+ * @param[out] error
+ *   Pointer to error structure.
+ *
+ * @return
+ *   0 on success, a negative errno value otherwise and rte_errno is set.
+ */
+static int
+flow_hw_validate_action_raw_encap(struct rte_eth_dev *dev __rte_unused,
+				  const struct rte_flow_action *action,
+				  struct rte_flow_error *error)
+{
+	const struct rte_flow_action_raw_encap *raw_encap_data = action->conf;
+
+	if (!raw_encap_data || !raw_encap_data->size || !raw_encap_data->data)
+		return rte_flow_error_set(error, EINVAL,
+					  RTE_FLOW_ERROR_TYPE_ACTION, action,
+					  "invalid raw_encap_data");
+	return 0;
+}
+
 static inline int
 flow_hw_action_meta_copy_insert(const struct rte_flow_action actions[],
 				const struct rte_flow_action masks[],
@@ -3826,7 +3853,9 @@ mlx5_flow_hw_actions_validate(struct rte_eth_dev *dev,
 			action_flags |= MLX5_FLOW_ACTION_DECAP;
 			break;
 		case RTE_FLOW_ACTION_TYPE_RAW_ENCAP:
-			/* TODO: Validation logic */
+			ret = flow_hw_validate_action_raw_encap(dev, action, error);
+			if (ret < 0)
+				return ret;
 			action_flags |= MLX5_FLOW_ACTION_ENCAP;
 			break;
 		case RTE_FLOW_ACTION_TYPE_RAW_DECAP:
