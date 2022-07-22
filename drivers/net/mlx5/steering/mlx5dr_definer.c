@@ -162,6 +162,7 @@ enum mlx5dr_definer_fname {
 	MLX5DR_DEFINER_FNAME_REG_7,
 	MLX5DR_DEFINER_FNAME_REG_A,
 	MLX5DR_DEFINER_FNAME_REG_B,
+	MLX5DR_DEFINER_FNAME_GRE_KEY_PRESENT,
 	MLX5DR_DEFINER_FNAME_GRE_C_VER,
 	MLX5DR_DEFINER_FNAME_GRE_PROTOCOL,
 	MLX5DR_DEFINER_FNAME_GRE_OPT_KEY,
@@ -1365,6 +1366,13 @@ mlx5dr_definer_conv_item_gre_key(struct mlx5dr_definer_conv_data *cd,
 	struct mlx5dr_definer_fc *fc;
 
 	if (!cd->relaxed) {
+		fc = &cd->fc[MLX5DR_DEFINER_FNAME_GRE_KEY_PRESENT];
+		fc->item_idx = item_idx;
+		fc->tag_set = &mlx5dr_definer_ones_set;
+		DR_CALC_SET_HDR(fc, tunnel_header, tunnel_header_0);
+		fc->bit_mask = __mlx5_mask(header_gre, gre_k_present);
+		fc->bit_off = __mlx5_dw_bit_off(header_gre, gre_k_present);
+
 		fc = &cd->fc[DR_CALC_FNAME(IP_PROTOCOL, false)];
 		if(!fc->tag_set) {
 			fc->item_idx = item_idx;

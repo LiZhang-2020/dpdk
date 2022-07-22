@@ -408,7 +408,10 @@ struct mlx5_ifc_header_gre_bits {
 		u8 c_rsvd0_ver[0x10];
 		struct {
 			u8 gre_c_present[0x1];
-			u8 reserved_at_1[0xc];
+			u8 reserved_at_1[0x1];
+			u8 gre_k_present[0x1];
+			u8 gre_s_present[0x1];
+			u8 reserved_at_4[0x9];
 			u8 version[0x3];
 		};
 	};
