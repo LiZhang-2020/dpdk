@@ -5843,7 +5843,7 @@ flow_hw_create_vlan(struct rte_eth_dev *dev)
 		MLX5DR_ACTION_FLAG_HWS_FDB
 	};
 
-	for (i = MLX5DR_TABLE_TYPE_NIC_RX; i < MLX5DR_TABLE_TYPE_MAX; i++) {
+	for (i = MLX5DR_TABLE_TYPE_NIC_RX; i <= MLX5DR_TABLE_TYPE_NIC_TX; i++) {
 		priv->hw_pop_vlan[i] =
 			mlx5dr_action_create_pop_vlan(priv->dr_ctx, flags[i]);
 		if (!priv->hw_pop_vlan[i])
@@ -5851,6 +5851,18 @@ flow_hw_create_vlan(struct rte_eth_dev *dev)
 		priv->hw_push_vlan[i] =
 			mlx5dr_action_create_push_vlan(priv->dr_ctx, flags[i]);
 		if (!priv->hw_pop_vlan[i])
+			return -ENOENT;
+	}
+	if (priv->sh->config.dv_esw_en && priv->master) {
+		priv->hw_pop_vlan[MLX5DR_TABLE_TYPE_FDB] =
+			mlx5dr_action_create_pop_vlan
+				(priv->dr_ctx, MLX5DR_ACTION_FLAG_HWS_FDB);
+		if (!priv->hw_pop_vlan[MLX5DR_TABLE_TYPE_FDB])
+			return -ENOENT;
+		priv->hw_push_vlan[MLX5DR_TABLE_TYPE_FDB] =
+			mlx5dr_action_create_push_vlan
+				(priv->dr_ctx, MLX5DR_ACTION_FLAG_HWS_FDB);
+		if (!priv->hw_pop_vlan[MLX5DR_TABLE_TYPE_FDB])
 			return -ENOENT;
 	}
 	return 0;
