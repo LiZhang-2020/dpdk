@@ -1299,6 +1299,7 @@ __flow_hw_actions_translate(struct rte_eth_dev *dev,
 	uint32_t ct_idx;
 	int ret;
 	int err;
+	uint32_t target_grp = 0;
 
 	flow_hw_modify_field_init(&mhdr, at);
 	if (attr->transfer)
@@ -1527,6 +1528,15 @@ __flow_hw_actions_translate(struct rte_eth_dev *dev,
 				goto err;
 			break;
 		case RTE_FLOW_ACTION_TYPE_AGE:
+			flow_hw_translate_group(dev, cfg, attr->group,
+						&target_grp, error);
+			if (target_grp == 0) {
+				__flow_hw_action_template_destroy(dev, acts);
+				return rte_flow_error_set(error, ENOTSUP,
+						RTE_FLOW_ERROR_TYPE_ACTION,
+						NULL,
+						"Age action on root table is not supported in HW steering mode");
+			}
 			action_pos = at->actions_off[actions - at->actions];
 			if (__flow_hw_act_data_general_append(priv, acts,
 							 actions->type,
@@ -1535,6 +1545,15 @@ __flow_hw_actions_translate(struct rte_eth_dev *dev,
 				goto err;
 			break;
 		case RTE_FLOW_ACTION_TYPE_COUNT:
+			flow_hw_translate_group(dev, cfg, attr->group,
+						&target_grp, error);
+			if (target_grp == 0) {
+				__flow_hw_action_template_destroy(dev, acts);
+				return rte_flow_error_set(error, ENOTSUP,
+						RTE_FLOW_ERROR_TYPE_ACTION,
+						NULL,
+						"Counter action on root table is not supported in HW steering mode");
+			}
 			if ((at->action_flags & MLX5_FLOW_ACTION_AGE) ||
 			    (at->action_flags & MLX5_FLOW_ACTION_INDIRECT_AGE))
 				/*
