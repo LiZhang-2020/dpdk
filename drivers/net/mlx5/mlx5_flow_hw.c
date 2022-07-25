@@ -3065,9 +3065,14 @@ error:
 			mlx5_ipool_destroy(tbl->flow);
 		mlx5_free(tbl);
 	}
-	rte_flow_error_set(error, err,
-			  RTE_FLOW_ERROR_TYPE_UNSPECIFIED, NULL,
-			  "fail to create rte table");
+	if (error != NULL) {
+		rte_flow_error_set(error, err,
+				error->type == RTE_FLOW_ERROR_TYPE_NONE ?
+				RTE_FLOW_ERROR_TYPE_UNSPECIFIED : error->type,
+				NULL,
+				error->message == NULL ?
+				"fail to create rte table" : error->message);
+	}
 	return NULL;
 }
 
@@ -5592,7 +5597,11 @@ flow_hw_create_tx_default_mreg_copy_table(struct rte_eth_dev *dev,
 		.attr = tx_tbl_attr,
 		.external = false,
 	};
-	struct rte_flow_error drop_err;
+	struct rte_flow_error drop_err = {
+		.type = RTE_FLOW_ERROR_TYPE_NONE,
+		.cause = NULL,
+		.message = NULL,
+	};
 
 	RTE_SET_USED(drop_err);
 	return flow_hw_table_create(dev, &tx_tbl_cfg, &pt, 1, &at, 1, &drop_err);
