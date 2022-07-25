@@ -5910,7 +5910,7 @@ flow_hw_configure(struct rte_eth_dev *dev,
 	/* Adds one queue to be used by PMD.
 	 * The last queue will be used by the PMD.
 	 */
-	uint16_t nb_q_updated;
+	uint16_t nb_q_updated = 0;
 	struct rte_flow_queue_attr **_queue_attr = NULL;
 	struct rte_flow_queue_attr ctrl_queue_attr = {0};
 	bool is_proxy = !!(priv->sh->config.dv_esw_en && priv->master);
@@ -6138,6 +6138,12 @@ err:
 	flow_hw_destroy_vlan(dev);
 	if (dr_ctx)
 		claim_zero(mlx5dr_context_close(dr_ctx));
+	for (i = 0; i < nb_q_updated; i++) {
+		if (priv->hw_q[i].indir_iq)
+			rte_ring_free(priv->hw_q[i].indir_iq);
+		if (priv->hw_q[i].indir_cq)
+			rte_ring_free(priv->hw_q[i].indir_cq);
+	}
 	mlx5_free(priv->hw_q);
 	priv->hw_q = NULL;
 	if (priv->acts_ipool) {
@@ -6167,7 +6173,7 @@ flow_hw_resource_release(struct rte_eth_dev *dev)
 	struct rte_flow_template_table *tbl;
 	struct rte_flow_pattern_template *it;
 	struct rte_flow_actions_template *at;
-	int i;
+	uint32_t i;
 
 	if (!priv->dr_ctx)
 		return;
@@ -6211,6 +6217,10 @@ flow_hw_resource_release(struct rte_eth_dev *dev)
 	if (priv->ct_mng) {
 		flow_hw_ct_mng_destroy(dev, priv->ct_mng);
 		priv->ct_mng = NULL;
+	}
+	for (i = 0; i < priv->nb_queue; i++) {
+		rte_ring_free(priv->hw_q[i].indir_iq);
+		rte_ring_free(priv->hw_q[i].indir_cq);
 	}
 	mlx5_free(priv->hw_q);
 	priv->hw_q = NULL;
