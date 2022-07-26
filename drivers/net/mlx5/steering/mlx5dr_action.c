@@ -1818,8 +1818,10 @@ mlx5dr_action_setter_modify_header(struct mlx5dr_actions_apply_data *apply,
 
 	if (action->modify_header.num_of_actions == 1) {
 		if (action->modify_header.single_action_type ==
-		    MLX5_MODIFICATION_TYPE_COPY)
+		    MLX5_MODIFICATION_TYPE_COPY) {
+			apply->wqe_data[MLX5DR_ACTION_OFFSET_DW7] = 0;
 			return;
+		}
 
 		if (action->flags & MLX5DR_ACTION_FLAG_SHARED)
 			single_action = (uint8_t *)&action->modify_header.single_action;
