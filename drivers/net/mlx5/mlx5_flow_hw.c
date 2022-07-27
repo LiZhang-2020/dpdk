@@ -351,7 +351,7 @@ flow_hw_ct_compile(struct rte_eth_dev *dev,
 	struct mlx5_priv *priv = dev->data->dev_private;
 	struct mlx5_aso_ct_action *ct;
 
-	ct = mlx5_ipool_get(priv->hws_ctpool->cts, idx);
+	ct = mlx5_ipool_get(priv->hws_ctpool->cts, MLX5_ACTION_CTX_CT_GET_IDX(idx));
 	if (!ct || mlx5_aso_ct_available(priv->sh, queue, ct))
 		return -1;
 	rule_act->action = priv->hws_ctpool->dr_action;
