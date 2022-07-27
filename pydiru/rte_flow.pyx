@@ -6,6 +6,7 @@ from libc.string cimport memcpy
 import socket
 
 import pydiru.providers.mlx5.steering.mlx5dr_enums as me
+from pydiru.pydiru_error import PydiruError
 import pydiru.pydiru_enums as e
 import ipaddress
 import ctypes
@@ -216,38 +217,42 @@ cdef class RteFlowItem(PydiruCM):
         self.item.mask = NULL
         if flow_item_type == e.RTE_FLOW_ITEM_TYPE_ETH:
             size = sizeof(pdr.rte_flow_item_eth)
-        if flow_item_type == e.RTE_FLOW_ITEM_TYPE_IPV4:
+        elif flow_item_type == e.RTE_FLOW_ITEM_TYPE_IPV4:
             size = sizeof(pdr.rte_flow_item_ipv4)
-        if flow_item_type == e.RTE_FLOW_ITEM_TYPE_IPV6:
+        elif flow_item_type == e.RTE_FLOW_ITEM_TYPE_IPV6:
             size = sizeof(pdr.rte_flow_item_ipv6)
-        if flow_item_type == e.RTE_FLOW_ITEM_TYPE_TCP:
+        elif flow_item_type == e.RTE_FLOW_ITEM_TYPE_TCP:
             size = sizeof(pdr.rte_flow_item_tcp)
-        if flow_item_type == e.RTE_FLOW_ITEM_TYPE_UDP:
+        elif flow_item_type == e.RTE_FLOW_ITEM_TYPE_UDP:
             size = sizeof(pdr.rte_flow_item_udp)
-        if flow_item_type == e.RTE_FLOW_ITEM_TYPE_ICMP:
+        elif flow_item_type == e.RTE_FLOW_ITEM_TYPE_ICMP:
             size = sizeof(pdr.rte_flow_item_icmp)
-        if flow_item_type == e.RTE_FLOW_ITEM_TYPE_ICMP6:
+        elif flow_item_type == e.RTE_FLOW_ITEM_TYPE_ICMP6:
             size = sizeof(pdr.rte_flow_item_icmp6)
-        if flow_item_type in [e.RTE_FLOW_ITEM_TYPE_GTP,
-                              e.RTE_FLOW_ITEM_TYPE_GTPC,
-                              e.RTE_FLOW_ITEM_TYPE_GTPU]:
+        elif flow_item_type in [e.RTE_FLOW_ITEM_TYPE_GTP,
+                                e.RTE_FLOW_ITEM_TYPE_GTPC,
+                                e.RTE_FLOW_ITEM_TYPE_GTPU]:
             size = sizeof(pdr.rte_flow_item_gtp)
-        if flow_item_type == e.RTE_FLOW_ITEM_TYPE_GTP_PSC:
+        elif flow_item_type == e.RTE_FLOW_ITEM_TYPE_GTP_PSC:
             size = sizeof(pdr.rte_flow_item_gtp_psc)
-        if flow_item_type in [e.RTE_FLOW_ITEM_TYPE_PORT_REPRESENTOR,
-                              e.RTE_FLOW_ITEM_TYPE_REPRESENTED_PORT]:
+        elif flow_item_type in [e.RTE_FLOW_ITEM_TYPE_PORT_REPRESENTOR,
+                                e.RTE_FLOW_ITEM_TYPE_REPRESENTED_PORT]:
             size = sizeof(pdr.rte_flow_item_ethdev)
-        if flow_item_type == e.RTE_FLOW_ITEM_TYPE_VXLAN:
+        elif flow_item_type == e.RTE_FLOW_ITEM_TYPE_VXLAN:
             size = sizeof(pdr.rte_flow_item_vxlan)
-        if flow_item_type == me.MLX5_RTE_FLOW_ITEM_TYPE_SQ:
+        elif flow_item_type == me.MLX5_RTE_FLOW_ITEM_TYPE_SQ:
             size = sizeof(pdr.mlx5_rte_flow_item_sq)
-        if flow_item_type == e.RTE_FLOW_ITEM_TYPE_VLAN:
+        elif flow_item_type == e.RTE_FLOW_ITEM_TYPE_VLAN:
             size = sizeof(pdr.rte_flow_item_vlan)
-        if flow_item_type in [e.RTE_FLOW_ITEM_TYPE_TAG,
-                              me.MLX5_RTE_FLOW_ITEM_TYPE_TAG]:
+        elif flow_item_type in [e.RTE_FLOW_ITEM_TYPE_TAG,
+                                me.MLX5_RTE_FLOW_ITEM_TYPE_TAG]:
             size = sizeof(pdr.rte_flow_item_tag)
-        if flow_item_type == e.RTE_FLOW_ITEM_TYPE_GRE_OPTION:
+        elif flow_item_type == e.RTE_FLOW_ITEM_TYPE_GRE_OPTION:
             size = sizeof(pdr.rte_flow_item_gre_opt)
+        elif flow_item_type == e.RTE_FLOW_ITEM_TYPE_END:
+            pass
+        else:
+            raise PydiruError(f'Unsupported flow item type {flow_item_type}')
         if spec:
             self.item.spec = calloc(1, size)
             memcpy(self.item.spec, <void *>&((<RteFlowItem>spec).item), size)
