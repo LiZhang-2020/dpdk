@@ -8,7 +8,7 @@ import socket
 import pydiru.providers.mlx5.steering.mlx5dr_enums as me
 import pydiru.pydiru_enums as e
 import ipaddress
-import struct
+import ctypes
 
 
 cdef extern from 'endian.h':
@@ -274,4 +274,4 @@ cdef class RteFlowResult(PydiruObject):
 
     @property
     def user_data(self):
-        return <object>self.flow_res.user_data
+        return ctypes.cast(<object>self.flow_res.user_data, ctypes.py_object).value

@@ -13,7 +13,6 @@ from pydiru.base import PydiruErrno
 from libc.string cimport memcpy
 cimport pydiru.pydiru_enums_c as e
 cimport pydiru.libpydiru as pdr
-import ctypes
 import time
 
 POLLING_TIMEOUT = 5
@@ -57,6 +56,7 @@ cdef class Mlx5drRule(PydiruCM):
         cdef dr.mlx5dr_rule_action rule_action
         cdef dr.mlx5dr_rule_action *actions_ptr = NULL
 
+        self.res = []
         rule = <dr.mlx5dr_rule *>calloc(1, mlx5._rule_get_handle_size())
         item_ptr = <pdr.rte_flow_item *>calloc(len(rte_items), sizeof(pdr.rte_flow_item))
         actions_ptr = <dr.mlx5dr_rule_action *>calloc(num_of_actions, sizeof(dr.mlx5dr_rule_action))
@@ -92,18 +92,22 @@ cdef class Mlx5drRule(PydiruCM):
         matcher.add_ref(self)
         if dr_ctx:
             start_poll_t = time.perf_counter()
-            res = []
-            while not res and (time.perf_counter() - start_poll_t) < POLLING_TIMEOUT:
-                res = dr_ctx.poll_send_queue(rule_attr_create.attr.queue_id, 1)
-            if not res:
+            self.res = []
+            while not self.res and (time.perf_counter() - start_poll_t) < POLLING_TIMEOUT:
+                self.res = dr_ctx.poll_send_queue(rule_attr_create.attr.queue_id, 1)
+            if not self.res:
                 raise PydiruError(f'Got timeout on polling queue id {rule_attr_create.attr.queue_id}.')
-            if <RteFlowResult>(res[0]).status != e.RTE_FLOW_OP_SUCCESS:
+            if <RteFlowResult>(self.res[0]).status != e.RTE_FLOW_OP_SUCCESS:
                 raise PydiruError(f'ERROR completion returned from queue ID: {rule_attr_create.attr.queue_id} '
-                                  f'with status: {res[0]).status}.')
-            user_data_from_addr = ctypes.cast(<RteFlowResult>(res[0]).user_data, ctypes.py_object).value
+                                  f'with status: {self.res[0]).status}.')
+            user_data_from_addr = <RteFlowResult>(self.res[0]).user_data
             if  user_data_from_addr != rule_attr_create.user_data:
                 raise PydiruError(f'ERROR completion returned from queue ID: {rule_attr_create.attr.queue_id} '
                                   f'with differnt user_data: {user_data_from_addr}.')
+
+    @property
+    def comp_results(self):
+        return self.res
 
     def __dealloc__(self):
         self.close()
