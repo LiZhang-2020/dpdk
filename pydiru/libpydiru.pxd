@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: BSD-3-Clause
 # Copyright (c) 2021, Nvidia Inc. All rights reserved.
 
-from libc.stdint cimport uint8_t, uint16_t, uint32_t
+from libc.stdint cimport uint8_t, uint16_t, uint32_t, uint64_t
 cimport pydiru.pydiru_enums_c as e
 
 cdef extern  from '../../../../lib/librte_eal/include/rte_eal.h':
@@ -150,6 +150,10 @@ cdef extern  from '../../../../lib/librte_ethdev/rte_flow.h':
     cdef struct rte_flow_item_vlan:
         uint16_t tci
         uint16_t inner_type
+
+    cdef struct rte_flow_item_integrity:
+        uint32_t level
+        uint64_t value
 
 cdef extern  from '../../../../drivers/net/mlx5/mlx5_flow.h':
 

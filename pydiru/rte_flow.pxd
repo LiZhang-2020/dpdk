@@ -47,6 +47,9 @@ cdef class RteFlowItemTag(PydiruCM):
 cdef class RteFlowItemGreOption(PydiruCM):
     cdef pdr.rte_flow_item_gre_opt item
 
+cdef class RteFlowItemIntegrity(PydiruCM):
+    cdef pdr.rte_flow_item_integrity item
+
 cdef class RteFlowItem(PydiruCM):
     cdef pdr.rte_flow_item item
 

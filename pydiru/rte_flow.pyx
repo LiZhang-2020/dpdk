@@ -210,6 +210,25 @@ cdef class RteFlowItemTag(PydiruCM):
         self.item.index = index
 
 
+cdef class RteFlowItemIntegrity(PydiruCM):
+    def __init__(self, level, value):
+        """
+        Initializes a RteFlowItemIntegrity object representing rte_flow_item_integrity C struct.
+        :param level: Level
+        :param value: Contains ok bits in the first byte:
+        bit 0 - packet_ok (unsupported)
+        bit 1 - l2_ok (unsupported)
+        bit 2 - l3_ok
+        bit 3 - l4_ok
+        bit 4 - l2_crc_ok (unsupported)
+        bit 5 - ipv4_csum_ok
+        bit 6 - l4_csum_ok
+        bit 7 - l3_len_ok (unsupported)
+        """
+        self.item.level = level
+        self.item.value = value
+
+
 cdef class RteFlowItem(PydiruCM):
     def __init__(self, flow_item_type, spec=None, mask=None, last=None):
         self.item.type = flow_item_type
@@ -249,6 +268,8 @@ cdef class RteFlowItem(PydiruCM):
             size = sizeof(pdr.rte_flow_item_tag)
         elif flow_item_type == e.RTE_FLOW_ITEM_TYPE_GRE_OPTION:
             size = sizeof(pdr.rte_flow_item_gre_opt)
+        elif flow_item_type == e.RTE_FLOW_ITEM_TYPE_INTEGRITY:
+            size = sizeof(pdr.rte_flow_item_integrity)
         elif flow_item_type == e.RTE_FLOW_ITEM_TYPE_END:
             pass
         else:
