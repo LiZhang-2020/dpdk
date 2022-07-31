@@ -140,6 +140,7 @@ struct mlx5_dv_matcher_workspace {
 	const struct rte_flow_attr *attr;
 	struct mlx5_flow_rss_desc *rss_desc;
 	const struct rte_flow_item *tunnel_item;
+	const struct rte_flow_item *integrity_items[2];
 };
 
 /* Matches on selected register. */
