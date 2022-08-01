@@ -2074,8 +2074,8 @@ int mlx5dr_action_template_process(struct mlx5dr_action_template *at)
 
 		case MLX5DR_ACTION_TYP_PUSH_VLAN:
 			/* Double insert inline */
-			setter = mlx5dr_action_setter_find_first(last_setter, ASF_DOUBLE);
-			setter->flags |= ASF_DOUBLE | ASF_REPARSE;
+			setter = mlx5dr_action_setter_find_first(last_setter, ASF_DOUBLE | ASF_REMOVE);
+			setter->flags |= ASF_DOUBLE | ASF_REPARSE | ASF_MODIFY;
 			setter->set_double = &mlx5dr_action_setter_push_vlan;
 			setter->idx_double = i;
 			break;
