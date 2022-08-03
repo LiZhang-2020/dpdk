@@ -6,7 +6,8 @@ import socket
 
 from pydiru.rte_flow import RteFlowItem, RteFlowItemEth, RteFlowItemIpv4, RteFlowItemTcp, \
     RteFlowItemUdp, RteFlowItemEnd, RteFlowItemGtp, RteFlowItemGtpPsc, RteFlowItemIpv6, \
-    RteFlowItemVxlan, RteFlowItemVlan, RteFlowItemIcmp, RteFlowItemIcmp6, RteFlowItemGreOption
+    RteFlowItemVxlan, RteFlowItemVlan, RteFlowItemIcmp, RteFlowItemIcmp6, RteFlowItemGreOption, \
+    RteFlowItemGre
 from pydiru.providers.mlx5.steering.mlx5dr_rule import Mlx5drRuleAttr, Mlx5drRule
 import pydiru.pydiru_enums as p
 
@@ -124,6 +125,12 @@ class Mlx5drMatcherTest(PydiruTrafficTestCase):
         mask = RteFlowItemEth(has_vlan=0xffffffff)
         val = RteFlowItemEth(has_vlan=has_vlan)
         return RteFlowItem(p.RTE_FLOW_ITEM_TYPE_ETH, val, mask)
+
+    @staticmethod
+    def create_rte_gre_item(protocol=PacketConsts.ETHER_TYPE_IPV4):
+        mask = RteFlowItemGre(protocol=0xffff)
+        val = RteFlowItemGre(protocol=protocol)
+        return RteFlowItem(p.RTE_FLOW_ITEM_TYPE_GRE, val, mask)
 
     @staticmethod
     def create_rte_gre_opt_item(key=PacketConsts.GRE_KEY, sequence=PacketConsts.GRE_SEQUENCE_NUMBER):
@@ -302,6 +309,17 @@ class Mlx5drMatcherTest(PydiruTrafficTestCase):
                                 l4=PacketConsts.ICMPV6_PROTO)
         un_exp_packet = gen_packet(self.server.msg_size, l3=PacketConsts.IP_V6,
                                    l4=PacketConsts.ICMPV6_PROTO, icmp_type=UN_EXPECTED_ICMP_TYPE)
+        packets = [exp_packet, un_exp_packet]
+        raw_traffic(**self.traffic_args, packets=packets, expected_packet=exp_packet)
+
+    def test_mlx5dr_matcher_gre(self):
+        """
+        Match on GRE protocol.
+        """
+        self.create_rx_rules(self.create_rte_gre_item())
+        exp_packet = gen_packet(self.server.msg_size, l2=False, tunnel=TunnelType.GRE)
+        un_exp_packet = gen_packet(self.server.msg_size, l2=False, l3=PacketConsts.IP_V6,
+                                   tunnel=TunnelType.GRE, gre_proto=PacketConsts.ETHER_TYPE_IPV6)
         packets = [exp_packet, un_exp_packet]
         raw_traffic(**self.traffic_args, packets=packets, expected_packet=exp_packet)
 
