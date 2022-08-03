@@ -164,10 +164,10 @@ cdef class RteFlowItemVxlan(PydiruCM):
         self.item.flags = flags
 
 
-cdef class Mlx5RteFlowItemTxQueue(PydiruCM):
+cdef class Mlx5RteFlowItemSq(PydiruCM):
     def __init__(self, qp_num=0):
         """
-        Initializes a Mlx5RteFlowItemTxQueue object representing mlx5_rte_flow_item_tx_queue
+        Initializes a Mlx5RteFlowItemSq object representing mlx5_rte_flow_item_sq
         C struct.
         :param qp_num: Number of TX queue
         """
@@ -226,8 +226,8 @@ cdef class RteFlowItem(PydiruCM):
             size = sizeof(pdr.rte_flow_item_ethdev)
         if flow_item_type == e.RTE_FLOW_ITEM_TYPE_VXLAN:
             size = sizeof(pdr.rte_flow_item_vxlan)
-        if flow_item_type == me.MLX5_RTE_FLOW_ITEM_TYPE_TX_QUEUE:
-            size = sizeof(pdr.mlx5_rte_flow_item_tx_queue)
+        if flow_item_type == me.MLX5_RTE_FLOW_ITEM_TYPE_SQ:
+            size = sizeof(pdr.mlx5_rte_flow_item_sq)
         if flow_item_type == e.RTE_FLOW_ITEM_TYPE_VLAN:
             size = sizeof(pdr.rte_flow_item_vlan)
         if flow_item_type in [e.RTE_FLOW_ITEM_TYPE_TAG,

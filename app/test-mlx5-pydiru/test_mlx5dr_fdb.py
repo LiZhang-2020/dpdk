@@ -4,7 +4,7 @@
 from .utils import raw_traffic, gen_packet, PacketConsts, create_sipv4_rte_items, \
     create_counter_action, verify_counter, send_packets, create_ipv4_rte_item, create_eth_rte_item, \
     NEW_MAC_STR, ModifyFieldId, ModifyFieldLen
-from pydiru.rte_flow import RteFlowItem, RteFlowItemEthdev, RteFlowItemIpv4, Mlx5RteFlowItemTxQueue,\
+from pydiru.rte_flow import RteFlowItem, RteFlowItemEthdev, RteFlowItemIpv4, Mlx5RteFlowItemSq,\
     RteFlowItemEnd
 from pydiru.providers.mlx5.steering.mlx5dr_action import Mlx5drRuleAction, Mlx5drActionDestTable, \
     Mlx5drActionTemplate
@@ -98,9 +98,9 @@ class Mlx5drFDBTest(PydiruTrafficTestCase):
 
         ib_port = self.vf_to_ib_port(self.vf_name)
         ip_rte_items = create_sipv4_rte_items(PacketConsts.SRC_IP)
-        mask = Mlx5RteFlowItemTxQueue(qp_num=0xffffffff)
-        val = Mlx5RteFlowItemTxQueue(qp_num=self.client.qp.qp_num)
-        rte_flow_item = [RteFlowItem(me.MLX5_RTE_FLOW_ITEM_TYPE_TX_QUEUE, val, mask),
+        mask = Mlx5RteFlowItemSq(qp_num=0xffffffff)
+        val = Mlx5RteFlowItemSq(qp_num=self.client.qp.qp_num)
+        rte_flow_item = [RteFlowItem(me.MLX5_RTE_FLOW_ITEM_TYPE_SQ, val, mask),
                          RteFlowItemEnd()]
         vf_actions = [[me.MLX5DR_ACTION_TYP_TIR, me.MLX5DR_ACTION_TYP_LAST]]
         pf_actions = [[me.MLX5DR_ACTION_TYP_VPORT, me.MLX5DR_ACTION_TYP_LAST]]
@@ -153,9 +153,9 @@ class Mlx5drFDBTest(PydiruTrafficTestCase):
         Removes the rule.
         """
         rte_items = [create_ipv4_rte_item(src_addr=PacketConsts.SRC_IP)]
-        mask = Mlx5RteFlowItemTxQueue(qp_num=0xffffffff)
-        val = Mlx5RteFlowItemTxQueue(qp_num=self.client.qp.qp_num)
-        rte_items.append(RteFlowItem(me.MLX5_RTE_FLOW_ITEM_TYPE_TX_QUEUE, val, mask))
+        mask = Mlx5RteFlowItemSq(qp_num=0xffffffff)
+        val = Mlx5RteFlowItemSq(qp_num=self.client.qp.qp_num)
+        rte_items.append(RteFlowItem(me.MLX5_RTE_FLOW_ITEM_TYPE_SQ, val, mask))
         rte_items.append(RteFlowItemEnd())
         self.tmp_rule = Mlx5drRule(self.server.matcher, 0, rte_items, at_idx, actions, len(actions),
                                    Mlx5drRuleAttr(user_data=bytes(8)), self.server.dr_ctx)
@@ -175,9 +175,9 @@ class Mlx5drFDBTest(PydiruTrafficTestCase):
         ib_port = self.vf_to_ib_port(self.vf_name)
         eth_rte_items = [create_eth_rte_item(), RteFlowItemEnd()]
         src_ip_rte_items = [create_ipv4_rte_item(src_addr=PacketConsts.SRC_IP)]
-        mask = Mlx5RteFlowItemTxQueue(qp_num=0xffffffff)
-        val = Mlx5RteFlowItemTxQueue(qp_num=self.client.qp.qp_num)
-        qpn_rte_item = RteFlowItem(me.MLX5_RTE_FLOW_ITEM_TYPE_TX_QUEUE, val, mask)
+        mask = Mlx5RteFlowItemSq(qp_num=0xffffffff)
+        val = Mlx5RteFlowItemSq(qp_num=self.client.qp.qp_num)
+        qpn_rte_item = RteFlowItem(me.MLX5_RTE_FLOW_ITEM_TYPE_SQ, val, mask)
         src_ip_rte_items.append(qpn_rte_item)
         src_ip_rte_items.append(RteFlowItemEnd())
         dst_ip_items = [create_ipv4_rte_item(dst_addr=PacketConsts.DST_IP), RteFlowItemEnd()]

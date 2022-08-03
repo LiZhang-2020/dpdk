@@ -68,7 +68,7 @@ cdef extern  from '../../../../drivers/net/mlx5/mlx5_flow.h':
     cpdef enum mlx5_rte_flow_item_type:
         MLX5_RTE_FLOW_ITEM_TYPE_END
         MLX5_RTE_FLOW_ITEM_TYPE_TAG
-        MLX5_RTE_FLOW_ITEM_TYPE_TX_QUEUE
+        MLX5_RTE_FLOW_ITEM_TYPE_SQ
         MLX5_RTE_FLOW_ITEM_TYPE_VLAN
         MLX5_RTE_FLOW_ITEM_TYPE_TUNNEL
 

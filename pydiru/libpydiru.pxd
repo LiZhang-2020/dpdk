@@ -153,7 +153,7 @@ cdef extern  from '../../../../lib/librte_ethdev/rte_flow.h':
 
 cdef extern  from '../../../../drivers/net/mlx5/mlx5_flow.h':
 
-    cdef struct mlx5_rte_flow_item_tx_queue:
+    cdef struct mlx5_rte_flow_item_sq:
         uint32_t queue
 
     cdef struct rte_flow_item_tag:
