@@ -142,6 +142,17 @@ cdef class RteFlowItemGtpPsc(PydiruCM):
         self.item.qfi = qfi
 
 
+cdef class RteFlowItemGre(PydiruCM):
+    def __init__(self, flags=0, protocol=0):
+        """
+        Initializes a RteFlowItemGre object representing rte_flow_item_gre C struct.
+        :param flags: Checksum (1b), reserved 0 (12b), version (3b)
+        :param protocol: Protocol type
+        """
+        self.item.c_rsvd0_ver = socket.htons(flags)
+        self.item.protocol = socket.htons(protocol)
+
+
 cdef class RteFlowItemGreOption(PydiruCM):
     def __init__(self, checksum=0, key=0, sequence=0):
         """
@@ -268,6 +279,8 @@ cdef class RteFlowItem(PydiruCM):
             size = sizeof(pdr.rte_flow_item_tag)
         elif flow_item_type == e.RTE_FLOW_ITEM_TYPE_GRE_OPTION:
             size = sizeof(pdr.rte_flow_item_gre_opt)
+        elif flow_item_type == e.RTE_FLOW_ITEM_TYPE_GRE:
+            size = sizeof(pdr.rte_flow_item_gre)
         elif flow_item_type == e.RTE_FLOW_ITEM_TYPE_INTEGRITY:
             size = sizeof(pdr.rte_flow_item_integrity)
         elif flow_item_type == e.RTE_FLOW_ITEM_TYPE_END:

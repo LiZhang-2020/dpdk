@@ -166,6 +166,10 @@ cdef extern  from '../../../../drivers/net/mlx5/mlx5_flow.h':
 
 cdef extern  from '../../../../lib/librte_net/rte_gre.h':
 
+    cdef struct rte_flow_item_gre:
+        uint16_t c_rsvd0_ver
+        uint16_t protocol
+
     cdef struct rte_gre_hdr_opt_checksum_rsvd:
         uint16_t checksum
         uint16_t reserved1
