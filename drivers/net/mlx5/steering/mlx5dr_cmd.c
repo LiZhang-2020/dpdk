@@ -779,6 +779,10 @@ int mlx5dr_cmd_query_caps(struct ibv_context *ctx,
 		return rte_errno;
 	}
 
+	caps->full_dw_jumbo_support = MLX5_GET(query_hca_cap_out, out,
+					       capability.cmd_hca_cap_2.
+					       format_select_dw_8_6_ext);
+
 	caps->format_select_gtpu_dw_0 = MLX5_GET(query_hca_cap_out, out,
 						 capability.cmd_hca_cap_2.
 						 format_select_dw_gtpu_dw_0);

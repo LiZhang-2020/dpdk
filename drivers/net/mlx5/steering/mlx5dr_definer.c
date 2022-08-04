@@ -1863,7 +1863,9 @@ mlx5dr_definer_apply_sel_ctrl(struct mlx5dr_definer_sel_ctrl *ctrl,
 }
 
 static int
-mlx5dr_definer_find_best_hl_fit(struct mlx5dr_match_template *mt, uint8_t *hl)
+mlx5dr_definer_find_best_hl_fit(struct mlx5dr_context *ctx,
+				struct mlx5dr_match_template *mt,
+				uint8_t *hl)
 {
 	struct mlx5dr_definer_sel_ctrl ctrl = {0};
 	bool found;
@@ -1880,9 +1882,11 @@ mlx5dr_definer_find_best_hl_fit(struct mlx5dr_match_template *mt, uint8_t *hl)
 		return 0;
 	}
 
-	/* Try to create a limited jumbo definer */
-	ctrl.allowed_full_dw = DW_SELECTORS_MATCH;
-	ctrl.allowed_lim_dw = DW_SELECTORS_LIMITED;
+	/* Try to create a full/limited jumbo definer */
+	ctrl.allowed_full_dw = ctx->caps->full_dw_jumbo_support ? DW_SELECTORS :
+				DW_SELECTORS_MATCH;
+	ctrl.allowed_lim_dw = ctx->caps->full_dw_jumbo_support ? 0 :
+				DW_SELECTORS_LIMITED;
 	ctrl.allowed_bytes = BYTE_SELECTORS;
 
 	found = mlx5dr_definer_best_hl_fit_recu(&ctrl, 0, (uint32_t *)hl);
@@ -1989,7 +1993,7 @@ int mlx5dr_definer_get(struct mlx5dr_context *ctx,
 	}
 
 	/* Find the definer for given header layout */
-	ret = mlx5dr_definer_find_best_hl_fit(mt, hl);
+	ret = mlx5dr_definer_find_best_hl_fit(ctx, mt, hl);
 	if (ret) {
 		DR_LOG(ERR, "Failed to create definer from header layout");
 		goto free_field_copy;
