@@ -166,7 +166,7 @@ enum mlx5dr_integrity_ok1_bits {
 
 struct mlx5_ifc_definer_hl_oks1_bits {
 	union {
-		u32 oks1_bits;
+		u8 oks1_bits[0x20];
 		struct {
 			u8 second_ipv4_checksum_ok[0x1];
 			u8 second_l4_checksum_ok[0x1];
