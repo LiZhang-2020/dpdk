@@ -253,8 +253,7 @@ class Mlx5drFDBTest(PydiruTrafficTestCase):
         self.server.init_steering_resources(table_type=me.MLX5DR_TABLE_TYPE_FDB,
                                             action_types_list=actions,
                                             flow_src=flow_src)
-        dump_path = '/tmp/hws_dump'
-        os.remove(dump_path)
+        dump_path = '/tmp/hws_flow_src_dump.csv'
         self.server.dr_ctx.dump(dump_path)
         data = {}
         self.assertTrue(os.path.isfile(dump_path), 'Dump file does not exist.')
@@ -271,6 +270,7 @@ class Mlx5drFDBTest(PydiruTrafficTestCase):
         csv_file.close()
         self.assertGreater(len(data), 0, 'Empty HWS matcher attribute')
         self.assertTrue(int(data['flow_src']) == flow_src, 'Matcher attribute is not right')
+        os.remove(dump_path)
 
     def test_mlx5dr_check_ingress_attr(self):
         """
