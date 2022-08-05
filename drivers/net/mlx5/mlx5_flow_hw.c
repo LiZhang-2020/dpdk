@@ -7,8 +7,6 @@
 #include "mlx5_rx.h"
 #include "mlx5_flow_os.h"
 
-#include "mlx5dr_context.h"
-#include "mlx5dr_send.h"
 #include "mlx5_hws_cnt.h"
 
 /* The maximum actions support in the flow. */
