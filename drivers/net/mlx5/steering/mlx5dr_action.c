@@ -2054,9 +2054,9 @@ int mlx5dr_action_template_process(struct mlx5dr_action_template *at)
 		case MLX5DR_ACTION_TYP_VPORT:
 		case MLX5DR_ACTION_TYP_MISS:
 			/* Hit action */
-			setter->flags |= ASF_HIT;
-			setter->set_hit = &mlx5dr_action_setter_hit;
-			setter->idx_hit = i;
+			last_setter->flags |= ASF_HIT;
+			last_setter->set_hit = &mlx5dr_action_setter_hit;
+			last_setter->idx_hit = i;
 			break;
 
 		case MLX5DR_ACTION_TYP_POP_VLAN:
