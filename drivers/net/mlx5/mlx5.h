@@ -363,7 +363,15 @@ struct mlx5_hw_q_job {
 	uint8_t *encap_data; /* Encap data. */
 	struct mlx5_modification_cmd *mhdr_cmd;
 	struct rte_flow_item *items;
-	struct rte_flow_item_ethdev port_spec;
+	union {
+		struct {
+			/* Pointer to ct query user memory. */
+			struct rte_flow_action_conntrack *profile;
+			/* Pointer to ct ASO query out memory. */
+			void *out_data;
+		} __rte_packed;
+		struct rte_flow_item_ethdev port_spec;
+	} __rte_packed;
 };
 
 /* HW steering job descriptor LIFO header . */
@@ -1234,21 +1242,17 @@ struct mlx5_aso_ct_action {
 		struct {
 			/* Pointer to the next ASO CT. Used only in SWS. */
 			LIST_ENTRY(mlx5_aso_ct_action) next;
-			/* General action object for original dir. */
-			void *dr_action_orig;
-			/* General action object for reply dir. */
-			void *dr_action_rply;
 		};
 		/* HWS mode struct. */
 		struct {
 			/* Pointer to action pool. Used only in HWS. */
 			struct mlx5_aso_ct_pool *pool;
-			/* Pointer to ct query user memory. */
-			struct rte_flow_action_conntrack *profile;
-			/* Pointer to ct query SQ memory. */
-			void *out_data;
 		};
 	};
+	/* General action object for original dir. */
+	void *dr_action_orig;
+	/* General action object for reply dir. */
+	void *dr_action_rply;
 	uint32_t refcnt; /* Action used count in device flows. */
 	uint16_t offset; /* Offset of ASO CT in DevX objects bulk. */
 	uint16_t peer; /* The only peer port index could also use this CT. */

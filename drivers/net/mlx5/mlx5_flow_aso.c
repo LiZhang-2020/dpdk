@@ -1384,9 +1384,12 @@ mlx5_aso_ct_sq_query_single(struct mlx5_dev_ctx_shared *sh,
 	rte_prefetch0(&sq->sq_obj.aso_wqes[(sq->head + 1) & mask]);
 	/* Fill next WQE. */
 	wqe_idx = sq->head & mask;
+	/* Check if this is async mode. */
 	if (user_data) {
-		ct->out_data = (char *)((uintptr_t)sq->mr.addr + wqe_idx * 64);
+		struct mlx5_hw_q_job *job = (struct mlx5_hw_q_job *)user_data;
+
 		sq->elts[wqe_idx].ct = user_data;
+		job->out_data = (char *)((uintptr_t)sq->mr.addr + wqe_idx * 64);
 	} else {
 		sq->elts[wqe_idx].ct = ct;
 	}
@@ -1686,7 +1689,6 @@ mlx5_aso_ct_query_by_wqe(struct mlx5_dev_ctx_shared *sh,
 	else
 		sq = __mlx5_aso_ct_get_sq_in_sws(sh, ct);
 	if (queue != MLX5_HW_INV_QUEUE) {
-		ct->profile = profile;
 		ret = mlx5_aso_ct_sq_query_single(sh, sq, ct, out_data,
 						  need_lock, user_data, push);
 		return ret > 0 ? 0 : -1;

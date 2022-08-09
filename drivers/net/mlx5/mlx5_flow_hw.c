@@ -2637,8 +2637,8 @@ __flow_hw_pull_indir_action_comp(struct rte_eth_dev *dev,
 				idx = MLX5_ACTION_CTX_CT_GET_IDX
 					((uint32_t)(uintptr_t)job->action);
 				aso_ct = mlx5_ipool_get(priv->hws_ctpool->cts, idx);
-				mlx5_aso_ct_obj_analyze(aso_ct->profile,
-							aso_ct->out_data);
+				mlx5_aso_ct_obj_analyze(job->profile,
+							job->out_data);
 				aso_ct->state = ASO_CONNTRACK_READY;
 			}
 		}
@@ -7347,6 +7347,8 @@ flow_hw_action_handle_query(struct rte_eth_dev *dev, uint32_t queue,
 		break;
 	case MLX5_INDIRECT_ACTION_TYPE_CT:
 		aso = true;
+		if (job)
+			job->profile = (struct rte_flow_action_conntrack *)data;
 		ret = flow_hw_conntrack_query(dev, queue, act_idx, data,
 					      job, push, error);
 		break;
