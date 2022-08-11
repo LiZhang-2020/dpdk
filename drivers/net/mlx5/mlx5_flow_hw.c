@@ -1605,6 +1605,9 @@ __flow_hw_actions_translate(struct rte_eth_dev *dev,
 							action_pos))
 				goto err;
 			break;
+		case RTE_FLOW_ACTION_TYPE_SEND_TO_KERNEL:
+			DRV_LOG(ERR, "send to kernel action is not supported in HW steering.");
+			goto err;
 		case RTE_FLOW_ACTION_TYPE_END:
 			actions_end = true;
 			break;
