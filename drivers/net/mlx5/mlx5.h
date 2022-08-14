@@ -1353,6 +1353,11 @@ struct mlx5_hws_cnt_svc_mng {
 	struct mlx5_hws_aso_mng aso_mng __rte_cache_aligned;
 };
 
+struct mlx5_send_to_kernel_action {
+	void *action;
+	void *tbl;
+};
+
 /*
  * Shared Infiniband device context for Master/Representors
  * which belong to same IB device with multiple IB ports.
@@ -1414,6 +1419,7 @@ struct mlx5_dev_ctx_shared {
 	/* Direct Rules tables for FDB, NIC TX+RX */
 	void *dr_drop_action; /* Pointer to DR drop action, any domain. */
 	void *pop_vlan_action; /* Pointer to DR pop VLAN action. */
+	struct mlx5_send_to_kernel_action send_to_kernel_action;
 	struct mlx5_hlist *encaps_decaps; /* Encap/decap action hash list. */
 	struct mlx5_hlist *modify_cmds;
 	struct mlx5_hlist *tag_table;
