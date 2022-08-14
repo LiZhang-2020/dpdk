@@ -105,10 +105,6 @@ union flow_dv_attr {
 };
 
 static int
-flow_dv_tbl_resource_release(struct mlx5_dev_ctx_shared *sh,
-			     struct mlx5_flow_tbl_resource *tbl);
-
-static int
 flow_dv_encap_decap_resource_release(struct rte_eth_dev *dev,
 				     uint32_t encap_decap_idx);
 
@@ -10254,7 +10250,7 @@ mlx5_post_sft_create_callback(struct rte_eth_dev *dev, void *param,
  * @return
  *   Returns 0 if table was released, else return 1;
  */
-static int
+int
 flow_dv_tbl_resource_release(struct mlx5_dev_ctx_shared *sh,
 			     struct mlx5_flow_tbl_resource *tbl)
 {
