@@ -6,9 +6,10 @@
 
 /* more states need mlnx to fill */
 enum vrdma_dev_state {
-	rdev_state_free = 0,
-	rdev_state_idle,
-	rdev_state_ready,
+	rdev_state_reset = 0x0,
+	rdev_state_driver_ok = 0x4,
+	rdev_state_need_reset = 0x40,
+	rdev_state_driver_error = 0x80, /*when driver encounter err to inform device*/
 	rdev_state_max,
 };
 
@@ -27,46 +28,75 @@ struct vrdma_dev {
 	uint32_t output_pkt_num;
 
 } __attribute__((packed));
+
+/*Per app backend resource creation*/
+struct vrdma_open_device_req {
+};
+
+struct vrdma_open_device_resp {
+	uint32_t err_code:8;
+	uint32_t err_hint:24;
+} __attribute__((packed));
+
 struct vrdma_query_device_req {
 };
 
 struct vrdma_query_device_resp {
-	uint64_t fw_ver;
+	char fw_ver[64]; /* FW version */
 
-	uint32_t max_pd;
-	uint32_t max_qp;
-	uint32_t max_cq;
-	uint32_t max_sq_depth;
-	uint32_t max_rq_depth;
-	uint32_t max_cq_depth;
-	uint32_t max_mr;
-	uint32_t max_ah;
+	uint64_t page_size_cap;/* Supported memory shift sizes */
+	uint64_t dev_cap_flags;/* HCA capabilities mask */
+	uint32_t vendor_id; /* Vendor ID, per IEEE */
+	uint32_t hw_ver; /* Hardware version */
+	uint32_t max_pd;/* Maximum number of supported PDs */
+	uint32_t max_qp;/* Maximum number of supported QPs */
+	uint32_t max_qp_wr; /* Maximum number of outstanding WR on any work queue */
+	uint32_t max_cq; /* Maximum number of supported CQs */
+	uint32_t max_sq_depth; /* Maximum number of SQE capacity per SQ */
+	uint32_t max_rq_depth; /* Maximum number of RQE capacity per RQ */
+	uint32_t max_cq_depth; /* Maximum number of CQE capacity per CQ */
+	uint32_t max_mr;/* Largest contiguous block that can be registered */
+	uint32_t max_ah; /* Maximum number of supported address handles */
 
-	uint16_t max_qp_rd_atom;
-	uint16_t max_ee_rd_atom;
-	uint16_t max_res_rd_atom;
-	uint16_t max_qp_init_rd_atom;
-	uint16_t max_ee_init_rd_atom;
-	uint16_t atomic_cap;
+	uint16_t max_qp_rd_atom; /* Maximum number of RDMA Read & Atomic operations that can be outstanding per QP */
+	uint16_t max_ee_rd_atom; /* Maximum number of RDMA Read & Atomic operations that can be outstanding per EEC */
+	uint16_t max_res_rd_atom;/* Maximum number of resources used for RDMA Read & Atomic operations by this HCA as the Target */
+	uint16_t max_qp_init_rd_atom;/* Maximum depth per QP for initiation of RDMA Read & Atomic operations */ 
+	uint16_t max_ee_init_rd_atom;/* Maximum depth per EEC for initiation of RDMA Read & Atomic operations */
+	uint16_t atomic_cap;/* Atomic operations support level */
+	uint16_t masked_atomic_cap; /* Masked atomic operations support level */
 	uint16_t sub_cqs_per_cq;
+	uint16_t max_pkeys;  /* Maximum number of partitions */
 
 	uint32_t err_code:8;
 	uint32_t err_hint:24;
 } __attribute__((packed));
 
 struct vrdma_query_port_req {
-	enum ibv_port_state     state;
-	enum ibv_mtu            max_mtu;
-	enum ibv_mtu            active_mtu;
-	int                     gid_tbl_len;
-	uint32_t                max_msg_sz;
-	uint16_t                lid;
-	uint8_t                 active_speed;
-	uint8_t                 link_layer;
+	uint32_t port_idx;
 };
 
 struct vrdma_query_port_resp {
+	enum ibv_port_state     state; /* Logical port state */
+	enum ibv_mtu            max_mtu;/* Max MTU supported by port */
+	enum ibv_mtu            active_mtu; /* Actual MTU */
+	int                     gid_tbl_len;/* Length of source GID table */
+	uint32_t                port_cap_flags; /* Port capabilities */
+	uint32_t                max_msg_sz; /* Length of source GID table */
+	uint32_t		bad_pkey_cntr; /* Bad P_Key counter */
+	uint32_t		qkey_viol_cntr; /* Q_Key violation counter */
+	uint32_t		sm_lid; /* SM LID */
+	uint32_t		lid; /* Base port LID */
+	uint16_t		pkey_tbl_len; /* Length of partition table */
+	uint8_t			lmc; /* LMC of LID */
+	uint8_t			max_vl_num; /* Maximum number of VLs */
+	uint8_t			sm_sl; /* SM service level */
+	uint8_t                 active_speed;
+	uint8_t          	phys_state;/* Physical port state */
+	uint8_t                 link_layer; /* link layer protocol of the port */
 
+	uint32_t err_code:8;
+	uint32_t err_hint:24;
 } __attribute__((packed));
 
 struct vrdma_query_gid_req {
@@ -74,6 +104,15 @@ struct vrdma_query_gid_req {
 
 struct vrdma_query_gid_resp {
 	uint8_t gid[16];
+	uint32_t err_code:8;
+	uint32_t err_hint:24;
+} __attribute__((packed));
+
+struct vrdma_modify_gid_req {
+	uint8_t gid[16];
+};
+
+struct vrdma_modify_gid_resp {
 	uint32_t err_code:8;
 	uint32_t err_hint:24;
 } __attribute__((packed));
@@ -126,10 +165,14 @@ struct vrdma_create_mr_req {
 	uint32_t pagesize:5;
 	uint32_t hop:2;
 	uint32_t reserved:14;
-	uint64_t l0_paddr; 
 	uint64_t length; 
-	uint64_t vaddr; 
-
+	uint64_t vaddr;
+	uint32_t sge_count;
+	struct vrdma_sge {
+		uint64_t va;
+		uint64_t pa;
+		uint32_t length;
+	} sge_list[];
 } __attribute__((packed));
 
 struct vrdma_create_mr_resp {
@@ -253,7 +296,7 @@ struct vrdma_modify_qp_resp {
 
 struct vrdma_create_ah_req {
 	uint32_t pd_handle;
-    uint32_t dip;
+    	uint32_t dip;
 } __attribute__((packed));
 
 struct vrdma_create_ah_resp {
@@ -285,13 +328,15 @@ struct vrdma_admin_cmd {
 		uint64_t cur_seq;
 		struct vrdma_query_gid_req query_gid_req;
 		struct vrdma_query_gid_resp query_gid_resp;
+		struct vrdma_modify_gid_req modify_gid_req;
+		struct vrdma_modify_gid_resp modify_gid_resp;
 		struct vrdma_create_ceq_req create_ceq_req;
 		struct vrdma_create_ceq_resp create_ceq_resp;
 		struct vrdma_modify_ceq_req modify_ceq_req;
 		struct vrdma_modify_ceq_resp modify_ceq_resp;
 		struct vrdma_destroy_ceq_req destroy_ceq_req;
 		struct vrdma_destroy_ceq_resp destroy_ceq_resp;
-		struct vrdma_create_pd_req	create_pd_req;
+		struct vrdma_create_pd_req create_pd_req;
 		struct vrdma_create_pd_resp create_pd_resp;
 		struct vrdma_destroy_pd_req destroy_pd_req;
 		struct vrdma_destroy_pd_resp destroy_pd_resp;
@@ -319,6 +364,10 @@ struct vrdma_admin_cmd {
 	//uint64_t tsc_begin;
 } __attribute__((packed));
 
+struct vrdma_modify_gid_req_param {
+	uint8_t gid[16];
+};
+
 struct vrdma_create_pd_req_param {
 	uint32_t pd_handle;  /* pd handle need to be created in vrdev and passed to vservice */
 };
@@ -336,6 +385,7 @@ struct vrdma_destroy_mr_req_param {
 struct vrdma_cmd_param {
 	union {
 		char buf[12];
+		struct vrdma_modify_gid_req_param modify_gid_param;
 		struct vrdma_create_pd_req_param create_pd_param;
 		struct vrdma_create_mr_req_param create_mr_param;
 		struct vrdma_destroy_mr_req_param destroy_mr_param;
@@ -365,6 +415,9 @@ typedef int (*vrdma_device_probe_op)(struct vrdma_dev *rdev);
 
 typedef int (*vrdma_admin_query_gid_op)(struct vrdma_dev *rdev, 
 										struct vrdma_admin_cmd *cmd);
+typedef int (*vrdma_admin_modify_gid_op)(struct vrdma_dev *rdev, 
+										struct vrdma_admin_cmd *cmd,
+										struct vrdma_cmd_param *param);
 typedef int (*vrdma_admin_create_eq_op)(struct vrdma_dev *rdev, 
 										struct vrdma_admin_cmd *cmd);
 typedef int (*vrdma_admin_modify_eq_op)(struct vrdma_dev *rdev, 
@@ -406,6 +459,7 @@ typedef struct vRdmaServiceOps {
 	vrdma_device_probe_op vrdma_device_probe;
     /* admin callback */
 	vrdma_admin_query_gid_op vrdma_device_query_gid;
+	vrdma_admin_modify_gid_op vrdma_device_modify_gid;
 	vrdma_admin_create_eq_op vrdma_device_create_eq;
 	vrdma_admin_modify_eq_op vrdma_device_modify_eq;
 	vrdma_admin_destroy_eq_op vrdma_device_destroy_eq;
@@ -422,7 +476,6 @@ typedef struct vRdmaServiceOps {
 	vrdma_admin_create_ah_op vrdma_device_create_ah;
 	vrdma_admin_destroy_ah_op vrdma_device_destroy_ah;
 } vRdmaServiceOps;
-
 
 // Assume vrdma service checks the pi,ci boundaries.
 // Fetch SQ WQEs
